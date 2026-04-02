@@ -63,6 +63,19 @@ MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic prox
 │  │(ollama,etc) │  │   Proxy    │  │ (OpenAI, etc.)  │  │
 │  └─────────────┘  └─────────────┘  └─────────────────┘  │
 └─────────────────────────────────────────────────────────┘
+                          │
+┌─────────────────────────┴───────────────────────────────┐
+│                     Data Layer                          │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │  data/                                          │    │
+│  │  ├── agents.json        (agent metadata)        │    │
+│  │  └── agents/{id}/                               │    │
+│  │      ├── SOUL.md        (system prompt)         │    │
+│  │      ├── TOOLS.md       (tool instructions)     │    │
+│  │      ├── MEMORY.md      (persistent memory)     │    │
+│  │      └── sessions/*.jsonl                       │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
