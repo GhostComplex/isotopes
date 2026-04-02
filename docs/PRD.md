@@ -8,14 +8,14 @@
 
 **Isotopes** is a lightweight, self-hostable AI agent framework.
 
-MVP scope: Multi-agent orchestration + Discord transport + GHC proxy support.
+MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic proxy support.
 
 ## MVP Goals
 
 1. **Pluggable agent core** — Abstract interface, default `@openai/agents`
 2. **Multi-agent management** — Create and manage agents (in-memory for MVP)
 3. **Discord transport** — Basic messaging + thread streaming
-4. **GHC proxy support** — `localhost:4141` as provider
+4. **Proxy support** — OpenAI/Anthropic compatible proxies (ollama, vllm, copilot-api, etc.)
 
 ## Non-Goals (MVP)
 
@@ -59,7 +59,8 @@ MVP scope: Multi-agent orchestration + Discord transport + GHC proxy support.
 ┌─────────────────────────┴───────────────────────────────┐
 │                       Providers                         │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │  GHC :4141  │  │  MiniMax    │  │  OpenAI (future)│  │
+│  │OpenAI Proxy │  │Anthropic   │  │  Direct APIs    │  │
+│  │(ollama,etc) │  │   Proxy    │  │ (OpenAI, etc.)  │  │
 │  └─────────────┘  └─────────────┘  └─────────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -101,7 +102,7 @@ export type AgentEvent =
   | { type: 'error'; error: Error };
 
 export interface ProviderConfig {
-  type: 'ghc' | 'minimax' | 'openai';
+  type: 'openai-proxy' | 'anthropic-proxy' | 'openai' | 'anthropic';
   baseUrl?: string;
   apiKey?: string;
   model?: string;
@@ -173,7 +174,7 @@ data/
   {
     "id": "translator",
     "name": "Translator",
-    "provider": { "type": "ghc", "model": "claude-sonnet-4.5" }
+    "provider": { "type": "openai-proxy", "model": "claude-sonnet-4.5" }
   }
 ]
 ```
@@ -328,13 +329,23 @@ isotopes/
 # config.yaml
 
 providers:
-  ghc:
+  # OpenAI-compatible proxy (ollama, vllm, copilot-api, etc.)
+  openai-proxy:
     baseUrl: http://localhost:4141/v1
-  minimax:
-    baseUrl: https://api.minimax.chat/v1
-    apiKey: ${MINIMAX_API_KEY}
+    apiKey: optional
+    
+  # Anthropic-compatible proxy
+  anthropic-proxy:
+    baseUrl: http://localhost:4141/v1
+    apiKey: optional
+    
+  # Direct API access (optional)
+  openai:
+    apiKey: ${OPENAI_API_KEY}
+  anthropic:
+    apiKey: ${ANTHROPIC_API_KEY}
 
-defaultProvider: ghc
+defaultProvider: openai-proxy
 defaultModel: claude-sonnet-4-20250514
 
 discord:
@@ -381,7 +392,7 @@ agents:
 - [ ] `transports/discord.ts` — Discord bot + thread streaming
 - [ ] `config/` — YAML config loading
 - [ ] `index.ts` — Main entry, wire everything
-- [ ] Test with GHC proxy
+- [ ] Test with OpenAI-compatible proxy
 
 ### Future Milestones
 
