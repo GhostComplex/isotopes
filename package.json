@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "pnpm lint && pnpm typecheck && pnpm test"
+    "ci": "npm run lint && npm run typecheck && npm run test"
   },
   "keywords": [
     "ai",
@@ -34,21 +34,21 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^22.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "eslint": "^9.0.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.6.0",
-    "typescript-eslint": "^8.58.0",
-    "vitest": "^2.0.0"
+    "@eslint/js": "9.27.0",
+    "@types/node": "22.15.18",
+    "@typescript-eslint/eslint-plugin": "8.32.1",
+    "@typescript-eslint/parser": "8.32.1",
+    "eslint": "9.27.0",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3",
+    "typescript-eslint": "8.32.1",
+    "vitest": "3.1.3"
   },
   "dependencies": {
-    "@openai/agents": "^0.0.7",
-    "discord.js": "^14.16.0",
-    "openai": "^4.77.0",
-    "yaml": "^2.6.0",
-    "zod": "^3.24.0"
+    "@openai/agents": "0.0.7",
+    "discord.js": "14.18.0",
+    "openai": "4.96.0",
+    "yaml": "2.7.1",
+    "zod": "3.24.4"
   }
 }
