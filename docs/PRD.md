@@ -113,53 +113,81 @@ export interface ProviderConfig {
 ```typescript
 // src/orchestrator/agent-manager.ts
 
-/** Manages agent lifecycle - persisted to JSON file */
+/** Manages agent lifecycle - persisted to JSON + workspace files */
 export interface AgentManager {
   create(config: AgentConfig): Promise<AgentInstance>;
   get(id: string): AgentInstance | undefined;
   list(): AgentConfig[];
   update(id: string, updates: Partial<AgentConfig>): Promise<AgentInstance>;
   delete(id: string): Promise<void>;
+  
+  // Prompt management (stored as markdown files)
+  getPrompt(id: string): Promise<string>;
+  updatePrompt(id: string, prompt: string): Promise<void>;
+}
+
+export interface AgentConfig {
+  id: string;
+  name: string;
+  // systemPrompt is loaded from workspace/{agentId}/SOUL.md
+  provider?: ProviderConfig;
+  tools?: string[];
 }
 
 // Persisted implementation (similar to OpenClaw)
-// Stores agent configs in data/agents.json
-// Each agent also has a directory: data/agents/{agentId}/
 export class JsonAgentManager implements AgentManager {
   private agents = new Map<string, { config: AgentConfig; instance: AgentInstance }>();
-  private configPath: string;  // data/agents.json
   
-  constructor(private core: AgentCore, private dataDir: string) {
-    this.configPath = path.join(dataDir, 'agents.json');
+  constructor(private core: AgentCore, private dataDir: string) {}
+
+  async getPrompt(id: string): Promise<string> {
+    const soulPath = path.join(this.dataDir, 'agents', id, 'SOUL.md');
+    return fs.readFile(soulPath, 'utf-8');
   }
 
-  async load(): Promise<void> {
-    // Load from data/agents.json on startup
-    const configs = JSON.parse(await fs.readFile(this.configPath, 'utf-8'));
-    for (const config of configs) {
-      this.agents.set(config.id, {
-        config,
-        instance: this.core.createAgent(config)
-      });
-    }
-  }
-
-  private async save(): Promise<void> {
-    // Persist after every change
-    const configs = [...this.agents.values()].map(a => a.config);
-    await fs.writeFile(this.configPath, JSON.stringify(configs, null, 2));
+  async updatePrompt(id: string, prompt: string): Promise<void> {
+    const soulPath = path.join(this.dataDir, 'agents', id, 'SOUL.md');
+    await fs.writeFile(soulPath, prompt);
+    // Recreate agent instance with new prompt
+    await this.reload(id);
   }
 }
 ```
 
-**Data structure (similar to OpenClaw):**
+**Data structure (following OpenClaw pattern):**
 ```
 data/
-├── agents.json              # All agent configs
+├── agents.json              # Agent metadata only (no prompts)
 └── agents/
     └── {agentId}/
-        ├── models.json      # Per-agent model overrides (future)
-        └── sessions/        # Agent's sessions
+        ├── SOUL.md          # System prompt (markdown)
+        ├── TOOLS.md         # Tool instructions (optional)
+        ├── MEMORY.md        # Persistent memory (optional)
+        └── sessions/
+            └── {sessionId}.jsonl
+```
+
+**agents.json** stores only metadata:
+```json
+[
+  {
+    "id": "translator",
+    "name": "Translator",
+    "provider": { "type": "ghc", "model": "claude-sonnet-4.5" }
+  }
+]
+```
+
+**data/agents/translator/SOUL.md** stores the prompt:
+```markdown
+# Translator
+
+You are a professional translator.
+
+## Rules
+- Translate all text to Chinese
+- Preserve formatting
+- Keep technical terms in English
 ```
 
 ### 3. Session Store
@@ -277,10 +305,13 @@ isotopes/
 │   │   └── index.ts
 │   └── index.ts                 # Main entry
 ├── data/                        # Runtime data (gitignored)
-│   ├── agents.json              # Agent configs (persisted)
+│   ├── agents.json              # Agent metadata (no prompts)
 │   └── agents/
 │       └── {agentId}/
-│           └── sessions/        # JSONL session files
+│           ├── SOUL.md          # System prompt (markdown)
+│           ├── TOOLS.md         # Tool instructions (optional)
+│           ├── MEMORY.md        # Persistent memory (optional)
+│           └── sessions/
 │               └── {sessionId}.jsonl
 ├── docs/
 │   └── PRD.md
