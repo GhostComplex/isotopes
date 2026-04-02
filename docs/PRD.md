@@ -13,7 +13,7 @@ MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic prox
 ## MVP Goals
 
 1. **Pluggable agent core** — Abstract interface, default `@openai/agents`
-2. **Multi-agent management** — Create and manage agents (in-memory for MVP)
+2. **Multi-agent management** — Create and manage agents (JSON persisted)
 3. **Discord transport** — Basic messaging + thread streaming
 4. **Proxy support** — OpenAI/Anthropic compatible proxies (ollama, vllm, copilot-api, etc.)
 
@@ -38,8 +38,8 @@ MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic prox
 ┌─────────────────────────┴───────────────────────────────┐
 │                     Orchestrator                        │
 │  ┌─────────────────┐  ┌─────────────────────────────┐   │
-│  │  Agent Manager  │  │  Session Store (in-memory)  │   │
-│  │  (in-memory)    │  │                             │   │
+│  │  Agent Manager  │  │  Session Store (JSONL)      │   │
+│  │  (JSON file)    │  │                             │   │
 │  └────────┬────────┘  └──────────────┬──────────────┘   │
 │           └──────────────────────────┘                  │
 └─────────────────────────┬───────────────────────────────┘
