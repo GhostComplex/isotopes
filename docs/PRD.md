@@ -113,21 +113,53 @@ export interface ProviderConfig {
 ```typescript
 // src/orchestrator/agent-manager.ts
 
-/** Manages agent lifecycle - MVP uses in-memory Map, extensible to persistence */
+/** Manages agent lifecycle - persisted to JSON file */
 export interface AgentManager {
-  create(config: AgentConfig): AgentInstance;
+  create(config: AgentConfig): Promise<AgentInstance>;
   get(id: string): AgentInstance | undefined;
   list(): AgentConfig[];
-  update(id: string, updates: Partial<AgentConfig>): AgentInstance;
-  delete(id: string): void;
+  update(id: string, updates: Partial<AgentConfig>): Promise<AgentInstance>;
+  delete(id: string): Promise<void>;
 }
 
-// MVP implementation
-export class InMemoryAgentManager implements AgentManager {
+// Persisted implementation (similar to OpenClaw)
+// Stores agent configs in data/agents.json
+// Each agent also has a directory: data/agents/{agentId}/
+export class JsonAgentManager implements AgentManager {
   private agents = new Map<string, { config: AgentConfig; instance: AgentInstance }>();
-  constructor(private core: AgentCore) {}
-  // ... implementation
+  private configPath: string;  // data/agents.json
+  
+  constructor(private core: AgentCore, private dataDir: string) {
+    this.configPath = path.join(dataDir, 'agents.json');
+  }
+
+  async load(): Promise<void> {
+    // Load from data/agents.json on startup
+    const configs = JSON.parse(await fs.readFile(this.configPath, 'utf-8'));
+    for (const config of configs) {
+      this.agents.set(config.id, {
+        config,
+        instance: this.core.createAgent(config)
+      });
+    }
+  }
+
+  private async save(): Promise<void> {
+    // Persist after every change
+    const configs = [...this.agents.values()].map(a => a.config);
+    await fs.writeFile(this.configPath, JSON.stringify(configs, null, 2));
+  }
 }
+```
+
+**Data structure (similar to OpenClaw):**
+```
+data/
+├── agents.json              # All agent configs
+└── agents/
+    └── {agentId}/
+        ├── models.json      # Per-agent model overrides (future)
+        └── sessions/        # Agent's sessions
 ```
 
 ### 3. Session Store
@@ -233,7 +265,7 @@ isotopes/
 │   │   ├── openai-agents.ts     # @openai/agents implementation
 │   │   └── index.ts
 │   ├── orchestrator/
-│   │   ├── agent-manager.ts     # InMemoryAgentManager
+│   │   ├── agent-manager.ts     # JsonAgentManager (persisted)
 │   │   ├── session-store.ts     # JsonlSessionStore + auto-cleanup
 │   │   └── index.ts
 │   ├── transports/
@@ -245,9 +277,11 @@ isotopes/
 │   │   └── index.ts
 │   └── index.ts                 # Main entry
 ├── data/                        # Runtime data (gitignored)
-│   ├── agents.json              # Agent configs
-│   └── sessions/                # JSONL session files
-│       └── {sessionId}.jsonl
+│   ├── agents.json              # Agent configs (persisted)
+│   └── agents/
+│       └── {agentId}/
+│           └── sessions/        # JSONL session files
+│               └── {sessionId}.jsonl
 ├── docs/
 │   └── PRD.md
 ├── package.json
@@ -295,12 +329,12 @@ agents:
 |------|-------|-------------|
 | core/types.ts | ~50 | Interfaces |
 | core/openai-agents.ts | ~100 | @openai/agents wrapper |
-| orchestrator/agent-manager.ts | ~60 | In-memory manager |
+| orchestrator/agent-manager.ts | ~80 | JSON-persisted manager |
 | orchestrator/session-store.ts | ~100 | JSONL storage + auto-cleanup |
 | transports/discord.ts | ~200 | Discord bot + streaming |
 | config/index.ts | ~80 | YAML loading |
 | index.ts | ~40 | Entry point |
-| **Total** | **~630** | |
+| **Total** | **~650** | |
 
 ---
 
@@ -311,7 +345,7 @@ agents:
 - [ ] Project setup (TypeScript, pnpm)
 - [ ] `core/types.ts` — AgentCore interface
 - [ ] `core/openai-agents.ts` — @openai/agents implementation
-- [ ] `orchestrator/agent-manager.ts` — InMemoryAgentManager
+- [ ] `orchestrator/agent-manager.ts` — JsonAgentManager (persisted)
 - [ ] `orchestrator/session-store.ts` — JsonlSessionStore + auto-cleanup
 - [ ] `transports/discord.ts` — Discord bot + thread streaming
 - [ ] `config/` — YAML config loading
@@ -336,7 +370,7 @@ Each component is behind an interface, making future extensions easy:
 | Interface | MVP Impl | Future Impl |
 |-----------|----------|-------------|
 | `AgentCore` | `OpenAIAgentsCore` | Custom agent loop |
-| `AgentManager` | `InMemoryAgentManager` | `JsonlAgentManager` |
+| `AgentManager` | `JsonAgentManager` | - |
 | `SessionStore` | `JsonlSessionStore` | `SqliteSessionStore` |
 | `Transport` | `DiscordTransport` | `FeishuTransport`, `WebTransport` |
 
