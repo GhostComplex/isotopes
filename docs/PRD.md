@@ -388,3 +388,26 @@ Features to build after MVP is working:
 - Inter-agent messaging and handoffs
 - Streaming between agents
 - Agent discovery and registration
+
+### M5: Hooks & Plugins System
+- Lifecycle hooks for agent events:
+  ```typescript
+  interface AgentHooks {
+    onAgentStart?: (ctx: RunContext) => void;
+    onTurnStart?: (ctx: RunContext, turn: number) => void;
+    beforeToolCall?: (tool: Tool, args: unknown) => unknown;
+    afterToolCall?: (tool: Tool, result: string) => string;
+    onAgentEnd?: (ctx: RunContext, messages: Message[]) => void;
+    onError?: (ctx: RunContext, error: Error) => void;
+  }
+  ```
+- Plugin interface for extending functionality:
+  ```typescript
+  interface Plugin {
+    name: string;
+    hooks?: Partial<AgentHooks>;
+    tools?: Tool[];
+    transports?: Transport[];
+  }
+  ```
+- Built-in plugins: logging, metrics, rate limiting
