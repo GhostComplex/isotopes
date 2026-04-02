@@ -8,7 +8,7 @@
 
 **Isotopes** is a lightweight, self-hostable AI agent framework.
 
-MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic proxy support.
+MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic proxy support + ACP.
 
 ## MVP Goals
 
@@ -16,13 +16,7 @@ MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic prox
 2. **Multi-agent management** — Create and manage agents (JSON persisted)
 3. **Discord transport** — Basic messaging + thread streaming
 4. **Proxy support** — OpenAI/Anthropic compatible proxies (ollama, vllm, copilot-api, etc.)
-
-## Non-Goals (MVP)
-
-- ❌ Web UI → Future M1
-- ❌ Feishu transport → Future M2
-- ❌ Self-evolving prompts → Future M3
-- ❌ Full ACP protocol → Simplified for MVP
+5. **ACP protocol** — Agent Communication Protocol for inter-agent messaging
 
 ---
 
@@ -67,34 +61,17 @@ data/
 
 ---
 
-## Configuration
+## MVP Milestones
 
-```yaml
-# config.yaml
+| Milestone | Scope | Timeline |
+|-----------|-------|----------|
+| **M0** | Core + Discord + Proxy | ~2 days |
+| **M1** | Web UI (Next.js, agent dashboard, chat) | TBD |
+| **M2** | Feishu Transport | TBD |
+| **M3** | Self-Evolving Prompts (versioning, self-update) | TBD |
+| **M4** | Full ACP Protocol (inter-agent messaging) | TBD |
 
-providers:
-  openai-proxy:
-    baseUrl: http://localhost:4141/v1
-  anthropic-proxy:
-    baseUrl: http://localhost:4141/v1
-
-defaultProvider: openai-proxy
-defaultModel: claude-sonnet-4-20250514
-
-discord:
-  token: ${DISCORD_TOKEN}
-
-storage:
-  dataDir: ./data
-  maxSessions: 100
-  maxTotalSizeMB: 100
-```
-
----
-
-## MVP Milestone (M0)
-
-**Timeline:** ~2 days with Claude Code
+### M0: Core Foundation
 
 - [ ] Project setup (TypeScript, pnpm, ESM)
 - [ ] Agent Core interface + @openai/agents wrapper
@@ -110,10 +87,6 @@ storage:
 
 | Milestone | Scope |
 |-----------|-------|
-| **M1** | Web UI (Next.js, agent dashboard, chat interface) |
-| **M2** | Feishu Transport |
-| **M3** | Self-Evolving Prompts (versioning, self-update) |
-| **M4** | Full ACP Protocol (inter-agent messaging) |
 | **M5** | Hooks & Plugins System |
 
 ---
