@@ -35,7 +35,8 @@ MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic prox
                           │
 ┌─────────────────────────┴───────────────────────────────┐
 │                     Orchestrator                        │
-│         Agent Manager (JSON)  +  Session Store (JSONL)  │
+│      Agent Manager  +  Session Store  →  Data Layer     │
+│                                          (JSON/JSONL)   │
 └─────────────────────────┬───────────────────────────────┘
                           │
 ┌─────────────────────────┴───────────────────────────────┐
@@ -44,11 +45,6 @@ MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic prox
                           │
 ┌─────────────────────────┴───────────────────────────────┐
 │    Providers (OpenAI Proxy | Anthropic Proxy | Direct)  │
-└─────────────────────────────────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────┐
-│                     Data Layer                          │
-│  data/agents.json + data/agents/{id}/SOUL.md + sessions │
 └─────────────────────────────────────────────────────────┘
 ```
 
