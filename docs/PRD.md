@@ -1,6 +1,6 @@
 # 🫥 Isotopes PRD
 
-> Version: 0.2.0 (MVP)
+> Version: 0.1.0 (MVP)
 > Date: 2026-04-02
 > Status: **Draft**
 
@@ -19,7 +19,6 @@ MVP scope: Multi-agent orchestration + Discord transport + GHC proxy support.
 
 ## Non-Goals (MVP)
 
-- ❌ SQLite storage → JSONL is enough for MVP
 - ❌ Web UI → Future M1
 - ❌ Feishu transport → Future M2
 - ❌ Self-evolving prompts → Future M3
@@ -360,3 +359,32 @@ Each component is behind an interface, making future extensions easy:
   }
 }
 ```
+
+---
+
+## Post-MVP Roadmap
+
+Features to build after MVP is working:
+
+### M1: Web UI
+- Next.js 14 with App Router
+- Agent management dashboard (CRUD)
+- Session viewer and chat interface
+- Provider settings configuration
+- Real-time streaming via SSE
+
+### M2: Feishu Transport
+- Feishu bot integration
+- Card messages for rich responses
+- Event subscription handling
+
+### M3: Self-Evolving Prompts
+- Prompt versioning and history
+- Self-update API for agents
+- Rollback support
+
+### M4: Full ACP Protocol
+- Complete Agent Communication Protocol
+- Inter-agent messaging and handoffs
+- Streaming between agents
+- Agent discovery and registration
