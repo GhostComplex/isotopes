@@ -1,7 +1,7 @@
 # 🫥 Isotopes PRD
 
 > Version: 0.1.0 (MVP)
-> Date: 2026-04-02
+> Date: 2026-04-03
 > Status: **Draft**
 
 ## Overview
@@ -12,11 +12,27 @@ MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic prox
 
 ## MVP Goals
 
-1. **Pluggable agent core** — Abstract interface, default `@openai/agents`
+1. **Pluggable agent core** — Abstract interface, default Pi-Mono (`@mariozechner/pi-agent-core`)
 2. **Multi-agent management** — Create and manage agents (JSON persisted)
 3. **Discord transport** — Basic messaging + thread streaming
 4. **Proxy support** — OpenAI/Anthropic compatible proxies (ollama, vllm, copilot-api, etc.)
 5. **ACP protocol** — Agent Communication Protocol for inter-agent messaging
+
+---
+
+## Why Pi-Mono?
+
+We chose `@mariozechner/pi-agent-core` over `@openai/agents` for the following reasons:
+
+| Feature | Pi-Mono | @openai/agents |
+|---------|---------|----------------|
+| **Steering** | ✅ `agent.steer()` native | ❌ Not supported |
+| **Follow-up** | ✅ `agent.followUp()` native | ❌ Not supported |
+| **Code size** | ~1.9K lines | ~3MB |
+| **Provider support** | OpenAI + Anthropic | OpenAI only |
+| **OpenClaw compatibility** | ✅ Same core | ⚠️ Needs adapter |
+
+**Steering** is critical for real-time user interrupts (e.g., Discord messages mid-execution). Pi-Mono supports this natively; `@openai/agents` would require significant wrapper code.
 
 ---
 
@@ -34,7 +50,7 @@ MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic prox
 └─────────────────────────┬───────────────────────────────┘
                           │
 ┌─────────────────────────┴───────────────────────────────┐
-│            Agent Core (Pluggable: @openai/agents)       │
+│         Agent Core (Pluggable: @mariozechner/pi-*)      │
 └─────────────────────────┬───────────────────────────────┘
                           │
 ┌─────────────────────────┴───────────────────────────────┐
@@ -73,8 +89,8 @@ data/
 
 ### M0: Core Foundation
 
-- [ ] Project setup (TypeScript, pnpm, ESM)
-- [ ] Agent Core interface + @openai/agents wrapper
+- [ ] Project setup (TypeScript, npm, ESM)
+- [ ] Agent Core interface + Pi-Mono wrapper
 - [ ] Agent Manager (JSON persisted)
 - [ ] Session Store (JSONL + auto-cleanup)
 - [ ] Discord transport + thread streaming
@@ -95,7 +111,7 @@ data/
 
 | Interface | MVP Impl | Future Impl |
 |-----------|----------|-------------|
-| `AgentCore` | `OpenAIAgentsCore` | Custom agent loop |
+| `AgentCore` | `PiMonoCore` | Custom agent loop |
 | `AgentManager` | `JsonAgentManager` | — |
 | `SessionStore` | `JsonlSessionStore` | `SqliteSessionStore` |
 | `Transport` | `DiscordTransport` | `FeishuTransport`, `WebTransport` |

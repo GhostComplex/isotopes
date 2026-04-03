@@ -1,7 +1,7 @@
 # 🫥 Isotopes - Technical Design
 
 > Version: 0.1.0 (MVP)
-> Date: 2026-04-02
+> Date: 2026-04-03
 
 This document contains detailed technical specifications for implementing Isotopes.
 For product requirements and goals, see [PRD.md](./PRD.md).
@@ -44,7 +44,7 @@ For product requirements and goals, see [PRD.md](./PRD.md).
 │  │    createAgent(config): AgentInstance            │   │
 │  │  }                                               │   │
 │  │  ─────────────────────────────────────────────   │   │
-│  │  class OpenAIAgentsCore implements AgentCore     │   │
+│  │  class PiMonoCore implements AgentCore           │   │
 │  │  class CustomCore implements AgentCore (future)  │   │
 │  └──────────────────────────────────────────────────┘   │
 └─────────────────────────┬───────────────────────────────┘
@@ -67,6 +67,8 @@ For product requirements and goals, see [PRD.md](./PRD.md).
 ```typescript
 // src/core/types.ts
 
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+
 /** Pluggable agent core - swap implementations without changing upper layers */
 export interface AgentCore {
   createAgent(config: AgentConfig): AgentInstance;
@@ -74,9 +76,13 @@ export interface AgentCore {
 
 export interface AgentInstance {
   /** Stream a prompt, yields events */
-  prompt(input: string | Message[]): AsyncIterable<AgentEvent>;
+  prompt(input: string | AgentMessage[]): AsyncIterable<AgentEvent>;
   /** Abort current execution */
   abort(): void;
+  /** Inject message mid-execution (steering) */
+  steer(msg: AgentMessage): void;
+  /** Queue message for after current execution */
+  followUp(msg: AgentMessage): void;
 }
 
 export interface AgentConfig {
@@ -88,10 +94,12 @@ export interface AgentConfig {
 }
 
 export type AgentEvent =
+  | { type: 'turn_start' }
   | { type: 'text_delta'; text: string }
   | { type: 'tool_call'; id: string; name: string; args: unknown }
   | { type: 'tool_result'; id: string; output: string; isError?: boolean }
-  | { type: 'done'; messages: Message[] }
+  | { type: 'turn_end' }
+  | { type: 'agent_end'; messages: AgentMessage[] }
   | { type: 'error'; error: Error };
 
 export interface ProviderConfig {
@@ -102,7 +110,56 @@ export interface ProviderConfig {
 }
 ```
 
-### 2. Agent Manager
+### 2. Pi-Mono Core Implementation
+
+```typescript
+// src/core/pi-mono.ts
+
+import { Agent, type AgentOptions } from "@mariozechner/pi-agent-core";
+import { streamSimple, type Model } from "@mariozechner/pi-ai";
+import type { AgentCore, AgentConfig, AgentInstance, AgentEvent } from "./types.js";
+
+export class PiMonoCore implements AgentCore {
+  createAgent(config: AgentConfig): AgentInstance {
+    const model = this.createModel(config.provider);
+    
+    const agent = new Agent({
+      model,
+      systemPrompt: config.systemPrompt,
+      tools: config.tools ?? [],
+      steeringMode: "one-at-a-time",
+    });
+
+    return {
+      async *prompt(input) {
+        const stream = agent.prompt(
+          typeof input === "string" 
+            ? [{ role: "user", content: input, timestamp: Date.now() }]
+            : input
+        );
+        
+        for await (const event of stream) {
+          yield mapPiMonoEvent(event);
+        }
+      },
+      abort: () => agent.abort(),
+      steer: (msg) => agent.steer(msg),
+      followUp: (msg) => agent.followUp(msg),
+    };
+  }
+
+  private createModel(provider?: ProviderConfig): Model<any> {
+    // Create model based on provider config
+    // Uses @mariozechner/pi-ai streamSimple under the hood
+  }
+}
+
+function mapPiMonoEvent(event: PiMonoAgentEvent): AgentEvent {
+  // Map Pi-Mono events to our AgentEvent type
+}
+```
+
+### 3. Agent Manager
 
 ```typescript
 // src/orchestrator/agent-manager.ts
@@ -184,7 +241,7 @@ You are a professional translator.
 - Keep technical terms in English
 ```
 
-### 3. Session Store
+### 4. Session Store
 
 ```typescript
 // src/orchestrator/session-store.ts
@@ -244,7 +301,7 @@ export class JsonlSessionStore implements SessionStore {
 }
 ```
 
-### 4. Discord Transport
+### 5. Discord Transport
 
 ```typescript
 // src/transports/discord.ts
@@ -284,7 +341,7 @@ isotopes/
 ├── src/
 │   ├── core/
 │   │   ├── types.ts             # AgentCore interface + types
-│   │   ├── openai-agents.ts     # @openai/agents implementation
+│   │   ├── pi-mono.ts           # Pi-Mono implementation
 │   │   └── index.ts
 │   ├── orchestrator/
 │   │   ├── agent-manager.ts     # JsonAgentManager (persisted)
@@ -357,14 +414,14 @@ storage:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| core/types.ts | ~50 | Interfaces |
-| core/openai-agents.ts | ~100 | @openai/agents wrapper |
+| core/types.ts | ~60 | Interfaces + AgentEvent |
+| core/pi-mono.ts | ~120 | Pi-Mono wrapper + event mapping |
 | orchestrator/agent-manager.ts | ~80 | JSON-persisted manager |
 | orchestrator/session-store.ts | ~100 | JSONL storage + auto-cleanup |
 | transports/discord.ts | ~200 | Discord bot + streaming |
 | config/index.ts | ~80 | YAML loading |
 | index.ts | ~40 | Entry point |
-| **Total** | **~650** | |
+| **Total** | **~680** | |
 
 ---
 
@@ -373,15 +430,15 @@ storage:
 ```json
 {
   "dependencies": {
-    "@openai/agents": "^0.1.0",
-    "openai": "^4.70.0",
-    "discord.js": "^14.0.0",
-    "yaml": "^2.4.0",
-    "zod": "^3.23.0"
+    "@mariozechner/pi-agent-core": "0.62.0",
+    "@mariozechner/pi-ai": "0.62.0",
+    "discord.js": "14.18.0",
+    "yaml": "2.7.1",
+    "zod": "3.24.4"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "@types/node": "^22.0.0"
+    "typescript": "5.8.3",
+    "@types/node": "22.15.18"
   }
 }
 ```
@@ -392,14 +449,14 @@ storage:
 
 ### Lifecycle Hooks
 
+Pi-Mono provides hooks through `AgentLoopConfig`:
+
 ```typescript
-interface AgentHooks {
-  onAgentStart?: (ctx: RunContext) => void;
-  onTurnStart?: (ctx: RunContext, turn: number) => void;
-  beforeToolCall?: (tool: Tool, args: unknown) => unknown;
-  afterToolCall?: (tool: Tool, result: string) => string;
-  onAgentEnd?: (ctx: RunContext, messages: Message[]) => void;
-  onError?: (ctx: RunContext, error: Error) => void;
+interface AgentLoopConfig {
+  beforeToolCall?: (ctx: BeforeToolCallContext) => BeforeToolCallResult;
+  afterToolCall?: (ctx: AfterToolCallContext) => AfterToolCallResult;
+  getSteeringMessages?: () => AgentMessage[] | Promise<AgentMessage[]>;
+  getFollowUpMessages?: () => AgentMessage[] | Promise<AgentMessage[]>;
 }
 ```
 
