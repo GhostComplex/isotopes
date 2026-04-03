@@ -93,15 +93,15 @@ data/
 
 ---
 
-## MVP Milestones
+## Milestones
 
 | Milestone | Scope | Timeline |
 |-----------|-------|----------|
 | **M0** | Core + Discord + Tools + Proxy | ~3 days |
 | **M1** | Cron Jobs + Git/GitHub tools | TBD |
-| **M2** | Web UI (agent dashboard, chat) | TBD |
-| **M3** | Self-Evolving Prompts (versioning, self-update) | TBD |
-| **M4** | Full ACP Protocol (inter-agent messaging, thread ACP) | TBD |
+| **M2** | ACP Protocol (inter-agent messaging, thread ACP) | TBD |
+| **M3** | Web UI (agent dashboard, chat) | TBD |
+| **M4** | Self-Evolving Prompts (versioning, self-update) | TBD |
 | **M5** | Feishu Transport | TBD |
 
 ### M0: Core Foundation
