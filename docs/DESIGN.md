@@ -117,7 +117,7 @@ export interface ProviderConfig {
 
 import { Agent, type AgentOptions } from "@mariozechner/pi-agent-core";
 import { streamSimple, type Model } from "@mariozechner/pi-ai";
-import type { AgentCore, AgentConfig, AgentInstance, AgentEvent } from "./types.js";
+import type { AgentCore, AgentConfig, AgentInstance, AgentEvent } from "./types.ts";
 
 export class PiMonoCore implements AgentCore {
   createAgent(config: AgentConfig): AgentInstance {
@@ -412,6 +412,8 @@ storage:
 
 ## Line Count Estimate
 
+> **Design Note:** Keep core layer thin. The wrapper should only translate between Pi-Mono types and Isotopes types — don't add heavy abstractions or tight coupling.
+
 | File | Lines | Description |
 |------|-------|-------------|
 | core/types.ts | ~60 | Interfaces + AgentEvent |
@@ -433,6 +435,7 @@ storage:
     "@mariozechner/pi-agent-core": "0.62.0",
     "@mariozechner/pi-ai": "0.62.0",
     "discord.js": "14.18.0",
+    "openai": "6.0.2",
     "yaml": "2.7.1",
     "zod": "3.24.4"
   },
