@@ -435,12 +435,11 @@ storage:
     "@mariozechner/pi-agent-core": "0.62.0",
     "@mariozechner/pi-ai": "0.62.0",
     "discord.js": "14.18.0",
-    "openai": "6.0.2",
     "yaml": "2.7.1",
     "zod": "3.24.4"
   },
   "devDependencies": {
-    "typescript": "5.8.3",
+    "typescript": "6.0.2",
     "@types/node": "22.15.18"
   }
 }
