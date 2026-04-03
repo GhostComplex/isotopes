@@ -1,22 +1,34 @@
 # 🫥 Isotopes PRD
 
 > Version: 0.1.0 (MVP)
-> Date: 2026-04-03
+> Date: 2026-04-04
 > Status: **Draft**
 
 ## Overview
 
-**Isotopes** is a lightweight, self-hostable AI agent framework.
+**Isotopes** is a lightweight, self-hostable AI agent framework designed for multi-agent collaboration on Discord.
 
-MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic proxy support + ACP.
+MVP scope: Multi-agent orchestration + Discord transport + OpenAI/Anthropic proxy support + Tool system.
+
+## Target Use Case
+
+Multi-agent team collaboration in Discord channels:
+- **Human** directs work via @mentions
+- **Manager Agent** reviews PRs, tracks progress, assigns tasks
+- **Dev Agent** writes code, creates PRs, responds to reviews
+- **Multiple agents** in same channel, each with distinct role
 
 ## MVP Goals
 
-1. **Pluggable agent core** — Abstract interface, default Pi-Mono (`@mariozechner/pi-agent-core`)
-2. **Multi-agent management** — Create and manage agents (JSON persisted)
-3. **Discord transport** — Basic messaging + thread streaming
-4. **Proxy support** — OpenAI/Anthropic compatible proxies (ollama, vllm, copilot-api, etc.)
-5. **ACP protocol** — Agent Communication Protocol for inter-agent messaging
+1. **Pluggable Agent Core** — Abstract interface, default Pi-Mono (`@mariozechner/pi-agent-core`)
+2. **Multi-Agent Management** — Create and manage multiple agents with distinct personas
+3. **Discord Transport** — Channel + Thread support with @mention routing
+4. **@Mention Routing** — Route messages to correct agent based on @mention
+5. **Multi-Agent Same Channel** — Multiple agents listening to same channel
+6. **Steering** — Real-time user interrupts via `agent.steer()` / `agent.followUp()`
+7. **Tool System** — Shell exec, file read/write, extensible
+8. **Proxy Support** — OpenAI/Anthropic compatible proxies (ollama, vllm, copilot-api)
+9. **JSONL Sessions** — Conversation history with auto-cleanup
 
 ---
 
@@ -32,7 +44,7 @@ We chose `@mariozechner/pi-agent-core` over `@openai/agents` for the following r
 | **Provider support** | OpenAI + Anthropic | OpenAI only |
 | **OpenClaw compatibility** | ✅ Same core | ⚠️ Needs adapter |
 
-**Steering** is critical for real-time user interrupts (e.g., Discord messages mid-execution). Pi-Mono supports this natively; `@openai/agents` would require significant wrapper code.
+**Steering** is critical for real-time user interrupts (e.g., Discord messages mid-execution).
 
 ---
 
@@ -41,6 +53,9 @@ We chose `@mariozechner/pi-agent-core` over `@openai/agents` for the following r
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    Discord Transport                    │
+│  - Channel + Thread listening                           │
+│  - @mention routing                                     │
+│  - Multi-agent same channel                             │
 └─────────────────────────┬───────────────────────────────┘
                           │
 ┌─────────────────────────┴───────────────────────────────┐
@@ -51,6 +66,7 @@ We chose `@mariozechner/pi-agent-core` over `@openai/agents` for the following r
                           │
 ┌─────────────────────────┴───────────────────────────────┐
 │         Agent Core (Pluggable: @mariozechner/pi-*)      │
+│                      + Tool System                      │
 └─────────────────────────┬───────────────────────────────┘
                           │
 ┌─────────────────────────┴───────────────────────────────┐
@@ -66,7 +82,7 @@ See [DESIGN.md](./DESIGN.md) for detailed architecture and interfaces.
 
 ```
 data/
-├── agents.json              # Agent metadata (id, name, provider)
+├── agents.json              # Agent metadata (id, name, provider, channels)
 └── agents/{agentId}/
     ├── SOUL.md              # System prompt (markdown)
     ├── TOOLS.md             # Tool instructions (optional)
@@ -81,11 +97,12 @@ data/
 
 | Milestone | Scope | Timeline |
 |-----------|-------|----------|
-| **M0** | Core + Discord + Proxy | ~2 days |
-| **M1** | Web UI (Next.js, agent dashboard, chat) | TBD |
-| **M2** | Feishu Transport | TBD |
+| **M0** | Core + Discord + Tools + Proxy | ~3 days |
+| **M1** | Cron Jobs + Git/GitHub tools | TBD |
+| **M2** | Web UI (agent dashboard, chat) | TBD |
 | **M3** | Self-Evolving Prompts (versioning, self-update) | TBD |
-| **M4** | Full ACP Protocol (inter-agent messaging) | TBD |
+| **M4** | Full ACP Protocol (inter-agent messaging, thread ACP) | TBD |
+| **M5** | Feishu Transport | TBD |
 
 ### M0: Core Foundation
 
@@ -93,9 +110,26 @@ data/
 - [ ] Agent Core interface + Pi-Mono wrapper
 - [ ] Agent Manager (JSON persisted)
 - [ ] Session Store (JSONL + auto-cleanup)
-- [ ] Discord transport + thread streaming
+- [ ] Discord transport
+  - [ ] Channel message listening
+  - [ ] Thread creation + streaming
+  - [ ] @mention routing to correct agent
+  - [ ] Multi-agent same channel config
+- [ ] Tool System
+  - [ ] Shell exec
+  - [ ] File read/write
+  - [ ] Tool registration interface
 - [ ] Config loader (YAML)
 - [ ] Integration test with proxy
+
+### M1: Automation & Git
+
+- [ ] Cron Job scheduler
+  - [ ] Channel-level cron (daily standups, reports)
+  - [ ] Agent self-registered cron
+- [ ] Git/GitHub tools
+  - [ ] gh CLI wrapper
+  - [ ] PR create/review/merge
 
 ---
 
@@ -103,7 +137,7 @@ data/
 
 | Milestone | Scope |
 |-----------|-------|
-| **M5** | Hooks & Plugins System |
+| **M6** | Hooks & Plugins System |
 
 ---
 
@@ -115,3 +149,4 @@ data/
 | `AgentManager` | `JsonAgentManager` | — |
 | `SessionStore` | `JsonlSessionStore` | `SqliteSessionStore` |
 | `Transport` | `DiscordTransport` | `FeishuTransport`, `WebTransport` |
+| `Tool` | `ShellTool`, `FileTool` | `GitHubTool`, `WebSearchTool` |
