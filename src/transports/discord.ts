@@ -99,7 +99,7 @@ export class DiscordTransport implements Transport {
     }
 
     // Get or create session
-    const sessionKey = this.getSessionKey(msg);
+    const sessionKey = this.getSessionKey(msg, agentId);
     const session = await this.findOrCreateSession(sessionKey, agentId, msg);
 
     // Extract message content (strip @mentions)
@@ -157,14 +157,16 @@ export class DiscordTransport implements Transport {
     return this.config.defaultAgentId ?? "default";
   }
 
-  private getSessionKey(msg: DiscordMessage): string {
+  private getSessionKey(msg: DiscordMessage, agentId: string): string {
+    const botId = this.client.user?.id ?? "unknown";
+    
     if (msg.thread) {
-      return `discord:thread:${msg.thread.id}`;
+      return `discord:${botId}:thread:${msg.thread.id}:${agentId}`;
     }
     if (!msg.guild) {
-      return `discord:dm:${msg.author.id}`;
+      return `discord:${botId}:dm:${msg.author.id}:${agentId}`;
     }
-    return `discord:channel:${msg.channelId}`;
+    return `discord:${botId}:channel:${msg.channelId}:${agentId}`;
   }
 
   private async findOrCreateSession(
