@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "isotopes": "dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,7 +16,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "typecheck": "tsc --noEmit",

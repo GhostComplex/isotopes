@@ -1,0 +1,33 @@
+# Isotopes Example Configuration
+# Copy to isotopes.yaml and customize
+
+# Default provider for all agents
+provider:
+  type: anthropic
+  model: claude-sonnet-4-20250514
+  apiKey: ${ANTHROPIC_API_KEY}
+
+# Agent definitions
+agents:
+  - id: assistant
+    name: Assistant
+    systemPrompt: You are a helpful AI assistant.
+    workspacePath: ./workspaces/assistant
+    # Optional: override provider per agent
+    # provider:
+    #   type: openai
+    #   model: gpt-4o
+    #   apiKey: ${OPENAI_API_KEY}
+
+# Discord transport (optional)
+discord:
+  tokenEnv: DISCORD_TOKEN
+  defaultAgentId: assistant
+  # Map bot user IDs to agents for multi-agent routing
+  # agentBindings:
+  #   "123456789": assistant
+  allowDMs: true
+  # Limit to specific channels (empty = all)
+  # channelAllowlist:
+  #   - "channel-id-1"
+  #   - "channel-id-2"
