@@ -93,40 +93,45 @@ export class DiscordTransport implements Transport {
     // Check if we should respond
     if (!this.shouldRespond(msg)) return;
 
-    log.debug(`Received message from ${msg.author.username}: ${msg.content.substring(0, 50)}...`);
+    try {
+      log.debug(`Received message from ${msg.author.username}: ${msg.content.substring(0, 50)}...`);
 
-    // Resolve agent
-    const agentId = this.resolveAgentId(msg);
-    log.debug(`Routing message to agent: ${agentId}`);
-    
-    const agent = this.config.agentManager.get(agentId);
-    if (!agent) {
-      log.warn(`Agent "${agentId}" not found`);
-      return;
+      // Resolve agent
+      const agentId = this.resolveAgentId(msg);
+      log.debug(`Routing message to agent: ${agentId}`);
+      
+      const agent = this.config.agentManager.get(agentId);
+      if (!agent) {
+        log.warn(`Agent "${agentId}" not found`);
+        return;
+      }
+
+      // Get or create session
+      const sessionKey = this.getSessionKey(msg, agentId);
+      const session = await this.findOrCreateSession(sessionKey, agentId, msg);
+
+      // Extract message content (strip @mentions)
+      const content = this.extractContent(msg);
+      if (!content.trim()) return;
+
+      // Add user message to session
+      const userMessage: Message = {
+        role: "user",
+        content,
+        timestamp: msg.createdTimestamp,
+        metadata: {
+          userId: msg.author.id,
+          username: msg.author.username,
+        },
+      };
+      await this.config.sessionStore.addMessage(session.id, userMessage);
+
+      // Run agent and stream response
+      await this.runAgentAndRespond(agent, content, msg.channel as SendableChannel, session.id);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log.error(`Failed to handle message: ${errorMsg}`);
     }
-
-    // Get or create session
-    const sessionKey = this.getSessionKey(msg, agentId);
-    const session = await this.findOrCreateSession(sessionKey, agentId, msg);
-
-    // Extract message content (strip @mentions)
-    const content = this.extractContent(msg);
-    if (!content.trim()) return;
-
-    // Add user message to session
-    const userMessage: Message = {
-      role: "user",
-      content,
-      timestamp: msg.createdTimestamp,
-      metadata: {
-        userId: msg.author.id,
-        username: msg.author.username,
-      },
-    };
-    await this.config.sessionStore.addMessage(session.id, userMessage);
-
-    // Run agent and stream response
-    await this.runAgentAndRespond(agent, content, msg.channel as SendableChannel, session.id);
   }
 
   private shouldRespond(msg: DiscordMessage): boolean {
@@ -238,6 +243,14 @@ export class DiscordTransport implements Transport {
       // Send final message
       if (responseText) {
         await this.updateOrSendMessage(channel, sentMessage, responseText);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log.error(`Agent error: ${errorMsg}`);
+      try {
+        await channel.send("❌ An error occurred while processing your request.");
+      } catch {
+        // Ignore send failure
       }
     } finally {
       typing.stop();
