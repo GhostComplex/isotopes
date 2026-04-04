@@ -10,6 +10,7 @@ import { PiMonoCore } from "./core/pi-mono.js";
 import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
 import { DiscordTransport } from "./transports/discord.js";
+import { logger } from "./core/logger.js";
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
@@ -66,7 +67,7 @@ async function main() {
     config = await loadConfigFromDir(dir);
   }
 
-  console.log(`[Isotopes] Loaded ${config.agents.length} agent(s)`);
+  logger.info(`Loaded ${config.agents.length} agent(s)`);
 
   // Initialize core
   const core = new PiMonoCore();
@@ -85,7 +86,7 @@ async function main() {
     }
 
     await agentManager.create(agentConfig);
-    console.log(`[Isotopes] Created agent: ${agentConfig.id}`);
+    logger.info(`Created agent: ${agentConfig.id}`);
   }
 
   // Initialize session store
@@ -107,25 +108,25 @@ async function main() {
     });
 
     await discord.start();
-    console.log("[Isotopes] Discord transport started");
+    logger.info("Discord transport started");
   }
 
   // Keep process alive
-  console.log("[Isotopes] Running... Press Ctrl+C to stop");
+  logger.info("Running... Press Ctrl+C to stop");
 
   // Graceful shutdown
   process.on("SIGINT", async () => {
-    console.log("\n[Isotopes] Shutting down...");
+    logger.info("Shutting down...");
     process.exit(0);
   });
 
   process.on("SIGTERM", async () => {
-    console.log("\n[Isotopes] Shutting down...");
+    logger.info("Shutting down...");
     process.exit(0);
   });
 }
 
 main().catch((error) => {
-  console.error("[Isotopes] Fatal error:", error.message);
+  logger.error(`Fatal error: ${error.message}`);
   process.exit(1);
 });

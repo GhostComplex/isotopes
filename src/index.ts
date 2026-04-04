@@ -69,3 +69,10 @@ export type {
 
 export { DiscordTransport } from "./transports/discord.js";
 export type { DiscordTransportConfig } from "./transports/discord.js";
+
+// ---------------------------------------------------------------------------
+// Logging
+// ---------------------------------------------------------------------------
+
+export { logger, loggers, createLogger } from "./core/logger.js";
+export type { Logger, LogLevel } from "./core/logger.js";

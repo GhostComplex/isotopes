@@ -18,6 +18,9 @@ import type {
   SessionStore,
   Transport,
 } from "../core/types.js";
+import { loggers } from "../core/logger.js";
+
+const log = loggers.discord;
 
 type SendableChannel = TextChannel | DMChannel | NewsChannel | ThreadChannel;
 
@@ -65,7 +68,7 @@ export class DiscordTransport implements Transport {
 
   async start(): Promise<void> {
     this.client.on("ready", () => {
-      console.log(`[Discord] Logged in as ${this.client.user?.tag}`);
+      log.info(`Logged in as ${this.client.user?.tag}`);
       this.ready = true;
     });
 
@@ -90,11 +93,15 @@ export class DiscordTransport implements Transport {
     // Check if we should respond
     if (!this.shouldRespond(msg)) return;
 
+    log.debug(`Received message from ${msg.author.username}: ${msg.content.substring(0, 50)}...`);
+
     // Resolve agent
     const agentId = this.resolveAgentId(msg);
+    log.debug(`Routing message to agent: ${agentId}`);
+    
     const agent = this.config.agentManager.get(agentId);
     if (!agent) {
-      console.warn(`[Discord] Agent "${agentId}" not found`);
+      log.warn(`Agent "${agentId}" not found`);
       return;
     }
 
