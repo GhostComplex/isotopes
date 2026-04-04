@@ -99,7 +99,7 @@ data/
 |-----------|-------|----------|
 | **M0** | Core + Discord + Tools + Proxy | ~3 days |
 | **M1** | Cron Jobs + Git/GitHub tools | TBD |
-| **M2** | ACP Protocol (inter-agent messaging, thread ACP) | TBD |
+| **M2** | ACP Protocol + Daemon mode | TBD |
 | **M3** | Web UI (agent dashboard, chat) | TBD |
 | **M4** | Self-Evolving Prompts (versioning, self-update) | TBD |
 | **M5** | Feishu Transport | TBD |
@@ -133,6 +133,16 @@ data/
 - [ ] Workspace hot-reload
   - [ ] fs.watch on workspace files (SOUL.md, MEMORY.md, etc.)
   - [ ] Auto-reload prompt when files change
+
+### M2: ACP Protocol + Daemon
+
+- [ ] ACP Protocol
+  - [ ] Inter-agent messaging
+  - [ ] Thread ACP
+- [ ] Daemon mode
+  - [ ] `isotopes start/stop/status` commands
+  - [ ] launchd (macOS) / systemd (Linux) service management
+  - [ ] Log rotation
 
 ---
 
