@@ -18,15 +18,18 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Default model — used when no provider config is specified
+const DEFAULT_MODEL = "claude-opus-4.5";
+
 /** Resolve a pi-ai Model from our ProviderConfig. */
 function resolveModel(config: AgentConfig): Model<Api> {
   const p = config.provider;
   if (!p) {
     // sensible default
-    return getModel("anthropic", "claude-sonnet-4-20250514") as Model<Api>;
+    return getModel("anthropic", DEFAULT_MODEL as Parameters<typeof getModel>[1]) as Model<Api>;
   }
   const provider = p.type.replace(/-proxy$/, "") as Parameters<typeof getModel>[0];
-  const modelId = (p.model ?? "claude-sonnet-4-20250514") as Parameters<typeof getModel>[1];
+  const modelId = (p.model ?? DEFAULT_MODEL) as Parameters<typeof getModel>[1];
   const model = getModel(provider, modelId) as Model<Api>;
   if (p.baseUrl) {
     // Override baseUrl for proxy setups
@@ -35,7 +38,10 @@ function resolveModel(config: AgentConfig): Model<Api> {
   return model;
 }
 
-/** Convert our Message to a pi-agent-core AgentMessage. */
+/**
+ * Convert our Message to a pi-agent-core AgentMessage.
+ * Role mapping: our `tool_result` → pi-agent-core `toolResult`
+ */
 function toAgentMessage(msg: Message): AgentMessage {
   const roleMap: Record<string, string> = {
     user: "user",
@@ -50,7 +56,11 @@ function toAgentMessage(msg: Message): AgentMessage {
   } as AgentMessage;
 }
 
-/** Convert a pi-agent-core AgentMessage to our Message. */
+/**
+ * Convert a pi-agent-core AgentMessage to our Message.
+ * Role mapping: pi-agent-core `toolResult` → our `tool_result`
+ * Used when receiving agent_end event with full conversation history.
+ */
 function fromAgentMessage(msg: AgentMessage): Message {
   // AgentMessage is a union — pick what we can represent
   if ("role" in msg) {
@@ -94,7 +104,7 @@ export class PiMonoCore implements AgentCore {
 }
 
 // ---------------------------------------------------------------------------
-// PiMonoInstance
+// PiMonoInstance — wraps a single pi-agent-core Agent instance
 // ---------------------------------------------------------------------------
 
 class PiMonoInstance implements AgentInstance {
