@@ -16,19 +16,61 @@ Isotopes is a simpler alternative to OpenClaw. It provides:
 
 ```bash
 # Install
-pnpm install
+npm install -g isotopes
 
 # Configure
-cp config.example.yaml config.yaml
-# Edit config.yaml with your settings
+cp isotopes.example.yaml isotopes.yaml
+# Edit isotopes.yaml with your settings
 
 # Run
-pnpm dev
+isotopes
 ```
+
+## CLI Usage
+
+```bash
+isotopes                    # Load isotopes.yaml from current dir
+isotopes ./my-project       # Load from directory
+isotopes -c config.yaml     # Load specific file
+```
+
+## Configuration
+
+```yaml
+# isotopes.yaml
+provider:
+  type: anthropic
+  model: claude-sonnet-4-20250514
+  apiKey: ${ANTHROPIC_API_KEY}
+
+agents:
+  - id: assistant
+    name: Assistant
+    workspacePath: ./workspaces/assistant
+
+discord:
+  tokenEnv: DISCORD_TOKEN
+  defaultAgentId: assistant
+```
+
+See [isotopes.example.yaml](isotopes.example.yaml) for full options.
+
+## Logging
+
+```bash
+# Enable debug logs
+LOG_LEVEL=debug isotopes
+
+# Or use DEBUG flag
+DEBUG=isotopes isotopes
+```
+
+Log levels: `debug`, `info`, `warn`, `error` (default: `info`)
 
 ## Documentation
 
 - [PRD](docs/PRD.md) — Product Requirements Document
+- [Design](docs/DESIGN.md) — Technical Design Document
 - [Project Board](https://github.com/orgs/GhostComplex/projects/11)
 
 ## Architecture
@@ -39,9 +81,9 @@ pnpm dev
 ├─────────────────────────────────────────┤
 │  Orchestrator (Agent Manager, ACP)      │
 ├─────────────────────────────────────────┤
-│  Agent Core (@openai/agents, pluggable) │
+│  Agent Core (Pi-Mono, pluggable)        │
 ├─────────────────────────────────────────┤
-│  Providers (GHC, MiniMax, OpenAI, etc.) │
+│  Providers (Anthropic, OpenAI, etc.)    │
 └─────────────────────────────────────────┘
 ```
 
