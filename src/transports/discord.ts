@@ -22,11 +22,14 @@ import type {
 type SendableChannel = TextChannel | DMChannel | NewsChannel | ThreadChannel;
 
 export interface DiscordTransportConfig {
+  /** Discord bot token from Developer Portal */
   token: string;
   agentManager: AgentManager;
   sessionStore: SessionStore;
   /** Default agent ID to use when no @mention routing */
   defaultAgentId?: string;
+  /** Map of Discord bot user ID → agent ID for multi-agent routing */
+  agentBindings?: Record<string, string>;
   /** Whether to respond to DMs */
   allowDMs?: boolean;
   /** Channel IDs to listen to (empty = all) */
@@ -140,9 +143,17 @@ export class DiscordTransport implements Transport {
     return false;
   }
 
-  private resolveAgentId(_msg: DiscordMessage): string {
-    // TODO: Parse @agent mentions for multi-agent routing
-    // For now, use default agent
+  private resolveAgentId(msg: DiscordMessage): string {
+    // Check if any mentioned user maps to an agent via bindings
+    if (this.config.agentBindings) {
+      for (const [botUserId, agentId] of Object.entries(this.config.agentBindings)) {
+        if (msg.mentions.has(botUserId)) {
+          return agentId;
+        }
+      }
+    }
+
+    // Fallback to default agent
     return this.config.defaultAgentId ?? "default";
   }
 
