@@ -91,6 +91,74 @@ Log levels: `debug`, `info`, `warn`, `error` (default: `info`)
 
 🚧 **In Development** — See [PRD](docs/PRD.md) for milestones and progress.
 
+## Development
+
+```bash
+# Clone & install
+git clone https://github.com/GhostComplex/isotopes
+cd isotopes
+npm install
+
+# Build
+npm run build
+
+# Run locally (without building)
+npm run dev
+
+# Run tests
+npm test              # Unit tests
+npm run test:watch    # Watch mode
+
+# Lint & typecheck
+npm run lint
+npm run typecheck
+
+# Full CI check
+npm run ci            # lint + typecheck + test
+```
+
+### Integration Testing
+
+Integration tests require real credentials:
+
+```bash
+export DISCORD_TOKEN="your-bot-token"
+export DISCORD_TEST_CHANNEL="channel-id"
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+npm run test:integration
+```
+
+See [tests/integration/README.md](tests/integration/README.md) for setup details.
+
+### Project Structure
+
+```
+src/
+├── core/           # Core components
+│   ├── types.ts        # Type definitions
+│   ├── pi-mono.ts      # Pi-Mono wrapper
+│   ├── agent-manager.ts
+│   ├── session-store.ts
+│   ├── tools.ts
+│   ├── workspace.ts
+│   ├── config.ts
+│   └── logger.ts
+├── transports/     # Transport implementations
+│   └── discord.ts
+├── cli.ts          # CLI entry point
+└── index.ts        # Public API exports
+```
+
+## Contributing
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feat/my-feature`)
+3. Make changes with tests
+4. Run `npm run ci` to verify
+5. Commit with conventional commits (`feat:`, `fix:`, `docs:`, etc.)
+6. Open a PR
+
 ## License
 
 MIT
