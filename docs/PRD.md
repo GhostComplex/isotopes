@@ -130,6 +130,9 @@ data/
 - [ ] Git/GitHub tools
   - [ ] gh CLI wrapper
   - [ ] PR create/review/merge
+- [ ] Workspace hot-reload
+  - [ ] fs.watch on workspace files (SOUL.md, MEMORY.md, etc.)
+  - [ ] Auto-reload prompt when files change
 
 ---
 
