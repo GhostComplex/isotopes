@@ -26,6 +26,10 @@ export interface Tool {
 // Events (streamed from AgentInstance.prompt)
 // ---------------------------------------------------------------------------
 
+// TODO: Consider separating lifecycle events (turn_start/turn_end/agent_end)
+// from content events (text_delta/tool_call/tool_result) for cleaner handling.
+// See OpenClaw's three-stream approach: lifecycle, assistant, tool.
+
 export type AgentEvent =
   | { type: 'turn_start' }
   | { type: 'text_delta'; text: string }
