@@ -16,7 +16,7 @@ Isotopes is a simpler alternative to OpenClaw. It provides:
 
 ```bash
 # Install
-npm install -g isotopes
+pnpm install -g isotopes
 
 # Configure
 cp isotopes.example.yaml isotopes.yaml
@@ -97,24 +97,24 @@ Log levels: `debug`, `info`, `warn`, `error` (default: `info`)
 # Clone & install
 git clone https://github.com/GhostComplex/isotopes
 cd isotopes
-npm install
+pnpm install
 
 # Build
-npm run build
+pnpm build
 
 # Run locally (without building)
-npm run dev
+pnpm dev
 
 # Run tests
-npm test              # Unit tests
-npm run test:watch    # Watch mode
+pnpm test              # Unit tests
+pnpm test:watch    # Watch mode
 
 # Lint & typecheck
-npm run lint
-npm run typecheck
+pnpm lint
+pnpm typecheck
 
 # Full CI check
-npm run ci            # lint + typecheck + test
+pnpm ci            # lint + typecheck + test
 ```
 
 ### Integration Testing
@@ -126,7 +126,7 @@ export DISCORD_TOKEN="your-bot-token"
 export DISCORD_TEST_CHANNEL="channel-id"
 export ANTHROPIC_API_KEY="sk-ant-..."
 
-npm run test:integration
+pnpm test:integration
 ```
 
 See [tests/integration/README.md](tests/integration/README.md) for setup details.
@@ -155,7 +155,7 @@ src/
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feat/my-feature`)
 3. Make changes with tests
-4. Run `npm run ci` to verify
+4. Run `pnpm ci` to verify
 5. Commit with conventional commits (`feat:`, `fix:`, `docs:`, etc.)
 6. Open a PR
 
