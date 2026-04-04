@@ -60,6 +60,8 @@ export interface AgentConfig {
   systemPrompt: string;
   tools?: Tool[];
   provider?: ProviderConfig;
+  /** Path to agent's workspace directory (contains SOUL.md, MEMORY.md, sessions/) */
+  workspacePath?: string;
 }
 
 export interface AgentInstance {
