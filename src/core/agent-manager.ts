@@ -14,6 +14,13 @@ import {
   type WorkspaceContext,
 } from "./workspace.js";
 
+/** Internal entry combining config, instance, and workspace */
+interface AgentEntry {
+  config: AgentConfig;
+  instance: AgentInstance;
+  workspace: WorkspaceContext | null;
+}
+
 /**
  * DefaultAgentManager — in-memory agent registry.
  *
@@ -22,14 +29,12 @@ import {
  * where each agent can have its own workspace directory.
  */
 export class DefaultAgentManager implements AgentManager {
-  private configs = new Map<string, AgentConfig>();
-  private instances = new Map<string, AgentInstance>();
-  private workspaces = new Map<string, WorkspaceContext>();
+  private agents = new Map<string, AgentEntry>();
 
   constructor(private core: AgentCore) {}
 
   async create(config: AgentConfig): Promise<AgentInstance> {
-    if (this.configs.has(config.id)) {
+    if (this.agents.has(config.id)) {
       throw new Error(`Agent "${config.id}" already exists`);
     }
 
@@ -38,7 +43,6 @@ export class DefaultAgentManager implements AgentManager {
     if (config.workspacePath) {
       await ensureWorkspaceStructure(config.workspacePath);
       workspace = await loadWorkspaceContext(config.workspacePath);
-      this.workspaces.set(config.id, workspace);
     }
 
     // Build final system prompt with workspace additions
@@ -48,33 +52,32 @@ export class DefaultAgentManager implements AgentManager {
     };
 
     const instance = this.core.createAgent(finalConfig);
-    this.configs.set(config.id, config); // Store original config
-    this.instances.set(config.id, instance);
+    this.agents.set(config.id, { config, instance, workspace });
     return instance;
   }
 
   get(id: string): AgentInstance | undefined {
-    return this.instances.get(id);
+    return this.agents.get(id)?.instance;
   }
 
   /** Get the workspace context for an agent */
   getWorkspace(id: string): WorkspaceContext | undefined {
-    return this.workspaces.get(id);
+    return this.agents.get(id)?.workspace ?? undefined;
   }
 
   list(): AgentConfig[] {
-    return Array.from(this.configs.values());
+    return Array.from(this.agents.values()).map((e) => e.config);
   }
 
   async update(id: string, updates: Partial<AgentConfig>): Promise<AgentInstance> {
-    const existing = this.configs.get(id);
-    if (!existing) {
+    const entry = this.agents.get(id);
+    if (!entry) {
       throw new Error(`Agent "${id}" not found`);
     }
 
     // Merge updates into existing config
     const updated: AgentConfig = {
-      ...existing,
+      ...entry.config,
       ...updates,
       id, // id cannot be changed
     };
@@ -84,7 +87,6 @@ export class DefaultAgentManager implements AgentManager {
     if (updated.workspacePath) {
       await ensureWorkspaceStructure(updated.workspacePath);
       workspace = await loadWorkspaceContext(updated.workspacePath);
-      this.workspaces.set(id, workspace);
     }
 
     // Build final system prompt
@@ -95,26 +97,23 @@ export class DefaultAgentManager implements AgentManager {
 
     // Re-create instance with new config
     const instance = this.core.createAgent(finalConfig);
-    this.configs.set(id, updated);
-    this.instances.set(id, instance);
+    this.agents.set(id, { config: updated, instance, workspace });
     return instance;
   }
 
   async delete(id: string): Promise<void> {
-    if (!this.configs.has(id)) {
+    if (!this.agents.has(id)) {
       throw new Error(`Agent "${id}" not found`);
     }
-    this.configs.delete(id);
-    this.instances.delete(id);
-    this.workspaces.delete(id);
+    this.agents.delete(id);
   }
 
   async getPrompt(id: string): Promise<string> {
-    const config = this.configs.get(id);
-    if (!config) {
+    const entry = this.agents.get(id);
+    if (!entry) {
       throw new Error(`Agent "${id}" not found`);
     }
-    return config.systemPrompt;
+    return entry.config.systemPrompt;
   }
 
   async updatePrompt(id: string, prompt: string): Promise<void> {
@@ -123,11 +122,11 @@ export class DefaultAgentManager implements AgentManager {
 
   /** Reload workspace context for an agent (e.g., after MEMORY.md changes) */
   async reloadWorkspace(id: string): Promise<void> {
-    const config = this.configs.get(id);
-    if (!config) {
+    const entry = this.agents.get(id);
+    if (!entry) {
       throw new Error(`Agent "${id}" not found`);
     }
-    if (config.workspacePath) {
+    if (entry.config.workspacePath) {
       await this.update(id, {}); // Re-runs workspace loading
     }
   }
