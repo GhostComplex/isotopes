@@ -4,6 +4,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
 import type { AgentManager, SessionStore, AgentInstance } from "../core/types.js";
 
+const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+type MockChannel = {
+  sendTyping: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
+};
+
 // ---------------------------------------------------------------------------
 // Mock discord.js
 // ---------------------------------------------------------------------------
@@ -138,6 +145,55 @@ describe("DiscordTransport", () => {
       const chunks = chunkMessage(longMsg);
       expect(chunks.length).toBeGreaterThan(1);
       expect(chunks.every((c) => c.length <= 2000)).toBe(true);
+    });
+  });
+
+  describe("runAgentAndRespond", () => {
+    it("logs and sends a message when agent_end reports an error", async () => {
+      const erroringAgent: AgentInstance = {
+        prompt: vi.fn(async function* () {
+          yield {
+            type: "agent_end" as const,
+            messages: [],
+            stopReason: "error",
+            errorMessage: "No API provider registered for api: undefined",
+          };
+        }),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+      };
+
+      const channel: MockChannel = {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({}),
+      };
+
+      await (
+        transport as unknown as {
+          runAgentAndRespond: (
+            agent: AgentInstance,
+            input: string,
+            channel: MockChannel,
+            sessionId: string,
+          ) => Promise<void>;
+        }
+      ).runAgentAndRespond(erroringAgent, "hello", channel, "session-123");
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Agent ended with error: No API provider registered for api: undefined"),
+      );
+      expect(channel.send).toHaveBeenCalledWith(
+        "❌ No API provider registered for api: undefined",
+      );
+      expect(sessionStore.addMessage).toHaveBeenCalledWith(
+        "session-123",
+        expect.objectContaining({
+          role: "assistant",
+          content: "❌ No API provider registered for api: undefined",
+          metadata: { isError: true },
+        }),
+      );
     });
   });
 });

@@ -64,19 +64,48 @@ function toAgentMessage(msg: Message): AgentMessage {
 function fromAgentMessage(msg: AgentMessage): Message {
   // AgentMessage is a union — pick what we can represent
   if ("role" in msg) {
-    const m = msg as { role: string; content: unknown; timestamp?: number };
+    const m = msg as {
+      role: string;
+      content: unknown;
+      timestamp?: number;
+      stopReason?: string;
+      errorMessage?: string;
+    };
     const roleMap: Record<string, Message["role"]> = {
       user: "user",
       assistant: "assistant",
       toolResult: "tool_result",
     };
+    const metadata: Record<string, unknown> = {};
+    if (typeof m.stopReason === "string") {
+      metadata.stopReason = m.stopReason;
+    }
+    if (typeof m.errorMessage === "string") {
+      metadata.errorMessage = m.errorMessage;
+    }
     return {
       role: roleMap[m.role] ?? "assistant",
       content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
       timestamp: typeof m.timestamp === "number" ? m.timestamp : Date.now(),
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     };
   }
   return { role: "assistant", content: String(msg), timestamp: Date.now() };
+}
+
+function getAgentEndMetadata(messages: Message[]): {
+  stopReason?: string;
+  errorMessage?: string;
+} {
+  const assistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
+  const metadata = assistantMessage?.metadata;
+
+  return {
+    stopReason:
+      typeof metadata?.stopReason === "string" ? metadata.stopReason : undefined,
+    errorMessage:
+      typeof metadata?.errorMessage === "string" ? metadata.errorMessage : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -208,11 +237,16 @@ function mapEvent(e: CoreEvent): AgentEvent | null {
         isError: e.isError,
       };
 
-    case "agent_end":
+    case "agent_end": {
+      const messages = e.messages.map(fromAgentMessage);
+      const { stopReason, errorMessage } = getAgentEndMetadata(messages);
       return {
         type: "agent_end",
-        messages: e.messages.map(fromAgentMessage),
+        messages,
+        stopReason,
+        errorMessage,
       };
+    }
 
     // Events we intentionally skip
     case "agent_start":

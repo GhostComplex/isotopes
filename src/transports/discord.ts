@@ -98,7 +98,7 @@ export class DiscordTransport implements Transport {
     // Resolve agent
     const agentId = this.resolveAgentId(msg);
     log.debug(`Routing message to agent: ${agentId}`);
-    
+
     const agent = this.config.agentManager.get(agentId);
     if (!agent) {
       log.warn(`Agent "${agentId}" not found`);
@@ -166,7 +166,7 @@ export class DiscordTransport implements Transport {
 
   private getSessionKey(msg: DiscordMessage, agentId: string): string {
     const botId = this.client.user?.id ?? "unknown";
-    
+
     if (msg.thread) {
       return `discord:${botId}:thread:${msg.thread.id}:${agentId}`;
     }
@@ -206,6 +206,7 @@ export class DiscordTransport implements Transport {
 
     try {
       let responseText = "";
+      let finalErrorMessage: string | null = null;
       let sentMessage: DiscordMessage | null = null;
       let lastUpdate = 0;
 
@@ -232,12 +233,35 @@ export class DiscordTransport implements Transport {
               timestamp: Date.now(),
             });
           }
+
+          if (event.stopReason === "error") {
+            const errorMsg = event.errorMessage ?? "Unknown agent error";
+            log.error(`Agent ended with error: ${errorMsg}`);
+            finalErrorMessage = `❌ ${errorMsg}`;
+          }
         }
       }
 
       // Send final message
       if (responseText) {
         await this.updateOrSendMessage(channel, sentMessage, responseText);
+      }
+      if (finalErrorMessage) {
+        await this.config.sessionStore.addMessage(sessionId, {
+          role: "assistant",
+          content: finalErrorMessage,
+          timestamp: Date.now(),
+          metadata: { isError: true },
+        });
+        await channel.send(finalErrorMessage);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log.error(`Agent error: ${errorMsg}`);
+      try {
+        await channel.send("❌ An error occurred while processing your request.");
+      } catch {
+        // Ignore send failure
       }
     } finally {
       typing.stop();

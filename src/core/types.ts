@@ -36,7 +36,7 @@ export type AgentEvent =
   | { type: 'tool_call'; id: string; name: string; args: unknown }
   | { type: 'tool_result'; id: string; output: string; isError?: boolean }
   | { type: 'turn_end' }
-  | { type: 'agent_end'; messages: Message[] }
+  | { type: 'agent_end'; messages: Message[]; stopReason?: string; errorMessage?: string }
   | { type: 'error'; error: Error };
 
 // ---------------------------------------------------------------------------

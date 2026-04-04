@@ -211,6 +211,31 @@ describe("prompt() event mapping", () => {
     expect(agentEnd.messages[2].role).toBe("tool_result");
   });
 
+  it("maps agent_end error metadata from assistant message", async () => {
+    const events = await collectEvents([
+      {
+        type: "agent_end",
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "" }],
+            timestamp: 2000,
+            stopReason: "error",
+            errorMessage: "No API provider registered for api: undefined",
+          },
+        ],
+      },
+    ]);
+
+    const agentEnd = events[0] as Extract<AgentEvent, { type: "agent_end" }>;
+    expect(agentEnd.stopReason).toBe("error");
+    expect(agentEnd.errorMessage).toBe("No API provider registered for api: undefined");
+    expect(agentEnd.messages[0].metadata).toEqual({
+      stopReason: "error",
+      errorMessage: "No API provider registered for api: undefined",
+    });
+  });
+
   it("skips unknown event types", async () => {
     const events = await collectEvents([
       { type: "agent_start" },
