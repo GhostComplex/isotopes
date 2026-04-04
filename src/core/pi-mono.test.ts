@@ -14,18 +14,32 @@ const mockAgent = {
   followUp: vi.fn(),
 };
 
+function createDefaultMockModel() {
+  return {
+    id: "claude-sonnet-4-20250514",
+    name: "Claude Sonnet 4",
+    api: "anthropic-messages",
+    provider: "anthropic",
+    baseUrl: "https://api.anthropic.com",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+    contextWindow: 200000,
+    maxTokens: 64000,
+  };
+}
+
 vi.mock("@mariozechner/pi-agent-core", () => ({
   Agent: vi.fn(() => mockAgent),
 }));
 
 vi.mock("@mariozechner/pi-ai", () => ({
-  getModel: vi.fn().mockReturnValue({
-    provider: "anthropic",
-    modelId: "claude-sonnet-4-20250514",
-  }),
+  getModel: vi.fn().mockImplementation(() => createDefaultMockModel()),
 }));
 
 // Import after mocks
+import { Agent } from "@mariozechner/pi-agent-core";
+import { getModel } from "@mariozechner/pi-ai";
 import { PiMonoCore } from "./pi-mono.js";
 
 // ---------------------------------------------------------------------------
@@ -47,6 +61,7 @@ function resetMocks() {
   mockAgent.abort.mockClear();
   mockAgent.steer.mockClear();
   mockAgent.followUp.mockClear();
+  vi.mocked(getModel).mockReset().mockImplementation((() => createDefaultMockModel()) as unknown as typeof getModel);
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +110,155 @@ describe("PiMonoCore.createAgent", () => {
 
     expect(mockAgent.followUp).toHaveBeenCalledWith(
       expect.objectContaining({ role: "user", content: "follow up" }),
+    );
+  });
+
+  it("preserves api metadata when overriding baseUrl for proxy providers", () => {
+    const proxiedModel = Object.create(null, {
+      id: { value: "claude-opus-4.5", enumerable: true },
+      name: { value: "Claude Opus 4.5", enumerable: true },
+      api: { value: "anthropic-messages", enumerable: false },
+      provider: { value: "anthropic", enumerable: false },
+      baseUrl: { value: "https://api.anthropic.com", enumerable: true },
+      reasoning: { value: true, enumerable: true },
+      input: { value: ["text", "image"], enumerable: true },
+      cost: {
+        value: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+        enumerable: true,
+      },
+      contextWindow: { value: 200000, enumerable: true },
+      maxTokens: { value: 64000, enumerable: true },
+    });
+
+    vi.mocked(getModel).mockReturnValueOnce(proxiedModel);
+
+    const core = new PiMonoCore();
+    core.createAgent(
+      makeConfig({
+        provider: {
+          type: "anthropic-proxy",
+          baseUrl: "https://copilot-portal.azurewebsites.net",
+          model: "claude-opus-4.5",
+        },
+      }),
+    );
+
+    expect(vi.mocked(Agent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialState: expect.objectContaining({
+          model: expect.objectContaining({
+            id: "claude-opus-4.5",
+            api: "anthropic-messages",
+            provider: "anthropic",
+            baseUrl: "https://copilot-portal.azurewebsites.net",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("injects Authorization header for anthropic proxy providers", () => {
+    const core = new PiMonoCore();
+    core.createAgent(
+      makeConfig({
+        provider: {
+          type: "anthropic-proxy",
+          baseUrl: "https://copilot-portal.azurewebsites.net",
+          model: "claude-opus-4.5",
+          apiKey: "proxy-token",
+        },
+      }),
+    );
+
+    expect(vi.mocked(Agent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialState: expect.objectContaining({
+          model: expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: "Bearer proxy-token",
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("merges configured proxy headers with existing model headers", () => {
+    vi.mocked(getModel).mockImplementationOnce((() => ({
+      ...createDefaultMockModel(),
+      headers: { "X-Model-Header": "base" },
+    })) as unknown as typeof getModel);
+
+    const core = new PiMonoCore();
+    core.createAgent(
+      makeConfig({
+        provider: {
+          type: "anthropic-proxy",
+          baseUrl: "https://copilot-portal.azurewebsites.net",
+          model: "claude-opus-4.5",
+          apiKey: "proxy-token",
+          headers: { "X-Proxy-Header": "override" },
+        },
+      }),
+    );
+
+    expect(vi.mocked(Agent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialState: expect.objectContaining({
+          model: expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: "Bearer proxy-token",
+              "X-Model-Header": "base",
+              "X-Proxy-Header": "override",
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("falls back to canonical anthropic model metadata for dotted proxy model ids", () => {
+    vi.mocked(getModel).mockImplementation(((provider: string, modelId: string) => {
+      if (provider === "anthropic" && modelId === "claude-opus-4-5") {
+        return {
+          id: "claude-opus-4-5",
+          name: "Claude Opus 4.5 (latest)",
+          api: "anthropic-messages",
+          provider: "anthropic",
+          baseUrl: "https://api.anthropic.com",
+          reasoning: true,
+          input: ["text", "image"],
+          cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+          contextWindow: 200000,
+          maxTokens: 64000,
+        };
+      }
+
+      return undefined;
+    }) as typeof getModel);
+
+    const core = new PiMonoCore();
+    core.createAgent(
+      makeConfig({
+        provider: {
+          type: "anthropic-proxy",
+          baseUrl: "https://copilot-portal.azurewebsites.net",
+          model: "claude-opus-4.5",
+        },
+      }),
+    );
+
+    expect(vi.mocked(Agent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialState: expect.objectContaining({
+          model: expect.objectContaining({
+            id: "claude-opus-4.5",
+            api: "anthropic-messages",
+            provider: "anthropic",
+            baseUrl: "https://copilot-portal.azurewebsites.net",
+          }),
+        }),
+      }),
     );
   });
 });

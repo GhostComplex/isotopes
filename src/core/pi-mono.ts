@@ -21,20 +21,67 @@ import type {
 // Default model — used when no provider config is specified
 const DEFAULT_MODEL = "claude-opus-4.5";
 
+function cloneModel<TApi extends Api>(
+  model: Model<TApi>,
+  overrides: Partial<Pick<Model<TApi>, "id" | "name" | "baseUrl" | "headers">>,
+): Model<TApi> {
+  return {
+    id: overrides.id ?? model.id,
+    name: overrides.name ?? model.name,
+    api: model.api,
+    provider: model.provider,
+    baseUrl: overrides.baseUrl ?? model.baseUrl,
+    reasoning: model.reasoning,
+    input: [...model.input],
+    cost: { ...model.cost },
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+    ...((model.headers || overrides.headers)
+      ? { headers: { ...(model.headers ?? {}), ...(overrides.headers ?? {}) } }
+      : {}),
+    ...(model.compat ? { compat: model.compat } : {}),
+  };
+}
+
+function resolveKnownModel(
+  provider: Parameters<typeof getModel>[0],
+  modelId: string,
+): Model<Api> {
+  const model = getModel(provider, modelId as Parameters<typeof getModel>[1]) as Model<Api> | undefined;
+  if (model) return model;
+
+  // For Anthropic, try dashed variant (e.g. claude-opus-4.5 → claude-opus-4-5)
+  if (provider === "anthropic") {
+    const dashed = modelId.replace(/(claude-(?:opus|sonnet|haiku)-\d)\.(\d)/g, "$1-$2");
+    if (dashed !== modelId) {
+      const aliased = getModel(provider, dashed as Parameters<typeof getModel>[1]) as Model<Api> | undefined;
+      if (aliased) return aliased;
+    }
+  }
+
+  throw new Error(`Unknown ${provider} model: ${modelId}`);
+}
+
 /** Resolve a pi-ai Model from our ProviderConfig. */
 function resolveModel(config: AgentConfig): Model<Api> {
   const p = config.provider;
-  if (!p) {
-    // sensible default
-    return getModel("anthropic", DEFAULT_MODEL as Parameters<typeof getModel>[1]) as Model<Api>;
+  const provider = (p?.type.replace(/-proxy$/, "") ?? "anthropic") as Parameters<typeof getModel>[0];
+  const modelId = p?.model ?? DEFAULT_MODEL;
+  const model = resolveKnownModel(provider, modelId);
+
+  // Build proxy headers (Authorization injection for anthropic-proxy)
+  const proxyHeaders = { ...(p?.headers ?? {}) };
+  if (p?.type === "anthropic-proxy" && p.apiKey) {
+    proxyHeaders.Authorization ??= `Bearer ${p.apiKey}`;
   }
-  const provider = p.type.replace(/-proxy$/, "") as Parameters<typeof getModel>[0];
-  const modelId = (p.model ?? DEFAULT_MODEL) as Parameters<typeof getModel>[1];
-  const model = getModel(provider, modelId) as Model<Api>;
-  if (p.baseUrl) {
-    // Override baseUrl for proxy setups
-    return { ...model, baseUrl: p.baseUrl };
+  const headers = Object.keys(proxyHeaders).length > 0
+    ? { ...(model.headers ?? {}), ...proxyHeaders }
+    : undefined;
+
+  if (p?.baseUrl || headers) {
+    return cloneModel(model, { id: modelId, baseUrl: p?.baseUrl, headers });
   }
+
   return model;
 }
 

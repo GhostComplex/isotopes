@@ -48,6 +48,7 @@ export interface ProviderConfig {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  headers?: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------

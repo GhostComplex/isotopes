@@ -16,6 +16,7 @@ export interface ProviderConfigFile {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  headers?: Record<string, string>;
 }
 
 /** Agent configuration in config file */
