@@ -11,6 +11,9 @@ import type {
   SessionStore,
   SessionStoreConfig,
 } from "./types.js";
+import { createLogger } from "./logger.js";
+
+const logger = createLogger("session-store");
 
 interface StoredSession extends Session {
   messages: Message[];
@@ -24,6 +27,7 @@ interface StoredSession extends Session {
  */
 export class DefaultSessionStore implements SessionStore {
   private sessions = new Map<string, StoredSession>();
+  private keyIndex = new Map<string, string>(); // key -> sessionId
   private config: Required<SessionStoreConfig>;
 
   constructor(config: SessionStoreConfig) {
@@ -35,14 +39,20 @@ export class DefaultSessionStore implements SessionStore {
   }
 
   /**
-   * Initialize the store — create data directory if needed.
+   * Initialize the store — create data directory and load existing sessions.
    * Call this before using the store.
    */
   async init(): Promise<void> {
     await fs.mkdir(this.config.dataDir, { recursive: true });
+    await this.loadAllSessions();
   }
 
   async create(agentId: string, metadata?: SessionMetadata): Promise<Session> {
+    // Check key uniqueness
+    if (metadata?.key && this.keyIndex.has(metadata.key)) {
+      throw new Error(`Session with key already exists: ${metadata.key}`);
+    }
+
     const id = randomUUID();
     const session: StoredSession = {
       id,
@@ -53,6 +63,11 @@ export class DefaultSessionStore implements SessionStore {
     };
 
     this.sessions.set(id, session);
+    
+    // Index by key if provided
+    if (metadata?.key) {
+      this.keyIndex.set(metadata.key, id);
+    }
 
     // Persist session metadata
     await this.persistSession(session);
@@ -63,15 +78,17 @@ export class DefaultSessionStore implements SessionStore {
   async get(sessionId: string): Promise<Session | undefined> {
     const stored = this.sessions.get(sessionId);
     if (!stored) {
-      // Try loading from disk
-      const loaded = await this.loadSession(sessionId);
-      if (loaded) {
-        this.sessions.set(sessionId, loaded);
-        return this.toSession(loaded);
-      }
       return undefined;
     }
     return this.toSession(stored);
+  }
+
+  async findByKey(key: string): Promise<Session | undefined> {
+    const sessionId = this.keyIndex.get(key);
+    if (!sessionId) {
+      return undefined;
+    }
+    return this.get(sessionId);
   }
 
   async addMessage(sessionId: string, message: Message): Promise<void> {
@@ -96,6 +113,10 @@ export class DefaultSessionStore implements SessionStore {
   }
 
   async delete(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (session?.metadata?.key) {
+      this.keyIndex.delete(session.metadata.key);
+    }
     this.sessions.delete(sessionId);
 
     // Remove persisted files
@@ -174,6 +195,36 @@ export class DefaultSessionStore implements SessionStore {
       };
     } catch {
       return undefined;
+    }
+  }
+
+  /**
+   * Load all sessions from disk on startup.
+   */
+  private async loadAllSessions(): Promise<void> {
+    let entries;
+    try {
+      entries = await fs.readdir(this.config.dataDir, { withFileTypes: true });
+    } catch {
+      // Directory doesn't exist yet
+      return;
+    }
+    
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const sessionId = entry.name;
+        try {
+          const session = await this.loadSession(sessionId);
+          if (session) {
+            this.sessions.set(sessionId, session);
+            if (session.metadata?.key) {
+              this.keyIndex.set(session.metadata.key, sessionId);
+            }
+          }
+        } catch (error) {
+          logger.warn(`Failed to load session ${sessionId}: ${error}`);
+        }
+      }
     }
   }
 
