@@ -5,7 +5,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
 import type { AgentConfig, ProviderConfig } from "./types.js";
-import { findConfigFileInDir } from "./paths.js";
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -163,21 +162,4 @@ function substituteEnvVars(str: string): string {
     // Don't throw for unset vars without default — might be intentional
     return match;
   });
-}
-
-// ---------------------------------------------------------------------------
-// Config discovery (re-exported from paths.ts for backwards compatibility)
-// ---------------------------------------------------------------------------
-
-export { findConfigFileInDir as findConfigFile } from "./paths.js";
-
-/**
- * Load config from directory.
- */
-export async function loadConfigFromDir(dir: string): Promise<IsotopesConfigFile> {
-  const filePath = await findConfigFileInDir(dir);
-  if (!filePath) {
-    throw new Error(`No config file found in ${dir}. Expected: isotopes.yaml`);
-  }
-  return loadConfig(filePath);
 }

@@ -51,8 +51,6 @@ export type { WorkspaceContext } from "./core/workspace.js";
 
 export {
   loadConfig,
-  findConfigFile,
-  loadConfigFromDir,
   toAgentConfig,
   getDiscordToken,
 } from "./core/config.js";

@@ -6,8 +6,6 @@ import path from "node:path";
 import os from "node:os";
 import {
   loadConfig,
-  findConfigFile,
-  loadConfigFromDir,
   toAgentConfig,
   getDiscordToken,
 } from "./config.js";
@@ -141,41 +139,6 @@ discord:
       expect(config.agents[0].provider?.type).toBe("openai");
       expect(config.discord?.defaultAgentId).toBe("assistant");
       expect(config.discord?.agentBindings?.["123456"]).toBe("assistant");
-    });
-  });
-
-  describe("findConfigFile", () => {
-    it("finds isotopes.yaml", async () => {
-      await fs.writeFile(path.join(tempDir, "isotopes.yaml"), "agents: []");
-
-      const found = await findConfigFile(tempDir);
-
-      expect(found).toBe(path.join(tempDir, "isotopes.yaml"));
-    });
-
-    it("returns null when no config found", async () => {
-      const found = await findConfigFile(tempDir);
-
-      expect(found).toBeNull();
-    });
-  });
-
-  describe("loadConfigFromDir", () => {
-    it("loads config from directory", async () => {
-      await fs.writeFile(
-        path.join(tempDir, "isotopes.yaml"),
-        "agents:\n  - id: test\n    name: Test",
-      );
-
-      const config = await loadConfigFromDir(tempDir);
-
-      expect(config.agents[0].id).toBe("test");
-    });
-
-    it("throws when no config found", async () => {
-      await expect(loadConfigFromDir(tempDir)).rejects.toThrow(
-        "No config file found",
-      );
     });
   });
 
