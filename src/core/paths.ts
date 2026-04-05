@@ -63,18 +63,20 @@ const CONFIG_FILENAME = "isotopes.yaml";
 
 /**
  * Find config file, searching in order:
- * 1. Explicit path (if provided)
+ * 1. Explicit path (if provided) — throws if not found
  * 2. Current working directory (isotopes.yaml)
  * 3. ISOTOPES_HOME (~/.isotopes/isotopes.yaml)
+ * 
+ * @throws Error if explicit path is provided but file doesn't exist
  */
 export async function findConfigFile(explicitPath?: string): Promise<string | null> {
-  // 1. Explicit path
+  // 1. Explicit path — must exist if provided
   if (explicitPath) {
     try {
       await fs.access(explicitPath);
       return explicitPath;
     } catch {
-      return null;
+      throw new Error(`Config file not found: ${explicitPath}`);
     }
   }
 
