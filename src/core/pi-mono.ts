@@ -103,6 +103,21 @@ function toAgentMessage(msg: Message): AgentMessage {
   } as AgentMessage;
 }
 
+function toPromptHistoryAgentMessage(msg: Message): AgentMessage {
+  const roleMap: Record<string, string> = {
+    user: "user",
+    assistant: "assistant",
+    tool_result: "toolResult",
+  };
+  const role = roleMap[msg.role] ?? msg.role;
+
+  return {
+    role,
+    content: [{ type: "text", text: msg.content }],
+    timestamp: msg.timestamp ?? Date.now(),
+  } as AgentMessage;
+}
+
 /**
  * Convert a pi-agent-core AgentMessage to our Message.
  * Role mapping: pi-agent-core `toolResult` → our `tool_result`
@@ -200,7 +215,11 @@ class PiMonoInstance implements AgentInstance {
     const done = (
       typeof input === "string"
         ? this.agent.prompt(input)
-        : this.agent.prompt(input.map(toAgentMessage))
+        : this.agent.prompt(
+            input
+              .filter((message) => message.role === "user" || message.role === "assistant")
+              .map(toPromptHistoryAgentMessage),
+          )
     ).then(() => {
       events.push(null); // sentinel
       resolve?.();

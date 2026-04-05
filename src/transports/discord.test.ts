@@ -11,6 +11,17 @@ type MockChannel = {
   send: ReturnType<typeof vi.fn>;
 };
 
+type MockIncomingMessage = {
+  author: { bot: boolean; username: string; id: string };
+  content: string;
+  createdTimestamp: number;
+  guild: { id: string };
+  channelId: string;
+  channel: MockChannel;
+  mentions: { has: ReturnType<typeof vi.fn> };
+  thread?: undefined;
+};
+
 // ---------------------------------------------------------------------------
 // Mock discord.js
 // ---------------------------------------------------------------------------
@@ -177,9 +188,10 @@ describe("DiscordTransport", () => {
             input: string,
             channel: MockChannel,
             sessionId: string,
+            sessionStore: SessionStore,
           ) => Promise<void>;
         }
-      ).runAgentAndRespond(erroringAgent, "hello", channel, "session-123");
+      ).runAgentAndRespond(erroringAgent, "hello", channel, "session-123", sessionStore);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Agent ended with error: No API provider registered for api: undefined"),
@@ -195,6 +207,56 @@ describe("DiscordTransport", () => {
           metadata: { isError: true },
         }),
       );
+    });
+  });
+
+  describe("session recovery", () => {
+    it("rehydrates prior messages when an existing session is found", async () => {
+      const agent = agentManager.get("default")!;
+      const promptSpy = vi.spyOn(agent, "prompt");
+
+      sessionStore.findByKey = vi.fn().mockResolvedValue({
+        id: "session-123",
+        agentId: "default",
+        lastActiveAt: new Date(),
+      });
+      sessionStore.getMessages = vi.fn().mockResolvedValue([
+        { role: "assistant", content: "Previous reply" },
+        { role: "user", content: "hello again" },
+      ]);
+
+      const channel: MockChannel = {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+      };
+
+      const msg: MockIncomingMessage = {
+        author: { bot: false, username: "tester", id: "user-1" },
+        content: "<@123456> hello again",
+        createdTimestamp: Date.now(),
+        guild: { id: "guild-1" },
+        channelId: "channel-1",
+        channel,
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        thread: undefined,
+      };
+
+      await (
+        transport as unknown as {
+          handleMessage: (message: MockIncomingMessage) => Promise<void>;
+        }
+      ).handleMessage(msg);
+
+      expect(sessionStore.findByKey).toHaveBeenCalledWith("discord:bot-123:channel:channel-1:default");
+      expect(sessionStore.addMessage).toHaveBeenNthCalledWith(
+        1,
+        "session-123",
+        expect.objectContaining({ role: "user", content: "hello again" }),
+      );
+      expect(promptSpy).toHaveBeenCalledWith([
+        { role: "assistant", content: "Previous reply" },
+        { role: "user", content: "hello again" },
+      ]);
     });
   });
 });

@@ -301,6 +301,33 @@ describe("prompt() event mapping", () => {
     expect(events).toContainEqual({ type: "turn_start" });
   });
 
+  it("maps prompt history messages to content blocks", async () => {
+    setupEvents([]);
+    const core = new PiMonoCore();
+    const instance = core.createAgent(makeConfig());
+
+    for await (const _ev of instance.prompt([
+      { role: "user", content: "hello", timestamp: 1000 },
+      { role: "assistant", content: "hi there", timestamp: 2000 },
+      { role: "tool_result", content: "tool output", timestamp: 3000 },
+    ])) {
+      void _ev;
+    }
+
+    expect(mockAgent.prompt).toHaveBeenCalledWith([
+      {
+        role: "user",
+        content: [{ type: "text", text: "hello" }],
+        timestamp: 1000,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "hi there" }],
+        timestamp: 2000,
+      },
+    ]);
+  });
+
   it("maps turn_end", async () => {
     const events = await collectEvents([
       { type: "turn_end", message: {}, toolResults: [] },

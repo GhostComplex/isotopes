@@ -73,9 +73,10 @@ describe("DefaultSessionStore", () => {
     it("persists session to disk", async () => {
       const session = await store.create("agent-1");
 
-      const metaFile = path.join(tempDir, session.id, "session.json");
-      const content = await fs.readFile(metaFile, "utf-8");
-      const meta = JSON.parse(content);
+      const indexFile = path.join(tempDir, "sessions.json");
+      const content = await fs.readFile(indexFile, "utf-8");
+      const index = JSON.parse(content);
+      const meta = index.sessions[session.id];
 
       expect(meta.id).toBe(session.id);
       expect(meta.agentId).toBe("agent-1");
@@ -164,7 +165,7 @@ describe("DefaultSessionStore", () => {
 
       await store.addMessage(session.id, { role: "user", content: "Test" });
 
-      const messagesFile = path.join(tempDir, session.id, "messages.jsonl");
+      const messagesFile = path.join(tempDir, `${session.id}.jsonl`);
       const content = await fs.readFile(messagesFile, "utf-8");
       const lines = content.trim().split("\n");
 
@@ -219,15 +220,65 @@ describe("DefaultSessionStore", () => {
 
     it("removes session files from disk", async () => {
       const session = await store.create("agent-1");
-      const sessionDir = path.join(tempDir, session.id);
+      await store.addMessage(session.id, { role: "user", content: "persist me" });
+      const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
 
       await store.delete(session.id);
 
-      await expect(fs.access(sessionDir)).rejects.toThrow();
+      await expect(fs.access(transcriptFile)).rejects.toThrow();
+    });
+
+    it("updates the persisted index after deleting a session", async () => {
+      const session = await store.create("agent-1", {
+        key: "delete-key",
+        transport: "discord",
+      });
+
+      await store.delete(session.id);
+
+      const indexFile = path.join(tempDir, "sessions.json");
+      const content = await fs.readFile(indexFile, "utf-8");
+      const index = JSON.parse(content);
+
+      expect(index.sessions[session.id]).toBeUndefined();
+      expect(index.keyIndex["delete-key"]).toBeUndefined();
     });
 
     it("does not throw for non-existent session", async () => {
       await expect(store.delete("non-existent")).resolves.not.toThrow();
+    });
+  });
+
+  describe("legacy migration", () => {
+    it("loads and migrates legacy per-session directories", async () => {
+      const sessionId = "123e4567-e89b-12d3-a456-426614174000";
+      const legacyDir = path.join(tempDir, sessionId);
+      await fs.mkdir(legacyDir, { recursive: true });
+      await fs.writeFile(
+        path.join(legacyDir, "session.json"),
+        JSON.stringify({
+          id: sessionId,
+          agentId: "agent-1",
+          metadata: { key: "legacy-key", transport: "discord", channelId: "123" },
+          createdAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+        }),
+      );
+      await fs.writeFile(
+        path.join(legacyDir, "messages.jsonl"),
+        `${JSON.stringify({ role: "user", content: "legacy message" })}\n`,
+      );
+
+      const newStore = new DefaultSessionStore({ dataDir: tempDir });
+      await newStore.init();
+
+      const found = await newStore.findByKey("legacy-key");
+      const messages = await newStore.getMessages(sessionId);
+
+      expect(found?.id).toBe(sessionId);
+      expect(messages).toEqual([{ role: "user", content: "legacy message" }]);
+      await expect(fs.access(path.join(tempDir, "sessions.json"))).resolves.not.toThrow();
+      await expect(fs.access(path.join(tempDir, `${sessionId}.jsonl`))).resolves.not.toThrow();
+      await expect(fs.access(legacyDir)).rejects.toThrow();
     });
   });
 });

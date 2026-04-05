@@ -66,7 +66,7 @@ async function main() {
   // Load config from fixed path
   const configPath = getConfigPath();
   logger.info(`Loading config from ${configPath}`);
-  
+
   const config = await loadConfig(configPath);
   logger.info(`Loaded ${config.agents.length} agent(s)`);
 
@@ -96,21 +96,29 @@ async function main() {
 
     // Create session store per agent (sessions live in workspace)
     const sessionStores = new Map<string, DefaultSessionStore>();
-    
+
     for (const agentFile of config.agents) {
       const sessionsDir = getSessionsDir(agentFile.id);
       sessionStores.set(agentFile.id, new DefaultSessionStore({ dataDir: sessionsDir }));
     }
 
+    await Promise.all([...sessionStores.values()].map((store) => store.init()));
+
     // Use first agent's session store as default
     const defaultAgentId = config.discord.defaultAgentId || config.agents[0]?.id;
-    const defaultSessionStore = sessionStores.get(defaultAgentId) || 
-      new DefaultSessionStore({ dataDir: getSessionsDir(defaultAgentId || "default") });
+    let defaultSessionStore = sessionStores.get(defaultAgentId);
+    if (!defaultSessionStore) {
+      defaultSessionStore = new DefaultSessionStore({
+        dataDir: getSessionsDir(defaultAgentId || "default"),
+      });
+      await defaultSessionStore.init();
+    }
 
     const discord = new DiscordTransport({
       token,
       agentManager,
       sessionStore: defaultSessionStore,
+      sessionStoreForAgent: (agentId) => sessionStores.get(agentId) || defaultSessionStore,
       defaultAgentId,
       agentBindings: config.discord.agentBindings,
       allowDMs: config.discord.allowDMs,

@@ -16,7 +16,20 @@ import { createLogger } from "./logger.js";
 const logger = createLogger("session-store");
 
 interface StoredSession extends Session {
-  messages: Message[];
+  messages?: Message[];
+  messagesLoaded: boolean;
+}
+
+interface PersistedSessionRecord {
+  id: string;
+  agentId: string;
+  metadata?: SessionMetadata;
+  lastActiveAt: string;
+}
+
+interface PersistedSessionIndex {
+  sessions: Record<string, PersistedSessionRecord>;
+  keyIndex?: Record<string, string>;
 }
 
 /**
@@ -60,17 +73,17 @@ export class DefaultSessionStore implements SessionStore {
       metadata,
       lastActiveAt: new Date(),
       messages: [],
+      messagesLoaded: true,
     };
 
     this.sessions.set(id, session);
-    
+
     // Index by key if provided
     if (metadata?.key) {
       this.keyIndex.set(metadata.key, id);
     }
 
-    // Persist session metadata
-    await this.persistSession(session);
+    await this.persistIndex();
 
     return this.toSession(session);
   }
@@ -97,11 +110,14 @@ export class DefaultSessionStore implements SessionStore {
       throw new Error(`Session "${sessionId}" not found`);
     }
 
-    session.messages.push(message);
+    await this.ensureMessagesLoaded(session);
+
+    session.messages!.push(message);
     session.lastActiveAt = new Date();
 
     // Append message to JSONL file
     await this.appendMessage(sessionId, message);
+    await this.persistIndex();
   }
 
   async getMessages(sessionId: string): Promise<Message[]> {
@@ -109,7 +125,8 @@ export class DefaultSessionStore implements SessionStore {
     if (!session) {
       throw new Error(`Session "${sessionId}" not found`);
     }
-    return [...session.messages];
+    await this.ensureMessagesLoaded(session);
+    return [...session.messages!];
   }
 
   async delete(sessionId: string): Promise<void> {
@@ -119,10 +136,12 @@ export class DefaultSessionStore implements SessionStore {
     }
     this.sessions.delete(sessionId);
 
+    await this.persistIndex();
+
     // Remove persisted files
-    const sessionDir = path.join(this.config.dataDir, sessionId);
     try {
-      await fs.rm(sessionDir, { recursive: true, force: true });
+      await fs.rm(this.transcriptFile(sessionId), { force: true });
+      await fs.rm(this.legacySessionDir(sessionId), { recursive: true, force: true });
     } catch {
       // Ignore if doesn't exist
     }
@@ -132,99 +151,205 @@ export class DefaultSessionStore implements SessionStore {
   // Persistence helpers
   // -------------------------------------------------------------------------
 
-  private sessionDir(sessionId: string): string {
+  private indexFile(): string {
+    return path.join(this.config.dataDir, "sessions.json");
+  }
+
+  private transcriptFile(sessionId: string): string {
+    return path.join(this.config.dataDir, `${sessionId}.jsonl`);
+  }
+
+  private legacySessionDir(sessionId: string): string {
     return path.join(this.config.dataDir, sessionId);
   }
 
-  private async persistSession(session: StoredSession): Promise<void> {
-    const dir = this.sessionDir(session.id);
-    await fs.mkdir(dir, { recursive: true });
+  private legacyMetaFile(sessionId: string): string {
+    return path.join(this.legacySessionDir(sessionId), "session.json");
+  }
 
-    const meta = {
-      id: session.id,
-      agentId: session.agentId,
-      metadata: session.metadata,
-      createdAt: session.lastActiveAt.toISOString(),
+  private legacyMessagesFile(sessionId: string): string {
+    return path.join(this.legacySessionDir(sessionId), "messages.jsonl");
+  }
+
+  private async persistIndex(): Promise<void> {
+    const index: PersistedSessionIndex = {
+      sessions: Object.fromEntries(
+        [...this.sessions.values()].map((session) => [
+          session.id,
+          {
+            id: session.id,
+            agentId: session.agentId,
+            ...(session.metadata ? { metadata: session.metadata } : {}),
+            lastActiveAt: session.lastActiveAt.toISOString(),
+          },
+        ]),
+      ),
+      keyIndex: Object.fromEntries(this.keyIndex),
     };
 
     await fs.writeFile(
-      path.join(dir, "session.json"),
-      JSON.stringify(meta, null, 2),
+      this.indexFile(),
+      JSON.stringify(index, null, 2),
     );
   }
 
   private async appendMessage(sessionId: string, message: Message): Promise<void> {
-    const file = path.join(this.sessionDir(sessionId), "messages.jsonl");
+    const file = this.transcriptFile(sessionId);
     const line = JSON.stringify(message) + "\n";
     await fs.appendFile(file, line);
   }
 
-  private async loadSession(sessionId: string): Promise<StoredSession | undefined> {
-    const dir = this.sessionDir(sessionId);
+  private async ensureMessagesLoaded(session: StoredSession): Promise<void> {
+    if (session.messagesLoaded) {
+      return;
+    }
 
-    try {
-      const metaFile = path.join(dir, "session.json");
-      const metaContent = await fs.readFile(metaFile, "utf-8");
-      const meta = JSON.parse(metaContent) as {
-        id: string;
-        agentId: string;
-        metadata?: SessionMetadata;
-        createdAt: string;
-      };
+    session.messages = await this.loadMessages(session.id);
+    session.messagesLoaded = true;
+  }
 
-      // Load messages
-      const messages: Message[] = [];
-      const messagesFile = path.join(dir, "messages.jsonl");
+  private async loadMessages(sessionId: string): Promise<Message[]> {
+    const candidates = [this.transcriptFile(sessionId), this.legacyMessagesFile(sessionId)];
+    for (const file of candidates) {
       try {
-        const content = await fs.readFile(messagesFile, "utf-8");
+        const content = await fs.readFile(file, "utf-8");
+        const messages: Message[] = [];
         for (const line of content.split("\n")) {
           if (line.trim()) {
             messages.push(JSON.parse(line) as Message);
           }
         }
+        return messages;
       } catch {
-        // No messages file yet
+        // Try next candidate.
       }
+    }
 
-      return {
+    return [];
+  }
+
+  private toStoredSession(meta: PersistedSessionRecord): StoredSession {
+    return {
+      id: meta.id,
+      agentId: meta.agentId,
+      metadata: meta.metadata,
+      lastActiveAt: new Date(meta.lastActiveAt),
+      messagesLoaded: false,
+    };
+  }
+
+  private async loadLegacySession(sessionId: string): Promise<StoredSession | undefined> {
+    const metaFile = this.legacyMetaFile(sessionId);
+
+    try {
+      const metaContent = await fs.readFile(metaFile, "utf-8");
+      const meta = JSON.parse(metaContent) as {
+        id: string;
+        agentId: string;
+        metadata?: SessionMetadata;
+        createdAt?: string;
+        lastActiveAt?: string;
+      };
+
+      return this.toStoredSession({
         id: meta.id,
         agentId: meta.agentId,
         metadata: meta.metadata,
-        lastActiveAt: new Date(meta.createdAt),
-        messages,
-      };
+        lastActiveAt: meta.lastActiveAt ?? meta.createdAt ?? new Date().toISOString(),
+      });
     } catch {
       return undefined;
     }
+  }
+
+  private async loadIndexFile(): Promise<void> {
+    let raw: string;
+    try {
+      raw = await fs.readFile(this.indexFile(), "utf-8");
+    } catch {
+      return;
+    }
+
+    const index = JSON.parse(raw) as PersistedSessionIndex;
+    const sessions = index.sessions ?? {};
+    for (const meta of Object.values(sessions)) {
+      const session = this.toStoredSession(meta);
+      this.sessions.set(session.id, session);
+      if (session.metadata?.key) {
+        this.keyIndex.set(session.metadata.key, session.id);
+      }
+    }
+
+    for (const [key, sessionId] of Object.entries(index.keyIndex ?? {})) {
+      if (this.sessions.has(sessionId)) {
+        this.keyIndex.set(key, sessionId);
+      }
+    }
+  }
+
+  private async migrateLegacySessions(): Promise<boolean> {
+    let entries;
+    try {
+      entries = await fs.readdir(this.config.dataDir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+
+    let migrated = false;
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const sessionId = entry.name;
+      try {
+        const session = await this.loadLegacySession(sessionId);
+        if (!session) {
+          continue;
+        }
+
+        if (!this.sessions.has(sessionId)) {
+          this.sessions.set(sessionId, session);
+          if (session.metadata?.key) {
+            this.keyIndex.set(session.metadata.key, sessionId);
+          }
+        }
+
+        const newTranscriptFile = this.transcriptFile(sessionId);
+        const legacyMessagesFile = this.legacyMessagesFile(sessionId);
+        try {
+          await fs.access(newTranscriptFile);
+        } catch {
+          try {
+            await fs.rename(legacyMessagesFile, newTranscriptFile);
+          } catch {
+            // Keep legacy transcript in place if migration fails.
+          }
+        }
+
+        await fs.rm(this.legacySessionDir(sessionId), { recursive: true, force: true });
+        migrated = true;
+      } catch (error) {
+        logger.warn(`Failed to migrate legacy session ${sessionId}: ${error}`);
+      }
+    }
+
+    return migrated;
   }
 
   /**
    * Load all sessions from disk on startup.
    */
   private async loadAllSessions(): Promise<void> {
-    let entries;
-    try {
-      entries = await fs.readdir(this.config.dataDir, { withFileTypes: true });
-    } catch {
-      // Directory doesn't exist yet
-      return;
-    }
-    
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const sessionId = entry.name;
-        try {
-          const session = await this.loadSession(sessionId);
-          if (session) {
-            this.sessions.set(sessionId, session);
-            if (session.metadata?.key) {
-              this.keyIndex.set(session.metadata.key, sessionId);
-            }
-          }
-        } catch (error) {
-          logger.warn(`Failed to load session ${sessionId}: ${error}`);
-        }
-      }
+    this.sessions.clear();
+    this.keyIndex.clear();
+
+    await this.loadIndexFile();
+
+    const migrated = await this.migrateLegacySessions();
+    if (migrated) {
+      await this.persistIndex();
     }
   }
 
