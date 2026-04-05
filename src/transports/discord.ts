@@ -182,8 +182,14 @@ export class DiscordTransport implements Transport {
     msg: DiscordMessage,
   ) {
     // Try to find existing session by key
-    // For now, create new session each time (TODO: session lookup by key)
+    const existing = await this.config.sessionStore.findByKey(sessionKey);
+    if (existing) {
+      return existing;
+    }
+
+    // Create new session with key
     const session = await this.config.sessionStore.create(agentId, {
+      key: sessionKey,
       transport: "discord",
       channelId: msg.channelId,
       threadId: msg.thread?.id,

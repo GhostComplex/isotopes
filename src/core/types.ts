@@ -106,6 +106,7 @@ export interface Session {
 }
 
 export interface SessionMetadata {
+  key?: string;                        // Unique key for session lookup (e.g., discord:{botId}:channel:{id}:{agentId})
   transport: 'discord' | 'feishu' | 'web';
   channelId?: string;
   threadId?: string;
@@ -120,6 +121,7 @@ export interface SessionStoreConfig {
 export interface SessionStore {
   create(agentId: string, metadata?: SessionMetadata): Promise<Session>;
   get(sessionId: string): Promise<Session | undefined>;
+  findByKey(key: string): Promise<Session | undefined>;
   addMessage(sessionId: string, message: Message): Promise<void>;
   getMessages(sessionId: string): Promise<Message[]>;
   delete(sessionId: string): Promise<void>;

@@ -46,6 +46,16 @@ describe("DefaultSessionStore", () => {
       expect(session.metadata?.channelId).toBe("123456");
     });
 
+    it("stores session key in metadata", async () => {
+      const session = await store.create("agent-1", {
+        key: "discord:bot1:channel:123:agent-1",
+        transport: "discord",
+        channelId: "123",
+      });
+
+      expect(session.metadata?.key).toBe("discord:bot1:channel:123:agent-1");
+    });
+
     it("persists session to disk", async () => {
       const session = await store.create("agent-1");
 
@@ -86,6 +96,39 @@ describe("DefaultSessionStore", () => {
     });
   });
 
+  describe("findByKey", () => {
+    it("finds session by key", async () => {
+      const session = await store.create("agent-1", {
+        key: "discord:bot1:channel:123:agent-1",
+        transport: "discord",
+      });
+
+      const found = await store.findByKey("discord:bot1:channel:123:agent-1");
+      expect(found).toBeDefined();
+      expect(found?.id).toBe(session.id);
+    });
+
+    it("returns undefined for non-existent key", async () => {
+      const result = await store.findByKey("non-existent-key");
+      expect(result).toBeUndefined();
+    });
+
+    it("restores key index after restart", async () => {
+      const session = await store.create("agent-1", {
+        key: "discord:bot1:channel:456:agent-1",
+        transport: "discord",
+      });
+
+      // Create a new store instance (simulates restart)
+      const newStore = new DefaultSessionStore({ dataDir: tempDir });
+      await newStore.init();
+
+      const found = await newStore.findByKey("discord:bot1:channel:456:agent-1");
+      expect(found).toBeDefined();
+      expect(found?.id).toBe(session.id);
+    });
+  });
+
   describe("addMessage / getMessages", () => {
     it("stores and retrieves messages", async () => {
       const session = await store.create("agent-1");
@@ -122,7 +165,6 @@ describe("DefaultSessionStore", () => {
       // New store instance
       const newStore = new DefaultSessionStore({ dataDir: tempDir });
       await newStore.init();
-      await newStore.get(session.id); // Load session
 
       const messages = await newStore.getMessages(session.id);
       expect(messages).toHaveLength(1);
@@ -147,6 +189,18 @@ describe("DefaultSessionStore", () => {
 
       const result = await store.get(session.id);
       expect(result).toBeUndefined();
+    });
+
+    it("removes session from key index", async () => {
+      const session = await store.create("agent-1", {
+        key: "test-key",
+        transport: "discord",
+      });
+
+      await store.delete(session.id);
+
+      const found = await store.findByKey("test-key");
+      expect(found).toBeUndefined();
     });
 
     it("removes session files from disk", async () => {

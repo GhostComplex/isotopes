@@ -73,6 +73,7 @@ function createMockSessionStore(): SessionStore {
       lastActiveAt: new Date(),
     }),
     get: vi.fn(),
+    findByKey: vi.fn().mockResolvedValue(undefined),
     addMessage: vi.fn(),
     getMessages: vi.fn().mockResolvedValue([]),
     delete: vi.fn(),
