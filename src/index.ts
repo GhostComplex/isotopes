@@ -76,3 +76,19 @@ export type { DiscordTransportConfig } from "./transports/discord.js";
 
 export { logger, loggers, createLogger } from "./core/logger.js";
 export type { Logger, LogLevel } from "./core/logger.js";
+
+// ---------------------------------------------------------------------------
+// Paths
+// ---------------------------------------------------------------------------
+
+export {
+  getIsotopesHome,
+  getWorkspacesDir,
+  getLogsDir,
+  getWorkspacePath,
+  getSessionsDir as getAgentSessionsDir,
+  findConfigFile as findConfig,
+  ensureDirectories,
+  ensureWorkspaceDir,
+  resolveWorkspacePath,
+} from "./core/paths.js";

@@ -18,26 +18,45 @@ Isotopes is a simpler alternative to OpenClaw. It provides:
 # Install
 pnpm install -g isotopes
 
-# Configure
-cp isotopes.example.yaml isotopes.yaml
-# Edit isotopes.yaml with your settings
+# Initialize (creates ~/.isotopes/)
+mkdir -p ~/.isotopes
+cp isotopes.example.yaml ~/.isotopes/isotopes.yaml
+# Edit ~/.isotopes/isotopes.yaml with your settings
 
 # Run
 isotopes
 ```
 
+## Directory Structure
+
+```
+~/.isotopes/
+├── isotopes.yaml           # Main config file
+├── workspaces/
+│   ├── assistant/          # Per-agent workspace
+│   │   ├── SOUL.md         # Agent personality
+│   │   ├── MEMORY.md       # Long-term memory
+│   │   └── sessions/       # Conversation history
+│   │       └── *.jsonl
+│   └── dev/
+│       └── ...
+└── logs/
+    └── isotopes-*.log
+```
+
+Override with `ISOTOPES_HOME` environment variable.
+
 ## CLI Usage
 
 ```bash
-isotopes                    # Load isotopes.yaml from current dir
-isotopes ./my-project       # Load from directory
-isotopes -c config.yaml     # Load specific file
+isotopes                    # Auto-discover config (./isotopes.yaml or ~/.isotopes/)
+isotopes -c config.yaml     # Use specific config file
 ```
 
 ## Configuration
 
 ```yaml
-# isotopes.yaml
+# ~/.isotopes/isotopes.yaml
 provider:
   type: anthropic
   model: claude-sonnet-4-20250514
@@ -46,7 +65,8 @@ provider:
 agents:
   - id: assistant
     name: Assistant
-    workspacePath: ./workspaces/assistant
+    # Optional: custom workspace path (default: ~/.isotopes/workspaces/<id>)
+    # workspacePath: /custom/path
 
 discord:
   tokenEnv: DISCORD_TOKEN
