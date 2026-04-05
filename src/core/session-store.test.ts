@@ -56,6 +56,20 @@ describe("DefaultSessionStore", () => {
       expect(session.metadata?.key).toBe("discord:bot1:channel:123:agent-1");
     });
 
+    it("throws if key already exists", async () => {
+      await store.create("agent-1", {
+        key: "duplicate-key",
+        transport: "discord",
+      });
+
+      await expect(
+        store.create("agent-2", {
+          key: "duplicate-key",
+          transport: "discord",
+        })
+      ).rejects.toThrow("Session with key already exists: duplicate-key");
+    });
+
     it("persists session to disk", async () => {
       const session = await store.create("agent-1");
 

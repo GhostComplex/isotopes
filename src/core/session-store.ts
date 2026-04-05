@@ -11,6 +11,9 @@ import type {
   SessionStore,
   SessionStoreConfig,
 } from "./types.js";
+import { createLogger } from "./logger.js";
+
+const logger = createLogger("session-store");
 
 interface StoredSession extends Session {
   messages: Message[];
@@ -45,6 +48,11 @@ export class DefaultSessionStore implements SessionStore {
   }
 
   async create(agentId: string, metadata?: SessionMetadata): Promise<Session> {
+    // Check key uniqueness
+    if (metadata?.key && this.keyIndex.has(metadata.key)) {
+      throw new Error(`Session with key already exists: ${metadata.key}`);
+    }
+
     const id = randomUUID();
     const session: StoredSession = {
       id,
@@ -194,12 +202,18 @@ export class DefaultSessionStore implements SessionStore {
    * Load all sessions from disk on startup.
    */
   private async loadAllSessions(): Promise<void> {
+    let entries;
     try {
-      const entries = await fs.readdir(this.config.dataDir, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const sessionId = entry.name;
+      entries = await fs.readdir(this.config.dataDir, { withFileTypes: true });
+    } catch {
+      // Directory doesn't exist yet
+      return;
+    }
+    
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const sessionId = entry.name;
+        try {
           const session = await this.loadSession(sessionId);
           if (session) {
             this.sessions.set(sessionId, session);
@@ -207,10 +221,10 @@ export class DefaultSessionStore implements SessionStore {
               this.keyIndex.set(session.metadata.key, sessionId);
             }
           }
+        } catch (error) {
+          logger.warn(`Failed to load session ${sessionId}: ${error}`);
         }
       }
-    } catch {
-      // Directory doesn't exist yet or other error
     }
   }
 
