@@ -153,27 +153,10 @@ discord:
       expect(found).toBe(path.join(tempDir, "isotopes.yaml"));
     });
 
-    it("finds .isotopes.yml", async () => {
-      await fs.writeFile(path.join(tempDir, ".isotopes.yml"), "agents: []");
-
-      const found = await findConfigFile(tempDir);
-
-      expect(found).toBe(path.join(tempDir, ".isotopes.yml"));
-    });
-
     it("returns null when no config found", async () => {
       const found = await findConfigFile(tempDir);
 
       expect(found).toBeNull();
-    });
-
-    it("prefers isotopes.yaml over .isotopes.yaml", async () => {
-      await fs.writeFile(path.join(tempDir, "isotopes.yaml"), "agents: []");
-      await fs.writeFile(path.join(tempDir, ".isotopes.yaml"), "agents: []");
-
-      const found = await findConfigFile(tempDir);
-
-      expect(found).toBe(path.join(tempDir, "isotopes.yaml"));
     });
   });
 

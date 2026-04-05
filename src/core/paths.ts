@@ -58,21 +58,14 @@ export function getSessionsDir(agentId: string): string {
 // Config paths
 // ---------------------------------------------------------------------------
 
-/** Default config file names to search for */
-const CONFIG_FILENAMES = [
-  "isotopes.yaml",
-  "isotopes.yml",
-  "isotopes.json",
-  ".isotopes.yaml",
-  ".isotopes.yml",
-  ".isotopes.json",
-];
+/** Default config filename */
+const CONFIG_FILENAME = "isotopes.yaml";
 
 /**
  * Find config file, searching in order:
  * 1. Explicit path (if provided)
- * 2. Current working directory
- * 3. ISOTOPES_HOME (~/.isotopes)
+ * 2. Current working directory (isotopes.yaml)
+ * 3. ISOTOPES_HOME (~/.isotopes/isotopes.yaml)
  */
 export async function findConfigFile(explicitPath?: string): Promise<string | null> {
   // 1. Explicit path
@@ -86,25 +79,21 @@ export async function findConfigFile(explicitPath?: string): Promise<string | nu
   }
 
   // 2. Current working directory
-  for (const filename of CONFIG_FILENAMES) {
-    const filePath = path.join(process.cwd(), filename);
-    try {
-      await fs.access(filePath);
-      return filePath;
-    } catch {
-      // Try next
-    }
+  const cwdConfig = path.join(process.cwd(), CONFIG_FILENAME);
+  try {
+    await fs.access(cwdConfig);
+    return cwdConfig;
+  } catch {
+    // Try next
   }
 
   // 3. ISOTOPES_HOME
-  for (const filename of CONFIG_FILENAMES) {
-    const filePath = path.join(getIsotopesHome(), filename);
-    try {
-      await fs.access(filePath);
-      return filePath;
-    } catch {
-      // Try next
-    }
+  const homeConfig = path.join(getIsotopesHome(), CONFIG_FILENAME);
+  try {
+    await fs.access(homeConfig);
+    return homeConfig;
+  } catch {
+    // Not found
   }
 
   return null;
@@ -114,16 +103,13 @@ export async function findConfigFile(explicitPath?: string): Promise<string | nu
  * Find config file in a specific directory.
  */
 export async function findConfigFileInDir(dir: string): Promise<string | null> {
-  for (const filename of CONFIG_FILENAMES) {
-    const filePath = path.join(dir, filename);
-    try {
-      await fs.access(filePath);
-      return filePath;
-    } catch {
-      // Try next
-    }
+  const filePath = path.join(dir, CONFIG_FILENAME);
+  try {
+    await fs.access(filePath);
+    return filePath;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 // ---------------------------------------------------------------------------

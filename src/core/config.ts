@@ -168,42 +168,29 @@ function substituteEnvVars(str: string): string {
 // Config discovery
 // ---------------------------------------------------------------------------
 
-/** Default config file names to search for */
-const CONFIG_FILENAMES = [
-  "isotopes.yaml",
-  "isotopes.yml",
-  "isotopes.json",
-  ".isotopes.yaml",
-  ".isotopes.yml",
-  ".isotopes.json",
-];
+/** Default config filename */
+const CONFIG_FILENAME = "isotopes.yaml";
 
 /**
  * Find config file in directory.
- * Searches for known config filenames.
  */
 export async function findConfigFile(dir: string): Promise<string | null> {
-  for (const filename of CONFIG_FILENAMES) {
-    const filePath = path.join(dir, filename);
-    try {
-      await fs.access(filePath);
-      return filePath;
-    } catch {
-      // File doesn't exist, try next
-    }
+  const filePath = path.join(dir, CONFIG_FILENAME);
+  try {
+    await fs.access(filePath);
+    return filePath;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /**
- * Load config from directory, searching for known filenames.
+ * Load config from directory.
  */
 export async function loadConfigFromDir(dir: string): Promise<IsotopesConfigFile> {
   const filePath = await findConfigFile(dir);
   if (!filePath) {
-    throw new Error(
-      `No config file found in ${dir}. Expected one of: ${CONFIG_FILENAMES.join(", ")}`,
-    );
+    throw new Error(`No config file found in ${dir}. Expected: ${CONFIG_FILENAME}`);
   }
   return loadConfig(filePath);
 }
