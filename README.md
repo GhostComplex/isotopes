@@ -46,11 +46,12 @@ isotopes
 
 Override with `ISOTOPES_HOME` environment variable.
 
-## CLI Usage
+## Usage
 
 ```bash
-isotopes                    # Auto-discover config (./isotopes.yaml or ~/.isotopes/)
-isotopes -c config.yaml     # Use specific config file
+isotopes           # Start agents
+isotopes --help    # Show help
+isotopes --version # Show version
 ```
 
 ## Configuration

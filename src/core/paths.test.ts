@@ -3,15 +3,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 import os from "node:os";
-import fs from "node:fs/promises";
 import {
   getIsotopesHome,
   getWorkspacesDir,
   getLogsDir,
   getWorkspacePath,
   getSessionsDir,
+  getConfigPath,
   resolveWorkspacePath,
-  findConfigFile,
 } from "./paths.js";
 
 describe("paths", () => {
@@ -63,6 +62,18 @@ describe("paths", () => {
     });
   });
 
+  describe("getConfigPath", () => {
+    it("returns ~/.isotopes/isotopes.yaml", () => {
+      const expected = path.join(os.homedir(), ".isotopes", "isotopes.yaml");
+      expect(getConfigPath()).toBe(expected);
+    });
+
+    it("respects ISOTOPES_HOME", () => {
+      vi.stubEnv("ISOTOPES_HOME", "/custom");
+      expect(getConfigPath()).toBe("/custom/isotopes.yaml");
+    });
+  });
+
   describe("resolveWorkspacePath", () => {
     it("returns absolute path as-is", () => {
       expect(resolveWorkspacePath("/absolute/path")).toBe("/absolute/path");
@@ -76,49 +87,6 @@ describe("paths", () => {
     it("handles nested relative paths", () => {
       const expected = path.join(os.homedir(), ".isotopes", "workspaces", "team", "agent");
       expect(resolveWorkspacePath("team/agent")).toBe(expected);
-    });
-  });
-
-  describe("findConfigFile", () => {
-    let tempDir: string;
-
-    beforeEach(async () => {
-      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-test-"));
-    });
-
-    afterEach(async () => {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    });
-
-    it("throws error when explicit path does not exist", async () => {
-      const nonExistentPath = path.join(tempDir, "nonexistent.yaml");
-      
-      await expect(findConfigFile(nonExistentPath)).rejects.toThrow(
-        `Config file not found: ${nonExistentPath}`
-      );
-    });
-
-    it("returns explicit path when it exists", async () => {
-      const configPath = path.join(tempDir, "custom.yaml");
-      await fs.writeFile(configPath, "agents: []");
-
-      const result = await findConfigFile(configPath);
-
-      expect(result).toBe(configPath);
-    });
-
-    it("returns null when no config found and no explicit path", async () => {
-      // Point to temp dir with no config
-      vi.stubEnv("ISOTOPES_HOME", tempDir);
-      const originalCwd = process.cwd();
-      process.chdir(tempDir);
-
-      try {
-        const result = await findConfigFile();
-        expect(result).toBeNull();
-      } finally {
-        process.chdir(originalCwd);
-      }
     });
   });
 });

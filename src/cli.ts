@@ -11,12 +11,11 @@ import { DefaultSessionStore } from "./core/session-store.js";
 import { DiscordTransport } from "./transports/discord.js";
 import { logger } from "./core/logger.js";
 import {
-  findConfigFile,
+  getConfigPath,
   ensureDirectories,
   ensureWorkspaceDir,
   getSessionsDir,
   resolveWorkspacePath,
-  getIsotopesHome,
 } from "./core/paths.js";
 
 // ---------------------------------------------------------------------------
@@ -25,11 +24,10 @@ import {
 
 const { values } = parseArgs({
   options: {
-    config: { type: "string", short: "c" },
     help: { type: "boolean", short: "h" },
     version: { type: "boolean", short: "v" },
   },
-  allowPositionals: true,
+  allowPositionals: false,
 });
 
 // ---------------------------------------------------------------------------
@@ -40,26 +38,14 @@ if (values.help) {
   console.log(`
 Isotopes v${VERSION}
 
-Usage: isotopes [options]
+Usage: isotopes
 
-Options:
-  -c, --config <file>  Path to config file (yaml/json)
-  -h, --help           Show this help
-  -v, --version        Show version
-
-Config search order:
-  1. --config <file> (explicit)
-  2. ./isotopes.yaml (current directory)
-  3. ~/.isotopes/isotopes.yaml (home directory)
+Config: ~/.isotopes/isotopes.yaml
 
 Environment:
-  ISOTOPES_HOME        Override home directory (default: ~/.isotopes)
-  LOG_LEVEL            Set log level (debug/info/warn/error)
-  DEBUG=isotopes       Enable debug logging
-
-Examples:
-  isotopes                    # Auto-discover config
-  isotopes -c config.yaml     # Use specific config file
+  ISOTOPES_HOME   Override home directory (default: ~/.isotopes)
+  LOG_LEVEL       Set log level (debug/info/warn/error)
+  DEBUG=isotopes  Enable debug logging
 `);
   process.exit(0);
 }
@@ -77,16 +63,10 @@ async function main() {
   // Ensure base directories exist
   await ensureDirectories();
 
-  // Find config file
-  const configPath = await findConfigFile(values.config);
-  if (!configPath) {
-    logger.error("No config file found.");
-    logger.info(`Searched: ./isotopes.yaml, ${getIsotopesHome()}/isotopes.yaml`);
-    logger.info("Create a config file or use --config <file>");
-    process.exit(1);
-  }
-
+  // Load config from fixed path
+  const configPath = getConfigPath();
   logger.info(`Loading config from ${configPath}`);
+  
   const config = await loadConfig(configPath);
   logger.info(`Loaded ${config.agents.length} agent(s)`);
 
@@ -115,7 +95,6 @@ async function main() {
     const token = getDiscordToken(config.discord);
 
     // Create session store per agent (sessions live in workspace)
-    // For now, use a shared session store with per-agent directories
     const sessionStores = new Map<string, DefaultSessionStore>();
     
     for (const agentFile of config.agents) {
@@ -123,7 +102,7 @@ async function main() {
       sessionStores.set(agentFile.id, new DefaultSessionStore({ dataDir: sessionsDir }));
     }
 
-    // Use first agent's session store as default (TODO: better multi-agent session handling)
+    // Use first agent's session store as default
     const defaultAgentId = config.discord.defaultAgentId || config.agents[0]?.id;
     const defaultSessionStore = sessionStores.get(defaultAgentId) || 
       new DefaultSessionStore({ dataDir: getSessionsDir(defaultAgentId || "default") });

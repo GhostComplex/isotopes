@@ -58,60 +58,12 @@ export function getSessionsDir(agentId: string): string {
 // Config paths
 // ---------------------------------------------------------------------------
 
-/** Default config filename */
-const CONFIG_FILENAME = "isotopes.yaml";
-
 /**
- * Find config file, searching in order:
- * 1. Explicit path (if provided) — throws if not found
- * 2. Current working directory (isotopes.yaml)
- * 3. ISOTOPES_HOME (~/.isotopes/isotopes.yaml)
- * 
- * @throws Error if explicit path is provided but file doesn't exist
+ * Get the config file path.
+ * Fixed location: ~/.isotopes/isotopes.yaml
  */
-export async function findConfigFile(explicitPath?: string): Promise<string | null> {
-  // 1. Explicit path — must exist if provided
-  if (explicitPath) {
-    try {
-      await fs.access(explicitPath);
-      return explicitPath;
-    } catch {
-      throw new Error(`Config file not found: ${explicitPath}`);
-    }
-  }
-
-  // 2. Current working directory
-  const cwdConfig = path.join(process.cwd(), CONFIG_FILENAME);
-  try {
-    await fs.access(cwdConfig);
-    return cwdConfig;
-  } catch {
-    // Try next
-  }
-
-  // 3. ISOTOPES_HOME
-  const homeConfig = path.join(getIsotopesHome(), CONFIG_FILENAME);
-  try {
-    await fs.access(homeConfig);
-    return homeConfig;
-  } catch {
-    // Not found
-  }
-
-  return null;
-}
-
-/**
- * Find config file in a specific directory.
- */
-export async function findConfigFileInDir(dir: string): Promise<string | null> {
-  const filePath = path.join(dir, CONFIG_FILENAME);
-  try {
-    await fs.access(filePath);
-    return filePath;
-  } catch {
-    return null;
-  }
+export function getConfigPath(): string {
+  return path.join(getIsotopesHome(), "isotopes.yaml");
 }
 
 // ---------------------------------------------------------------------------
