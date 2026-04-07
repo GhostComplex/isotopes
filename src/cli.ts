@@ -10,6 +10,7 @@ import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
 import { DiscordTransport } from "./transports/discord.js";
 import { logger } from "./core/logger.js";
+import { ToolRegistry, createWorkspaceTools } from "./core/tools.js";
 import {
   getConfigPath,
   ensureDirectories,
@@ -70,11 +71,11 @@ async function main() {
   const config = await loadConfig(configPath);
   logger.info(`Loaded ${config.agents.length} agent(s)`);
 
-  // Initialize core
+  // Initialize core with tool registry
   const core = new PiMonoCore();
   const agentManager = new DefaultAgentManager(core);
 
-  // Create agents
+  // Create agents with workspace tools
   for (const agentFile of config.agents) {
     const agentConfig = toAgentConfig(agentFile, config.provider);
 
@@ -86,8 +87,15 @@ async function main() {
       agentConfig.workspacePath = await ensureWorkspaceDir(agentConfig.id);
     }
 
+    // Register workspace tools for this agent
+    const toolRegistry = new ToolRegistry();
+    for (const { tool, handler } of createWorkspaceTools(agentConfig.workspacePath)) {
+      toolRegistry.register(tool, handler);
+    }
+    core.setToolRegistry(toolRegistry);
+
     await agentManager.create(agentConfig);
-    logger.info(`Created agent: ${agentConfig.id} (workspace: ${agentConfig.workspacePath})`);
+    logger.info(`Created agent: ${agentConfig.id} (workspace: ${agentConfig.workspacePath}, tools: ${toolRegistry.list().length})`);
   }
 
   // Start Discord transport if configured

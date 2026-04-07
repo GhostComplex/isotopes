@@ -1,7 +1,13 @@
 // src/core/tools.ts — Tool registry and execution
 // Manages tool definitions and their handlers.
 
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { Tool } from "./types.js";
+
+const execAsync = promisify(exec);
 
 /** Tool execution handler */
 export type ToolHandler = (args: unknown) => Promise<string>;
@@ -142,4 +148,231 @@ export function createTimeTool(): { tool: Tool; handler: ToolHandler } {
       return now.toISOString();
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Shell tool
+// ---------------------------------------------------------------------------
+
+export interface ShellToolOptions {
+  /** Working directory for command execution */
+  cwd?: string;
+  /** Maximum execution time in ms (default: 30000) */
+  timeout?: number;
+  /** Maximum output size in bytes (default: 100KB) */
+  maxOutput?: number;
+}
+
+/**
+ * Create a shell execution tool.
+ */
+export function createShellTool(options: ShellToolOptions = {}): { tool: Tool; handler: ToolHandler } {
+  const { cwd, timeout = 30000, maxOutput = 100 * 1024 } = options;
+
+  return {
+    tool: {
+      name: "shell",
+      description: "Execute a shell command and return the output. Use for running programs, scripts, or system commands.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "The shell command to execute",
+          },
+        },
+        required: ["command"],
+      },
+    },
+    handler: async (args) => {
+      const { command } = args as { command: string };
+      
+      try {
+        const { stdout, stderr } = await execAsync(command, {
+          cwd,
+          timeout,
+          maxBuffer: maxOutput,
+        });
+
+        let output = stdout;
+        if (stderr) {
+          output += (output ? "\n" : "") + `[stderr] ${stderr}`;
+        }
+        return output || "(no output)";
+      } catch (error) {
+        const err = error as { message?: string; code?: number; signal?: string; stderr?: string };
+        if (err.signal === "SIGTERM") {
+          return `[error] Command timed out after ${timeout}ms`;
+        }
+        return `[error] ${err.message || String(error)}${err.stderr ? `\n[stderr] ${err.stderr}` : ""}`;
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// File tools
+// ---------------------------------------------------------------------------
+
+export interface FileToolOptions {
+  /** Base directory for file operations (paths are resolved relative to this) */
+  basePath?: string;
+  /** Maximum file size to read in bytes (default: 1MB) */
+  maxReadSize?: number;
+}
+
+/**
+ * Create a file read tool.
+ */
+export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
+  const { basePath, maxReadSize = 1024 * 1024 } = options;
+
+  return {
+    tool: {
+      name: "read_file",
+      description: "Read the contents of a file. Returns the file content as text.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path to the file to read (relative to workspace or absolute)",
+          },
+        },
+        required: ["path"],
+      },
+    },
+    handler: async (args) => {
+      const { path: filePath } = args as { path: string };
+      
+      try {
+        const resolvedPath = basePath && !path.isAbsolute(filePath)
+          ? path.resolve(basePath, filePath)
+          : filePath;
+
+        const stats = await fs.stat(resolvedPath);
+        if (stats.size > maxReadSize) {
+          return `[error] File too large (${stats.size} bytes, max ${maxReadSize})`;
+        }
+
+        const content = await fs.readFile(resolvedPath, "utf-8");
+        return content;
+      } catch (error) {
+        const err = error as { code?: string; message?: string };
+        if (err.code === "ENOENT") {
+          return `[error] File not found: ${filePath}`;
+        }
+        return `[error] ${err.message || String(error)}`;
+      }
+    },
+  };
+}
+
+/**
+ * Create a file write tool.
+ */
+export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
+  const { basePath } = options;
+
+  return {
+    tool: {
+      name: "write_file",
+      description: "Write content to a file. Creates the file if it doesn't exist, overwrites if it does.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path to the file to write (relative to workspace or absolute)",
+          },
+          content: {
+            type: "string",
+            description: "Content to write to the file",
+          },
+        },
+        required: ["path", "content"],
+      },
+    },
+    handler: async (args) => {
+      const { path: filePath, content } = args as { path: string; content: string };
+      
+      try {
+        const resolvedPath = basePath && !path.isAbsolute(filePath)
+          ? path.resolve(basePath, filePath)
+          : filePath;
+
+        // Ensure parent directory exists
+        await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+        await fs.writeFile(resolvedPath, content, "utf-8");
+        
+        return `Successfully wrote ${content.length} bytes to ${filePath}`;
+      } catch (error) {
+        const err = error as { message?: string };
+        return `[error] ${err.message || String(error)}`;
+      }
+    },
+  };
+}
+
+/**
+ * Create a directory listing tool.
+ */
+export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
+  const { basePath } = options;
+
+  return {
+    tool: {
+      name: "list_dir",
+      description: "List files and directories in a path.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Directory path to list (relative to workspace or absolute). Defaults to current directory.",
+          },
+        },
+      },
+    },
+    handler: async (args) => {
+      const { path: dirPath = "." } = args as { path?: string };
+      
+      try {
+        const resolvedPath = basePath && !path.isAbsolute(dirPath)
+          ? path.resolve(basePath, dirPath)
+          : dirPath;
+
+        const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
+        const lines = entries.map((entry) => {
+          const prefix = entry.isDirectory() ? "[dir] " : "      ";
+          return `${prefix}${entry.name}`;
+        });
+        
+        return lines.length > 0 ? lines.join("\n") : "(empty directory)";
+      } catch (error) {
+        const err = error as { code?: string; message?: string };
+        if (err.code === "ENOENT") {
+          return `[error] Directory not found: ${dirPath}`;
+        }
+        return `[error] ${err.message || String(error)}`;
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tool set helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a standard set of tools for an agent workspace.
+ */
+export function createWorkspaceTools(workspacePath: string): { tool: Tool; handler: ToolHandler }[] {
+  return [
+    createShellTool({ cwd: workspacePath }),
+    createReadFileTool({ basePath: workspacePath }),
+    createWriteFileTool({ basePath: workspacePath }),
+    createListDirTool({ basePath: workspacePath }),
+    createTimeTool(),
+  ];
 }

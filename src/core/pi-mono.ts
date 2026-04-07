@@ -2,7 +2,7 @@
 // Implements the AgentCore / AgentInstance interfaces from types.ts.
 
 import { Agent } from "@mariozechner/pi-agent-core";
-import type { AgentEvent as CoreEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentEvent as CoreEvent, AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
 import type { Model, Api } from "@mariozechner/pi-ai";
 
@@ -13,8 +13,10 @@ import type {
   AgentInstance,
   Message,
   MessageContentBlock,
+  Tool,
 } from "./types.js";
 import { messageContentToPlainText, textContent } from "./types.js";
+import type { ToolRegistry } from "./tools.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -219,18 +221,61 @@ function getAgentEndMetadata(messages: Message[]): {
 }
 
 // ---------------------------------------------------------------------------
+// Tool conversion
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert our Tool + handler to pi-agent-core AgentTool.
+ */
+function toAgentTool(tool: Tool, handler: (args: unknown) => Promise<string>): AgentTool {
+  return {
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters as AgentTool["parameters"],
+    label: tool.name,
+    execute: async (_toolCallId, params) => {
+      const result = await handler(params);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // PiMonoCore
 // ---------------------------------------------------------------------------
 
 export class PiMonoCore implements AgentCore {
+  private toolRegistry?: ToolRegistry;
+
+  /**
+   * Set a tool registry to be used for all agents created by this core.
+   */
+  setToolRegistry(registry: ToolRegistry): void {
+    this.toolRegistry = registry;
+  }
+
   createAgent(config: AgentConfig): AgentInstance {
     const model = resolveModel(config);
+
+    // Convert registered tools to AgentTools
+    const tools: AgentTool[] = [];
+    if (this.toolRegistry) {
+      for (const entry of this.toolRegistry.list()) {
+        const toolEntry = this.toolRegistry.get(entry.name);
+        if (toolEntry) {
+          tools.push(toAgentTool(toolEntry.tool, toolEntry.handler));
+        }
+      }
+    }
 
     const agent = new Agent({
       initialState: {
         systemPrompt: config.systemPrompt,
         model,
-        tools: [],          // tools wired separately
+        tools,
         messages: [],
       },
       ...(config.provider?.apiKey
