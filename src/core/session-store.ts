@@ -11,9 +11,6 @@ import type {
   SessionStore,
   SessionStoreConfig,
 } from "./types.js";
-import { createLogger } from "./logger.js";
-
-const logger = createLogger("session-store");
 
 interface StoredSession extends Session {
   messages?: Message[];
