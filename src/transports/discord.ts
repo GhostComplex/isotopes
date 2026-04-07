@@ -18,6 +18,7 @@ import type {
   SessionStore,
   Transport,
 } from "../core/types.js";
+import { textContent } from "../core/types.js";
 import { loggers } from "../core/logger.js";
 
 const log = loggers.discord;
@@ -119,7 +120,7 @@ export class DiscordTransport implements Transport {
     // Add user message to session
     const userMessage: Message = {
       role: "user",
-      content,
+      content: textContent(content),
       timestamp: msg.createdTimestamp,
       metadata: {
         userId: msg.author.id,
@@ -252,7 +253,7 @@ export class DiscordTransport implements Transport {
           if (responseText) {
             await sessionStore.addMessage(sessionId, {
               role: "assistant",
-              content: responseText,
+              content: textContent(responseText),
               timestamp: Date.now(),
             });
           }
@@ -272,7 +273,7 @@ export class DiscordTransport implements Transport {
       if (finalErrorMessage) {
         await sessionStore.addMessage(sessionId, {
           role: "assistant",
-          content: finalErrorMessage,
+          content: textContent(finalErrorMessage),
           timestamp: Date.now(),
           metadata: { isError: true },
         });

@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
 import type { AgentManager, SessionStore, AgentInstance } from "../core/types.js";
+import { textContent } from "../core/types.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -203,7 +204,7 @@ describe("DiscordTransport", () => {
         "session-123",
         expect.objectContaining({
           role: "assistant",
-          content: "❌ No API provider registered for api: undefined",
+          content: textContent("❌ No API provider registered for api: undefined"),
           metadata: { isError: true },
         }),
       );
@@ -221,8 +222,8 @@ describe("DiscordTransport", () => {
         lastActiveAt: new Date(),
       });
       sessionStore.getMessages = vi.fn().mockResolvedValue([
-        { role: "assistant", content: "Previous reply" },
-        { role: "user", content: "hello again" },
+        { role: "assistant", content: textContent("Previous reply") },
+        { role: "user", content: textContent("hello again") },
       ]);
 
       const channel: MockChannel = {
@@ -251,11 +252,11 @@ describe("DiscordTransport", () => {
       expect(sessionStore.addMessage).toHaveBeenNthCalledWith(
         1,
         "session-123",
-        expect.objectContaining({ role: "user", content: "hello again" }),
+        expect.objectContaining({ role: "user", content: textContent("hello again") }),
       );
       expect(promptSpy).toHaveBeenCalledWith([
-        { role: "assistant", content: "Previous reply" },
-        { role: "user", content: "hello again" },
+        { role: "assistant", content: textContent("Previous reply") },
+        { role: "user", content: textContent("hello again") },
       ]);
     });
   });

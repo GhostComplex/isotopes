@@ -5,9 +5,39 @@
 // Messages
 // ---------------------------------------------------------------------------
 
+export interface TextContentBlock {
+  type: 'text';
+  text: string;
+}
+
+export interface ToolResultContentBlock {
+  type: 'tool_result';
+  output: string;
+  isError?: boolean;
+  toolCallId?: string;
+  toolName?: string;
+}
+
+export type MessageContentBlock = TextContentBlock | ToolResultContentBlock;
+
+export function textContent(text: string): MessageContentBlock[] {
+  return [{ type: 'text', text }];
+}
+
+export function messageContentToPlainText(content: MessageContentBlock[]): string {
+  return content
+    .map((block) => {
+      if (block.type === 'text') {
+        return block.text;
+      }
+      return block.output;
+    })
+    .join("\n");
+}
+
 export interface Message {
   role: 'user' | 'assistant' | 'tool_result';
-  content: string;
+  content: MessageContentBlock[];
   timestamp?: number;
   metadata?: Record<string, unknown>;
 }

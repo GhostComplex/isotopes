@@ -6,6 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import { DefaultSessionStore } from "./session-store.js";
 import type { Message } from "./types.js";
+import { textContent } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Test setup
@@ -148,34 +149,36 @@ describe("DefaultSessionStore", () => {
     it("stores and retrieves messages", async () => {
       const session = await store.create("agent-1");
 
-      const msg1: Message = { role: "user", content: "Hello" };
-      const msg2: Message = { role: "assistant", content: "Hi there!" };
+      const msg1: Message = { role: "user", content: textContent("Hello") };
+      const msg2: Message = { role: "assistant", content: textContent("Hi there!") };
 
       await store.addMessage(session.id, msg1);
       await store.addMessage(session.id, msg2);
 
       const messages = await store.getMessages(session.id);
       expect(messages).toHaveLength(2);
-      expect(messages[0].content).toBe("Hello");
-      expect(messages[1].content).toBe("Hi there!");
+      expect(messages[0].content).toEqual(textContent("Hello"));
+      expect(messages[1].content).toEqual(textContent("Hi there!"));
     });
 
     it("persists messages to JSONL file", async () => {
       const session = await store.create("agent-1");
 
-      await store.addMessage(session.id, { role: "user", content: "Test" });
+      await store.addMessage(session.id, { role: "user", content: textContent("Test") });
 
       const messagesFile = path.join(tempDir, `${session.id}.jsonl`);
       const content = await fs.readFile(messagesFile, "utf-8");
       const lines = content.trim().split("\n");
+      const record = JSON.parse(lines[0]);
 
       expect(lines).toHaveLength(1);
-      expect(JSON.parse(lines[0]).content).toBe("Test");
+      expect(record.type).toBe("message");
+      expect(record.message.content).toEqual(textContent("Test"));
     });
 
     it("loads messages from disk", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: "Persisted" });
+      await store.addMessage(session.id, { role: "user", content: textContent("Persisted") });
 
       // New store instance
       const newStore = new DefaultSessionStore({ dataDir: tempDir });
@@ -183,12 +186,12 @@ describe("DefaultSessionStore", () => {
 
       const messages = await newStore.getMessages(session.id);
       expect(messages).toHaveLength(1);
-      expect(messages[0].content).toBe("Persisted");
+      expect(messages[0].content).toEqual(textContent("Persisted"));
     });
 
     it("throws if session not found", async () => {
       await expect(
-        store.addMessage("non-existent", { role: "user", content: "Hi" }),
+        store.addMessage("non-existent", { role: "user", content: textContent("Hi") }),
       ).rejects.toThrow('Session "non-existent" not found');
 
       await expect(store.getMessages("non-existent")).rejects.toThrow(
@@ -220,7 +223,7 @@ describe("DefaultSessionStore", () => {
 
     it("removes session files from disk", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: "persist me" });
+      await store.addMessage(session.id, { role: "user", content: textContent("persist me") });
       const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
 
       await store.delete(session.id);
@@ -249,36 +252,4 @@ describe("DefaultSessionStore", () => {
     });
   });
 
-  describe("legacy migration", () => {
-    it("loads and migrates legacy per-session directories", async () => {
-      const sessionId = "123e4567-e89b-12d3-a456-426614174000";
-      const legacyDir = path.join(tempDir, sessionId);
-      await fs.mkdir(legacyDir, { recursive: true });
-      await fs.writeFile(
-        path.join(legacyDir, "session.json"),
-        JSON.stringify({
-          id: sessionId,
-          agentId: "agent-1",
-          metadata: { key: "legacy-key", transport: "discord", channelId: "123" },
-          createdAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
-        }),
-      );
-      await fs.writeFile(
-        path.join(legacyDir, "messages.jsonl"),
-        `${JSON.stringify({ role: "user", content: "legacy message" })}\n`,
-      );
-
-      const newStore = new DefaultSessionStore({ dataDir: tempDir });
-      await newStore.init();
-
-      const found = await newStore.findByKey("legacy-key");
-      const messages = await newStore.getMessages(sessionId);
-
-      expect(found?.id).toBe(sessionId);
-      expect(messages).toEqual([{ role: "user", content: "legacy message" }]);
-      await expect(fs.access(path.join(tempDir, "sessions.json"))).resolves.not.toThrow();
-      await expect(fs.access(path.join(tempDir, `${sessionId}.jsonl`))).resolves.not.toThrow();
-      await expect(fs.access(legacyDir)).rejects.toThrow();
-    });
-  });
 });

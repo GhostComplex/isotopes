@@ -12,7 +12,9 @@ import type {
   AgentEvent,
   AgentInstance,
   Message,
+  MessageContentBlock,
 } from "./types.js";
+import { messageContentToPlainText, textContent } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,24 +98,25 @@ function toAgentMessage(msg: Message): AgentMessage {
     tool_result: "toolResult",
   };
   const role = roleMap[msg.role] ?? msg.role;
+
+  if (role === "toolResult") {
+    const toolResult = msg.content.find(
+      (block): block is Extract<MessageContentBlock, { type: "tool_result" }> =>
+        block.type === "tool_result",
+    );
+    return {
+      role,
+      content: toolResult?.output ?? messageContentToPlainText(msg.content),
+      timestamp: msg.timestamp ?? Date.now(),
+      ...(toolResult?.toolCallId ? { toolCallId: toolResult.toolCallId } : {}),
+      ...(toolResult?.toolName ? { toolName: toolResult.toolName } : {}),
+      ...(toolResult?.isError !== undefined ? { isError: toolResult.isError } : {}),
+    } as unknown as AgentMessage;
+  }
+
   return {
     role,
     content: msg.content,
-    timestamp: msg.timestamp ?? Date.now(),
-  } as AgentMessage;
-}
-
-function toPromptHistoryAgentMessage(msg: Message): AgentMessage {
-  const roleMap: Record<string, string> = {
-    user: "user",
-    assistant: "assistant",
-    tool_result: "toolResult",
-  };
-  const role = roleMap[msg.role] ?? msg.role;
-
-  return {
-    role,
-    content: [{ type: "text", text: msg.content }],
     timestamp: msg.timestamp ?? Date.now(),
   } as AgentMessage;
 }
@@ -147,12 +150,57 @@ function fromAgentMessage(msg: AgentMessage): Message {
     }
     return {
       role: roleMap[m.role] ?? "assistant",
-      content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+      content: normalizeContentBlocks(m.content),
       timestamp: typeof m.timestamp === "number" ? m.timestamp : Date.now(),
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     };
   }
-  return { role: "assistant", content: String(msg), timestamp: Date.now() };
+  return { role: "assistant", content: textContent(String(msg)), timestamp: Date.now() };
+}
+
+function normalizeContentBlocks(content: unknown): MessageContentBlock[] {
+  if (typeof content === "string") {
+    return textContent(content);
+  }
+
+  if (Array.isArray(content)) {
+    const blocks: MessageContentBlock[] = [];
+    for (const block of content) {
+      if (!block || typeof block !== "object") {
+        continue;
+      }
+
+      const typed = block as {
+        type?: unknown;
+        text?: unknown;
+        output?: unknown;
+        isError?: unknown;
+        toolCallId?: unknown;
+        toolName?: unknown;
+      };
+
+      if (typed.type === "text" && typeof typed.text === "string") {
+        blocks.push({ type: "text", text: typed.text });
+        continue;
+      }
+
+      if (typed.type === "tool_result" && typeof typed.output === "string") {
+        blocks.push({
+          type: "tool_result",
+          output: typed.output,
+          ...(typeof typed.isError === "boolean" ? { isError: typed.isError } : {}),
+          ...(typeof typed.toolCallId === "string" ? { toolCallId: typed.toolCallId } : {}),
+          ...(typeof typed.toolName === "string" ? { toolName: typed.toolName } : {}),
+        });
+      }
+    }
+
+    if (blocks.length > 0) {
+      return blocks;
+    }
+  }
+
+  return textContent(JSON.stringify(content));
 }
 
 function getAgentEndMetadata(messages: Message[]): {
@@ -215,11 +263,7 @@ class PiMonoInstance implements AgentInstance {
     const done = (
       typeof input === "string"
         ? this.agent.prompt(input)
-        : this.agent.prompt(
-            input
-              .filter((message) => message.role === "user" || message.role === "assistant")
-              .map(toPromptHistoryAgentMessage),
-          )
+        : this.agent.prompt(input.map(toAgentMessage))
     ).then(() => {
       events.push(null); // sentinel
       resolve?.();
