@@ -5,12 +5,15 @@ import { Client, WSClient, EventDispatcher, Domain } from "@larksuiteoapi/node-s
 import type {
   AgentInstance,
   AgentManager,
+  Binding,
   ChannelsConfig,
   Message,
   SessionStore,
   Transport,
 } from "../core/types.js";
 import { textContent } from "../core/types.js";
+import { resolveBinding } from "../core/bindings.js";
+import type { BindingQuery } from "../core/bindings.js";
 import { loggers } from "../core/logger.js";
 
 const log = loggers.feishu;
@@ -65,6 +68,8 @@ export interface FeishuTransportConfig {
   defaultAgentId?: string;
   /** Map of Feishu bot open_id → agent ID for multi-agent routing */
   agentBindings?: Record<string, string>;
+  /** Binding rules for routing messages to agents by (channel, accountId, peer) */
+  bindings?: Binding[];
   /** Channels config for per-group settings (e.g. requireMention) */
   channels?: ChannelsConfig;
   /** The account ID this bot is running as (for group config lookup) */
@@ -307,7 +312,28 @@ export class FeishuTransport implements Transport {
   }
 
   private resolveAgentId(event: FeishuMessageEvent): string {
-    // Check if any mentioned bot maps to an agent via bindings
+    // 1. Try structured bindings (resolveBinding) — most specific match wins
+    if (this.config.bindings?.length) {
+      const chatType = event.message.chat_type;
+      const query: BindingQuery = {
+        channel: "feishu",
+        accountId: this.config.accountId,
+        peer: {
+          kind: chatType === "p2p" ? "dm" : "group",
+          id: chatType === "p2p"
+            ? (event.sender.sender_id?.open_id ?? "unknown")
+            : event.message.chat_id,
+        },
+      };
+
+      const binding = resolveBinding(this.config.bindings, query);
+      if (binding) {
+        log.debug(`Binding resolved agent "${binding.agentId}" for query ${JSON.stringify(query)}`);
+        return binding.agentId;
+      }
+    }
+
+    // 2. Fall back to legacy agentBindings (mention-based open_id → agentId map)
     if (this.config.agentBindings && event.message.mentions) {
       for (const mention of event.message.mentions) {
         const openId = mention.id.open_id;
@@ -317,7 +343,7 @@ export class FeishuTransport implements Transport {
       }
     }
 
-    // Fallback to default agent
+    // 3. Fall back to default agent
     return this.config.defaultAgentId ?? "default";
   }
 

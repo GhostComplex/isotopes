@@ -22,6 +22,10 @@ export type {
   GuildConfig,
   DiscordAccountConfig,
   ChannelsConfig,
+  Binding,
+  BindingMatch,
+  BindingPeer,
+  PeerKind,
 } from "./core/types.js";
 
 // ---------------------------------------------------------------------------
@@ -75,6 +79,16 @@ export {
   resolveRequireMention,
 } from "./core/mention.js";
 export type { MentionContext } from "./core/mention.js";
+
+// ---------------------------------------------------------------------------
+// Bindings — message-to-agent routing
+// ---------------------------------------------------------------------------
+
+export {
+  resolveBinding,
+  resolveAllBindings,
+} from "./core/bindings.js";
+export type { BindingQuery } from "./core/bindings.js";
 
 // ---------------------------------------------------------------------------
 // Transports

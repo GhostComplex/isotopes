@@ -9,7 +9,7 @@ import {
   getFeishuSessionKey,
 } from "./feishu.js";
 import type { FeishuMessageEvent } from "./feishu.js";
-import type { AgentManager, SessionStore, AgentInstance } from "../core/types.js";
+import type { AgentManager, SessionStore, AgentInstance, Binding } from "../core/types.js";
 import { textContent } from "../core/types.js";
 
 // ---------------------------------------------------------------------------
@@ -644,6 +644,477 @@ describe("FeishuTransport", () => {
 
       expect(agentManager.get).toHaveBeenCalledWith("special-agent");
       expect(specialAgent.prompt).toHaveBeenCalled();
+    });
+  });
+
+  describe("per-group requireMention", () => {
+    it("responds to unmentioned message when requireMention=false for group", async () => {
+      const groupTransport = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels: {
+          feishu: {
+            enabled: true,
+            groups: {
+              "oc_auto_respond": { requireMention: false },
+            },
+          },
+        },
+      });
+
+      await groupTransport.start();
+
+      const event = makeEvent({
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "oc_auto_respond",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "hello everyone" }),
+          // No mentions at all
+        },
+      });
+
+      await (
+        groupTransport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).toHaveBeenCalled();
+    });
+
+    it("requires mention when requireMention=true for group", async () => {
+      const groupTransport = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels: {
+          feishu: {
+            enabled: true,
+            groups: {
+              "oc_mention_only": { requireMention: true },
+            },
+          },
+        },
+      });
+
+      await groupTransport.start();
+
+      const event = makeEvent({
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "oc_mention_only",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "hello everyone" }),
+        },
+      });
+
+      await (
+        groupTransport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).not.toHaveBeenCalled();
+    });
+
+    it("defaults to requireMention=true for unconfigured groups", async () => {
+      const groupTransport = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels: {
+          feishu: {
+            enabled: true,
+            groups: {
+              "oc_other": { requireMention: false },
+            },
+          },
+        },
+      });
+
+      await groupTransport.start();
+
+      // Send to a group NOT in the config
+      const event = makeEvent({
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "oc_unknown_group",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "hello" }),
+        },
+      });
+
+      await (
+        groupTransport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).not.toHaveBeenCalled();
+    });
+
+    it("responds when mentioned in requireMention=true group", async () => {
+      const groupTransport = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels: {
+          feishu: {
+            enabled: true,
+            groups: {
+              "oc_mention_only": { requireMention: true },
+            },
+          },
+        },
+      });
+
+      await groupTransport.start();
+
+      const event = makeEvent({
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "oc_mention_only",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "@_user_1 hello" }),
+          mentions: [
+            {
+              key: "@_user_1",
+              id: { open_id: "bot-open-id-123" },
+              name: "TestBot",
+            },
+          ],
+        },
+      });
+
+      await (
+        groupTransport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).toHaveBeenCalled();
+    });
+  });
+
+  describe("bindings integration", () => {
+    const analyzerAgent: AgentInstance = {
+      prompt: vi.fn(async function* () {
+        yield { type: "text_delta" as const, text: "Analysis done." };
+        yield { type: "agent_end" as const, messages: [] };
+      }),
+      abort: vi.fn(),
+      steer: vi.fn(),
+      followUp: vi.fn(),
+    };
+
+    const defaultAgent: AgentInstance = {
+      prompt: vi.fn(async function* () {
+        yield { type: "text_delta" as const, text: "Default reply." };
+        yield { type: "agent_end" as const, messages: [] };
+      }),
+      abort: vi.fn(),
+      steer: vi.fn(),
+      followUp: vi.fn(),
+    };
+
+    it("routes via channel-level binding", async () => {
+      const bindings: Binding[] = [
+        {
+          agentId: "analyzer",
+          match: { channel: "feishu", accountId: "major" },
+        },
+      ];
+
+      agentManager.get = vi.fn((id: string) => {
+        if (id === "analyzer") return analyzerAgent;
+        if (id === "default") return defaultAgent;
+        return undefined;
+      });
+
+      const boundTransport = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        accountId: "major",
+        bindings,
+      });
+
+      await boundTransport.start();
+
+      const event = makeEvent({
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "chat-dm-1",
+          chat_type: "p2p",
+          message_type: "text",
+          content: JSON.stringify({ text: "analyze this" }),
+        },
+      });
+
+      await (
+        boundTransport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      expect(agentManager.get).toHaveBeenCalledWith("analyzer");
+      expect(analyzerAgent.prompt).toHaveBeenCalled();
+    });
+
+    it("routes via group-specific binding (higher specificity)", async () => {
+      const bindings: Binding[] = [
+        {
+          agentId: "default-feishu",
+          match: { channel: "feishu", accountId: "major" },
+        },
+        {
+          agentId: "analyzer",
+          match: {
+            channel: "feishu",
+            accountId: "major",
+            peer: { kind: "group", id: "oc_special" },
+          },
+        },
+      ];
+
+      agentManager.get = vi.fn((id: string) => {
+        if (id === "analyzer") return analyzerAgent;
+        if (id === "default-feishu") return defaultAgent;
+        return undefined;
+      });
+
+      const boundTransport = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        accountId: "major",
+        bindings,
+        channels: {
+          feishu: {
+            enabled: true,
+            groups: {
+              "oc_special": { requireMention: false },
+            },
+          },
+        },
+      });
+
+      await boundTransport.start();
+
+      const event = makeEvent({
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "oc_special",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "analyze this" }),
+        },
+      });
+
+      await (
+        boundTransport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      // Should pick the more specific group binding, not the channel-level one
+      expect(agentManager.get).toHaveBeenCalledWith("analyzer");
+      expect(analyzerAgent.prompt).toHaveBeenCalled();
+    });
+
+    it("falls back to agentBindings when no structured binding matches", async () => {
+      const specialAgent: AgentInstance = {
+        prompt: vi.fn(async function* () {
+          yield { type: "text_delta" as const, text: "Special!" };
+          yield { type: "agent_end" as const, messages: [] };
+        }),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+      };
+
+      const bindings: Binding[] = [
+        {
+          agentId: "analyzer",
+          match: {
+            channel: "feishu",
+            accountId: "other-account",  // won't match
+          },
+        },
+      ];
+
+      agentManager.get = vi.fn((id: string) => {
+        if (id === "special-agent") return specialAgent;
+        return undefined;
+      });
+
+      const boundTransport = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        accountId: "major",
+        bindings,
+        agentBindings: { "special-bot-id": "special-agent" },
+      });
+
+      await boundTransport.start();
+
+      const event = makeEvent({
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "chat-dm-1",
+          chat_type: "p2p",
+          message_type: "text",
+          content: JSON.stringify({ text: "@_user_1 hello" }),
+          mentions: [
+            {
+              key: "@_user_1",
+              id: { open_id: "special-bot-id" },
+              name: "SpecialBot",
+            },
+          ],
+        },
+      });
+
+      await (
+        boundTransport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      expect(agentManager.get).toHaveBeenCalledWith("special-agent");
+      expect(specialAgent.prompt).toHaveBeenCalled();
+    });
+
+    it("falls back to defaultAgentId when no binding or agentBinding matches", async () => {
+      const bindings: Binding[] = [
+        {
+          agentId: "analyzer",
+          match: {
+            channel: "discord",  // wrong channel, won't match
+            accountId: "major",
+          },
+        },
+      ];
+
+      agentManager.get = vi.fn((id: string) => {
+        if (id === "fallback") return defaultAgent;
+        return undefined;
+      });
+
+      const boundTransport = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "fallback",
+        accountId: "major",
+        bindings,
+      });
+
+      await boundTransport.start();
+
+      const event = makeEvent({
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "chat-dm-1",
+          chat_type: "p2p",
+          message_type: "text",
+          content: JSON.stringify({ text: "hello" }),
+        },
+      });
+
+      await (
+        boundTransport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      expect(agentManager.get).toHaveBeenCalledWith("fallback");
+      expect(defaultAgent.prompt).toHaveBeenCalled();
+    });
+
+    it("routes DM via peer-specific binding", async () => {
+      const bindings: Binding[] = [
+        {
+          agentId: "analyzer",
+          match: {
+            channel: "feishu",
+            accountId: "major",
+            peer: { kind: "dm", id: "user-open-id-1" },
+          },
+        },
+      ];
+
+      agentManager.get = vi.fn((id: string) => {
+        if (id === "analyzer") return analyzerAgent;
+        if (id === "default") return defaultAgent;
+        return undefined;
+      });
+
+      const boundTransport = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        accountId: "major",
+        bindings,
+      });
+
+      await boundTransport.start();
+
+      const event = makeEvent({
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "chat-dm-1",
+          chat_type: "p2p",
+          message_type: "text",
+          content: JSON.stringify({ text: "hello" }),
+        },
+      });
+
+      await (
+        boundTransport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      expect(agentManager.get).toHaveBeenCalledWith("analyzer");
+      expect(analyzerAgent.prompt).toHaveBeenCalled();
     });
   });
 
