@@ -1,8 +1,8 @@
 # 🫥 Isotopes PRD
 
-> Version: 0.1.0 (MVP)
-> Date: 2026-04-04
-> Status: **Draft**
+> Version: 0.2.0
+> Date: 2026-04-08
+> Status: **In Progress**
 
 ## Overview
 
@@ -81,14 +81,18 @@ See [DESIGN.md](./DESIGN.md) for detailed architecture and interfaces.
 ## Data Structure
 
 ```
-data/
-├── agents.json              # Agent metadata (id, name, provider, channels)
-└── agents/{agentId}/
-    ├── SOUL.md              # System prompt (markdown)
-    ├── TOOLS.md             # Tool instructions (optional)
-    ├── MEMORY.md            # Persistent memory (optional)
-    └── sessions/
-        └── {sessionId}.jsonl
+~/.isotopes/
+├── isotopes.yaml            # Config file
+├── workspaces/
+│   └── {agentId}/
+│       ├── SOUL.md          # System prompt (markdown)
+│       ├── TOOLS.md         # Tool instructions (optional)
+│       ├── MEMORY.md        # Persistent memory (optional)
+│       └── sessions/
+│           ├── sessions.json    # Session index
+│           └── {sessionId}.jsonl
+└── logs/
+    └── isotopes-YYYY-MM-DD.log
 ```
 
 ---
@@ -106,21 +110,26 @@ data/
 
 ### M0: Core Foundation
 
-- [ ] Project setup (TypeScript, npm, ESM)
-- [ ] Agent Core interface + Pi-Mono wrapper
-- [ ] Agent Manager (JSON persisted)
-- [ ] Session Store (JSONL + auto-cleanup)
-- [ ] Discord transport
-  - [ ] Channel message listening
-  - [ ] Thread creation + streaming
-  - [ ] @mention routing to correct agent
-  - [ ] Multi-agent same channel config
-- [ ] Tool System
-  - [ ] Shell exec
-  - [ ] File read/write
-  - [ ] Tool registration interface
-- [ ] Config loader (YAML)
-- [ ] Integration test with proxy
+- [x] Project setup (TypeScript, pnpm, ESM)
+- [x] Agent Core interface + Pi-Mono wrapper
+- [x] Agent Manager
+- [x] Session Store (JSONL + key-based lookup)
+- [x] Discord transport
+  - [x] Channel message listening
+  - [x] Thread support
+  - [x] @mention routing to correct agent
+  - [x] Multi-agent same channel config
+- [x] Tool System
+  - [x] Shell exec
+  - [x] File read/write/list
+  - [x] Tool registration interface
+- [x] Config loader (YAML, `~/.isotopes/isotopes.yaml`)
+- [x] Proxy support (OpenAI/Anthropic compatible)
+- [x] Multi-turn conversation (session history passed to agent)
+- [x] Structured message content (MessageContentBlock)
+- [ ] Workspace injection (SOUL.md → system prompt)
+- [ ] Context compaction (summarize old messages to avoid context overflow)
+- [ ] Session auto-cleanup (TTL-based)
 
 ### M1: Automation & Git
 
