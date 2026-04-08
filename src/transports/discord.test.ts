@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
-import type { AgentManager, SessionStore, AgentInstance } from "../core/types.js";
+import type { AgentManager, SessionStore, AgentInstance, ChannelsConfig } from "../core/types.js";
 import { textContent } from "../core/types.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -258,6 +258,156 @@ describe("DiscordTransport", () => {
         { role: "assistant", content: textContent("Previous reply") },
         { role: "user", content: textContent("hello again") },
       ]);
+    });
+  });
+
+  describe("requireMention integration", () => {
+    function makeChannel(): MockChannel {
+      return {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+      };
+    }
+
+    function makeMsg(overrides: Partial<MockIncomingMessage> = {}): MockIncomingMessage {
+      return {
+        author: { bot: false, username: "tester", id: "user-1" },
+        content: "hello bot",
+        createdTimestamp: Date.now(),
+        guild: { id: "guild-1" },
+        channelId: "channel-1",
+        channel: makeChannel(),
+        mentions: { has: vi.fn(() => false) },
+        thread: undefined,
+        ...overrides,
+      };
+    }
+
+    it("responds without mention when requireMention=false for the guild", async () => {
+      const channels: ChannelsConfig = {
+        discord: {
+          accounts: {
+            testacct: {
+              guilds: {
+                "guild-1": { requireMention: false },
+              },
+            },
+          },
+        },
+      };
+
+      const transportWithMention = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels,
+        accountId: "testacct",
+      });
+
+      const msg = makeMsg({
+        mentions: { has: vi.fn(() => false) },
+      });
+
+      await (
+        transportWithMention as unknown as {
+          handleMessage: (message: MockIncomingMessage) => Promise<void>;
+        }
+      ).handleMessage(msg);
+
+      // Agent should have been called (message was processed)
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).toHaveBeenCalled();
+    });
+
+    it("ignores messages without mention when requireMention=true (default)", async () => {
+      const channels: ChannelsConfig = {
+        discord: {
+          accounts: {
+            testacct: {
+              guilds: {
+                "guild-1": { requireMention: true },
+              },
+            },
+          },
+        },
+      };
+
+      const transportWithMention = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels,
+        accountId: "testacct",
+      });
+
+      const msg = makeMsg({
+        mentions: { has: vi.fn(() => false) },
+      });
+
+      await (
+        transportWithMention as unknown as {
+          handleMessage: (message: MockIncomingMessage) => Promise<void>;
+        }
+      ).handleMessage(msg);
+
+      // Agent should NOT have been called
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).not.toHaveBeenCalled();
+    });
+
+    it("responds to mention even when requireMention=true", async () => {
+      const channels: ChannelsConfig = {
+        discord: {
+          accounts: {
+            testacct: {
+              guilds: {
+                "guild-1": { requireMention: true },
+              },
+            },
+          },
+        },
+      };
+
+      const transportWithMention = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels,
+        accountId: "testacct",
+      });
+
+      const msg = makeMsg({
+        content: "<@bot-123> hello",
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+      });
+
+      await (
+        transportWithMention as unknown as {
+          handleMessage: (message: MockIncomingMessage) => Promise<void>;
+        }
+      ).handleMessage(msg);
+
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).toHaveBeenCalled();
+    });
+
+    it("defaults to requireMention=true when no channels config provided", async () => {
+      // Transport without channels config (original behavior)
+      const msg = makeMsg({
+        mentions: { has: vi.fn(() => false) },
+      });
+
+      await (
+        transport as unknown as {
+          handleMessage: (message: MockIncomingMessage) => Promise<void>;
+        }
+      ).handleMessage(msg);
+
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).not.toHaveBeenCalled();
     });
   });
 });

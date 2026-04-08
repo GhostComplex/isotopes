@@ -197,6 +197,38 @@ export interface Binding {
 }
 
 // ---------------------------------------------------------------------------
+// Channel config — per-guild/group settings
+// ---------------------------------------------------------------------------
+
+/** Per-guild (Discord) or per-group (Feishu) configuration */
+export interface GuildConfig {
+  /** Whether the bot must be @mentioned to respond. Default: true */
+  requireMention?: boolean;
+}
+
+/** Discord account configuration within the channels section */
+export interface DiscordAccountConfig {
+  token?: string;
+  tokenEnv?: string;
+  groupPolicy?: string;
+  /** Per-guild configuration keyed by guild ID */
+  guilds?: Record<string, GuildConfig>;
+}
+
+/** Channels section of the configuration */
+export interface ChannelsConfig {
+  discord?: {
+    enabled?: boolean;
+    accounts?: Record<string, DiscordAccountConfig>;
+  };
+  feishu?: {
+    enabled?: boolean;
+    accounts?: Record<string, unknown>;
+    groups?: Record<string, GuildConfig>;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Transport
 // ---------------------------------------------------------------------------
 

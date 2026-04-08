@@ -19,6 +19,9 @@ export type {
   Session,
   SessionStore,
   Transport,
+  GuildConfig,
+  DiscordAccountConfig,
+  ChannelsConfig,
 } from "./core/types.js";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +56,8 @@ export {
   loadConfig,
   toAgentConfig,
   getDiscordToken,
+  getDiscordGuildConfig,
+  isRequireMention,
 } from "./core/config.js";
 export type {
   IsotopesConfigFile,
@@ -60,6 +65,16 @@ export type {
   DiscordConfigFile,
   ProviderConfigFile,
 } from "./core/config.js";
+
+// ---------------------------------------------------------------------------
+// Mention detection
+// ---------------------------------------------------------------------------
+
+export {
+  shouldRespondToMessage,
+  resolveRequireMention,
+} from "./core/mention.js";
+export type { MentionContext } from "./core/mention.js";
 
 // ---------------------------------------------------------------------------
 // Transports

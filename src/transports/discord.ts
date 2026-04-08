@@ -14,11 +14,13 @@ import {
 import type {
   AgentInstance,
   AgentManager,
+  ChannelsConfig,
   Message,
   SessionStore,
   Transport,
 } from "../core/types.js";
 import { textContent } from "../core/types.js";
+import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 
 const log = loggers.discord;
@@ -39,6 +41,10 @@ export interface DiscordTransportConfig {
   allowDMs?: boolean;
   /** Channel IDs to listen to (empty = all) */
   channelAllowlist?: string[];
+  /** Channels config for per-guild/group settings (e.g. requireMention) */
+  channels?: ChannelsConfig;
+  /** The account ID this bot is running as (for guild config lookup) */
+  accountId?: string;
 }
 
 /**
@@ -149,17 +155,22 @@ export class DiscordTransport implements Transport {
 
     // Channel allowlist
     if (this.config.channelAllowlist?.length) {
-      return this.config.channelAllowlist.includes(msg.channelId);
+      if (!this.config.channelAllowlist.includes(msg.channelId)) {
+        return false;
+      }
     }
 
-    // Check if bot is mentioned
+    // Check mention-based response using guild config
     const botId = this.client.user?.id;
-    if (botId && msg.mentions.has(botId)) {
-      return true;
-    }
+    const isMentioned = botId ? msg.mentions.has(botId) : false;
 
-    // Default: only respond to mentions
-    return false;
+    return shouldRespondToMessage(this.config.channels, {
+      botUserId: botId ?? "",
+      guildId: msg.guild.id,
+      accountId: this.config.accountId,
+      isMentioned,
+      isDM: false,
+    });
   }
 
   private resolveAgentId(msg: DiscordMessage): string {
