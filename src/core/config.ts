@@ -12,7 +12,6 @@ import type {
   ChannelsConfig,
   CompactionConfig,
   CompactionMode,
-  DiscordAccountConfig,
   GuildConfig,
   PeerKind,
   ProviderConfig,

@@ -587,7 +587,8 @@ describe("FeishuTransport", () => {
     it("ignores group messages when botOpenId is not configured", async () => {
       // Create transport without botOpenId
       capturedEventHandler = null;
-      const transportNoBotId = new FeishuTransport({
+      // Side-effect: constructor registers capturedEventHandler
+      new FeishuTransport({
         appId: "test-app-id",
         appSecret: "test-app-secret",
         agentManager,
@@ -749,6 +750,7 @@ describe("FeishuTransport", () => {
       const errorAgent: AgentInstance = {
         prompt: vi.fn(async function* () {
           throw new Error("Agent crashed");
+          yield; // unreachable but satisfies require-yield
         }),
         abort: vi.fn(),
         steer: vi.fn(),
@@ -842,7 +844,7 @@ describe("FeishuTransport", () => {
   describe("requireMention configuration", () => {
     it("responds to group messages without mention when requireMention is false", async () => {
       capturedEventHandler = null;
-      const transportNoMention = new FeishuTransport({
+      new FeishuTransport({
         appId: "test-app-id",
         appSecret: "test-app-secret",
         agentManager,
@@ -883,7 +885,7 @@ describe("FeishuTransport", () => {
 
     it("ignores group messages without mention when requireMention is true", async () => {
       capturedEventHandler = null;
-      const transportMention = new FeishuTransport({
+      new FeishuTransport({
         appId: "test-app-id",
         appSecret: "test-app-secret",
         agentManager,
@@ -918,7 +920,7 @@ describe("FeishuTransport", () => {
 
     it("responds to mentioned group messages regardless of requireMention config", async () => {
       capturedEventHandler = null;
-      const transportMention = new FeishuTransport({
+      new FeishuTransport({
         appId: "test-app-id",
         appSecret: "test-app-secret",
         agentManager,
@@ -964,7 +966,7 @@ describe("FeishuTransport", () => {
 
     it("defaults to require mention for unconfigured groups", async () => {
       capturedEventHandler = null;
-      const transportPartialConfig = new FeishuTransport({
+      new FeishuTransport({
         appId: "test-app-id",
         appSecret: "test-app-secret",
         agentManager,
@@ -1001,7 +1003,7 @@ describe("FeishuTransport", () => {
 
     it("still processes DMs normally with channels config", async () => {
       capturedEventHandler = null;
-      const transportWithChannels = new FeishuTransport({
+      new FeishuTransport({
         appId: "test-app-id",
         appSecret: "test-app-secret",
         agentManager,

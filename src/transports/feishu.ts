@@ -98,7 +98,7 @@ export function shouldRespondToGroupMessage(
   chatId: string,
   isMentioned: boolean,
   channels?: ChannelsConfig,
-  accountId?: string,
+  _accountId?: string,
 ): boolean {
   if (!channels?.feishu?.groups) {
     return isMentioned;

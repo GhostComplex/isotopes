@@ -432,7 +432,7 @@ describe("toBindings", () => {
           match: {
             channel: "discord",
             accountId: "acct",
-            peer: { kind: "group", id: 1484372470306963547 as unknown as string },
+            peer: { kind: "group", id: "1484372470306963547" as unknown as string },
           },
         },
       ],
