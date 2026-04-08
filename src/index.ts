@@ -83,6 +83,15 @@ export type { MentionContext } from "./core/mention.js";
 export { DiscordTransport } from "./transports/discord.js";
 export type { DiscordTransportConfig } from "./transports/discord.js";
 
+export { FeishuTransport } from "./transports/feishu.js";
+export type { FeishuTransportConfig, FeishuMessageEvent } from "./transports/feishu.js";
+export {
+  extractTextFromFeishuMessage,
+  stripFeishuMentions,
+  isBotMentioned,
+  getFeishuSessionKey,
+} from "./transports/feishu.js";
+
 // ---------------------------------------------------------------------------
 // Logging
 // ---------------------------------------------------------------------------
