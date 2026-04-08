@@ -175,3 +175,45 @@ export {
   ensureWorkspaceDir,
   resolveWorkspacePath,
 } from "./core/paths.js";
+
+// ---------------------------------------------------------------------------
+// Git / GitHub tools
+// ---------------------------------------------------------------------------
+
+export {
+  gitStatus,
+  gitLog,
+  gitDiff,
+  gitAdd,
+  gitCommit,
+  gitPush,
+  gitPull,
+  gitCheckout,
+  gitBranch,
+  gitRevParse,
+  listPRs,
+  getPR,
+  createPR,
+  mergePR,
+  closePR,
+  reviewPR,
+  listIssues,
+  getIssue,
+  createIssue,
+  closeIssue,
+  commentIssue,
+  getRepo,
+} from "./tools/index.js";
+export type {
+  GitOptions,
+  GitStatusResult,
+  GitLogEntry,
+  GitExecResult,
+  GhOptions,
+  PullRequest,
+  Issue,
+  Repo,
+  CreatePROptions,
+  CreateIssueOptions,
+  ReviewPROptions,
+} from "./tools/index.js";
