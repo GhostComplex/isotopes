@@ -3,17 +3,21 @@
 // M2.1: P2P (DM) messages
 // M2.2: Group message handling with @mention gating
 // M2.3: Per-group requireMention configuration
+// M2.4: Bindings integration for agent routing
 
 import * as lark from "@larksuiteoapi/node-sdk";
 import type {
   AgentInstance,
   AgentManager,
+  Binding,
+  BindingPeer,
   ChannelsConfig,
   Message,
   SessionStore,
   Transport,
 } from "../core/types.js";
 import { textContent } from "../core/types.js";
+import { resolveBinding } from "../core/bindings.js";
 import { loggers } from "../core/logger.js";
 
 const log = loggers.feishu;
@@ -156,6 +160,10 @@ export interface FeishuTransportConfig {
   channels?: ChannelsConfig;
   /** The account ID this bot is running as (for group config lookup) */
   accountId?: string;
+  /** Agent ↔ channel bindings for routing messages to agents */
+  bindings?: Binding[];
+  /** Legacy per-bot agent bindings: { [botOpenId]: agentId } */
+  agentBindings?: Record<string, string>;
 }
 
 /** Shape of the im.message.receive_v1 event data from the Feishu SDK */
@@ -188,6 +196,42 @@ export interface FeishuMessageEvent {
       name: string;
     }>;
   };
+}
+
+// ---------------------------------------------------------------------------
+// Agent resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve which agent should handle a Feishu message.
+ *
+ * Resolution order (first match wins):
+ *   1. Bindings system: resolveBinding(bindings, { channel, accountId, peer })
+ *   2. Legacy agentBindings map: agentBindings[botOpenId]
+ *   3. defaultAgentId fallback
+ *   4. undefined — no agent can handle this message
+ */
+export function resolveAgentId(
+  bindings: Binding[] | undefined,
+  agentBindings: Record<string, string> | undefined,
+  defaultAgentId: string | undefined,
+  channel: string,
+  accountId: string | undefined,
+  peer: BindingPeer | undefined,
+): string | undefined {
+  // 1. Try bindings system (most specific match)
+  if (bindings && bindings.length > 0) {
+    const binding = resolveBinding(bindings, { channel, accountId, peer });
+    if (binding) return binding.agentId;
+  }
+
+  // 2. Try legacy agentBindings (keyed by botOpenId, passed as accountId)
+  if (agentBindings && accountId && agentBindings[accountId]) {
+    return agentBindings[accountId];
+  }
+
+  // 3. Fall back to defaultAgentId
+  return defaultAgentId;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,8 +340,21 @@ export class FeishuTransport implements Transport {
     const userId = sender.sender_id?.open_id ?? sender.sender_id?.user_id ?? "unknown";
     log.debug(`Received ${message.chat_type} message from user ${userId}: ${text.substring(0, 50)}...`);
 
-    // Resolve agent
-    const agentId = this.config.defaultAgentId ?? "default";
+    // Resolve agent via bindings → agentBindings → defaultAgentId
+    const peer: BindingPeer | undefined =
+      message.chat_type === "group"
+        ? { kind: "group", id: message.chat_id }
+        : { kind: "dm", id: userId };
+
+    const agentId = resolveAgentId(
+      this.config.bindings,
+      this.config.agentBindings,
+      this.config.defaultAgentId,
+      "feishu",
+      this.config.accountId,
+      peer,
+    ) ?? "default";
+
     const agent = this.config.agentManager.get(agentId);
     if (!agent) {
       log.warn(`Agent "${agentId}" not found, ignoring message`);

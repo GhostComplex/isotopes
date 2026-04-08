@@ -262,7 +262,7 @@ Extensible via tool registration.
 |-----------|-------|--------|
 | **M0** | Core Foundation | ✅ Done |
 | **M1** | Config & Routing Enhancements | ✅ Done |
-| **M2** | Feishu Transport | 🚧 In Progress |
+| **M2** | Feishu Transport | ✅ Done |
 | **M3** | ACP Protocol | TBD |
 | **M4** | Automation & Git | TBD |
 | **M5** | Daemon Mode + Web UI | TBD |
@@ -346,7 +346,7 @@ agents:
 
 ---
 
-### M2: Feishu Transport
+### M2: Feishu Transport ✅
 
 **Goal:** Support Feishu (Lark) as second transport.
 
@@ -362,9 +362,9 @@ channels:
         appSecret: "..."
 ```
 
-- [ ] Feishu WebSocket connection
-- [ ] Event handling (message.receive, etc.)
-- [ ] Message sending (text, rich text, cards)
+- [x] Feishu WebSocket connection
+- [x] Event handling (message.receive, etc.)
+- [x] Message sending (text, rich text, cards)
 
 #### 2.2 Feishu Groups
 ```yaml
@@ -375,9 +375,9 @@ channels:
         requireMention: false
 ```
 
-- [ ] Group message handling
-- [ ] P2P chat handling
-- [ ] Group-level `requireMention`
+- [x] Group message handling
+- [x] P2P chat handling
+- [x] Group-level `requireMention`
 
 #### 2.3 Feishu Bindings
 ```yaml
@@ -388,8 +388,8 @@ bindings:
       accountId: major
 ```
 
-- [ ] Feishu account binding
-- [ ] Group-specific binding
+- [x] Feishu account binding
+- [x] Group-specific binding
 
 ---
 

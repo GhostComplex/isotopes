@@ -22,6 +22,10 @@ export type {
   GuildConfig,
   DiscordAccountConfig,
   ChannelsConfig,
+  Binding,
+  BindingMatch,
+  BindingPeer,
+  PeerKind,
 } from "./core/types.js";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +71,13 @@ export type {
 } from "./core/config.js";
 
 // ---------------------------------------------------------------------------
+// Bindings resolution
+// ---------------------------------------------------------------------------
+
+export { resolveBinding, resolveAllBindings } from "./core/bindings.js";
+export type { BindingQuery } from "./core/bindings.js";
+
+// ---------------------------------------------------------------------------
 // Mention detection
 // ---------------------------------------------------------------------------
 
@@ -83,7 +94,7 @@ export type { MentionContext } from "./core/mention.js";
 export { DiscordTransport } from "./transports/discord.js";
 export type { DiscordTransportConfig } from "./transports/discord.js";
 
-export { FeishuTransport, extractTextFromFeishuMessage, buildFeishuSessionKey, stripFeishuMentions, isBotMentioned } from "./transports/feishu.js";
+export { FeishuTransport, extractTextFromFeishuMessage, buildFeishuSessionKey, stripFeishuMentions, isBotMentioned, resolveAgentId } from "./transports/feishu.js";
 export type { FeishuTransportConfig, FeishuMessageEvent } from "./transports/feishu.js";
 
 // ---------------------------------------------------------------------------

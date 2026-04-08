@@ -8,9 +8,10 @@ import {
   stripFeishuMentions,
   isBotMentioned,
   shouldRespondToGroupMessage,
+  resolveAgentId,
   type FeishuMessageEvent,
 } from "./feishu.js";
-import type { AgentManager, SessionStore, AgentInstance, AgentEvent, ChannelsConfig } from "../core/types.js";
+import type { AgentManager, SessionStore, AgentInstance, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
 import { textContent } from "../core/types.js";
 
 // Suppress console output during tests
@@ -1036,5 +1037,287 @@ describe("FeishuTransport", () => {
       );
       expect(mockMessageCreate).toHaveBeenCalled();
     });
+  });
+
+  describe("bindings integration", () => {
+    it("routes to agent specified by channel-level binding", async () => {
+      capturedEventHandler = null;
+
+      const bindings: Binding[] = [
+        { agentId: "major", match: { channel: "feishu", accountId: "bot-account" } },
+      ];
+
+      new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        accountId: "bot-account",
+        bindings,
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      const event = createDMEvent();
+      await capturedEventHandler!(event);
+
+      // Should resolve to "major" agent via binding
+      expect(agentManager.get).toHaveBeenCalledWith("major");
+      expect(sessionStore.findByKey).toHaveBeenCalledWith(
+        "feishu:test-app-id:dm:ou_user123:major",
+      );
+    });
+
+    it("routes to agent specified by group-specific binding (higher priority)", async () => {
+      capturedEventHandler = null;
+
+      const bindings: Binding[] = [
+        { agentId: "general-agent", match: { channel: "feishu", accountId: "bot-account" } },
+        { agentId: "group-agent", match: { channel: "feishu", accountId: "bot-account", peer: { kind: "group", id: "oc_group789" } } },
+      ];
+
+      new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        accountId: "bot-account",
+        bindings,
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      // Send a group message (with bot mentioned)
+      const event = createGroupEvent();
+      await capturedEventHandler!(event);
+
+      // Should resolve to "group-agent" (more specific binding wins)
+      expect(agentManager.get).toHaveBeenCalledWith("group-agent");
+      expect(sessionStore.findByKey).toHaveBeenCalledWith(
+        "feishu:test-app-id:group:oc_group789:group-agent",
+      );
+    });
+
+    it("routes to agent specified by DM-specific binding", async () => {
+      capturedEventHandler = null;
+
+      const bindings: Binding[] = [
+        { agentId: "dm-agent", match: { channel: "feishu", accountId: "bot-account", peer: { kind: "dm", id: "ou_user123" } } },
+      ];
+
+      new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        accountId: "bot-account",
+        bindings,
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      const event = createDMEvent();
+      await capturedEventHandler!(event);
+
+      // Should resolve to "dm-agent" via DM-specific binding
+      expect(agentManager.get).toHaveBeenCalledWith("dm-agent");
+      expect(sessionStore.findByKey).toHaveBeenCalledWith(
+        "feishu:test-app-id:dm:ou_user123:dm-agent",
+      );
+    });
+
+    it("falls back to agentBindings when no binding matches", async () => {
+      capturedEventHandler = null;
+
+      // Bindings for discord only (won't match feishu)
+      const bindings: Binding[] = [
+        { agentId: "discord-agent", match: { channel: "discord", accountId: "bot-account" } },
+      ];
+
+      new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        accountId: "bot-account",
+        bindings,
+        agentBindings: { "bot-account": "legacy-agent" },
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      const event = createDMEvent();
+      await capturedEventHandler!(event);
+
+      // Should fall back to agentBindings
+      expect(agentManager.get).toHaveBeenCalledWith("legacy-agent");
+      expect(sessionStore.findByKey).toHaveBeenCalledWith(
+        "feishu:test-app-id:dm:ou_user123:legacy-agent",
+      );
+    });
+
+    it("falls back to defaultAgentId when nothing matches", async () => {
+      capturedEventHandler = null;
+
+      // Empty bindings, no agentBindings
+      new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "fallback-agent",
+        botOpenId: "ou_bot_open_id",
+        accountId: "bot-account",
+        bindings: [],
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      const event = createDMEvent();
+      await capturedEventHandler!(event);
+
+      // Should fall back to defaultAgentId
+      expect(agentManager.get).toHaveBeenCalledWith("fallback-agent");
+      expect(sessionStore.findByKey).toHaveBeenCalledWith(
+        "feishu:test-app-id:dm:ou_user123:fallback-agent",
+      );
+    });
+
+    it("falls back to 'default' when no bindings, agentBindings, or defaultAgentId", async () => {
+      capturedEventHandler = null;
+
+      new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        botOpenId: "ou_bot_open_id",
+        // No defaultAgentId, no bindings, no agentBindings
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      const event = createDMEvent();
+      await capturedEventHandler!(event);
+
+      // Should fall back to hardcoded "default"
+      expect(agentManager.get).toHaveBeenCalledWith("default");
+    });
+
+    it("uses channel-level binding for DM when group-specific binding doesn't match", async () => {
+      capturedEventHandler = null;
+
+      const bindings: Binding[] = [
+        { agentId: "channel-agent", match: { channel: "feishu", accountId: "bot-account" } },
+        { agentId: "group-agent", match: { channel: "feishu", accountId: "bot-account", peer: { kind: "group", id: "oc_other_group" } } },
+      ];
+
+      new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        accountId: "bot-account",
+        bindings,
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      // Send a DM — group-specific binding won't match, channel-level will
+      const event = createDMEvent();
+      await capturedEventHandler!(event);
+
+      expect(agentManager.get).toHaveBeenCalledWith("channel-agent");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveAgentId unit tests
+// ---------------------------------------------------------------------------
+
+describe("resolveAgentId", () => {
+  it("returns agentId from matching binding", () => {
+    const bindings: Binding[] = [
+      { agentId: "agent-a", match: { channel: "feishu", accountId: "acct1" } },
+    ];
+    expect(resolveAgentId(bindings, undefined, "default", "feishu", "acct1", undefined)).toBe("agent-a");
+  });
+
+  it("returns most specific binding when multiple match", () => {
+    const bindings: Binding[] = [
+      { agentId: "channel-agent", match: { channel: "feishu" } },
+      { agentId: "account-agent", match: { channel: "feishu", accountId: "acct1" } },
+      { agentId: "peer-agent", match: { channel: "feishu", accountId: "acct1", peer: { kind: "group", id: "g1" } } },
+    ];
+    expect(resolveAgentId(bindings, undefined, "default", "feishu", "acct1", { kind: "group", id: "g1" })).toBe("peer-agent");
+  });
+
+  it("falls back to agentBindings when bindings don't match", () => {
+    const bindings: Binding[] = [
+      { agentId: "discord-agent", match: { channel: "discord" } },
+    ];
+    const agentBindings = { "bot1": "legacy-agent" };
+    expect(resolveAgentId(bindings, agentBindings, "default", "feishu", "bot1", undefined)).toBe("legacy-agent");
+  });
+
+  it("falls back to defaultAgentId when nothing else matches", () => {
+    expect(resolveAgentId([], undefined, "my-default", "feishu", "acct1", undefined)).toBe("my-default");
+  });
+
+  it("returns undefined when nothing matches and no default", () => {
+    expect(resolveAgentId([], undefined, undefined, "feishu", "acct1", undefined)).toBeUndefined();
+  });
+
+  it("skips bindings when array is undefined", () => {
+    const agentBindings = { "acct1": "legacy" };
+    expect(resolveAgentId(undefined, agentBindings, "default", "feishu", "acct1", undefined)).toBe("legacy");
+  });
+
+  it("skips bindings when array is empty", () => {
+    expect(resolveAgentId([], undefined, "fallback", "feishu", "acct1", undefined)).toBe("fallback");
+  });
+
+  it("skips agentBindings when accountId is undefined", () => {
+    const agentBindings = { "acct1": "legacy" };
+    expect(resolveAgentId(undefined, agentBindings, "fallback", "feishu", undefined, undefined)).toBe("fallback");
+  });
+
+  it("skips agentBindings when key not found", () => {
+    const agentBindings = { "other-acct": "legacy" };
+    expect(resolveAgentId(undefined, agentBindings, "fallback", "feishu", "acct1", undefined)).toBe("fallback");
+  });
+
+  it("prefers binding over agentBindings even with same accountId", () => {
+    const bindings: Binding[] = [
+      { agentId: "binding-agent", match: { channel: "feishu", accountId: "acct1" } },
+    ];
+    const agentBindings = { "acct1": "legacy-agent" };
+    expect(resolveAgentId(bindings, agentBindings, "default", "feishu", "acct1", undefined)).toBe("binding-agent");
+  });
+
+  it("handles DM peer binding", () => {
+    const bindings: Binding[] = [
+      { agentId: "dm-agent", match: { channel: "feishu", accountId: "acct1", peer: { kind: "dm", id: "user123" } } },
+    ];
+    expect(resolveAgentId(bindings, undefined, "default", "feishu", "acct1", { kind: "dm", id: "user123" })).toBe("dm-agent");
+  });
+
+  it("does not match wrong peer kind", () => {
+    const bindings: Binding[] = [
+      { agentId: "group-agent", match: { channel: "feishu", accountId: "acct1", peer: { kind: "group", id: "g1" } } },
+    ];
+    // Query with dm peer — should not match group binding
+    expect(resolveAgentId(bindings, undefined, "default", "feishu", "acct1", { kind: "dm", id: "g1" })).toBe("default");
+  });
+
+  it("does not match wrong peer id", () => {
+    const bindings: Binding[] = [
+      { agentId: "group-agent", match: { channel: "feishu", accountId: "acct1", peer: { kind: "group", id: "g1" } } },
+    ];
+    expect(resolveAgentId(bindings, undefined, "default", "feishu", "acct1", { kind: "group", id: "g2" })).toBe("default");
   });
 });
