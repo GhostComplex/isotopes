@@ -263,7 +263,7 @@ Extensible via tool registration.
 | **M0** | Core Foundation | ✅ Done |
 | **M1** | Config & Routing Enhancements | ✅ Done |
 | **M2** | Feishu Transport | ✅ Done |
-| **M3** | ACP Protocol | TBD |
+| **M3** | ACP Protocol | ✅ Done |
 | **M4** | Automation & Git | TBD |
 | **M5** | Daemon Mode + Web UI | TBD |
 | **M6** | Sandbox Execution | TBD |
@@ -393,7 +393,7 @@ bindings:
 
 ---
 
-### M3: ACP Protocol
+### M3: ACP Protocol ✅
 
 **Goal:** Agent Communication Protocol for external tool integration.
 
@@ -406,9 +406,9 @@ channels:
       spawnAcpSessions: true
 ```
 
-- [ ] Detect thread creation
-- [ ] Auto-spawn ACP session in thread
-- [ ] Session lifecycle tied to thread
+- [x] Detect thread creation
+- [x] Auto-spawn ACP session in thread
+- [x] Session lifecycle tied to thread
 
 #### 3.2 ACP Backend
 ```yaml
@@ -420,14 +420,14 @@ acp:
     - claude
 ```
 
-- [ ] ACP session management
-- [ ] Claude Code integration
-- [ ] Codex integration
+- [x] ACP session management
+- [x] Claude Code integration
+- [x] Codex integration
 
 #### 3.3 Inter-Agent Messaging
-- [ ] Agent → Agent communication
-- [ ] Message routing between agents
-- [ ] Shared context (optional)
+- [x] Agent → Agent communication
+- [x] Message routing between agents
+- [x] Shared context (optional)
 
 ---
 

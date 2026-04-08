@@ -104,6 +104,16 @@ export type {
   AcpSessionCallback,
 } from "./acp/index.js";
 
+export { AgentMessageBus } from "./acp/index.js";
+export type {
+  AgentMessage,
+  MessageDelivery,
+  MessageHandler,
+} from "./acp/index.js";
+
+export { SharedContextManager } from "./acp/index.js";
+export type { SharedContext } from "./acp/index.js";
+
 // ---------------------------------------------------------------------------
 // Mention detection
 // ---------------------------------------------------------------------------

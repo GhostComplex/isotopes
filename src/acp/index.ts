@@ -10,3 +10,13 @@ export type {
   AcpSessionEvent,
   AcpSessionCallback,
 } from "./types.js";
+
+export { AgentMessageBus } from "./message-bus.js";
+export type {
+  AgentMessage,
+  MessageDelivery,
+  MessageHandler,
+} from "./message-bus.js";
+
+export { SharedContextManager } from "./shared-context.js";
+export type { SharedContext } from "./shared-context.js";
