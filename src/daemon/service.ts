@@ -173,8 +173,8 @@ export class ServiceManager {
     // Disable first (best-effort)
     try {
       await this.disable(name);
-    } catch {
-      // may not be enabled
+    } catch (err) {
+      log.debug(`Could not disable service before uninstall (may not be enabled):`, err);
     }
 
     if (this.platform === "macos") {

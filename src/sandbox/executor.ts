@@ -5,6 +5,9 @@
 import type { ContainerInfo, ContainerManager, ExecResult } from "./container.js";
 import type { SandboxConfig, WorkspaceAccess } from "./config.js";
 import { shouldSandbox } from "./config.js";
+import { createLogger } from "../core/logger.js";
+
+const log = createLogger("sandbox:executor");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -135,8 +138,8 @@ export class SandboxExecutor {
           const updated: ContainerInfo = { ...existing, status: "running" };
           this.containers.set(agentId, updated);
           return updated;
-        } catch {
-          // Failed to restart — remove and recreate
+        } catch (err) {
+          log.debug(`Failed to restart container ${existing.id}, recreating`, err);
           await this.safeRemove(existing.id);
         }
       }
@@ -217,13 +220,13 @@ export class SandboxExecutor {
   private async safeRemove(containerId: string): Promise<void> {
     try {
       await this.containerManager.stop(containerId, 5);
-    } catch {
-      // Container may already be stopped
+    } catch (err) {
+      log.debug(`Stop failed for container ${containerId} (may already be stopped)`, err);
     }
     try {
       await this.containerManager.remove(containerId, true);
-    } catch {
-      // Container may already be removed
+    } catch (err) {
+      log.debug(`Remove failed for container ${containerId} (may already be removed)`, err);
     }
   }
 }

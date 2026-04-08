@@ -333,8 +333,8 @@ export class DiscordTransport implements Transport {
       log.error(`Agent error: ${errorMsg}`);
       try {
         await channel.send("❌ An error occurred while processing your request.");
-      } catch {
-        // Ignore send failure
+      } catch (sendErr) {
+        log.debug("Failed to send error message to Discord", sendErr);
       }
     } finally {
       typing.stop();

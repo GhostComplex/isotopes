@@ -12,6 +12,9 @@ import type {
   SessionStoreConfig,
   SessionConfig,
 } from "./types.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("session-store");
 
 interface StoredSession extends Session {
   messages?: Message[];
@@ -157,8 +160,8 @@ export class DefaultSessionStore implements SessionStore {
     // Remove persisted files
     try {
       await fs.rm(this.transcriptFile(sessionId), { force: true });
-    } catch {
-      // Ignore if doesn't exist
+    } catch (err) {
+      log.debug(`Could not remove transcript file for session ${sessionId}`, err);
     }
   }
 
@@ -304,7 +307,8 @@ export class DefaultSessionStore implements SessionStore {
         });
       }
       return messages;
-    } catch {
+    } catch (err) {
+      log.debug(`Could not load messages for session ${sessionId}`, err);
       return [];
     }
   }
@@ -323,7 +327,8 @@ export class DefaultSessionStore implements SessionStore {
     let raw: string;
     try {
       raw = await fs.readFile(this.indexFile(), "utf-8");
-    } catch {
+    } catch (err) {
+      log.debug("No session index found (first run or empty store)", err);
       return;
     }
 
