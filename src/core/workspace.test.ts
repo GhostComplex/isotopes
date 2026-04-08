@@ -128,6 +128,54 @@ describe("Workspace", () => {
       expect(result).toContain("Soul");
       expect(result).toContain("Memory");
     });
+
+    it("separates sections with --- dividers", async () => {
+      await fs.writeFile(path.join(tempDir, "SOUL.md"), "Soul content");
+      await fs.writeFile(path.join(tempDir, "MEMORY.md"), "Memory content");
+
+      const ctx = await loadWorkspaceContext(tempDir);
+      const result = buildSystemPrompt("Base prompt", ctx);
+
+      // Sections should be separated by "---"
+      const sections = result.split("\n\n---\n\n");
+      expect(sections.length).toBe(3); // base + workspace context + memory
+      expect(sections[0]).toBe("Base prompt");
+      expect(sections[1]).toContain("# Workspace Context");
+      expect(sections[2]).toContain("# Memory");
+    });
+
+    it("omits workspace section when no workspace files exist", async () => {
+      const ctx = await loadWorkspaceContext(tempDir);
+      const result = buildSystemPrompt("Base prompt", ctx);
+
+      // No workspace files → systemPromptAdditions is empty, memory is null
+      // Should return just the base prompt with no additions
+      expect(result).toBe("Base prompt");
+    });
+
+    it("includes workspace context but omits memory when MEMORY.md is absent", async () => {
+      await fs.writeFile(path.join(tempDir, "SOUL.md"), "Soul content");
+
+      const ctx = await loadWorkspaceContext(tempDir);
+      const result = buildSystemPrompt("Base prompt", ctx);
+
+      expect(result).toContain("Workspace Context");
+      expect(result).toContain("Soul content");
+      expect(result).not.toContain("# Memory");
+    });
+
+    it("works with empty base prompt and workspace files", async () => {
+      await fs.writeFile(path.join(tempDir, "SOUL.md"), "You are Major.");
+      await fs.writeFile(path.join(tempDir, "TOOLS.md"), "Use shell for commands.");
+      await fs.writeFile(path.join(tempDir, "MEMORY.md"), "Previously discussed X.");
+
+      const ctx = await loadWorkspaceContext(tempDir);
+      const result = buildSystemPrompt("", ctx);
+
+      expect(result).toContain("You are Major.");
+      expect(result).toContain("Use shell for commands.");
+      expect(result).toContain("Previously discussed X.");
+    });
   });
 
   describe("getSessionsDir", () => {
