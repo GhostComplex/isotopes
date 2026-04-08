@@ -19,6 +19,8 @@ import type {
 import { textContent } from "../core/types.js";
 import { resolveBinding } from "../core/bindings.js";
 import { loggers } from "../core/logger.js";
+import { runAgentLoop } from "../core/agent-runner.js";
+import { buildSessionKey, type SessionScope } from "../core/session-keys.js";
 
 const log = loggers.feishu;
 
@@ -121,8 +123,8 @@ export function buildFeishuSessionKey(
   agentId: string,
   chatType: "p2p" | "group" = "p2p",
 ): string {
-  const scope = chatType === "group" ? "group" : "dm";
-  return `feishu:${botId}:${scope}:${scopeId}:${agentId}`;
+  const scope: SessionScope = chatType === "group" ? "group" : "dm";
+  return buildSessionKey("feishu", botId, scope, scopeId, agentId);
 }
 
 // ---------------------------------------------------------------------------
@@ -394,32 +396,18 @@ export class FeishuTransport implements Transport {
     sessionId: string,
   ): Promise<void> {
     try {
-      let responseText = "";
-
-      for await (const event of agent.prompt(input)) {
-        if (event.type === "text_delta") {
-          responseText += event.text;
-        } else if (event.type === "agent_end") {
-          // Store final assistant message
-          if (responseText) {
-            await this.config.sessionStore.addMessage(sessionId, {
-              role: "assistant",
-              content: textContent(responseText),
-              timestamp: Date.now(),
-            });
-          }
-
-          if (event.stopReason === "error") {
-            const errorMsg = event.errorMessage ?? "Unknown agent error";
-            log.error(`Agent ended with error: ${errorMsg}`);
-            responseText = `Error: ${errorMsg}`;
-          }
-        }
-      }
+      const { responseText, errorMessage } = await runAgentLoop({
+        agent,
+        input,
+        sessionId,
+        sessionStore: this.config.sessionStore,
+        log,
+      });
 
       // Send reply to Feishu
-      if (responseText) {
-        await this.sendTextMessage(chatId, responseText);
+      const replyText = errorMessage ? `Error: ${errorMessage}` : responseText;
+      if (replyText) {
+        await this.sendTextMessage(chatId, replyText);
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);

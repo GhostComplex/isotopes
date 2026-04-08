@@ -13,6 +13,11 @@ import {
 } from "./feishu.js";
 import type { AgentManager, SessionStore, AgentInstance, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
 import { textContent } from "../core/types.js";
+import {
+  createMockAgentManager,
+  createMockAgentInstance,
+  createMockSessionStore,
+} from "../core/test-helpers.js";
 
 // Suppress console output during tests
 vi.spyOn(console, "log").mockImplementation(() => {});
@@ -56,44 +61,6 @@ vi.mock("@larksuiteoapi/node-sdk", () => {
 // ---------------------------------------------------------------------------
 // Mock helpers
 // ---------------------------------------------------------------------------
-
-function createMockAgentManager(): AgentManager {
-  const mockInstance: AgentInstance = {
-    prompt: vi.fn(async function* () {
-      yield { type: "text_delta" as const, text: "Hello " };
-      yield { type: "text_delta" as const, text: "from Feishu!" };
-      yield { type: "agent_end" as const, messages: [] };
-    }),
-    abort: vi.fn(),
-    steer: vi.fn(),
-    followUp: vi.fn(),
-  };
-
-  return {
-    create: vi.fn(),
-    get: vi.fn(() => mockInstance),
-    list: vi.fn(() => []),
-    update: vi.fn(),
-    delete: vi.fn(),
-    getPrompt: vi.fn(),
-    updatePrompt: vi.fn(),
-  };
-}
-
-function createMockSessionStore(): SessionStore {
-  return {
-    create: vi.fn().mockResolvedValue({
-      id: "session-feishu-123",
-      agentId: "default",
-      lastActiveAt: new Date(),
-    }),
-    get: vi.fn(),
-    findByKey: vi.fn().mockResolvedValue(undefined),
-    addMessage: vi.fn(),
-    getMessages: vi.fn().mockResolvedValue([]),
-    delete: vi.fn(),
-  };
-}
 
 function createDMEvent(overrides: Partial<FeishuMessageEvent> = {}): FeishuMessageEvent {
   return {
@@ -412,8 +379,14 @@ describe("FeishuTransport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedEventHandler = null;
-    agentManager = createMockAgentManager();
-    sessionStore = createMockSessionStore();
+    agentManager = createMockAgentManager(
+      createMockAgentInstance([
+        { type: "text_delta", text: "Hello " },
+        { type: "text_delta", text: "from Feishu!" },
+        { type: "agent_end", messages: [] },
+      ]),
+    );
+    sessionStore = createMockSessionStore("session-feishu-123");
     transport = new FeishuTransport({
       appId: "test-app-id",
       appSecret: "test-app-secret",
@@ -780,19 +753,14 @@ describe("FeishuTransport", () => {
     });
 
     it("handles agent_end with error stopReason", async () => {
-      const errorAgent: AgentInstance = {
-        prompt: vi.fn(async function* () {
-          yield {
-            type: "agent_end" as const,
-            messages: [],
-            stopReason: "error",
-            errorMessage: "API key invalid",
-          };
-        }),
-        abort: vi.fn(),
-        steer: vi.fn(),
-        followUp: vi.fn(),
-      };
+      const errorAgent = createMockAgentInstance([
+        {
+          type: "agent_end",
+          messages: [],
+          stopReason: "error",
+          errorMessage: "API key invalid",
+        },
+      ]);
       agentManager.get = vi.fn(() => errorAgent);
 
       const event = createDMEvent();

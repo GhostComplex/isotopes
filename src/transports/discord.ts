@@ -24,6 +24,8 @@ import { textContent } from "../core/types.js";
 import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
+import { runAgentLoop } from "../core/agent-runner.js";
+import { buildSessionKey } from "../core/session-keys.js";
 
 const log = loggers.discord;
 
@@ -242,12 +244,12 @@ export class DiscordTransport implements Transport {
     const botId = this.client.user?.id ?? "unknown";
 
     if (msg.thread) {
-      return `discord:${botId}:thread:${msg.thread.id}:${agentId}`;
+      return buildSessionKey("discord", botId, "thread", msg.thread.id, agentId);
     }
     if (!msg.guild) {
-      return `discord:${botId}:dm:${msg.author.id}:${agentId}`;
+      return buildSessionKey("discord", botId, "dm", msg.author.id, agentId);
     }
-    return `discord:${botId}:channel:${msg.channelId}:${agentId}`;
+    return buildSessionKey("discord", botId, "channel", msg.channelId, agentId);
   }
 
   private async findOrCreateSession(
@@ -287,50 +289,37 @@ export class DiscordTransport implements Transport {
     const typing = this.startTyping(channel);
 
     try {
-      let responseText = "";
-      let finalErrorMessage: string | null = null;
       let sentMessage: DiscordMessage | null = null;
       let lastUpdate = 0;
 
-      for await (const event of agent.prompt(input)) {
-        if (event.type === "text_delta") {
-          responseText += event.text;
-
+      const { responseText, errorMessage } = await runAgentLoop({
+        agent,
+        input,
+        sessionId,
+        sessionStore,
+        log,
+        onTextDelta: async (currentText) => {
           // Stream partial updates only when content fits in a single message.
           // Once it exceeds the limit, skip streaming and send the full
           // multi-chunk result at the end to avoid piling up duplicate messages.
           const now = Date.now();
-          if (now - lastUpdate > 500 && responseText.length > 0 && responseText.length <= 2000) {
+          if (now - lastUpdate > 500 && currentText.length > 0 && currentText.length <= 2000) {
             sentMessage = await this.updateOrSendMessage(
               channel,
               sentMessage,
-              responseText,
+              currentText,
             );
             lastUpdate = now;
           }
-        } else if (event.type === "agent_end") {
-          // Store final assistant message
-          if (responseText) {
-            await sessionStore.addMessage(sessionId, {
-              role: "assistant",
-              content: textContent(responseText),
-              timestamp: Date.now(),
-            });
-          }
-
-          if (event.stopReason === "error") {
-            const errorMsg = event.errorMessage ?? "Unknown agent error";
-            log.error(`Agent ended with error: ${errorMsg}`);
-            finalErrorMessage = `❌ ${errorMsg}`;
-          }
-        }
-      }
+        },
+      });
 
       // Send final message
       if (responseText) {
         await this.updateOrSendMessage(channel, sentMessage, responseText);
       }
-      if (finalErrorMessage) {
+      if (errorMessage) {
+        const finalErrorMessage = `❌ ${errorMessage}`;
         await sessionStore.addMessage(sessionId, {
           role: "assistant",
           content: textContent(finalErrorMessage),

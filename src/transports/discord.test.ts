@@ -5,6 +5,7 @@ import { DiscordTransport } from "./discord.js";
 import type { AgentManager, SessionStore, AgentInstance, ChannelsConfig } from "../core/types.js";
 import { textContent } from "../core/types.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
+import { createMockAgentManager, createMockAgentInstance, createMockSessionStore } from "../core/test-helpers.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -54,44 +55,6 @@ vi.mock("discord.js", () => {
 // ---------------------------------------------------------------------------
 // Mock helpers
 // ---------------------------------------------------------------------------
-
-function createMockAgentManager(): AgentManager {
-  const mockInstance: AgentInstance = {
-    prompt: vi.fn(async function* () {
-      yield { type: "text_delta" as const, text: "Hello " };
-      yield { type: "text_delta" as const, text: "world!" };
-      yield { type: "agent_end" as const, messages: [] };
-    }),
-    abort: vi.fn(),
-    steer: vi.fn(),
-    followUp: vi.fn(),
-  };
-
-  return {
-    create: vi.fn(),
-    get: vi.fn(() => mockInstance),
-    list: vi.fn(() => []),
-    update: vi.fn(),
-    delete: vi.fn(),
-    getPrompt: vi.fn(),
-    updatePrompt: vi.fn(),
-  };
-}
-
-function createMockSessionStore(): SessionStore {
-  return {
-    create: vi.fn().mockResolvedValue({
-      id: "session-123",
-      agentId: "default",
-      lastActiveAt: new Date(),
-    }),
-    get: vi.fn(),
-    findByKey: vi.fn().mockResolvedValue(undefined),
-    addMessage: vi.fn(),
-    getMessages: vi.fn().mockResolvedValue([]),
-    delete: vi.fn(),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -164,19 +127,14 @@ describe("DiscordTransport", () => {
 
   describe("runAgentAndRespond", () => {
     it("logs and sends a message when agent_end reports an error", async () => {
-      const erroringAgent: AgentInstance = {
-        prompt: vi.fn(async function* () {
-          yield {
-            type: "agent_end" as const,
-            messages: [],
-            stopReason: "error",
-            errorMessage: "No API provider registered for api: undefined",
-          };
-        }),
-        abort: vi.fn(),
-        steer: vi.fn(),
-        followUp: vi.fn(),
-      };
+      const erroringAgent = createMockAgentInstance([
+        {
+          type: "agent_end",
+          messages: [],
+          stopReason: "error",
+          errorMessage: "No API provider registered for api: undefined",
+        },
+      ]);
 
       const channel: MockChannel = {
         sendTyping: vi.fn().mockResolvedValue(undefined),
