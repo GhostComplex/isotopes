@@ -13,13 +13,27 @@ import type {
   CompactionConfig,
   CompactionMode,
   CronActionConfig,
-  GuildConfig,
   PeerKind,
   ProviderConfig,
   SessionConfig,
 } from "./types.js";
+import type { AcpConfig } from "../acp/types.js";
 import { resolveSandboxConfig } from "../sandbox/config.js";
 import type { SandboxConfig } from "../sandbox/config.js";
+
+// ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Assert that a value, if defined, is a positive number.
+ * Throws with a descriptive error message if not.
+ */
+function assertPositiveNumber(value: unknown, label: string): void {
+  if (value !== undefined && (typeof value !== "number" || value <= 0)) {
+    throw new Error(`Invalid ${label} "${value}" (must be a positive number)`);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -224,16 +238,12 @@ export function resolveSessionConfig(
 ): SessionConfig | undefined {
   if (!sessionConfig) return undefined;
 
-  if (sessionConfig.ttl !== undefined && (typeof sessionConfig.ttl !== "number" || sessionConfig.ttl <= 0)) {
-    throw new Error(`Invalid session.ttl "${sessionConfig.ttl}" (must be a positive number)`);
-  }
-  if (sessionConfig.cleanupInterval !== undefined && (typeof sessionConfig.cleanupInterval !== "number" || sessionConfig.cleanupInterval <= 0)) {
-    throw new Error(`Invalid session.cleanupInterval "${sessionConfig.cleanupInterval}" (must be a positive number)`);
-  }
+  assertPositiveNumber(sessionConfig.ttl, "session.ttl");
+  assertPositiveNumber(sessionConfig.cleanupInterval, "session.cleanupInterval");
 
   return {
-    ...(sessionConfig.ttl !== undefined && { ttl: sessionConfig.ttl }),
-    ...(sessionConfig.cleanupInterval !== undefined && { cleanupInterval: sessionConfig.cleanupInterval }),
+    ttl: sessionConfig.ttl,
+    cleanupInterval: sessionConfig.cleanupInterval,
   };
 }
 
@@ -246,7 +256,7 @@ const VALID_ACP_BACKENDS = new Set<string>(["acpx", "claude-code", "codex"]);
  */
 export function resolveAcpConfig(
   acpConfig?: AcpConfigFile,
-): { enabled: boolean; backend: "acpx" | "claude-code" | "codex"; defaultAgent: string; allowedAgents?: string[] } | undefined {
+): AcpConfig | undefined {
   if (!acpConfig || !acpConfig.enabled) return undefined;
 
   const backend = acpConfig.backend ?? "acpx";
@@ -262,9 +272,9 @@ export function resolveAcpConfig(
 
   return {
     enabled: true,
-    backend: backend as "acpx" | "claude-code" | "codex",
+    backend,
     defaultAgent: acpConfig.defaultAgent,
-    ...(acpConfig.allowedAgents ? { allowedAgents: acpConfig.allowedAgents } : {}),
+    allowedAgents: acpConfig.allowedAgents,
   };
 }
 
@@ -369,8 +379,8 @@ export function toAgentConfig(
     workspacePath: agent.workspacePath,
     toolSettings: resolveToolSettings(agent.tools, defaultTools),
     provider: (agent.provider ?? defaultProvider) as ProviderConfig | undefined,
-    ...(compaction ? { compaction } : {}),
-    ...(sandbox ? { sandbox } : {}),
+    compaction,
+    sandbox,
   };
 }
 
@@ -446,35 +456,6 @@ export function getDiscordToken(discord: DiscordConfigFile): string {
     return token;
   }
   throw new Error("Discord config must have either 'token' or 'tokenEnv'");
-}
-
-// ---------------------------------------------------------------------------
-// Channel config helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Look up the GuildConfig for a specific Discord guild under a given account.
- * Returns undefined if no guild-specific config exists.
- */
-export function getDiscordGuildConfig(
-  channels: ChannelsConfig | undefined,
-  accountId: string,
-  guildId: string,
-): GuildConfig | undefined {
-  return channels?.discord?.accounts?.[accountId]?.guilds?.[guildId];
-}
-
-/**
- * Resolve whether @mention is required for a given Discord guild.
- * Default: true (only respond when @mentioned).
- */
-export function isRequireMention(
-  channels: ChannelsConfig | undefined,
-  accountId: string,
-  guildId: string,
-): boolean {
-  const guildConfig = getDiscordGuildConfig(channels, accountId, guildId);
-  return guildConfig?.requireMention ?? true;
 }
 
 // ---------------------------------------------------------------------------

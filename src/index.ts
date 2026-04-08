@@ -62,8 +62,6 @@ export {
   loadConfig,
   toAgentConfig,
   getDiscordToken,
-  getDiscordGuildConfig,
-  isRequireMention,
   resolveAcpConfig,
   resolveSandboxConfigFromFile,
 } from "./core/config.js";

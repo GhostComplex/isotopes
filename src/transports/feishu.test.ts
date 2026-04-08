@@ -396,11 +396,11 @@ describe("shouldRespondToGroupMessage", () => {
     expect(shouldRespondToGroupMessage("oc_group_b", false, channels)).toBe(false);
   });
 
-  it("ignores accountId parameter (Feishu uses flat group config)", () => {
+  it("ignores extra arguments (Feishu uses flat group config)", () => {
     const channels: ChannelsConfig = {
       feishu: { groups: { [chatId]: { requireMention: false } } },
     };
-    expect(shouldRespondToGroupMessage(chatId, false, channels, "some-account")).toBe(true);
+    expect(shouldRespondToGroupMessage(chatId, false, channels)).toBe(true);
   });
 });
 

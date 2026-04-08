@@ -296,9 +296,11 @@ export class DiscordTransport implements Transport {
         if (event.type === "text_delta") {
           responseText += event.text;
 
-          // Update message periodically (rate limit: every 500ms)
+          // Stream partial updates only when content fits in a single message.
+          // Once it exceeds the limit, skip streaming and send the full
+          // multi-chunk result at the end to avoid piling up duplicate messages.
           const now = Date.now();
-          if (now - lastUpdate > 500 && responseText.length > 0) {
+          if (now - lastUpdate > 500 && responseText.length > 0 && responseText.length <= 2000) {
             sentMessage = await this.updateOrSendMessage(
               channel,
               sentMessage,

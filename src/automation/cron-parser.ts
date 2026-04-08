@@ -69,7 +69,7 @@ function parseField(field: string, spec: FieldSpec, fieldIndex: number): number[
   for (const part of field.split(",")) {
     const trimmed = part.trim();
 
-    // Step: */n or n-m/s
+    // Step with range: */n or n-m/s
     const stepMatch = trimmed.match(/^(.+)\/(\d+)$/);
     if (stepMatch) {
       const [, rangePart, stepStr] = stepMatch;
@@ -94,7 +94,6 @@ function parseField(field: string, spec: FieldSpec, fieldIndex: number): number[
       continue;
     }
 
-    // Wildcard
     if (trimmed === "*") {
       for (let i = spec.min; i <= spec.max; i++) {
         values.add(i);
@@ -102,7 +101,6 @@ function parseField(field: string, spec: FieldSpec, fieldIndex: number): number[
       continue;
     }
 
-    // Range: n-m
     if (trimmed.includes("-")) {
       for (const v of parseRange(trimmed, spec, fieldIndex)) {
         values.add(v);

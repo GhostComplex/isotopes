@@ -93,32 +93,16 @@ export function isBotMentioned(
 /**
  * Determine whether the bot should respond to a group message based on config.
  *
- * Looks up `channels.feishu.groups[chatId].requireMention`:
- *   - `requireMention: false` → respond to all messages in that group
- *   - `requireMention: true` (default) → only respond when @mentioned
- *   - No config → default to requiring @mention
+ * If the group has `requireMention: false`, responds to all messages.
+ * Otherwise (default), only responds when @mentioned.
  */
 export function shouldRespondToGroupMessage(
   chatId: string,
   isMentioned: boolean,
   channels?: ChannelsConfig,
-  _accountId?: string,
 ): boolean {
-  if (!channels?.feishu?.groups) {
-    return isMentioned;
-  }
-
-  const groupConfig = channels.feishu.groups[chatId];
-  if (!groupConfig) {
-    return isMentioned;
-  }
-
-  const requireMention = groupConfig.requireMention ?? true;
-  if (!requireMention) {
-    return true;
-  }
-
-  return isMentioned;
+  const requireMention = channels?.feishu?.groups?.[chatId]?.requireMention ?? true;
+  return !requireMention || isMentioned;
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +301,7 @@ export class FeishuTransport implements Transport {
     if (message.chat_type === "group") {
       const botOpenId = this.config.botOpenId;
       const mentioned = botOpenId ? isBotMentioned(message.mentions, botOpenId) : false;
-      if (!shouldRespondToGroupMessage(message.chat_id, mentioned, this.config.channels, this.config.accountId)) {
+      if (!shouldRespondToGroupMessage(message.chat_id, mentioned, this.config.channels)) {
         log.debug("Ignoring group message: bot not mentioned and requireMention is enabled");
         return;
       }
