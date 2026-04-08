@@ -54,7 +54,7 @@ export function estimateTotalTokens(messages: AgentMessage[]): number {
 function extractMessageText(message: AgentMessage): string {
   // AgentMessage is a union type from pi-agent-core.
   // It can be a standard Message (user/assistant/toolResult) or a custom message.
-  const msg = message as Record<string, unknown>;
+  const msg = message as unknown as Record<string, unknown>;
 
   if (typeof msg.content === "string") {
     return msg.content;
@@ -104,7 +104,7 @@ export function buildSummaryPrompt(messages: AgentMessage[]): string {
   const lines: string[] = [];
 
   for (const msg of messages) {
-    const m = msg as Record<string, unknown>;
+    const m = msg as unknown as Record<string, unknown>;
     const role = String(m.role ?? "unknown");
     const text = extractMessageText(msg);
     lines.push(`[${role}]: ${text}`);
