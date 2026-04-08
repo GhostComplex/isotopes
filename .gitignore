@@ -1,5 +1,6 @@
 # ref
 .ref/
+.harness/
 
 # Dependencies
 node_modules/

@@ -4,8 +4,13 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
-import path from "node:path";
 import type { AgentToolSettings, Tool } from "./types.js";
+import {
+  SafeFileError,
+  listDirectoryWithinRoot,
+  readFileWithinRoot,
+  writeFileWithinRoot,
+} from "./fs-safe.js";
 
 const execAsync = promisify(exec);
 
@@ -172,7 +177,7 @@ export function createShellTool(options: ShellToolOptions = {}): { tool: Tool; h
   return {
     tool: {
       name: "shell",
-      description: "Execute a shell command and return the output. Use for running programs, scripts, or system commands.",
+      description: "WARNING: Executes arbitrary shell commands without sandboxing. Only enable for trusted agents. Use for running programs, scripts, or system commands.",
       parameters: {
         type: "object",
         properties: {
@@ -237,44 +242,6 @@ export function resolveToolGuards(settings?: AgentToolSettings): ResolvedToolGua
   };
 }
 
-function isPathInside(parentPath: string, childPath: string): boolean {
-  const relative = path.relative(parentPath, childPath);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
-async function resolveWorkspaceConstrainedPath(
-  targetPath: string,
-  basePath: string | undefined,
-  mode: "read" | "write" | "list",
-): Promise<string> {
-  if (!basePath) {
-    return path.resolve(targetPath);
-  }
-
-  const workspaceRoot = await fs.realpath(basePath).catch(() => path.resolve(basePath));
-  const resolvedPath = path.isAbsolute(targetPath)
-    ? path.resolve(targetPath)
-    : path.resolve(workspaceRoot, targetPath);
-
-  if (mode === "write") {
-    const parentDir = path.dirname(resolvedPath);
-    await fs.mkdir(parentDir, { recursive: true });
-    const realParentDir = await fs.realpath(parentDir).catch(() => path.resolve(parentDir));
-    const finalPath = path.join(realParentDir, path.basename(resolvedPath));
-    if (!isPathInside(workspaceRoot, finalPath)) {
-      throw new Error(`Path escapes workspace: ${targetPath}`);
-    }
-    return finalPath;
-  }
-
-  const realTargetPath = await fs.realpath(resolvedPath).catch(() => path.resolve(resolvedPath));
-  if (!isPathInside(workspaceRoot, realTargetPath)) {
-    throw new Error(`Path escapes workspace: ${targetPath}`);
-  }
-
-  return realTargetPath;
-}
-
 /**
  * Create a file read tool.
  */
@@ -300,16 +267,24 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
       const { path: filePath } = args as { path: string };
 
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "read");
+        if (basePath) {
+          return await readFileWithinRoot({
+            rootDir: basePath,
+            filePath,
+            maxBytes: maxReadSize,
+          });
+        }
 
-        const stats = await fs.stat(resolvedPath);
+        const stats = await fs.stat(filePath);
         if (stats.size > maxReadSize) {
           return `[error] File too large (${stats.size} bytes, max ${maxReadSize})`;
         }
 
-        const content = await fs.readFile(resolvedPath, "utf-8");
-        return content;
+        return await fs.readFile(filePath, "utf-8");
       } catch (error) {
+        if (error instanceof SafeFileError && error.code === "not-found") {
+          return `[error] File not found: ${filePath}`;
+        }
         const err = error as { code?: string; message?: string };
         if (err.code === "ENOENT") {
           return `[error] File not found: ${filePath}`;
@@ -349,8 +324,11 @@ export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool
       const { path: filePath, content } = args as { path: string; content: string };
 
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write");
-        await fs.writeFile(resolvedPath, content, "utf-8");
+        if (basePath) {
+          await writeFileWithinRoot({ rootDir: basePath, filePath, content });
+        } else {
+          await fs.writeFile(filePath, content, "utf-8");
+        }
 
         return `Successfully wrote ${content.length} bytes to ${filePath}`;
       } catch (error) {
@@ -385,9 +363,9 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
       const { path: dirPath = "." } = args as { path?: string };
 
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(dirPath, basePath, "list");
-
-        const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
+        const entries = basePath
+          ? await listDirectoryWithinRoot({ rootDir: basePath, dirPath })
+          : await fs.readdir(dirPath, { withFileTypes: true });
         const lines = entries.map((entry) => {
           const prefix = entry.isDirectory() ? "[dir] " : "      ";
           return `${prefix}${entry.name}`;
@@ -395,6 +373,9 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
 
         return lines.length > 0 ? lines.join("\n") : "(empty directory)";
       } catch (error) {
+        if (error instanceof SafeFileError && error.code === "not-found") {
+          return `[error] Directory not found: ${dirPath}`;
+        }
         const err = error as { code?: string; message?: string };
         if (err.code === "ENOENT") {
           return `[error] Directory not found: ${dirPath}`;

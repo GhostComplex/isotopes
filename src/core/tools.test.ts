@@ -201,6 +201,13 @@ describe("Built-in tools", () => {
   });
 
   describe("createShellTool", () => {
+    it("warns that shell execution is unsandboxed", () => {
+      const { tool } = createShellTool();
+
+      expect(tool.description).toContain("WARNING");
+      expect(tool.description).toContain("without sandboxing");
+    });
+
     it("executes command and returns output", async () => {
       const { handler } = createShellTool();
       const result = await handler({ command: "echo hello" });
@@ -272,6 +279,39 @@ describe("Built-in tools", () => {
         await fs.rm(outsideFile, { force: true });
       }
     });
+
+    it("rejects symlinks that escape the workspace", async () => {
+      if (process.platform === "win32") {
+        return;
+      }
+
+      const outsideFile = path.join(os.tmpdir(), `outside-symlink-${Date.now()}.txt`);
+      const symlinkPath = path.join(tempDir, "escape-link.txt");
+      await fs.writeFile(outsideFile, "secret");
+
+      try {
+        await fs.symlink(outsideFile, symlinkPath);
+
+        const { handler } = createReadFileTool({ basePath: tempDir });
+        const result = await handler({ path: "escape-link.txt" });
+
+        expect(result).toContain("[error]");
+        expect(result).toContain("Path escapes workspace");
+      } finally {
+        await fs.rm(symlinkPath, { force: true });
+        await fs.rm(outsideFile, { force: true });
+      }
+    });
+
+    it("rejects files exceeding maxReadSize", async () => {
+      await fs.writeFile(path.join(tempDir, "big.txt"), "x".repeat(100));
+
+      const { handler } = createReadFileTool({ basePath: tempDir, maxReadSize: 10 });
+      const result = await handler({ path: "big.txt" });
+
+      expect(result).toContain("[error]");
+      expect(result).toContain("too large");
+    });
   });
 
   describe("createWriteFileTool", () => {
@@ -315,6 +355,28 @@ describe("Built-in tools", () => {
         await fs.rm(outsideFile, { force: true });
       }
     });
+
+    it("rejects symlinked parent directories that escape the workspace", async () => {
+      if (process.platform === "win32") {
+        return;
+      }
+
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "outside-write-link-"));
+      const symlinkPath = path.join(tempDir, "escape-dir");
+
+      try {
+        await fs.symlink(outsideDir, symlinkPath);
+
+        const { handler } = createWriteFileTool({ basePath: tempDir });
+        const result = await handler({ path: "escape-dir/evil.txt", content: "blocked" });
+
+        expect(result).toContain("[error]");
+        expect(result).toContain("Path escapes workspace");
+      } finally {
+        await fs.rm(symlinkPath, { force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("createListDirTool", () => {
@@ -354,6 +416,28 @@ describe("Built-in tools", () => {
 
       expect(result).toContain("[error]");
       expect(result).toContain("Path escapes workspace");
+    });
+
+    it("rejects symlinked directories that escape the workspace", async () => {
+      if (process.platform === "win32") {
+        return;
+      }
+
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "outside-list-link-"));
+      const symlinkPath = path.join(tempDir, "escape-list");
+
+      try {
+        await fs.symlink(outsideDir, symlinkPath);
+
+        const { handler } = createListDirTool({ basePath: tempDir });
+        const result = await handler({ path: "escape-list" });
+
+        expect(result).toContain("[error]");
+        expect(result).toContain("Path escapes workspace");
+      } finally {
+        await fs.rm(symlinkPath, { force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
     });
   });
 
