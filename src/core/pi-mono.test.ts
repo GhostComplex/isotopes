@@ -42,6 +42,7 @@ import { Agent } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
 import { PiMonoCore } from "./pi-mono.js";
 import { textContent } from "./types.js";
+import { ToolRegistry } from "./tools.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,6 +58,7 @@ function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
 }
 
 function resetMocks() {
+  vi.mocked(Agent).mockClear();
   mockAgent.subscribe.mockClear().mockReturnValue(vi.fn());
   mockAgent.prompt.mockClear().mockResolvedValue(undefined);
   mockAgent.abort.mockClear();
@@ -179,6 +181,54 @@ describe("PiMonoCore.createAgent", () => {
               Authorization: "Bearer proxy-token",
             }),
           }),
+        }),
+      }),
+    );
+  });
+
+  it("binds tool registries per agent instead of reusing the last one globally", () => {
+    const core = new PiMonoCore();
+
+    const registryA = new ToolRegistry();
+    registryA.register(
+      { name: "read_file", description: "Read file", parameters: {} },
+      async () => "a",
+    );
+
+    const registryB = new ToolRegistry();
+    registryB.register(
+      { name: "list_dir", description: "List dir", parameters: {} },
+      async () => "b",
+    );
+
+    core.setToolRegistry("agent-a", registryA);
+    core.setToolRegistry("agent-b", registryB);
+
+    core.createAgent(makeConfig({ id: "agent-a" }));
+    core.createAgent(makeConfig({ id: "agent-b" }));
+    core.createAgent(makeConfig({ id: "agent-a", name: "Agent A Reloaded" }));
+
+    const agentCalls = vi.mocked(Agent).mock.calls;
+    const lastThreeCalls = agentCalls.slice(-3);
+
+    expect(lastThreeCalls[0][0]).toEqual(
+      expect.objectContaining({
+        initialState: expect.objectContaining({
+          tools: [expect.objectContaining({ name: "read_file" })],
+        }),
+      }),
+    );
+    expect(lastThreeCalls[1][0]).toEqual(
+      expect.objectContaining({
+        initialState: expect.objectContaining({
+          tools: [expect.objectContaining({ name: "list_dir" })],
+        }),
+      }),
+    );
+    expect(lastThreeCalls[2][0]).toEqual(
+      expect.objectContaining({
+        initialState: expect.objectContaining({
+          tools: [expect.objectContaining({ name: "read_file" })],
         }),
       }),
     );

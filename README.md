@@ -63,6 +63,11 @@ provider:
   model: claude-sonnet-4-20250514
   apiKey: ${ANTHROPIC_API_KEY}
 
+tools:
+  cli: false
+  fs:
+    workspaceOnly: true
+
 agents:
   - id: assistant
     name: Assistant
@@ -75,6 +80,27 @@ discord:
 ```
 
 See [isotopes.example.yaml](isotopes.example.yaml) for full options.
+
+### Tool Guards
+
+Tool guards live in the same `isotopes.yaml` file.
+
+```yaml
+tools:
+  cli: false
+  fs:
+    workspaceOnly: true
+
+agents:
+  - id: assistant
+    name: Assistant
+    tools:
+      cli: true
+```
+
+- `tools.cli`: enables shell/CLI command execution. Default is `false`.
+- `tools.fs.workspaceOnly`: restricts file tools to the agent workspace. Default is `true`.
+- `agents[].tools`: overrides the global defaults for a single agent.
 
 ## Logging
 

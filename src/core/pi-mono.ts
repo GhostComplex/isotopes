@@ -248,13 +248,13 @@ function toAgentTool(tool: Tool, handler: (args: unknown) => Promise<string>): A
 // ---------------------------------------------------------------------------
 
 export class PiMonoCore implements AgentCore {
-  private toolRegistry?: ToolRegistry;
+  private toolRegistries = new Map<string, ToolRegistry>();
 
   /**
-   * Set a tool registry to be used for all agents created by this core.
+   * Set a tool registry to be used for a specific agent.
    */
-  setToolRegistry(registry: ToolRegistry): void {
-    this.toolRegistry = registry;
+  setToolRegistry(agentId: string, registry: ToolRegistry): void {
+    this.toolRegistries.set(agentId, registry);
   }
 
   createAgent(config: AgentConfig): AgentInstance {
@@ -262,9 +262,10 @@ export class PiMonoCore implements AgentCore {
 
     // Convert registered tools to AgentTools
     const tools: AgentTool[] = [];
-    if (this.toolRegistry) {
-      for (const entry of this.toolRegistry.list()) {
-        const toolEntry = this.toolRegistry.get(entry.name);
+    const toolRegistry = this.toolRegistries.get(config.id);
+    if (toolRegistry) {
+      for (const entry of toolRegistry.list()) {
+        const toolEntry = toolRegistry.get(entry.name);
         if (toolEntry) {
           tools.push(toAgentTool(toolEntry.tool, toolEntry.handler));
         }

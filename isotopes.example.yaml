@@ -7,12 +7,23 @@ provider:
   model: claude-sonnet-4-20250514
   apiKey: ${ANTHROPIC_API_KEY}
 
+# Tool guards and defaults
+tools:
+  # CLI/shell execution is off by default.
+  cli: false
+  fs:
+    # Restrict file tools to the agent workspace by default.
+    workspaceOnly: true
+
 # Agent definitions
 agents:
   - id: assistant
     name: Assistant
     systemPrompt: You are a helpful AI assistant.
     workspacePath: ./workspaces/assistant
+    # Optional: enable CLI/shell for a specific agent
+    # tools:
+    #   cli: true
     # Optional: override provider per agent
     # provider:
     #   type: openai

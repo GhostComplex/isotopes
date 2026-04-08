@@ -10,7 +10,12 @@ import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
 import { DiscordTransport } from "./transports/discord.js";
 import { logger } from "./core/logger.js";
-import { ToolRegistry, createWorkspaceTools } from "./core/tools.js";
+import {
+  ToolRegistry,
+  buildToolGuardPrompt,
+  createWorkspaceToolsWithGuards,
+  resolveToolGuards,
+} from "./core/tools.js";
 import {
   getConfigPath,
   ensureDirectories,
@@ -77,7 +82,7 @@ async function main() {
 
   // Create agents with workspace tools
   for (const agentFile of config.agents) {
-    const agentConfig = toAgentConfig(agentFile, config.provider);
+    const agentConfig = toAgentConfig(agentFile, config.provider, config.tools);
 
     // Resolve workspace path
     if (agentConfig.workspacePath) {
@@ -88,11 +93,20 @@ async function main() {
     }
 
     // Register workspace tools for this agent
+    const resolvedToolGuards = resolveToolGuards(agentConfig.toolSettings);
     const toolRegistry = new ToolRegistry();
-    for (const { tool, handler } of createWorkspaceTools(agentConfig.workspacePath)) {
+    const workspaceTools = createWorkspaceToolsWithGuards(
+      agentConfig.workspacePath,
+      agentConfig.toolSettings,
+    );
+    for (const { tool, handler } of workspaceTools) {
       toolRegistry.register(tool, handler);
     }
-    core.setToolRegistry(toolRegistry);
+    agentConfig.systemPrompt = [
+      agentConfig.systemPrompt,
+      buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, agentConfig.workspacePath),
+    ].filter(Boolean).join("\n\n---\n\n");
+    core.setToolRegistry(agentConfig.id, toolRegistry);
 
     await agentManager.create(agentConfig);
     logger.info(`Created agent: ${agentConfig.id} (workspace: ${agentConfig.workspacePath}, tools: ${toolRegistry.list().length})`);

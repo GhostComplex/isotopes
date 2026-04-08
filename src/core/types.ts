@@ -52,6 +52,15 @@ export interface Tool {
   parameters: Record<string, unknown>;
 }
 
+export interface FileToolPolicy {
+  workspaceOnly?: boolean;
+}
+
+export interface AgentToolSettings {
+  cli?: boolean;
+  fs?: FileToolPolicy;
+}
+
 // ---------------------------------------------------------------------------
 // Events (streamed from AgentInstance.prompt)
 // ---------------------------------------------------------------------------
@@ -90,6 +99,7 @@ export interface AgentConfig {
   name: string;
   systemPrompt: string;
   tools?: Tool[];
+  toolSettings?: AgentToolSettings;
   provider?: ProviderConfig;
   /** Path to agent's workspace directory (contains SOUL.md, MEMORY.md, sessions/) */
   workspacePath?: string;

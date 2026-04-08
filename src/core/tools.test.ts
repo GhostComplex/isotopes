@@ -6,6 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import {
   ToolRegistry,
+  buildToolGuardPrompt,
   createEchoTool,
   createTimeTool,
   createShellTool,
@@ -13,6 +14,8 @@ import {
   createWriteFileTool,
   createListDirTool,
   createWorkspaceTools,
+  createWorkspaceToolsWithGuards,
+  resolveToolGuards,
   type ToolHandler,
 } from "./tools.js";
 import type { Tool } from "./types.js";
@@ -254,6 +257,21 @@ describe("Built-in tools", () => {
       expect(result).toContain("[error]");
       expect(result).toContain("not found");
     });
+
+    it("rejects paths that escape the workspace", async () => {
+      const outsideFile = path.join(os.tmpdir(), `outside-${Date.now()}.txt`);
+      await fs.writeFile(outsideFile, "secret");
+
+      try {
+        const { handler } = createReadFileTool({ basePath: tempDir });
+        const result = await handler({ path: outsideFile });
+
+        expect(result).toContain("[error]");
+        expect(result).toContain("Path escapes workspace");
+      } finally {
+        await fs.rm(outsideFile, { force: true });
+      }
+    });
   });
 
   describe("createWriteFileTool", () => {
@@ -282,6 +300,20 @@ describe("Built-in tools", () => {
 
       const content = await fs.readFile(path.join(tempDir, "nested/dir/test.txt"), "utf-8");
       expect(content).toBe("nested");
+    });
+
+    it("rejects writes that escape the workspace", async () => {
+      const outsideFile = path.join(os.tmpdir(), `outside-write-${Date.now()}.txt`);
+
+      try {
+        const { handler } = createWriteFileTool({ basePath: tempDir });
+        const result = await handler({ path: outsideFile, content: "blocked" });
+
+        expect(result).toContain("[error]");
+        expect(result).toContain("Path escapes workspace");
+      } finally {
+        await fs.rm(outsideFile, { force: true });
+      }
     });
   });
 
@@ -315,6 +347,14 @@ describe("Built-in tools", () => {
       expect(result).toContain("[error]");
       expect(result).toContain("not found");
     });
+
+    it("rejects directories that escape the workspace", async () => {
+      const { handler } = createListDirTool({ basePath: tempDir });
+      const result = await handler({ path: os.tmpdir() });
+
+      expect(result).toContain("[error]");
+      expect(result).toContain("Path escapes workspace");
+    });
   });
 
   describe("createWorkspaceTools", () => {
@@ -322,11 +362,48 @@ describe("Built-in tools", () => {
       const tools = createWorkspaceTools("/tmp/workspace");
 
       const names = tools.map((t) => t.tool.name);
-      expect(names).toContain("shell");
       expect(names).toContain("read_file");
       expect(names).toContain("write_file");
       expect(names).toContain("list_dir");
       expect(names).toContain("get_current_time");
+      expect(names).not.toContain("shell");
+    });
+
+    it("enables shell when cli guard is turned on", () => {
+      const tools = createWorkspaceToolsWithGuards("/tmp/workspace", { cli: true });
+
+      expect(tools.map((entry) => entry.tool.name)).toContain("shell");
+    });
+  });
+
+  describe("resolveToolGuards", () => {
+    it("defaults cli off and workspaceOnly on", () => {
+      expect(resolveToolGuards()).toEqual({
+        cli: false,
+        fs: { workspaceOnly: true },
+      });
+    });
+
+    it("supports explicit cli on and workspaceOnly off", () => {
+      expect(resolveToolGuards({ cli: true, fs: { workspaceOnly: false } })).toEqual({
+        cli: true,
+        fs: { workspaceOnly: false },
+      });
+    });
+  });
+
+  describe("buildToolGuardPrompt", () => {
+    it("describes the active tools and guardrails", () => {
+      const prompt = buildToolGuardPrompt(
+        createWorkspaceToolsWithGuards("/tmp/workspace", { cli: true }).map((entry) => entry.tool),
+        { cli: true, fs: { workspaceOnly: true } },
+        "/tmp/workspace",
+      );
+
+      expect(prompt).toContain("Only the following tools are available");
+      expect(prompt).toContain("shell");
+      expect(prompt).toContain("restricted to the workspace: /tmp/workspace");
+      expect(prompt).toContain("Shell command execution is enabled");
     });
   });
 });

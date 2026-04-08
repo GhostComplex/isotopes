@@ -8,6 +8,7 @@ import {
   loadConfig,
   toAgentConfig,
   getDiscordToken,
+  resolveToolSettings,
 } from "./config.js";
 
 describe("Config", () => {
@@ -140,6 +141,31 @@ discord:
       expect(config.discord?.defaultAgentId).toBe("assistant");
       expect(config.discord?.agentBindings?.["123456"]).toBe("assistant");
     });
+
+    it("loads global and agent tool settings from the same config file", async () => {
+      const configPath = path.join(tempDir, "tools.yaml");
+      await fs.writeFile(
+        configPath,
+        `
+tools:
+  cli: false
+  fs:
+    workspaceOnly: true
+
+agents:
+  - id: assistant
+    name: Assistant
+    tools:
+      cli: true
+`,
+      );
+
+      const config = await loadConfig(configPath);
+
+      expect(config.tools?.cli).toBe(false);
+      expect(config.tools?.fs?.workspaceOnly).toBe(true);
+      expect(config.agents[0].tools?.cli).toBe(true);
+    });
   });
 
   describe("toAgentConfig", () => {
@@ -180,6 +206,42 @@ discord:
       const config = toAgentConfig(agentFile, defaultProvider);
 
       expect(config.provider?.type).toBe("anthropic");
+    });
+
+    it("merges tool settings with defaults", () => {
+      const agentFile = {
+        id: "test",
+        name: "Test",
+        tools: { cli: true },
+      };
+      const config = toAgentConfig(agentFile, undefined, {
+        cli: false,
+        fs: { workspaceOnly: true },
+      });
+
+      expect(config.toolSettings?.cli).toBe(true);
+      expect(config.toolSettings?.fs?.workspaceOnly).toBe(true);
+    });
+  });
+
+  describe("resolveToolSettings", () => {
+    it("defaults cli off and workspaceOnly on", () => {
+      expect(resolveToolSettings()).toEqual({
+        cli: false,
+        fs: { workspaceOnly: true },
+      });
+    });
+
+    it("lets agent settings override global defaults", () => {
+      expect(
+        resolveToolSettings(
+          { fs: { workspaceOnly: false } },
+          { cli: true, fs: { workspaceOnly: true } },
+        ),
+      ).toEqual({
+        cli: true,
+        fs: { workspaceOnly: false },
+      });
     });
   });
 

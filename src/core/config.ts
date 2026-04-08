@@ -4,7 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
-import type { AgentConfig, ProviderConfig } from "./types.js";
+import type { AgentConfig, AgentToolSettings, ProviderConfig } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -25,7 +25,15 @@ export interface AgentConfigFile {
   name: string;
   systemPrompt?: string;
   workspacePath?: string;
+  tools?: AgentToolsConfigFile;
   provider?: ProviderConfigFile;
+}
+
+export interface AgentToolsConfigFile {
+  cli?: boolean;
+  fs?: {
+    workspaceOnly?: boolean;
+  };
 }
 
 /** Discord transport configuration */
@@ -42,10 +50,24 @@ export interface DiscordConfigFile {
 export interface IsotopesConfigFile {
   /** Default provider for all agents */
   provider?: ProviderConfigFile;
+  /** Default tool policy/guards for all agents */
+  tools?: AgentToolsConfigFile;
   /** Agent definitions */
   agents: AgentConfigFile[];
   /** Discord transport config */
   discord?: DiscordConfigFile;
+}
+
+export function resolveToolSettings(
+  agentTools?: AgentToolsConfigFile,
+  defaultTools?: AgentToolsConfigFile,
+): AgentToolSettings {
+  return {
+    cli: agentTools?.cli ?? defaultTools?.cli ?? false,
+    fs: {
+      workspaceOnly: agentTools?.fs?.workspaceOnly ?? defaultTools?.fs?.workspaceOnly ?? true,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -90,12 +112,14 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
 export function toAgentConfig(
   agent: AgentConfigFile,
   defaultProvider?: ProviderConfigFile,
+  defaultTools?: AgentToolsConfigFile,
 ): AgentConfig {
   return {
     id: agent.id,
     name: agent.name,
     systemPrompt: agent.systemPrompt ?? "",
     workspacePath: agent.workspacePath,
+    toolSettings: resolveToolSettings(agent.tools, defaultTools),
     provider: (agent.provider ?? defaultProvider) as ProviderConfig | undefined,
   };
 }
