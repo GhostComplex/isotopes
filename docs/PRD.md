@@ -264,7 +264,7 @@ Extensible via tool registration.
 | **M1** | Config & Routing Enhancements | ✅ Done |
 | **M2** | Feishu Transport | ✅ Done |
 | **M3** | ACP Protocol | ✅ Done |
-| **M4** | Automation & Git | TBD |
+| **M4** | Automation & Git | ✅ Done |
 | **M5** | Daemon Mode + Web UI | TBD |
 | **M6** | Sandbox Execution | TBD |
 
@@ -431,21 +431,21 @@ acp:
 
 ---
 
-### M4: Automation & Git
+### M4: Automation & Git ✅
 
 #### 4.1 Cron Jobs
-- [ ] Channel-level cron (daily standups)
-- [ ] Agent self-registered cron
-- [ ] Cron expression parser
+- [x] Channel-level cron (daily standups)
+- [x] Agent self-registered cron
+- [x] Cron expression parser
 
 #### 4.2 Git/GitHub Tools
-- [ ] gh CLI wrapper
-- [ ] PR create/review/merge
-- [ ] Issue management
+- [x] gh CLI wrapper
+- [x] PR create/review/merge
+- [x] Issue management
 
 #### 4.3 Workspace Hot-Reload
-- [ ] fs.watch on workspace files
-- [ ] Auto-reload on change
+- [x] fs.watch on workspace files
+- [x] Auto-reload on change
 
 ---
 

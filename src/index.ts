@@ -217,3 +217,21 @@ export type {
   CreateIssueOptions,
   ReviewPROptions,
 } from "./tools/index.js";
+
+// ---------------------------------------------------------------------------
+// Workspace Hot-Reload
+// ---------------------------------------------------------------------------
+
+export {
+  WorkspaceWatcher,
+  globToRegExp,
+  matchesPatterns,
+  matchesIgnorePatterns,
+  ConfigReloader,
+} from "./workspace/index.js";
+export type {
+  WatcherConfig,
+  FileChange,
+  ChangeHandler,
+  ConfigReloadListener,
+} from "./workspace/index.js";
