@@ -23,6 +23,11 @@ import {
   getSessionsDir,
   resolveWorkspacePath,
 } from "./core/paths.js";
+import {
+  loadWorkspaceContext,
+  buildSystemPrompt,
+  ensureWorkspaceStructure,
+} from "./core/workspace.js";
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
@@ -91,6 +96,14 @@ async function main() {
       // Default workspace: ~/.isotopes/workspaces/<agentId>
       agentConfig.workspacePath = await ensureWorkspaceDir(agentConfig.id);
     }
+
+    // Ensure workspace directory structure exists (sessions/, memory/)
+    await ensureWorkspaceStructure(agentConfig.workspacePath);
+
+    // Load workspace context (SOUL.md, TOOLS.md, MEMORY.md)
+    const workspaceContext = await loadWorkspaceContext(agentConfig.workspacePath);
+    agentConfig.systemPrompt = buildSystemPrompt(agentConfig.systemPrompt, workspaceContext);
+    logger.debug(`Loaded workspace context for ${agentConfig.id}: systemPrompt=${workspaceContext.systemPromptAdditions.length > 0}, memory=${workspaceContext.memory !== null}`);
 
     // Register workspace tools for this agent
     const resolvedToolGuards = resolveToolGuards(agentConfig.toolSettings);
