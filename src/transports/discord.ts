@@ -17,11 +17,13 @@ import type {
   ChannelsConfig,
   Message,
   SessionStore,
+  ThreadBindingConfig,
   Transport,
 } from "../core/types.js";
 import { textContent } from "../core/types.js";
 import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
+import { ThreadBindingManager } from "../core/thread-bindings.js";
 
 const log = loggers.discord;
 
@@ -45,6 +47,10 @@ export interface DiscordTransportConfig {
   channels?: ChannelsConfig;
   /** The account ID this bot is running as (for guild config lookup) */
   accountId?: string;
+  /** Configuration for automatic thread-to-session binding */
+  threadBindings?: ThreadBindingConfig;
+  /** Thread binding manager instance (created automatically if not provided) */
+  threadBindingManager?: ThreadBindingManager;
 }
 
 /**
@@ -60,9 +66,11 @@ export class DiscordTransport implements Transport {
   private client: Client;
   private config: DiscordTransportConfig;
   private ready = false;
+  private threadBindingManager: ThreadBindingManager;
 
   constructor(config: DiscordTransportConfig) {
     this.config = config;
+    this.threadBindingManager = config.threadBindingManager ?? new ThreadBindingManager();
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -82,12 +90,51 @@ export class DiscordTransport implements Transport {
 
     this.client.on("messageCreate", (msg) => this.handleMessage(msg));
 
+    // Register thread creation handler when thread bindings are enabled
+    if (this.config.threadBindings?.enabled) {
+      this.client.on("threadCreate", (thread) => this.handleThreadCreate(thread));
+    }
+
     await this.client.login(this.config.token);
   }
 
   async stop(): Promise<void> {
     this.client.destroy();
     this.ready = false;
+  }
+
+  /** Access the thread binding manager (for external consumers / M3.2+) */
+  getThreadBindingManager(): ThreadBindingManager {
+    return this.threadBindingManager;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Thread creation handling
+  // ---------------------------------------------------------------------------
+
+  private handleThreadCreate(thread: ThreadChannel): void {
+    // Only handle guild threads with a parent channel
+    if (!thread.parentId) {
+      log.debug(`Ignoring thread ${thread.id} — no parent channel`);
+      return;
+    }
+
+    // If there's a channel allowlist, only bind threads in allowed channels
+    if (this.config.channelAllowlist?.length) {
+      if (!this.config.channelAllowlist.includes(thread.parentId)) {
+        log.debug(`Ignoring thread ${thread.id} — parent ${thread.parentId} not in allowlist`);
+        return;
+      }
+    }
+
+    const agentId = this.config.defaultAgentId ?? "default";
+
+    log.info(`Thread created: ${thread.id} in channel ${thread.parentId}, binding to agent ${agentId}`);
+
+    this.threadBindingManager.bind(thread.id, {
+      parentChannelId: thread.parentId,
+      agentId,
+    });
   }
 
   // ---------------------------------------------------------------------------

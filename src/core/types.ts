@@ -224,6 +224,8 @@ export interface DiscordAccountConfig {
   groupPolicy?: string;
   /** Per-guild configuration keyed by guild ID */
   guilds?: Record<string, GuildConfig>;
+  /** Thread binding configuration for auto-binding threads to agent sessions */
+  threadBindings?: ThreadBindingConfig;
 }
 
 /** Channels section of the configuration */
@@ -256,6 +258,32 @@ export interface CompactionConfig {
   threshold?: number;
   /** Number of recent messages to preserve (not summarized). Default: 10 */
   preserveRecent?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Thread bindings — auto-bind Discord threads to agent sessions
+// ---------------------------------------------------------------------------
+
+/** Configuration for automatic thread-to-session binding */
+export interface ThreadBindingConfig {
+  /** Whether thread binding is enabled */
+  enabled: boolean;
+  /** Whether to spawn ACP sessions when threads are created (M3.2+) */
+  spawnAcpSessions?: boolean;
+}
+
+/** A binding between a Discord thread and an agent session */
+export interface ThreadBinding {
+  /** Discord thread ID */
+  threadId: string;
+  /** ID of the parent channel the thread was created in */
+  parentChannelId: string;
+  /** Associated ACP session ID (populated in M3.2+) */
+  sessionId?: string;
+  /** Agent ID this thread is bound to */
+  agentId: string;
+  /** When the binding was created */
+  createdAt: Date;
 }
 
 // ---------------------------------------------------------------------------

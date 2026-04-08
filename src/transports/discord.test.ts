@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
 import type { AgentManager, SessionStore, AgentInstance, ChannelsConfig } from "../core/types.js";
 import { textContent } from "../core/types.js";
+import { ThreadBindingManager } from "../core/thread-bindings.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -408,6 +409,199 @@ describe("DiscordTransport", () => {
 
       const agent = agentManager.get("default")!;
       expect(agent.prompt).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Thread bindings
+  // ---------------------------------------------------------------------------
+
+  describe("thread bindings", () => {
+    it("registers threadCreate handler when threadBindings.enabled is true", async () => {
+      const transportWithThreads = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        threadBindings: { enabled: true },
+      });
+
+      await transportWithThreads.start();
+
+      const { Client } = await import("discord.js");
+      const mockClient = (Client as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+      const threadCreateCalls = mockClient.on.mock.calls.filter(
+        ([event]: [string]) => event === "threadCreate",
+      );
+      expect(threadCreateCalls).toHaveLength(1);
+    });
+
+    it("does NOT register threadCreate handler when threadBindings.enabled is false", async () => {
+      const transportNoThreads = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        threadBindings: { enabled: false },
+      });
+
+      await transportNoThreads.start();
+
+      const { Client } = await import("discord.js");
+      const mockClient = (Client as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+      const threadCreateCalls = mockClient.on.mock.calls.filter(
+        ([event]: [string]) => event === "threadCreate",
+      );
+      expect(threadCreateCalls).toHaveLength(0);
+    });
+
+    it("does NOT register threadCreate handler when threadBindings is not configured", async () => {
+      // `transport` from beforeEach has no threadBindings config
+      await transport.start();
+
+      const { Client } = await import("discord.js");
+      const mockClient = (Client as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+      const threadCreateCalls = mockClient.on.mock.calls.filter(
+        ([event]: [string]) => event === "threadCreate",
+      );
+      expect(threadCreateCalls).toHaveLength(0);
+    });
+
+    it("creates a binding when a thread is created", async () => {
+      const bindingManager = new ThreadBindingManager();
+      const transportWithThreads = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "test-agent",
+        threadBindings: { enabled: true },
+        threadBindingManager: bindingManager,
+      });
+
+      await transportWithThreads.start();
+
+      // Get the threadCreate handler
+      const { Client } = await import("discord.js");
+      const mockClient = (Client as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+      const threadCreateHandler = mockClient.on.mock.calls.find(
+        ([event]: [string]) => event === "threadCreate",
+      )?.[1] as (thread: { id: string; parentId: string | null }) => void;
+
+      expect(threadCreateHandler).toBeDefined();
+
+      // Simulate thread creation
+      threadCreateHandler({ id: "thread-999", parentId: "channel-42" });
+
+      const binding = bindingManager.get("thread-999");
+      expect(binding).toBeDefined();
+      expect(binding!.threadId).toBe("thread-999");
+      expect(binding!.parentChannelId).toBe("channel-42");
+      expect(binding!.agentId).toBe("test-agent");
+    });
+
+    it("uses 'default' agentId when defaultAgentId is not configured", async () => {
+      const bindingManager = new ThreadBindingManager();
+      const transportWithThreads = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        threadBindings: { enabled: true },
+        threadBindingManager: bindingManager,
+      });
+
+      await transportWithThreads.start();
+
+      const { Client } = await import("discord.js");
+      const mockClient = (Client as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+      const threadCreateHandler = mockClient.on.mock.calls.find(
+        ([event]: [string]) => event === "threadCreate",
+      )?.[1] as (thread: { id: string; parentId: string | null }) => void;
+
+      threadCreateHandler({ id: "thread-1", parentId: "channel-1" });
+
+      const binding = bindingManager.get("thread-1");
+      expect(binding!.agentId).toBe("default");
+    });
+
+    it("ignores threads without a parent channel", async () => {
+      const bindingManager = new ThreadBindingManager();
+      const transportWithThreads = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "test-agent",
+        threadBindings: { enabled: true },
+        threadBindingManager: bindingManager,
+      });
+
+      await transportWithThreads.start();
+
+      const { Client } = await import("discord.js");
+      const mockClient = (Client as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+      const threadCreateHandler = mockClient.on.mock.calls.find(
+        ([event]: [string]) => event === "threadCreate",
+      )?.[1] as (thread: { id: string; parentId: string | null }) => void;
+
+      threadCreateHandler({ id: "thread-orphan", parentId: null });
+
+      expect(bindingManager.get("thread-orphan")).toBeUndefined();
+      expect(bindingManager.size).toBe(0);
+    });
+
+    it("respects channelAllowlist — only binds threads in allowed channels", async () => {
+      const bindingManager = new ThreadBindingManager();
+      const transportWithThreads = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "test-agent",
+        threadBindings: { enabled: true },
+        threadBindingManager: bindingManager,
+        channelAllowlist: ["channel-allowed"],
+      });
+
+      await transportWithThreads.start();
+
+      const { Client } = await import("discord.js");
+      const mockClient = (Client as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
+      const threadCreateHandler = mockClient.on.mock.calls.find(
+        ([event]: [string]) => event === "threadCreate",
+      )?.[1] as (thread: { id: string; parentId: string | null }) => void;
+
+      // Thread in allowed channel — should bind
+      threadCreateHandler({ id: "thread-ok", parentId: "channel-allowed" });
+      expect(bindingManager.get("thread-ok")).toBeDefined();
+
+      // Thread in disallowed channel — should not bind
+      threadCreateHandler({ id: "thread-nope", parentId: "channel-other" });
+      expect(bindingManager.get("thread-nope")).toBeUndefined();
+    });
+
+    it("exposes thread binding manager via getThreadBindingManager()", () => {
+      const bindingManager = new ThreadBindingManager();
+      const transportWithThreads = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        threadBindings: { enabled: true },
+        threadBindingManager: bindingManager,
+      });
+
+      expect(transportWithThreads.getThreadBindingManager()).toBe(bindingManager);
+    });
+
+    it("creates a default ThreadBindingManager when none is provided", () => {
+      const transportWithThreads = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        threadBindings: { enabled: true },
+      });
+
+      expect(transportWithThreads.getThreadBindingManager()).toBeInstanceOf(ThreadBindingManager);
     });
   });
 });

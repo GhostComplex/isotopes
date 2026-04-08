@@ -26,6 +26,8 @@ export type {
   BindingMatch,
   BindingPeer,
   PeerKind,
+  ThreadBindingConfig,
+  ThreadBinding,
 } from "./core/types.js";
 
 // ---------------------------------------------------------------------------
@@ -68,6 +70,7 @@ export type {
   AgentConfigFile,
   DiscordConfigFile,
   ProviderConfigFile,
+  ThreadBindingConfigFile,
 } from "./core/config.js";
 
 // ---------------------------------------------------------------------------
@@ -76,6 +79,13 @@ export type {
 
 export { resolveBinding, resolveAllBindings } from "./core/bindings.js";
 export type { BindingQuery } from "./core/bindings.js";
+
+// ---------------------------------------------------------------------------
+// Thread bindings
+// ---------------------------------------------------------------------------
+
+export { ThreadBindingManager } from "./core/thread-bindings.js";
+export type { ThreadBindingCallback } from "./core/thread-bindings.js";
 
 // ---------------------------------------------------------------------------
 // Mention detection

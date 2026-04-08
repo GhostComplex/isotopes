@@ -92,6 +92,16 @@ export interface DiscordConfigFile {
   agentBindings?: Record<string, string>;
   allowDMs?: boolean;
   channelAllowlist?: string[];
+  /** Thread binding configuration for auto-binding threads to agent sessions */
+  threadBindings?: ThreadBindingConfigFile;
+}
+
+/** Thread binding configuration in config file */
+export interface ThreadBindingConfigFile {
+  /** Whether thread binding is enabled */
+  enabled?: boolean;
+  /** Whether to spawn ACP sessions when threads are created (M3.2+) */
+  spawnAcpSessions?: boolean;
 }
 
 /** Root configuration file structure */
