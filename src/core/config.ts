@@ -4,7 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
-import type { AgentConfig, AgentToolSettings, ProviderConfig } from "./types.js";
+import type { AgentConfig, AgentToolSettings, Binding, BindingPeer, PeerKind, ProviderConfig } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -36,6 +36,25 @@ export interface AgentToolsConfigFile {
   };
 }
 
+/** Peer reference in binding config */
+export interface BindingPeerConfigFile {
+  kind: string;
+  id: string;
+}
+
+/** Match criteria in binding config */
+export interface BindingMatchConfigFile {
+  channel: string;
+  accountId?: string;
+  peer?: BindingPeerConfigFile;
+}
+
+/** A single binding entry in config file */
+export interface BindingConfigFile {
+  agentId: string;
+  match: BindingMatchConfigFile;
+}
+
 /** Discord transport configuration */
 export interface DiscordConfigFile {
   token?: string;
@@ -54,6 +73,8 @@ export interface IsotopesConfigFile {
   tools?: AgentToolsConfigFile;
   /** Agent definitions */
   agents: AgentConfigFile[];
+  /** Agent ↔ Channel bindings */
+  bindings?: BindingConfigFile[];
   /** Discord transport config */
   discord?: DiscordConfigFile;
 }
@@ -122,6 +143,63 @@ export function toAgentConfig(
     toolSettings: resolveToolSettings(agent.tools, defaultTools),
     provider: (agent.provider ?? defaultProvider) as ProviderConfig | undefined,
   };
+}
+
+const VALID_PEER_KINDS = new Set<string>(["group", "dm", "thread"]);
+
+/**
+ * Convert config file bindings to Binding[].
+ * Validates that all referenced agentIds exist and peer kinds are valid.
+ */
+export function toBindings(
+  bindingsConfig: BindingConfigFile[] | undefined,
+  agents: AgentConfigFile[],
+): Binding[] {
+  if (!bindingsConfig || bindingsConfig.length === 0) return [];
+
+  const agentIds = new Set(agents.map((a) => a.id));
+
+  return bindingsConfig.map((entry, i) => {
+    // Validate agentId exists
+    if (!agentIds.has(entry.agentId)) {
+      throw new Error(
+        `bindings[${i}]: agentId "${entry.agentId}" does not match any defined agent`,
+      );
+    }
+
+    // Validate match.channel is present
+    if (!entry.match?.channel) {
+      throw new Error(`bindings[${i}]: match.channel is required`);
+    }
+
+    // Validate peer kind if present
+    if (entry.match.peer) {
+      if (!VALID_PEER_KINDS.has(entry.match.peer.kind)) {
+        throw new Error(
+          `bindings[${i}]: invalid peer.kind "${entry.match.peer.kind}" (must be group, dm, or thread)`,
+        );
+      }
+      if (!entry.match.peer.id) {
+        throw new Error(`bindings[${i}]: peer.id is required when peer is specified`);
+      }
+    }
+
+    const binding: Binding = {
+      agentId: entry.agentId,
+      match: {
+        channel: entry.match.channel,
+        ...(entry.match.accountId !== undefined && { accountId: entry.match.accountId }),
+        ...(entry.match.peer !== undefined && {
+          peer: {
+            kind: entry.match.peer.kind as PeerKind,
+            id: String(entry.match.peer.id),
+          } satisfies BindingPeer,
+        }),
+      },
+    };
+
+    return binding;
+  });
 }
 
 /**
