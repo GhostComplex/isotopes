@@ -229,6 +229,12 @@ export class FeishuTransport implements Transport {
   // ---------------------------------------------------------------------------
 
   private async handleMessage(event: FeishuMessageEvent): Promise<void> {
+    // Ignore messages from bots / apps (only process human user messages)
+    if (event.sender.sender_type !== "user") {
+      log.debug(`Ignoring message from non-user sender: ${event.sender.sender_type}`);
+      return;
+    }
+
     // Only handle text messages
     if (event.message.message_type !== "text") {
       log.debug(`Ignoring non-text message type: ${event.message.message_type}`);

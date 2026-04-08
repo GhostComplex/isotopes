@@ -510,6 +510,71 @@ describe("FeishuTransport", () => {
       expect(agent.prompt).not.toHaveBeenCalled();
     });
 
+    it("ignores messages from bot/app senders", async () => {
+      await transport.start();
+
+      const event = makeEvent({
+        sender: {
+          sender_id: { open_id: "bot-open-id-456" },
+          sender_type: "app",
+          tenant_key: "tenant-1",
+        },
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "chat-dm-1",
+          chat_type: "p2p",
+          message_type: "text",
+          content: JSON.stringify({ text: "I am a bot message" }),
+        },
+      });
+
+      await (
+        transport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).not.toHaveBeenCalled();
+    });
+
+    it("ignores messages from anonymous senders", async () => {
+      await transport.start();
+
+      const event = makeEvent({
+        sender: {
+          sender_id: {},
+          sender_type: "anonymous",
+          tenant_key: "tenant-1",
+        },
+        message: {
+          message_id: "msg-1",
+          create_time: "1700000000000",
+          chat_id: "chat-group-1",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "@_user_1 hello" }),
+          mentions: [
+            {
+              key: "@_user_1",
+              id: { open_id: "bot-open-id-123" },
+              name: "TestBot",
+            },
+          ],
+        },
+      });
+
+      await (
+        transport as unknown as {
+          handleMessage: (event: FeishuMessageEvent) => Promise<void>;
+        }
+      ).handleMessage(event);
+
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).not.toHaveBeenCalled();
+    });
+
     it("ignores group messages when bot is not mentioned", async () => {
       await transport.start();
 
