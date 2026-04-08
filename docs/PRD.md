@@ -265,7 +265,7 @@ Extensible via tool registration.
 | **M2** | Feishu Transport | ✅ Done |
 | **M3** | ACP Protocol | ✅ Done |
 | **M4** | Automation & Git | ✅ Done |
-| **M5** | Daemon Mode + Web UI | TBD |
+| **M5** | Daemon Mode + Web API | ✅ Done |
 | **M6** | Sandbox Execution | TBD |
 
 ---
@@ -449,17 +449,19 @@ acp:
 
 ---
 
-### M5: Daemon Mode + Web UI
+### M5: Daemon Mode + Web API ✅
 
 #### 5.1 Daemon Mode
-- [ ] `isotopes start/stop/status`
-- [ ] launchd (macOS) / systemd (Linux)
-- [ ] Log rotation
+- [x] `isotopes start/stop/status`
+- [x] launchd (macOS) / systemd (Linux)
+- [x] Log rotation
 
-#### 5.2 Web UI
-- [ ] Agent dashboard
-- [ ] Session viewer
-- [ ] Config editor
+#### 5.2 Web API
+- [x] REST API server (Node.js built-in http)
+- [x] Agent dashboard (GET /api/status, GET /api/sessions)
+- [x] Session viewer (GET /api/sessions/:id, POST /api/sessions/:id/message)
+- [x] Config editor (GET /api/config, PUT /api/config)
+- [x] Cron management (GET/POST/DELETE /api/cron)
 
 ---
 
