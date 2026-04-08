@@ -4,7 +4,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
-import type { AgentConfig, AgentToolSettings, Binding, BindingPeer, PeerKind, ProviderConfig } from "./types.js";
+import type {
+  AgentConfig,
+  AgentToolSettings,
+  Binding,
+  BindingPeer,
+  ChannelsConfig,
+  DiscordAccountConfig,
+  GuildConfig,
+  PeerKind,
+  ProviderConfig,
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -77,6 +87,8 @@ export interface IsotopesConfigFile {
   bindings?: BindingConfigFile[];
   /** Discord transport config */
   discord?: DiscordConfigFile;
+  /** Channel configurations (per-guild/group settings) */
+  channels?: ChannelsConfig;
 }
 
 export function resolveToolSettings(
@@ -217,6 +229,35 @@ export function getDiscordToken(discord: DiscordConfigFile): string {
     return token;
   }
   throw new Error("Discord config must have either 'token' or 'tokenEnv'");
+}
+
+// ---------------------------------------------------------------------------
+// Channel config helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Look up the GuildConfig for a specific Discord guild under a given account.
+ * Returns undefined if no guild-specific config exists.
+ */
+export function getDiscordGuildConfig(
+  channels: ChannelsConfig | undefined,
+  accountId: string,
+  guildId: string,
+): GuildConfig | undefined {
+  return channels?.discord?.accounts?.[accountId]?.guilds?.[guildId];
+}
+
+/**
+ * Resolve whether @mention is required for a given Discord guild.
+ * Default: true (only respond when @mentioned).
+ */
+export function isRequireMention(
+  channels: ChannelsConfig | undefined,
+  accountId: string,
+  guildId: string,
+): boolean {
+  const guildConfig = getDiscordGuildConfig(channels, accountId, guildId);
+  return guildConfig?.requireMention ?? true;
 }
 
 // ---------------------------------------------------------------------------
