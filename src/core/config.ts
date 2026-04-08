@@ -12,6 +12,7 @@ import type {
   ChannelsConfig,
   CompactionConfig,
   CompactionMode,
+  CronActionConfig,
   GuildConfig,
   PeerKind,
   ProviderConfig,
@@ -116,6 +117,15 @@ export interface AcpConfigFile {
   allowedAgents?: string[];
 }
 
+/** Cron job configuration in config file */
+export interface CronJobConfigFile {
+  name: string;
+  expression: string;
+  agentId: string;
+  action: CronActionConfig;
+  enabled?: boolean;
+}
+
 /** Root configuration file structure */
 export interface IsotopesConfigFile {
   /** Default provider for all agents */
@@ -136,6 +146,8 @@ export interface IsotopesConfigFile {
   channels?: ChannelsConfig;
   /** ACP (Agent Communication Protocol) configuration */
   acp?: AcpConfigFile;
+  /** Channel-level cron job definitions */
+  cron?: CronJobConfigFile[];
 }
 
 export function resolveToolSettings(

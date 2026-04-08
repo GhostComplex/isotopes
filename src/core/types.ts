@@ -287,6 +287,16 @@ export interface ThreadBinding {
 }
 
 // ---------------------------------------------------------------------------
+// Cron action config — for config-file-level cron job definitions
+// ---------------------------------------------------------------------------
+
+/** Action to perform when a cron job triggers */
+export type CronActionConfig =
+  | { type: "message"; content: string }
+  | { type: "prompt"; prompt: string }
+  | { type: "callback"; handler: string };
+
+// ---------------------------------------------------------------------------
 // Transport
 // ---------------------------------------------------------------------------
 

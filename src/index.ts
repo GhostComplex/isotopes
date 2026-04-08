@@ -73,6 +73,7 @@ export type {
   ProviderConfigFile,
   ThreadBindingConfigFile,
   AcpConfigFile,
+  CronJobConfigFile,
 } from "./core/config.js";
 
 // ---------------------------------------------------------------------------
@@ -133,6 +134,24 @@ export type { DiscordTransportConfig } from "./transports/discord.js";
 
 export { FeishuTransport, extractTextFromFeishuMessage, buildFeishuSessionKey, stripFeishuMentions, isBotMentioned, resolveAgentId } from "./transports/feishu.js";
 export type { FeishuTransportConfig, FeishuMessageEvent } from "./transports/feishu.js";
+
+// ---------------------------------------------------------------------------
+// Automation (cron)
+// ---------------------------------------------------------------------------
+
+export {
+  CronScheduler,
+  parseCronExpression,
+  getNextRun,
+  matchesCron,
+} from "./automation/index.js";
+export type {
+  CronSchedule,
+  CronJob,
+  CronAction,
+  CronJobCallback,
+  CronJobInput,
+} from "./automation/index.js";
 
 // ---------------------------------------------------------------------------
 // Logging
