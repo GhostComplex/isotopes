@@ -154,10 +154,19 @@ export interface SessionMetadata {
   threadId?: string;
 }
 
+/** Session TTL and cleanup configuration */
+export interface SessionConfig {
+  /** Session time-to-live in seconds. Default: 86400 (24 hours) */
+  ttl?: number;
+  /** Interval between cleanup sweeps in seconds. Default: 3600 (1 hour) */
+  cleanupInterval?: number;
+}
+
 export interface SessionStoreConfig {
   dataDir: string;
   maxSessions?: number;       // default: 100
   maxTotalSizeMB?: number;    // default: 100
+  session?: SessionConfig;
 }
 
 export interface SessionStore {

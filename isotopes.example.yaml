@@ -15,6 +15,11 @@ tools:
     # Restrict file tools to the agent workspace by default.
     workspaceOnly: true
 
+# Session management
+session:
+  ttl: 86400           # Session time-to-live in seconds (default: 24h)
+  cleanupInterval: 3600 # Cleanup sweep interval in seconds (default: 1h)
+
 # Agent definitions
 agents:
   - id: assistant

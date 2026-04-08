@@ -16,6 +16,7 @@ import type {
   GuildConfig,
   PeerKind,
   ProviderConfig,
+  SessionConfig,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -57,6 +58,14 @@ export interface CompactionConfigFile {
   preserveRecent?: number;
 }
 
+/** Session management configuration in config file */
+export interface SessionConfigFile {
+  /** Session time-to-live in seconds */
+  ttl?: number;
+  /** Interval between cleanup sweeps in seconds */
+  cleanupInterval?: number;
+}
+
 /** Peer reference in binding config */
 export interface BindingPeerConfigFile {
   kind: string;
@@ -94,6 +103,8 @@ export interface IsotopesConfigFile {
   tools?: AgentToolsConfigFile;
   /** Default compaction config for all agents */
   compaction?: CompactionConfigFile;
+  /** Session management (TTL, cleanup) */
+  session?: SessionConfigFile;
   /** Agent definitions */
   agents: AgentConfigFile[];
   /** Agent ↔ Channel bindings */
@@ -144,6 +155,29 @@ export function resolveCompactionConfigFromFile(
     contextWindow: agentCompaction?.contextWindow ?? defaultCompaction?.contextWindow,
     threshold: agentCompaction?.threshold ?? defaultCompaction?.threshold,
     preserveRecent: agentCompaction?.preserveRecent ?? defaultCompaction?.preserveRecent,
+  };
+}
+
+/**
+ * Resolve session config from the config file.
+ * Returns undefined if no session config is provided.
+ * Validates that ttl and cleanupInterval are positive numbers.
+ */
+export function resolveSessionConfig(
+  sessionConfig?: SessionConfigFile,
+): SessionConfig | undefined {
+  if (!sessionConfig) return undefined;
+
+  if (sessionConfig.ttl !== undefined && (typeof sessionConfig.ttl !== "number" || sessionConfig.ttl <= 0)) {
+    throw new Error(`Invalid session.ttl "${sessionConfig.ttl}" (must be a positive number)`);
+  }
+  if (sessionConfig.cleanupInterval !== undefined && (typeof sessionConfig.cleanupInterval !== "number" || sessionConfig.cleanupInterval <= 0)) {
+    throw new Error(`Invalid session.cleanupInterval "${sessionConfig.cleanupInterval}" (must be a positive number)`);
+  }
+
+  return {
+    ...(sessionConfig.ttl !== undefined && { ttl: sessionConfig.ttl }),
+    ...(sessionConfig.cleanupInterval !== undefined && { cleanupInterval: sessionConfig.cleanupInterval }),
   };
 }
 

@@ -10,6 +10,7 @@ import type {
   SessionMetadata,
   SessionStore,
   SessionStoreConfig,
+  SessionConfig,
 } from "./types.js";
 
 interface StoredSession extends Session {
@@ -35,6 +36,11 @@ interface PersistedTranscriptRecord {
   message: Message;
 }
 
+/** Default session TTL: 24 hours in seconds */
+const DEFAULT_TTL_SECONDS = 86_400;
+/** Default cleanup interval: 1 hour in seconds */
+const DEFAULT_CLEANUP_INTERVAL_SECONDS = 3_600;
+
 /**
  * DefaultSessionStore — in-memory session storage with file persistence.
  *
@@ -45,12 +51,19 @@ export class DefaultSessionStore implements SessionStore {
   private sessions = new Map<string, StoredSession>();
   private keyIndex = new Map<string, string>(); // key -> sessionId
   private config: Required<SessionStoreConfig>;
+  private sessionConfig: Required<SessionConfig>;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: SessionStoreConfig) {
     this.config = {
       dataDir: config.dataDir,
       maxSessions: config.maxSessions ?? 100,
       maxTotalSizeMB: config.maxTotalSizeMB ?? 100,
+      session: config.session ?? {},
+    };
+    this.sessionConfig = {
+      ttl: config.session?.ttl ?? DEFAULT_TTL_SECONDS,
+      cleanupInterval: config.session?.cleanupInterval ?? DEFAULT_CLEANUP_INTERVAL_SECONDS,
     };
   }
 
@@ -147,6 +160,76 @@ export class DefaultSessionStore implements SessionStore {
     } catch {
       // Ignore if doesn't exist
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // TTL & cleanup
+  // -------------------------------------------------------------------------
+
+  /**
+   * Get the age of a session in seconds (time since lastActiveAt).
+   * Returns undefined if the session does not exist.
+   */
+  getSessionAge(sessionId: string): number | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session) return undefined;
+    return (Date.now() - session.lastActiveAt.getTime()) / 1_000;
+  }
+
+  /**
+   * Remove all sessions whose age exceeds the configured TTL.
+   * Returns the IDs of deleted sessions.
+   */
+  async cleanupExpiredSessions(): Promise<string[]> {
+    const ttl = this.sessionConfig.ttl;
+    const now = Date.now();
+    const expired: string[] = [];
+
+    for (const [id, session] of this.sessions) {
+      const ageSeconds = (now - session.lastActiveAt.getTime()) / 1_000;
+      if (ageSeconds > ttl) {
+        expired.push(id);
+      }
+    }
+
+    for (const id of expired) {
+      await this.delete(id);
+    }
+
+    return expired;
+  }
+
+  /**
+   * Start the periodic cleanup timer.
+   * Runs cleanupExpiredSessions() every `cleanupInterval` seconds.
+   */
+  startCleanupTimer(): void {
+    this.stopCleanupTimer();
+    const intervalMs = this.sessionConfig.cleanupInterval * 1_000;
+    this.cleanupTimer = setInterval(() => {
+      void this.cleanupExpiredSessions();
+    }, intervalMs);
+    // Allow the Node.js process to exit even if the timer is active
+    if (this.cleanupTimer && typeof this.cleanupTimer === "object" && "unref" in this.cleanupTimer) {
+      this.cleanupTimer.unref();
+    }
+  }
+
+  /**
+   * Stop the periodic cleanup timer.
+   */
+  stopCleanupTimer(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+  }
+
+  /**
+   * Tear down the store: stop cleanup timer and release resources.
+   */
+  destroy(): void {
+    this.stopCleanupTimer();
   }
 
   // -------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import {
   getDiscordToken,
   resolveToolSettings,
   resolveCompactionConfigFromFile,
+  resolveSessionConfig,
 } from "./config.js";
 
 describe("Config", () => {
@@ -350,6 +351,81 @@ agents:
       expect(() => getDiscordToken({})).toThrow(
         "Discord config must have either 'token' or 'tokenEnv'",
       );
+    });
+  });
+
+  describe("resolveSessionConfig", () => {
+    it("returns undefined when no session config provided", () => {
+      expect(resolveSessionConfig()).toBeUndefined();
+    });
+
+    it("returns config with ttl when provided", () => {
+      const config = resolveSessionConfig({ ttl: 7200 });
+      expect(config).toBeDefined();
+      expect(config!.ttl).toBe(7200);
+    });
+
+    it("returns config with cleanupInterval when provided", () => {
+      const config = resolveSessionConfig({ cleanupInterval: 1800 });
+      expect(config).toBeDefined();
+      expect(config!.cleanupInterval).toBe(1800);
+    });
+
+    it("returns config with both ttl and cleanupInterval", () => {
+      const config = resolveSessionConfig({ ttl: 3600, cleanupInterval: 600 });
+      expect(config).toBeDefined();
+      expect(config!.ttl).toBe(3600);
+      expect(config!.cleanupInterval).toBe(600);
+    });
+
+    it("throws on invalid ttl (zero)", () => {
+      expect(() => resolveSessionConfig({ ttl: 0 })).toThrow(
+        'Invalid session.ttl "0"',
+      );
+    });
+
+    it("throws on invalid ttl (negative)", () => {
+      expect(() => resolveSessionConfig({ ttl: -100 })).toThrow(
+        'Invalid session.ttl "-100"',
+      );
+    });
+
+    it("throws on invalid cleanupInterval (zero)", () => {
+      expect(() => resolveSessionConfig({ cleanupInterval: 0 })).toThrow(
+        'Invalid session.cleanupInterval "0"',
+      );
+    });
+
+    it("throws on invalid cleanupInterval (negative)", () => {
+      expect(() => resolveSessionConfig({ cleanupInterval: -60 })).toThrow(
+        'Invalid session.cleanupInterval "-60"',
+      );
+    });
+
+    it("returns empty object when session config has no fields", () => {
+      const config = resolveSessionConfig({});
+      expect(config).toBeDefined();
+      expect(config!.ttl).toBeUndefined();
+      expect(config!.cleanupInterval).toBeUndefined();
+    });
+
+    it("loads session config from YAML file", async () => {
+      const configPath = path.join(tempDir, "session.yaml");
+      await fs.writeFile(
+        configPath,
+        `
+agents:
+  - id: test
+    name: Test
+session:
+  ttl: 43200
+  cleanupInterval: 1800
+`,
+      );
+
+      const config = await loadConfig(configPath);
+      expect(config.session?.ttl).toBe(43200);
+      expect(config.session?.cleanupInterval).toBe(1800);
     });
   });
 });
