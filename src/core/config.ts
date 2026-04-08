@@ -91,13 +91,8 @@ export interface SandboxConfigFile {
   docker?: SandboxDockerConfigFile;
 }
 
-/** Session management configuration in config file */
-export interface SessionConfigFile {
-  /** Session time-to-live in seconds */
-  ttl?: number;
-  /** Interval between cleanup sweeps in seconds */
-  cleanupInterval?: number;
-}
+// SessionConfig from core/types.ts is used directly — no separate config-file type needed
+// since the config-file shape is identical to the runtime type.
 
 /** Peer reference in binding config */
 export interface BindingPeerConfigFile {
@@ -170,7 +165,7 @@ export interface IsotopesConfigFile {
   /** Default sandbox config for all agents */
   sandbox?: SandboxConfigFile;
   /** Session management (TTL, cleanup) */
-  session?: SessionConfigFile;
+  session?: SessionConfig;
   /** Agent definitions */
   agents: AgentConfigFile[];
   /** Agent ↔ Channel bindings */
@@ -234,7 +229,7 @@ export function resolveCompactionConfigFromFile(
  * Validates that ttl and cleanupInterval are positive numbers.
  */
 export function resolveSessionConfig(
-  sessionConfig?: SessionConfigFile,
+  sessionConfig?: SessionConfig,
 ): SessionConfig | undefined {
   if (!sessionConfig) return undefined;
 

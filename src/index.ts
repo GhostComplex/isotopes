@@ -9,6 +9,7 @@ export const VERSION = "0.1.0";
 
 export type {
   Message,
+  MessageContentBlock,
   Tool,
   AgentEvent,
   ProviderConfig,
@@ -17,8 +18,13 @@ export type {
   AgentCore,
   AgentManager,
   Session,
+  SessionMetadata,
+  SessionConfig,
   SessionStore,
+  SessionStoreConfig,
   Transport,
+  CompactionMode,
+  CompactionConfig,
   GuildConfig,
   DiscordAccountConfig,
   ChannelsConfig,
@@ -29,6 +35,8 @@ export type {
   ThreadBindingConfig,
   ThreadBinding,
 } from "./core/types.js";
+
+export { textContent, messageContentToPlainText } from "./core/types.js";
 
 // ---------------------------------------------------------------------------
 // Core implementations
