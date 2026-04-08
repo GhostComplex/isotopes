@@ -747,10 +747,18 @@ describe("FeishuTransport", () => {
     });
 
     it("sends error message when agent throws", async () => {
+      // Create an async iterable that throws on first iteration
+      const throwingIterable: AsyncIterable<AgentEvent> = {
+        [Symbol.asyncIterator]() {
+          return {
+            async next() {
+              throw new Error("Agent crashed");
+            },
+          };
+        },
+      };
       const errorAgent: AgentInstance = {
-        prompt: vi.fn(async function* (): AsyncGenerator<AgentEvent> {
-          throw new Error("Agent crashed");
-        }),
+        prompt: vi.fn(() => throwingIterable),
         abort: vi.fn(),
         steer: vi.fn(),
         followUp: vi.fn(),
