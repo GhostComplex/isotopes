@@ -103,6 +103,8 @@ export interface AgentConfig {
   provider?: ProviderConfig;
   /** Path to agent's workspace directory (contains SOUL.md, MEMORY.md, sessions/) */
   workspacePath?: string;
+  /** Context compaction configuration */
+  compaction?: CompactionConfig;
 }
 
 export interface AgentInstance {
@@ -226,6 +228,25 @@ export interface ChannelsConfig {
     accounts?: Record<string, unknown>;
     groups?: Record<string, GuildConfig>;
   };
+}
+
+// ---------------------------------------------------------------------------
+// Compaction — context window management
+// ---------------------------------------------------------------------------
+
+/** Compaction mode for managing context window size */
+export type CompactionMode = 'off' | 'safeguard' | 'aggressive';
+
+/** Configuration for context compaction */
+export interface CompactionConfig {
+  /** Compaction mode. Default: 'safeguard' */
+  mode: CompactionMode;
+  /** Maximum context window size in tokens. Default: 128000 */
+  contextWindow?: number;
+  /** Threshold ratio (0–1) at which compaction triggers. Default: 0.8 for safeguard, 0.5 for aggressive */
+  threshold?: number;
+  /** Number of recent messages to preserve (not summarized). Default: 10 */
+  preserveRecent?: number;
 }
 
 // ---------------------------------------------------------------------------

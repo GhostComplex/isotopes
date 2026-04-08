@@ -10,6 +10,8 @@ import type {
   Binding,
   BindingPeer,
   ChannelsConfig,
+  CompactionConfig,
+  CompactionMode,
   DiscordAccountConfig,
   GuildConfig,
   PeerKind,
@@ -37,6 +39,7 @@ export interface AgentConfigFile {
   workspacePath?: string;
   tools?: AgentToolsConfigFile;
   provider?: ProviderConfigFile;
+  compaction?: CompactionConfigFile;
 }
 
 export interface AgentToolsConfigFile {
@@ -44,6 +47,14 @@ export interface AgentToolsConfigFile {
   fs?: {
     workspaceOnly?: boolean;
   };
+}
+
+/** Compaction configuration in config file */
+export interface CompactionConfigFile {
+  mode?: string;
+  contextWindow?: number;
+  threshold?: number;
+  preserveRecent?: number;
 }
 
 /** Peer reference in binding config */
@@ -81,6 +92,8 @@ export interface IsotopesConfigFile {
   provider?: ProviderConfigFile;
   /** Default tool policy/guards for all agents */
   tools?: AgentToolsConfigFile;
+  /** Default compaction config for all agents */
+  compaction?: CompactionConfigFile;
   /** Agent definitions */
   agents: AgentConfigFile[];
   /** Agent ↔ Channel bindings */
@@ -100,6 +113,37 @@ export function resolveToolSettings(
     fs: {
       workspaceOnly: agentTools?.fs?.workspaceOnly ?? defaultTools?.fs?.workspaceOnly ?? true,
     },
+  };
+}
+
+const VALID_COMPACTION_MODES = new Set<string>(["off", "safeguard", "aggressive"]);
+
+/**
+ * Resolve compaction config, merging agent-level overrides with defaults.
+ * Returns undefined if compaction is not configured at all.
+ */
+export function resolveCompactionConfigFromFile(
+  agentCompaction?: CompactionConfigFile,
+  defaultCompaction?: CompactionConfigFile,
+): CompactionConfig | undefined {
+  // If neither agent nor default has compaction config, return undefined
+  if (!agentCompaction && !defaultCompaction) return undefined;
+
+  const rawMode = agentCompaction?.mode ?? defaultCompaction?.mode ?? "safeguard";
+
+  if (!VALID_COMPACTION_MODES.has(rawMode)) {
+    throw new Error(
+      `Invalid compaction mode "${rawMode}" (must be off, safeguard, or aggressive)`,
+    );
+  }
+
+  const mode = rawMode as CompactionMode;
+
+  return {
+    mode,
+    contextWindow: agentCompaction?.contextWindow ?? defaultCompaction?.contextWindow,
+    threshold: agentCompaction?.threshold ?? defaultCompaction?.threshold,
+    preserveRecent: agentCompaction?.preserveRecent ?? defaultCompaction?.preserveRecent,
   };
 }
 
@@ -146,7 +190,10 @@ export function toAgentConfig(
   agent: AgentConfigFile,
   defaultProvider?: ProviderConfigFile,
   defaultTools?: AgentToolsConfigFile,
+  defaultCompaction?: CompactionConfigFile,
 ): AgentConfig {
+  const compaction = resolveCompactionConfigFromFile(agent.compaction, defaultCompaction);
+
   return {
     id: agent.id,
     name: agent.name,
@@ -154,6 +201,7 @@ export function toAgentConfig(
     workspacePath: agent.workspacePath,
     toolSettings: resolveToolSettings(agent.tools, defaultTools),
     provider: (agent.provider ?? defaultProvider) as ProviderConfig | undefined,
+    ...(compaction ? { compaction } : {}),
   };
 }
 

@@ -3,7 +3,7 @@
 
 import { Agent } from "@mariozechner/pi-agent-core";
 import type { AgentEvent as CoreEvent, AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
-import { getModel } from "@mariozechner/pi-ai";
+import { getModel, completeSimple } from "@mariozechner/pi-ai";
 import type { Model, Api } from "@mariozechner/pi-ai";
 
 import type {
@@ -17,6 +17,8 @@ import type {
 } from "./types.js";
 import { messageContentToPlainText, textContent } from "./types.js";
 import type { ToolRegistry } from "./tools.js";
+import { createTransformContext, resolveCompactionConfig } from "./compaction.js";
+import { createLogger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -24,6 +26,8 @@ import type { ToolRegistry } from "./tools.js";
 
 // Default model — used when no provider config is specified
 const DEFAULT_MODEL = "claude-opus-4.5";
+
+const log = createLogger("pi-mono");
 
 function cloneModel<TApi extends Api>(
   model: Model<TApi>,
@@ -272,6 +276,35 @@ export class PiMonoCore implements AgentCore {
       }
     }
 
+    // Build transformContext hook for context compaction
+    let transformContext: ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>) | undefined;
+
+    if (config.compaction && config.compaction.mode !== "off") {
+      const compactionConfig = resolveCompactionConfig(config.compaction);
+      log.info(`Context compaction enabled for agent "${config.id}" (mode: ${compactionConfig.mode})`);
+
+      const summarize = async (prompt: string, _signal?: AbortSignal): Promise<string> => {
+        const result = await completeSimple(model, {
+          systemPrompt: "You are a concise summarizer. Output only the summary, nothing else.",
+          messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+        });
+        // Extract text from the assistant message
+        if (typeof result.content === "string") return result.content;
+        if (Array.isArray(result.content)) {
+          return result.content
+            .filter((b): b is { type: "text"; text: string } => "type" in b && b.type === "text")
+            .map((b) => b.text)
+            .join("");
+        }
+        return String(result.content);
+      };
+
+      transformContext = createTransformContext({
+        config: compactionConfig,
+        summarize,
+      });
+    }
+
     const agent = new Agent({
       initialState: {
         systemPrompt: config.systemPrompt,
@@ -279,6 +312,7 @@ export class PiMonoCore implements AgentCore {
         tools,
         messages: [],
       },
+      ...(transformContext ? { transformContext } : {}),
       ...(config.provider?.apiKey
         ? { getApiKey: () => config.provider!.apiKey }
         : {}),

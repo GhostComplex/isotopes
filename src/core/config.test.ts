@@ -9,6 +9,7 @@ import {
   toAgentConfig,
   getDiscordToken,
   resolveToolSettings,
+  resolveCompactionConfigFromFile,
 } from "./config.js";
 
 describe("Config", () => {
@@ -222,6 +223,46 @@ agents:
       expect(config.toolSettings?.cli).toBe(true);
       expect(config.toolSettings?.fs?.workspaceOnly).toBe(true);
     });
+
+    it("includes compaction config from agent-level", () => {
+      const agentFile = {
+        id: "test",
+        name: "Test",
+        compaction: { mode: "aggressive" },
+      };
+      const config = toAgentConfig(agentFile);
+
+      expect(config.compaction?.mode).toBe("aggressive");
+    });
+
+    it("includes compaction config from defaults", () => {
+      const agentFile = { id: "test", name: "Test" };
+      const config = toAgentConfig(agentFile, undefined, undefined, {
+        mode: "safeguard",
+      });
+
+      expect(config.compaction?.mode).toBe("safeguard");
+    });
+
+    it("agent compaction overrides default compaction", () => {
+      const agentFile = {
+        id: "test",
+        name: "Test",
+        compaction: { mode: "off" },
+      };
+      const config = toAgentConfig(agentFile, undefined, undefined, {
+        mode: "safeguard",
+      });
+
+      expect(config.compaction?.mode).toBe("off");
+    });
+
+    it("omits compaction when neither agent nor default has it", () => {
+      const agentFile = { id: "test", name: "Test" };
+      const config = toAgentConfig(agentFile);
+
+      expect(config.compaction).toBeUndefined();
+    });
   });
 
   describe("resolveToolSettings", () => {
@@ -242,6 +283,45 @@ agents:
         cli: true,
         fs: { workspaceOnly: false },
       });
+    });
+  });
+
+  describe("resolveCompactionConfigFromFile", () => {
+    it("returns undefined when neither agent nor default config provided", () => {
+      expect(resolveCompactionConfigFromFile()).toBeUndefined();
+    });
+
+    it("returns config with defaults for safeguard mode", () => {
+      const config = resolveCompactionConfigFromFile({ mode: "safeguard" });
+
+      expect(config).toBeDefined();
+      expect(config!.mode).toBe("safeguard");
+    });
+
+    it("agent config overrides default config", () => {
+      const config = resolveCompactionConfigFromFile(
+        { mode: "off" },
+        { mode: "safeguard" },
+      );
+
+      expect(config!.mode).toBe("off");
+    });
+
+    it("merges agent and default config fields", () => {
+      const config = resolveCompactionConfigFromFile(
+        { contextWindow: 200_000 },
+        { mode: "aggressive", threshold: 0.5 },
+      );
+
+      expect(config!.mode).toBe("aggressive");
+      expect(config!.contextWindow).toBe(200_000);
+      expect(config!.threshold).toBe(0.5);
+    });
+
+    it("throws on invalid mode", () => {
+      expect(() =>
+        resolveCompactionConfigFromFile({ mode: "invalid" }),
+      ).toThrow('Invalid compaction mode "invalid"');
     });
   });
 
