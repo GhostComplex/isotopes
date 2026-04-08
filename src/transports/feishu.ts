@@ -1,6 +1,7 @@
 // src/transports/feishu.ts — Feishu (Lark) transport for Isotopes
 // Handles Feishu bot connection via WebSocket, message routing, and response streaming.
-// M2.1 scope: P2P (DM) messages only — no group logic yet.
+// M2.1: P2P (DM) messages
+// M2.2: Group message handling with @mention gating
 
 import * as lark from "@larksuiteoapi/node-sdk";
 import type {
@@ -49,20 +50,54 @@ export function extractTextFromFeishuMessage(
 }
 
 // ---------------------------------------------------------------------------
+// Mention helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip Feishu @mention placeholders from message text.
+ *
+ * Feishu inserts `@_user_N` tokens (e.g. `@_user_1`, `@_user_2`) into the
+ * text content when someone is mentioned. This function removes them and
+ * collapses any leftover whitespace so the agent sees clean input.
+ */
+export function stripFeishuMentions(text: string): string {
+  return text.replace(/@_user_\d+/g, "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Check whether the bot itself is mentioned in a Feishu message.
+ *
+ * The `mentions` array on a Feishu message event contains entries with an
+ * `id.open_id` that we compare against the bot's own open_id.
+ */
+export function isBotMentioned(
+  mentions: FeishuMessageEvent["message"]["mentions"],
+  botOpenId: string,
+): boolean {
+  if (!mentions || mentions.length === 0) return false;
+  return mentions.some(
+    (m) => m.id.open_id === botOpenId,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Session key helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Build a session key for a Feishu DM conversation.
+ * Build a session key for a Feishu conversation.
  *
- * Format: `feishu:{botId}:dm:{userId}:{agentId}`
+ * P2P (DM):  `feishu:{botId}:dm:{userId}:{agentId}`
+ * Group:     `feishu:{botId}:group:{chatId}:{agentId}`
  */
 export function buildFeishuSessionKey(
   botId: string,
-  userId: string,
+  scopeId: string,
   agentId: string,
+  chatType: "p2p" | "group" = "p2p",
 ): string {
-  return `feishu:${botId}:dm:${userId}:${agentId}`;
+  const scope = chatType === "group" ? "group" : "dm";
+  return `feishu:${botId}:${scope}:${scopeId}:${agentId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +113,8 @@ export interface FeishuTransportConfig {
   sessionStore: SessionStore;
   /** Default agent ID to use for incoming messages */
   defaultAgentId?: string;
+  /** Bot's open_id — required for detecting @mentions in group chats */
+  botOpenId?: string;
 }
 
 /** Shape of the im.message.receive_v1 event data from the Feishu SDK */
@@ -119,11 +156,8 @@ export interface FeishuMessageEvent {
 /**
  * FeishuTransport — connects agents to Feishu via WebSocket long connection.
  *
- * M2.1 scope:
- * - WebSocket connection via Lark SDK WSClient
- * - Receives im.message.receive_v1 events
- * - Handles P2P (DM) text messages only
- * - Sends text replies via client.im.message.create
+ * M2.1: WebSocket connection, P2P (DM) text messages
+ * M2.2: Group message handling with @mention gating
  */
 export class FeishuTransport implements Transport {
   private config: FeishuTransportConfig;
@@ -193,21 +227,31 @@ export class FeishuTransport implements Transport {
       return;
     }
 
-    // M2.1: Only handle P2P (DM) messages
-    if (message.chat_type !== "p2p") {
-      log.debug(`Ignoring non-P2P message (chat_type: ${message.chat_type})`);
-      return;
+    // In groups, only respond when the bot is @mentioned (hardcoded; config in M2.3)
+    if (message.chat_type === "group") {
+      const botOpenId = this.config.botOpenId;
+      if (!botOpenId || !isBotMentioned(message.mentions, botOpenId)) {
+        log.debug("Ignoring group message: bot not mentioned");
+        return;
+      }
     }
 
     // Extract text content
-    const text = extractTextFromFeishuMessage(message.content, message.message_type);
-    if (!text || !text.trim()) {
+    const rawText = extractTextFromFeishuMessage(message.content, message.message_type);
+    if (!rawText || !rawText.trim()) {
       log.debug(`Ignoring empty or non-text message (type: ${message.message_type})`);
       return;
     }
 
+    // Strip @mention tokens for clean agent input
+    const text = message.chat_type === "group" ? stripFeishuMentions(rawText) : rawText;
+    if (!text) {
+      log.debug("Ignoring message: empty after stripping mentions");
+      return;
+    }
+
     const userId = sender.sender_id?.open_id ?? sender.sender_id?.user_id ?? "unknown";
-    log.debug(`Received DM from user ${userId}: ${text.substring(0, 50)}...`);
+    log.debug(`Received ${message.chat_type} message from user ${userId}: ${text.substring(0, 50)}...`);
 
     // Resolve agent
     const agentId = this.config.defaultAgentId ?? "default";
@@ -217,9 +261,10 @@ export class FeishuTransport implements Transport {
       return;
     }
 
-    // Get or create session
+    // Get or create session — scoped by chat type
     const botId = this.config.appId;
-    const sessionKey = buildFeishuSessionKey(botId, userId, agentId);
+    const scopeId = message.chat_type === "group" ? message.chat_id : userId;
+    const sessionKey = buildFeishuSessionKey(botId, scopeId, agentId, message.chat_type as "p2p" | "group");
     const session = await this.findOrCreateSession(sessionKey, agentId);
 
     // Add user message to session

@@ -5,6 +5,8 @@ import {
   FeishuTransport,
   extractTextFromFeishuMessage,
   buildFeishuSessionKey,
+  stripFeishuMentions,
+  isBotMentioned,
   type FeishuMessageEvent,
 } from "./feishu.js";
 import type { AgentManager, SessionStore, AgentInstance } from "../core/types.js";
@@ -113,6 +115,40 @@ function createDMEvent(overrides: Partial<FeishuMessageEvent> = {}): FeishuMessa
   };
 }
 
+function createGroupEvent(
+  overrides: {
+    sender?: Partial<FeishuMessageEvent["sender"]>;
+    message?: Partial<FeishuMessageEvent["message"]>;
+  } = {},
+): FeishuMessageEvent {
+  return {
+    sender: {
+      sender_id: {
+        open_id: "ou_user123",
+        user_id: "user123",
+      },
+      sender_type: "user",
+      ...overrides.sender,
+    },
+    message: {
+      message_id: "msg_group_456",
+      create_time: "1700000000000",
+      chat_id: "oc_group789",
+      chat_type: "group",
+      message_type: "text",
+      content: JSON.stringify({ text: "@_user_1 Hello bot" }),
+      mentions: [
+        {
+          key: "@_user_1",
+          id: { open_id: "ou_bot_open_id", user_id: "bot_uid" },
+          name: "TestBot",
+        },
+      ],
+      ...overrides.message,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -154,10 +190,90 @@ describe("extractTextFromFeishuMessage", () => {
   });
 });
 
+describe("stripFeishuMentions", () => {
+  it("strips a single @mention", () => {
+    expect(stripFeishuMentions("@_user_1 hello")).toBe("hello");
+  });
+
+  it("strips multiple @mentions", () => {
+    expect(stripFeishuMentions("@_user_1 @_user_2 hello")).toBe("hello");
+  });
+
+  it("returns original text when no mentions present", () => {
+    expect(stripFeishuMentions("hello world")).toBe("hello world");
+  });
+
+  it("does not strip non-mention @ patterns", () => {
+    expect(stripFeishuMentions("email@example.com hello")).toBe("email@example.com hello");
+  });
+
+  it("handles mention in the middle of text", () => {
+    expect(stripFeishuMentions("hey @_user_1 what's up")).toBe("hey what's up");
+  });
+
+  it("collapses extra whitespace after stripping", () => {
+    expect(stripFeishuMentions("  @_user_1   hello   world  ")).toBe("hello world");
+  });
+
+  it("returns empty string when text is only a mention", () => {
+    expect(stripFeishuMentions("@_user_1")).toBe("");
+  });
+
+  it("handles high-numbered mention keys", () => {
+    expect(stripFeishuMentions("@_user_99 test")).toBe("test");
+  });
+});
+
+describe("isBotMentioned", () => {
+  const botOpenId = "ou_bot_open_id";
+
+  it("returns true when bot is mentioned", () => {
+    const mentions = [
+      { key: "@_user_1", id: { open_id: botOpenId }, name: "Bot" },
+    ];
+    expect(isBotMentioned(mentions, botOpenId)).toBe(true);
+  });
+
+  it("returns false when bot is not mentioned", () => {
+    const mentions = [
+      { key: "@_user_1", id: { open_id: "ou_other_user" }, name: "SomeUser" },
+    ];
+    expect(isBotMentioned(mentions, botOpenId)).toBe(false);
+  });
+
+  it("returns false for empty mentions array", () => {
+    expect(isBotMentioned([], botOpenId)).toBe(false);
+  });
+
+  it("returns false for undefined mentions", () => {
+    expect(isBotMentioned(undefined, botOpenId)).toBe(false);
+  });
+
+  it("returns true when bot is among multiple mentions", () => {
+    const mentions = [
+      { key: "@_user_1", id: { open_id: "ou_other" }, name: "User1" },
+      { key: "@_user_2", id: { open_id: botOpenId }, name: "Bot" },
+    ];
+    expect(isBotMentioned(mentions, botOpenId)).toBe(true);
+  });
+});
+
 describe("buildFeishuSessionKey", () => {
-  it("builds correct session key for DM", () => {
+  it("builds correct session key for DM (default)", () => {
     expect(buildFeishuSessionKey("app123", "user456", "agent1")).toBe(
       "feishu:app123:dm:user456:agent1",
+    );
+  });
+
+  it("builds correct session key for DM (explicit)", () => {
+    expect(buildFeishuSessionKey("app123", "user456", "agent1", "p2p")).toBe(
+      "feishu:app123:dm:user456:agent1",
+    );
+  });
+
+  it("builds correct session key for group", () => {
+    expect(buildFeishuSessionKey("app123", "oc_group789", "agent1", "group")).toBe(
+      "feishu:app123:group:oc_group789:agent1",
     );
   });
 
@@ -178,6 +294,14 @@ describe("buildFeishuSessionKey", () => {
     const key2 = buildFeishuSessionKey("appB", "user1", "agent1");
     expect(key1).not.toBe(key2);
   });
+
+  it("uses different keys for DM vs group with same scope ID", () => {
+    const dmKey = buildFeishuSessionKey("app1", "scope1", "agent1", "p2p");
+    const groupKey = buildFeishuSessionKey("app1", "scope1", "agent1", "group");
+    expect(dmKey).not.toBe(groupKey);
+    expect(dmKey).toContain(":dm:");
+    expect(groupKey).toContain(":group:");
+  });
 });
 
 describe("FeishuTransport", () => {
@@ -196,6 +320,7 @@ describe("FeishuTransport", () => {
       agentManager,
       sessionStore,
       defaultAgentId: "default",
+      botOpenId: "ou_bot_open_id",
     });
   });
 
@@ -293,20 +418,141 @@ describe("FeishuTransport", () => {
       expect(agentManager.get).not.toHaveBeenCalled();
     });
 
-    it("ignores group messages (M2.1 scope: DM only)", async () => {
-      const event = createDMEvent({
+    it("processes group messages when bot is mentioned", async () => {
+      expect(capturedEventHandler).not.toBeNull();
+      const event = createGroupEvent();
+      await capturedEventHandler!(event);
+
+      // Should use group session key (scoped by chatId, not userId)
+      expect(sessionStore.findByKey).toHaveBeenCalledWith(
+        "feishu:test-app-id:group:oc_group789:default",
+      );
+      expect(sessionStore.create).toHaveBeenCalledWith("default", {
+        key: "feishu:test-app-id:group:oc_group789:default",
+        transport: "feishu",
+      });
+
+      // Should have added user message with mentions stripped
+      expect(sessionStore.addMessage).toHaveBeenCalledWith(
+        "session-feishu-123",
+        expect.objectContaining({
+          role: "user",
+          content: textContent("Hello bot"),
+        }),
+      );
+
+      // Should have sent a reply
+      expect(mockMessageCreate).toHaveBeenCalled();
+    });
+
+    it("ignores group messages when bot is NOT mentioned", async () => {
+      const event = createGroupEvent({
         message: {
-          message_id: "msg_123",
+          message_id: "msg_group_456",
           create_time: "1700000000000",
-          chat_id: "oc_group123",
+          chat_id: "oc_group789",
           chat_type: "group",
           message_type: "text",
-          content: JSON.stringify({ text: "Hello" }),
+          content: JSON.stringify({ text: "Hello everyone" }),
+          mentions: [
+            {
+              key: "@_user_1",
+              id: { open_id: "ou_other_user" },
+              name: "OtherUser",
+            },
+          ],
         },
       });
 
       await capturedEventHandler!(event);
       expect(sessionStore.findByKey).not.toHaveBeenCalled();
+    });
+
+    it("ignores group messages when no mentions at all", async () => {
+      const event = createGroupEvent({
+        message: {
+          message_id: "msg_group_456",
+          create_time: "1700000000000",
+          chat_id: "oc_group789",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "Hello everyone" }),
+          mentions: undefined,
+        },
+      });
+
+      await capturedEventHandler!(event);
+      expect(sessionStore.findByKey).not.toHaveBeenCalled();
+    });
+
+    it("ignores group messages when botOpenId is not configured", async () => {
+      // Create transport without botOpenId
+      capturedEventHandler = null;
+      const transportNoBotId = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        // no botOpenId
+      });
+      // Constructor re-registered the handler
+      expect(capturedEventHandler).not.toBeNull();
+
+      const event = createGroupEvent();
+      await capturedEventHandler!(event);
+      expect(sessionStore.findByKey).not.toHaveBeenCalled();
+    });
+
+    it("strips mentions from group message text before passing to agent", async () => {
+      const event = createGroupEvent({
+        message: {
+          message_id: "msg_group_456",
+          create_time: "1700000000000",
+          chat_id: "oc_group789",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "@_user_1 @_user_2 tell me a joke" }),
+          mentions: [
+            { key: "@_user_1", id: { open_id: "ou_bot_open_id" }, name: "Bot" },
+            { key: "@_user_2", id: { open_id: "ou_other" }, name: "Other" },
+          ],
+        },
+      });
+
+      await capturedEventHandler!(event);
+
+      expect(sessionStore.addMessage).toHaveBeenCalledWith(
+        "session-feishu-123",
+        expect.objectContaining({
+          role: "user",
+          content: textContent("tell me a joke"),
+        }),
+      );
+    });
+
+    it("does not strip mentions from DM messages", async () => {
+      // DMs don't have @mention tokens, but if they did they should be kept
+      const event = createDMEvent({
+        message: {
+          message_id: "msg_123",
+          create_time: "1700000000000",
+          chat_id: "oc_chat123",
+          chat_type: "p2p",
+          message_type: "text",
+          content: JSON.stringify({ text: "email@_user_1 test" }),
+        },
+      });
+
+      await capturedEventHandler!(event);
+
+      expect(sessionStore.addMessage).toHaveBeenCalledWith(
+        "session-feishu-123",
+        expect.objectContaining({
+          role: "user",
+          content: textContent("email@_user_1 test"),
+        }),
+      );
     });
 
     it("ignores non-text message types", async () => {
