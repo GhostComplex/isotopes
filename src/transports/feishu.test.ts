@@ -7,9 +7,10 @@ import {
   buildFeishuSessionKey,
   stripFeishuMentions,
   isBotMentioned,
+  shouldRespondToGroupMessage,
   type FeishuMessageEvent,
 } from "./feishu.js";
-import type { AgentManager, SessionStore, AgentInstance } from "../core/types.js";
+import type { AgentManager, SessionStore, AgentInstance, ChannelsConfig } from "../core/types.js";
 import { textContent } from "../core/types.js";
 
 // Suppress console output during tests
@@ -301,6 +302,104 @@ describe("buildFeishuSessionKey", () => {
     expect(dmKey).not.toBe(groupKey);
     expect(dmKey).toContain(":dm:");
     expect(groupKey).toContain(":group:");
+  });
+});
+
+describe("shouldRespondToGroupMessage", () => {
+  const chatId = "oc_group789";
+
+  it("returns true when mentioned and no channels config", () => {
+    expect(shouldRespondToGroupMessage(chatId, true)).toBe(true);
+  });
+
+  it("returns false when not mentioned and no channels config", () => {
+    expect(shouldRespondToGroupMessage(chatId, false)).toBe(false);
+  });
+
+  it("returns true when mentioned and channels config is undefined", () => {
+    expect(shouldRespondToGroupMessage(chatId, true, undefined)).toBe(true);
+  });
+
+  it("returns false when not mentioned and feishu section missing", () => {
+    const channels: ChannelsConfig = {};
+    expect(shouldRespondToGroupMessage(chatId, false, channels)).toBe(false);
+  });
+
+  it("returns false when not mentioned and feishu.groups missing", () => {
+    const channels: ChannelsConfig = { feishu: { enabled: true } };
+    expect(shouldRespondToGroupMessage(chatId, false, channels)).toBe(false);
+  });
+
+  it("returns false when not mentioned and group not listed in config", () => {
+    const channels: ChannelsConfig = {
+      feishu: { groups: { "oc_other_group": { requireMention: false } } },
+    };
+    expect(shouldRespondToGroupMessage(chatId, false, channels)).toBe(false);
+  });
+
+  it("returns true when mentioned and group not listed in config", () => {
+    const channels: ChannelsConfig = {
+      feishu: { groups: { "oc_other_group": { requireMention: false } } },
+    };
+    expect(shouldRespondToGroupMessage(chatId, true, channels)).toBe(true);
+  });
+
+  it("returns true when not mentioned and requireMention is false", () => {
+    const channels: ChannelsConfig = {
+      feishu: { groups: { [chatId]: { requireMention: false } } },
+    };
+    expect(shouldRespondToGroupMessage(chatId, false, channels)).toBe(true);
+  });
+
+  it("returns true when mentioned and requireMention is false", () => {
+    const channels: ChannelsConfig = {
+      feishu: { groups: { [chatId]: { requireMention: false } } },
+    };
+    expect(shouldRespondToGroupMessage(chatId, true, channels)).toBe(true);
+  });
+
+  it("returns false when not mentioned and requireMention is true", () => {
+    const channels: ChannelsConfig = {
+      feishu: { groups: { [chatId]: { requireMention: true } } },
+    };
+    expect(shouldRespondToGroupMessage(chatId, false, channels)).toBe(false);
+  });
+
+  it("returns true when mentioned and requireMention is true", () => {
+    const channels: ChannelsConfig = {
+      feishu: { groups: { [chatId]: { requireMention: true } } },
+    };
+    expect(shouldRespondToGroupMessage(chatId, true, channels)).toBe(true);
+  });
+
+  it("defaults to requireMention=true when group config has no requireMention field", () => {
+    const channels: ChannelsConfig = {
+      feishu: { groups: { [chatId]: {} } },
+    };
+    expect(shouldRespondToGroupMessage(chatId, false, channels)).toBe(false);
+    expect(shouldRespondToGroupMessage(chatId, true, channels)).toBe(true);
+  });
+
+  it("handles different groups independently", () => {
+    const channels: ChannelsConfig = {
+      feishu: {
+        groups: {
+          "oc_group_a": { requireMention: false },
+          "oc_group_b": { requireMention: true },
+        },
+      },
+    };
+    // Group A: no mention required
+    expect(shouldRespondToGroupMessage("oc_group_a", false, channels)).toBe(true);
+    // Group B: mention required
+    expect(shouldRespondToGroupMessage("oc_group_b", false, channels)).toBe(false);
+  });
+
+  it("ignores accountId parameter (Feishu uses flat group config)", () => {
+    const channels: ChannelsConfig = {
+      feishu: { groups: { [chatId]: { requireMention: false } } },
+    };
+    expect(shouldRespondToGroupMessage(chatId, false, channels, "some-account")).toBe(true);
   });
 });
 
@@ -737,6 +836,196 @@ describe("FeishuTransport", () => {
         ...previousMessages,
         expect.objectContaining({ role: "user", content: textContent("Hello bot") }),
       ]);
+    });
+  });
+
+  describe("requireMention configuration", () => {
+    it("responds to group messages without mention when requireMention is false", async () => {
+      capturedEventHandler = null;
+      const transportNoMention = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        channels: {
+          feishu: {
+            groups: {
+              "oc_group789": { requireMention: false },
+            },
+          },
+        },
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      // Group message WITHOUT bot mention
+      const event = createGroupEvent({
+        message: {
+          message_id: "msg_group_456",
+          create_time: "1700000000000",
+          chat_id: "oc_group789",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "Hello everyone" }),
+          mentions: undefined,
+        },
+      });
+
+      await capturedEventHandler!(event);
+
+      // Should have processed the message (created session)
+      expect(sessionStore.findByKey).toHaveBeenCalledWith(
+        "feishu:test-app-id:group:oc_group789:default",
+      );
+      expect(mockMessageCreate).toHaveBeenCalled();
+    });
+
+    it("ignores group messages without mention when requireMention is true", async () => {
+      capturedEventHandler = null;
+      const transportMention = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        channels: {
+          feishu: {
+            groups: {
+              "oc_group789": { requireMention: true },
+            },
+          },
+        },
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      const event = createGroupEvent({
+        message: {
+          message_id: "msg_group_456",
+          create_time: "1700000000000",
+          chat_id: "oc_group789",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "Hello everyone" }),
+          mentions: undefined,
+        },
+      });
+
+      await capturedEventHandler!(event);
+      expect(sessionStore.findByKey).not.toHaveBeenCalled();
+    });
+
+    it("responds to mentioned group messages regardless of requireMention config", async () => {
+      capturedEventHandler = null;
+      const transportMention = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        channels: {
+          feishu: {
+            groups: {
+              "oc_group789": { requireMention: true },
+            },
+          },
+        },
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      // Bot IS mentioned
+      const event = createGroupEvent();
+      await capturedEventHandler!(event);
+
+      expect(sessionStore.findByKey).toHaveBeenCalled();
+      expect(mockMessageCreate).toHaveBeenCalled();
+    });
+
+    it("defaults to require mention when no channels config provided", async () => {
+      // Default transport (no channels config) — already set up in beforeEach
+      const event = createGroupEvent({
+        message: {
+          message_id: "msg_group_456",
+          create_time: "1700000000000",
+          chat_id: "oc_group789",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "Hello everyone" }),
+          mentions: undefined,
+        },
+      });
+
+      await capturedEventHandler!(event);
+      // Without mention and without config, should be ignored
+      expect(sessionStore.findByKey).not.toHaveBeenCalled();
+    });
+
+    it("defaults to require mention for unconfigured groups", async () => {
+      capturedEventHandler = null;
+      const transportPartialConfig = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        channels: {
+          feishu: {
+            groups: {
+              "oc_other_group": { requireMention: false },
+            },
+          },
+        },
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      // Send to oc_group789 which is NOT in the config
+      const event = createGroupEvent({
+        message: {
+          message_id: "msg_group_456",
+          create_time: "1700000000000",
+          chat_id: "oc_group789",
+          chat_type: "group",
+          message_type: "text",
+          content: JSON.stringify({ text: "Hello everyone" }),
+          mentions: undefined,
+        },
+      });
+
+      await capturedEventHandler!(event);
+      // Unconfigured group defaults to require mention, so without mention it's ignored
+      expect(sessionStore.findByKey).not.toHaveBeenCalled();
+    });
+
+    it("still processes DMs normally with channels config", async () => {
+      capturedEventHandler = null;
+      const transportWithChannels = new FeishuTransport({
+        appId: "test-app-id",
+        appSecret: "test-app-secret",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        botOpenId: "ou_bot_open_id",
+        channels: {
+          feishu: {
+            groups: {
+              "oc_group789": { requireMention: true },
+            },
+          },
+        },
+      });
+      expect(capturedEventHandler).not.toBeNull();
+
+      const event = createDMEvent();
+      await capturedEventHandler!(event);
+
+      // DMs should always work
+      expect(sessionStore.findByKey).toHaveBeenCalledWith(
+        "feishu:test-app-id:dm:ou_user123:default",
+      );
+      expect(mockMessageCreate).toHaveBeenCalled();
     });
   });
 });

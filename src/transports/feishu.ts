@@ -2,11 +2,13 @@
 // Handles Feishu bot connection via WebSocket, message routing, and response streaming.
 // M2.1: P2P (DM) messages
 // M2.2: Group message handling with @mention gating
+// M2.3: Per-group requireMention configuration
 
 import * as lark from "@larksuiteoapi/node-sdk";
 import type {
   AgentInstance,
   AgentManager,
+  ChannelsConfig,
   Message,
   SessionStore,
   Transport,
@@ -81,6 +83,41 @@ export function isBotMentioned(
 }
 
 // ---------------------------------------------------------------------------
+// Group response logic
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine whether the bot should respond to a group message based on config.
+ *
+ * Looks up `channels.feishu.groups[chatId].requireMention`:
+ *   - `requireMention: false` → respond to all messages in that group
+ *   - `requireMention: true` (default) → only respond when @mentioned
+ *   - No config → default to requiring @mention
+ */
+export function shouldRespondToGroupMessage(
+  chatId: string,
+  isMentioned: boolean,
+  channels?: ChannelsConfig,
+  accountId?: string,
+): boolean {
+  if (!channels?.feishu?.groups) {
+    return isMentioned;
+  }
+
+  const groupConfig = channels.feishu.groups[chatId];
+  if (!groupConfig) {
+    return isMentioned;
+  }
+
+  const requireMention = groupConfig.requireMention ?? true;
+  if (!requireMention) {
+    return true;
+  }
+
+  return isMentioned;
+}
+
+// ---------------------------------------------------------------------------
 // Session key helpers
 // ---------------------------------------------------------------------------
 
@@ -115,6 +152,10 @@ export interface FeishuTransportConfig {
   defaultAgentId?: string;
   /** Bot's open_id — required for detecting @mentions in group chats */
   botOpenId?: string;
+  /** Channels config for per-group settings (e.g. requireMention) */
+  channels?: ChannelsConfig;
+  /** The account ID this bot is running as (for group config lookup) */
+  accountId?: string;
 }
 
 /** Shape of the im.message.receive_v1 event data from the Feishu SDK */
@@ -158,6 +199,7 @@ export interface FeishuMessageEvent {
  *
  * M2.1: WebSocket connection, P2P (DM) text messages
  * M2.2: Group message handling with @mention gating
+ * M2.3: Per-group requireMention configuration
  */
 export class FeishuTransport implements Transport {
   private config: FeishuTransportConfig;
@@ -227,11 +269,12 @@ export class FeishuTransport implements Transport {
       return;
     }
 
-    // In groups, only respond when the bot is @mentioned (hardcoded; config in M2.3)
+    // In groups, check whether the bot should respond (config-driven)
     if (message.chat_type === "group") {
       const botOpenId = this.config.botOpenId;
-      if (!botOpenId || !isBotMentioned(message.mentions, botOpenId)) {
-        log.debug("Ignoring group message: bot not mentioned");
+      const mentioned = botOpenId ? isBotMentioned(message.mentions, botOpenId) : false;
+      if (!shouldRespondToGroupMessage(message.chat_id, mentioned, this.config.channels, this.config.accountId)) {
+        log.debug("Ignoring group message: bot not mentioned and requireMention is enabled");
         return;
       }
     }
