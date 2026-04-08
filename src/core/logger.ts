@@ -95,6 +95,7 @@ export const logger = createLogger("isotopes");
 export const loggers = {
   core: createLogger("core"),
   discord: createLogger("discord"),
+  feishu: createLogger("feishu"),
   agent: createLogger("agent"),
   session: createLogger("session"),
   tools: createLogger("tools"),
