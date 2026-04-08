@@ -18,6 +18,8 @@ import type {
   ProviderConfig,
   SessionConfig,
 } from "./types.js";
+import { resolveSandboxConfig } from "../sandbox/config.js";
+import type { SandboxConfig } from "../sandbox/config.js";
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -41,6 +43,7 @@ export interface AgentConfigFile {
   tools?: AgentToolsConfigFile;
   provider?: ProviderConfigFile;
   compaction?: CompactionConfigFile;
+  sandbox?: SandboxConfigFile;
 }
 
 export interface AgentToolsConfigFile {
@@ -56,6 +59,22 @@ export interface CompactionConfigFile {
   contextWindow?: number;
   threshold?: number;
   preserveRecent?: number;
+}
+
+/** Sandbox Docker configuration in config file */
+export interface SandboxDockerConfigFile {
+  image?: string;
+  network?: string;
+  extraHosts?: string[];
+  cpuLimit?: number;
+  memoryLimit?: string;
+}
+
+/** Sandbox execution configuration in config file */
+export interface SandboxConfigFile {
+  mode?: string;
+  workspaceAccess?: string;
+  docker?: SandboxDockerConfigFile;
 }
 
 /** Session management configuration in config file */
@@ -134,6 +153,8 @@ export interface IsotopesConfigFile {
   tools?: AgentToolsConfigFile;
   /** Default compaction config for all agents */
   compaction?: CompactionConfigFile;
+  /** Default sandbox config for all agents */
+  sandbox?: SandboxConfigFile;
   /** Session management (TTL, cleanup) */
   session?: SessionConfigFile;
   /** Agent definitions */
@@ -247,6 +268,51 @@ export function resolveAcpConfig(
   };
 }
 
+/**
+ * Resolve sandbox config from config file types.
+ * Delegates to the sandbox module's resolveSandboxConfig for validation and merging.
+ * Returns undefined if no sandbox config is provided at all.
+ */
+export function resolveSandboxConfigFromFile(
+  agentId: string,
+  agentSandbox?: SandboxConfigFile,
+  defaultSandbox?: SandboxConfigFile,
+): SandboxConfig | undefined {
+  if (!agentSandbox && !defaultSandbox) return undefined;
+
+  const defaults = defaultSandbox
+    ? toSandboxConfig(defaultSandbox)
+    : undefined;
+  const override = agentSandbox
+    ? toSandboxConfig(agentSandbox)
+    : undefined;
+
+  return resolveSandboxConfig(agentId, defaults, override);
+}
+
+/**
+ * Convert a config-file sandbox entry to a typed SandboxConfig.
+ */
+function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
+  return {
+    mode: (file.mode ?? "off") as SandboxConfig["mode"],
+    ...(file.workspaceAccess !== undefined && {
+      workspaceAccess: file.workspaceAccess as SandboxConfig["workspaceAccess"],
+    }),
+    ...(file.docker && {
+      docker: {
+        image: file.docker.image ?? "isotopes-sandbox:latest",
+        ...(file.docker.network !== undefined && {
+          network: file.docker.network as "bridge" | "host" | "none",
+        }),
+        ...(file.docker.extraHosts && { extraHosts: file.docker.extraHosts }),
+        ...(file.docker.cpuLimit !== undefined && { cpuLimit: file.docker.cpuLimit }),
+        ...(file.docker.memoryLimit !== undefined && { memoryLimit: file.docker.memoryLimit }),
+      },
+    }),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Config loader
 // ---------------------------------------------------------------------------
@@ -291,8 +357,10 @@ export function toAgentConfig(
   defaultProvider?: ProviderConfigFile,
   defaultTools?: AgentToolsConfigFile,
   defaultCompaction?: CompactionConfigFile,
+  defaultSandbox?: SandboxConfigFile,
 ): AgentConfig {
   const compaction = resolveCompactionConfigFromFile(agent.compaction, defaultCompaction);
+  const sandbox = resolveSandboxConfigFromFile(agent.id, agent.sandbox, defaultSandbox);
 
   return {
     id: agent.id,
@@ -302,6 +370,7 @@ export function toAgentConfig(
     toolSettings: resolveToolSettings(agent.tools, defaultTools),
     provider: (agent.provider ?? defaultProvider) as ProviderConfig | undefined,
     ...(compaction ? { compaction } : {}),
+    ...(sandbox ? { sandbox } : {}),
   };
 }
 

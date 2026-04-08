@@ -65,6 +65,7 @@ export {
   getDiscordGuildConfig,
   isRequireMention,
   resolveAcpConfig,
+  resolveSandboxConfigFromFile,
 } from "./core/config.js";
 export type {
   IsotopesConfigFile,
@@ -74,6 +75,8 @@ export type {
   ThreadBindingConfigFile,
   AcpConfigFile,
   CronJobConfigFile,
+  SandboxConfigFile,
+  SandboxDockerConfigFile,
 } from "./core/config.js";
 
 // ---------------------------------------------------------------------------
@@ -255,3 +258,24 @@ export type {
   ChangeHandler,
   ConfigReloadListener,
 } from "./workspace/index.js";
+
+// ---------------------------------------------------------------------------
+// Sandbox Execution
+// ---------------------------------------------------------------------------
+
+export {
+  resolveSandboxConfig,
+  shouldSandbox,
+  ContainerManager,
+  SandboxExecutor,
+} from "./sandbox/index.js";
+export type {
+  SandboxMode,
+  WorkspaceAccess,
+  DockerConfig,
+  SandboxConfig,
+  ContainerStatus,
+  ContainerInfo,
+  ExecResult,
+  SandboxExecOptions,
+} from "./sandbox/index.js";

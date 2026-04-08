@@ -2,7 +2,7 @@
 
 > Version: 0.3.0
 > Date: 2026-04-08
-> Status: **In Progress**
+> Status: **Complete**
 
 ## Overview
 
@@ -266,7 +266,7 @@ Extensible via tool registration.
 | **M3** | ACP Protocol | ✅ Done |
 | **M4** | Automation & Git | ✅ Done |
 | **M5** | Daemon Mode + Web API | ✅ Done |
-| **M6** | Sandbox Execution | TBD |
+| **M6** | Sandbox Execution | ✅ Done |
 
 ---
 
@@ -465,7 +465,7 @@ acp:
 
 ---
 
-### M6: Sandbox Execution
+### M6: Sandbox Execution ✅
 
 **Goal:** Secure tool execution in isolated Docker containers.
 
@@ -487,25 +487,25 @@ agents:
         mode: off  # Per-agent override
 ```
 
-- [ ] Sandbox mode: `off` (no sandbox), `non-main` (sandbox non-main agents), `all` (sandbox everything)
-- [ ] Workspace mounting with access control (`rw`, `ro`)
-- [ ] Per-agent sandbox override
+- [x] Sandbox mode: `off` (no sandbox), `non-main` (sandbox non-main agents), `all` (sandbox everything)
+- [x] Workspace mounting with access control (`rw`, `ro`)
+- [x] Per-agent sandbox override
 
 #### 6.2 Docker Integration
-- [ ] Docker container lifecycle management
-- [ ] Volume mounting for workspace
-- [ ] Network configuration (bridge, host, none)
-- [ ] Resource limits (CPU, memory)
+- [x] Docker container lifecycle management
+- [x] Volume mounting for workspace
+- [x] Network configuration (bridge, host, none)
+- [x] Resource limits (CPU, memory)
 
 #### 6.3 Sandboxed Tool Execution
-- [ ] Route `shell` tool through container
-- [ ] File operations inside container
-- [ ] Secure environment variable handling
+- [x] Route `shell` tool through container
+- [x] File operations inside container
+- [x] Secure environment variable handling
 
 #### 6.4 Sandbox Image
-- [ ] Base image with common dev tools
-- [ ] `isotopes-sandbox:latest` default image
-- [ ] Custom image support
+- [x] Base image with common dev tools
+- [x] `isotopes-sandbox:latest` default image
+- [x] Custom image support
 
 ---
 

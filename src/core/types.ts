@@ -1,6 +1,8 @@
 // src/core/types.ts — Core interfaces for the Isotopes agent framework
 // Zero coupling to any specific agent SDK — these are OUR types.
 
+import type { SandboxConfig } from "../sandbox/config.js";
+
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------
@@ -105,6 +107,8 @@ export interface AgentConfig {
   workspacePath?: string;
   /** Context compaction configuration */
   compaction?: CompactionConfig;
+  /** Sandbox execution configuration */
+  sandbox?: SandboxConfig;
 }
 
 export interface AgentInstance {
