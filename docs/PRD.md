@@ -49,6 +49,13 @@ agents:
     workspace: ~/.isotopes/workspaces/default
     compaction:
       mode: safeguard  # off | safeguard | aggressive
+    sandbox:
+      mode: non-main   # off | non-main | all
+      workspaceAccess: rw
+      docker:
+        image: isotopes-sandbox:latest
+        network: bridge
+      mode: safeguard  # off | safeguard | aggressive
   list:
     - id: major
       name: Major
@@ -259,6 +266,7 @@ Extensible via tool registration.
 | **M3** | ACP Protocol | TBD |
 | **M4** | Automation & Git | TBD |
 | **M5** | Daemon Mode + Web UI | TBD |
+| **M6** | Sandbox Execution | TBD |
 
 ---
 
@@ -455,6 +463,50 @@ acp:
 
 ---
 
+### M6: Sandbox Execution
+
+**Goal:** Secure tool execution in isolated Docker containers.
+
+#### 6.1 Sandbox Config
+```yaml
+agents:
+  defaults:
+    sandbox:
+      mode: non-main   # off | non-main | all
+      workspaceAccess: rw
+      docker:
+        image: isotopes-sandbox:latest
+        network: bridge
+        extraHosts:
+          - "host.docker.internal:host-gateway"
+  list:
+    - id: major
+      sandbox:
+        mode: off  # Per-agent override
+```
+
+- [ ] Sandbox mode: `off` (no sandbox), `non-main` (sandbox non-main agents), `all` (sandbox everything)
+- [ ] Workspace mounting with access control (`rw`, `ro`)
+- [ ] Per-agent sandbox override
+
+#### 6.2 Docker Integration
+- [ ] Docker container lifecycle management
+- [ ] Volume mounting for workspace
+- [ ] Network configuration (bridge, host, none)
+- [ ] Resource limits (CPU, memory)
+
+#### 6.3 Sandboxed Tool Execution
+- [ ] Route `shell` tool through container
+- [ ] File operations inside container
+- [ ] Secure environment variable handling
+
+#### 6.4 Sandbox Image
+- [ ] Base image with common dev tools
+- [ ] `isotopes-sandbox:latest` default image
+- [ ] Custom image support
+
+---
+
 ## Extension Points
 
 | Interface | Current Impl | Future Impl |
@@ -474,4 +526,4 @@ Full YAML schema: [CONFIG_SCHEMA.md](./CONFIG_SCHEMA.md) (TBD)
 Key differences from OpenClaw:
 - YAML instead of JSON (more readable for humans)
 - Simplified structure (no `meta`, `wizard`, `gateway` sections)
-- Focus on agent orchestration (no sandbox, no node management)
+- Focus on agent orchestration (no node management)
