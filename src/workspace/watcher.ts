@@ -40,11 +40,18 @@ export type ChangeHandler = (changes: FileChange[]) => void | Promise<void>;
 // Pattern matching helpers
 // ---------------------------------------------------------------------------
 
+/** Cache for compiled glob patterns to avoid re-creating RegExp on every event. */
+const globCache = new Map<string, RegExp>();
+
 /**
  * Convert a simple glob pattern to a RegExp.
  * Supports `*` (any chars except path sep) and `**` (any chars including path sep).
+ * Results are cached for repeated calls with the same pattern.
  */
 export function globToRegExp(pattern: string): RegExp {
+  const cached = globCache.get(pattern);
+  if (cached) return cached;
+
   let regExpStr = "";
   let i = 0;
 
@@ -75,7 +82,9 @@ export function globToRegExp(pattern: string): RegExp {
     }
   }
 
-  return new RegExp(`^${regExpStr}$`);
+  const regex = new RegExp(`^${regExpStr}$`);
+  globCache.set(pattern, regex);
+  return regex;
 }
 
 /**

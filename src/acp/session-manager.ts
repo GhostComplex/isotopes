@@ -29,6 +29,26 @@ export class AcpSessionManager {
   constructor(private config: AcpConfig) {}
 
   // -------------------------------------------------------------------------
+  // Cleanup
+  // -------------------------------------------------------------------------
+
+  /**
+   * Remove terminated sessions from memory.
+   * Returns the number of sessions removed.
+   */
+  purgeTerminated(): number {
+    let count = 0;
+    for (const [id, session] of this.sessions) {
+      if (session.status === "terminated") {
+        if (session.threadId) this.threadIndex.delete(session.threadId);
+        this.sessions.delete(id);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  // -------------------------------------------------------------------------
   // Accessors
   // -------------------------------------------------------------------------
 

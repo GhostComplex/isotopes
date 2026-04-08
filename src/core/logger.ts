@@ -99,16 +99,25 @@ export function createLogger(tag: string): Logger {
 export const logger = createLogger("isotopes");
 
 // ---------------------------------------------------------------------------
-// Pre-configured loggers for core components
+// Pre-configured loggers for core components (lazy-initialized)
 // ---------------------------------------------------------------------------
 
-/** Pre-configured loggers for core Isotopes components. */
-export const loggers = {
-  core: createLogger("core"),
-  discord: createLogger("discord"),
-  feishu: createLogger("feishu"),
-  agent: createLogger("agent"),
-  session: createLogger("session"),
-  tools: createLogger("tools"),
-  config: createLogger("config"),
-};
+interface LoggerMap {
+  core: Logger;
+  discord: Logger;
+  feishu: Logger;
+  agent: Logger;
+  session: Logger;
+  tools: Logger;
+  config: Logger;
+}
+
+/** Pre-configured loggers for core Isotopes components. Created on first access. */
+export const loggers: LoggerMap = new Proxy({} as Record<string, Logger>, {
+  get(cache, prop: string) {
+    if (!(prop in cache)) {
+      cache[prop] = createLogger(prop);
+    }
+    return cache[prop];
+  },
+}) as unknown as LoggerMap;
