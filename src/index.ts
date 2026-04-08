@@ -154,6 +154,19 @@ export type {
 } from "./automation/index.js";
 
 // ---------------------------------------------------------------------------
+// Daemon
+// ---------------------------------------------------------------------------
+
+export { DaemonProcess } from "./daemon/index.js";
+export type { DaemonStatus, DaemonOptions } from "./daemon/index.js";
+
+export { ServiceManager, getPlatform } from "./daemon/index.js";
+export type { ServiceConfig, ServicePlatform } from "./daemon/index.js";
+
+export { LogRotator } from "./daemon/index.js";
+export type { LogRotationConfig } from "./daemon/index.js";
+
+// ---------------------------------------------------------------------------
 // Logging
 // ---------------------------------------------------------------------------
 
