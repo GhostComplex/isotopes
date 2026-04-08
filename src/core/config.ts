@@ -104,6 +104,18 @@ export interface ThreadBindingConfigFile {
   spawnAcpSessions?: boolean;
 }
 
+/** ACP (Agent Communication Protocol) configuration in config file */
+export interface AcpConfigFile {
+  /** Whether ACP is enabled. Default: false */
+  enabled?: boolean;
+  /** Backend type for agent communication */
+  backend?: "acpx" | "claude-code" | "codex";
+  /** Default agent ID to use when none is specified */
+  defaultAgent?: string;
+  /** Agent IDs allowed to participate in ACP sessions */
+  allowedAgents?: string[];
+}
+
 /** Root configuration file structure */
 export interface IsotopesConfigFile {
   /** Default provider for all agents */
@@ -122,6 +134,8 @@ export interface IsotopesConfigFile {
   discord?: DiscordConfigFile;
   /** Channel configurations (per-guild/group settings) */
   channels?: ChannelsConfig;
+  /** ACP (Agent Communication Protocol) configuration */
+  acp?: AcpConfigFile;
 }
 
 export function resolveToolSettings(
@@ -187,6 +201,37 @@ export function resolveSessionConfig(
   return {
     ...(sessionConfig.ttl !== undefined && { ttl: sessionConfig.ttl }),
     ...(sessionConfig.cleanupInterval !== undefined && { cleanupInterval: sessionConfig.cleanupInterval }),
+  };
+}
+
+const VALID_ACP_BACKENDS = new Set<string>(["acpx", "claude-code", "codex"]);
+
+/**
+ * Resolve ACP config from the config file.
+ * Returns undefined if ACP is not configured or not enabled.
+ * Validates that backend is a known type.
+ */
+export function resolveAcpConfig(
+  acpConfig?: AcpConfigFile,
+): { enabled: boolean; backend: "acpx" | "claude-code" | "codex"; defaultAgent: string; allowedAgents?: string[] } | undefined {
+  if (!acpConfig || !acpConfig.enabled) return undefined;
+
+  const backend = acpConfig.backend ?? "acpx";
+  if (!VALID_ACP_BACKENDS.has(backend)) {
+    throw new Error(
+      `Invalid acp.backend "${backend}" (must be acpx, claude-code, or codex)`,
+    );
+  }
+
+  if (!acpConfig.defaultAgent) {
+    throw new Error("acp.defaultAgent is required when ACP is enabled");
+  }
+
+  return {
+    enabled: true,
+    backend: backend as "acpx" | "claude-code" | "codex",
+    defaultAgent: acpConfig.defaultAgent,
+    ...(acpConfig.allowedAgents ? { allowedAgents: acpConfig.allowedAgents } : {}),
   };
 }
 

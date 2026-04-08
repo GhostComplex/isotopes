@@ -64,6 +64,7 @@ export {
   getDiscordToken,
   getDiscordGuildConfig,
   isRequireMention,
+  resolveAcpConfig,
 } from "./core/config.js";
 export type {
   IsotopesConfigFile,
@@ -71,6 +72,7 @@ export type {
   DiscordConfigFile,
   ProviderConfigFile,
   ThreadBindingConfigFile,
+  AcpConfigFile,
 } from "./core/config.js";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +88,21 @@ export type { BindingQuery } from "./core/bindings.js";
 
 export { ThreadBindingManager } from "./core/thread-bindings.js";
 export type { ThreadBindingCallback } from "./core/thread-bindings.js";
+
+// ---------------------------------------------------------------------------
+// ACP (Agent Communication Protocol)
+// ---------------------------------------------------------------------------
+
+export { AcpSessionManager } from "./acp/index.js";
+export type {
+  AcpConfig,
+  AcpBackend,
+  AcpSession,
+  AcpSessionStatus,
+  AcpMessage,
+  AcpSessionEvent,
+  AcpSessionCallback,
+} from "./acp/index.js";
 
 // ---------------------------------------------------------------------------
 // Mention detection
