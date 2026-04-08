@@ -12,6 +12,7 @@ const log = createLogger("daemon:process");
 // Types
 // ---------------------------------------------------------------------------
 
+/** Runtime status snapshot of the daemon process. */
 export interface DaemonStatus {
   running: boolean;
   pid?: number;
@@ -20,6 +21,7 @@ export interface DaemonStatus {
   configPath?: string;
 }
 
+/** Options for starting the daemon (config path, log directory, PID file). */
 export interface DaemonOptions {
   configPath: string;
   logDir: string;
@@ -95,6 +97,13 @@ async function removeStartTime(pidFile: string): Promise<void> {
 // DaemonProcess
 // ---------------------------------------------------------------------------
 
+/**
+ * DaemonProcess — manages the Isotopes daemon as a detached child process.
+ *
+ * Handles starting (with PID file tracking), graceful stopping (SIGTERM
+ * then SIGKILL), status queries, and restart. Log output is redirected
+ * to files in the configured log directory.
+ */
 export class DaemonProcess {
   constructor(private options: DaemonOptions) {}
 

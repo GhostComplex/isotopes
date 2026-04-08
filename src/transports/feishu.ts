@@ -1,9 +1,5 @@
 // src/transports/feishu.ts — Feishu (Lark) transport for Isotopes
 // Handles Feishu bot connection via WebSocket, message routing, and response streaming.
-// M2.1: P2P (DM) messages
-// M2.2: Group message handling with @mention gating
-// M2.3: Per-group requireMention configuration
-// M2.4: Bindings integration for agent routing
 
 import * as lark from "@larksuiteoapi/node-sdk";
 import type {
@@ -131,6 +127,7 @@ export function buildFeishuSessionKey(
 // Config & types
 // ---------------------------------------------------------------------------
 
+/** Configuration for the Feishu (Lark) transport. */
 export interface FeishuTransportConfig {
   /** Feishu app ID from Developer Console */
   appId: string;
@@ -152,7 +149,7 @@ export interface FeishuTransportConfig {
   agentBindings?: Record<string, string>;
 }
 
-/** Shape of the im.message.receive_v1 event data from the Feishu SDK */
+/** Shape of the `im.message.receive_v1` event data from the Feishu SDK. */
 export interface FeishuMessageEvent {
   sender: {
     sender_id?: {
@@ -225,11 +222,10 @@ export function resolveAgentId(
 // ---------------------------------------------------------------------------
 
 /**
- * FeishuTransport — connects agents to Feishu via WebSocket long connection.
+ * FeishuTransport — connects agents to Feishu (Lark) via WebSocket.
  *
- * M2.1: WebSocket connection, P2P (DM) text messages
- * M2.2: Group message handling with @mention gating
- * M2.3: Per-group requireMention configuration
+ * Supports P2P (DM) and group messages with @mention gating, per-group
+ * `requireMention` configuration, and binding-based agent routing.
  */
 export class FeishuTransport implements Transport {
   private config: FeishuTransportConfig;

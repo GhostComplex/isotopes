@@ -13,6 +13,7 @@ const log = createLogger("daemon:log-rotation");
 // Types
 // ---------------------------------------------------------------------------
 
+/** Configuration for log file rotation. */
 export interface LogRotationConfig {
   /** Maximum file size in bytes before rotation triggers. */
   maxSize: number;
@@ -26,6 +27,12 @@ export interface LogRotationConfig {
 // LogRotator
 // ---------------------------------------------------------------------------
 
+/**
+ * LogRotator — rotates daemon log files when they exceed a configured size.
+ *
+ * Supports numbered rotation slots (`.1` through `.N`) and optional gzip
+ * compression. Oldest files are deleted to stay within {@link LogRotationConfig.maxFiles}.
+ */
 export class LogRotator {
   private config: Required<LogRotationConfig>;
 

@@ -13,7 +13,7 @@ const log = createLogger("sandbox:executor");
 // Types
 // ---------------------------------------------------------------------------
 
-/** Options for sandbox command execution */
+/** Options for executing a command in a sandbox container. */
 export interface SandboxExecOptions {
   /** Path to the workspace directory to mount */
   workspacePath?: string;

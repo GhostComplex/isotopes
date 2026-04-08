@@ -5,6 +5,7 @@
 // Types
 // ---------------------------------------------------------------------------
 
+/** Parsed cron schedule with expanded numeric arrays for each field. */
 export interface CronSchedule {
   minute: number[];
   hour: number[];

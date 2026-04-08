@@ -251,6 +251,13 @@ function toAgentTool(tool: Tool, handler: (args: unknown) => Promise<string>): A
 // PiMonoCore
 // ---------------------------------------------------------------------------
 
+/**
+ * PiMonoCore — {@link AgentCore} implementation backed by pi-agent-core.
+ *
+ * Wraps the `@mariozechner/pi-agent-core` Agent to create
+ * {@link AgentInstance}s that stream {@link AgentEvent}s. Supports
+ * context compaction, tool registries, and configurable LLM providers.
+ */
 export class PiMonoCore implements AgentCore {
   private toolRegistries = new Map<string, ToolRegistry>();
 

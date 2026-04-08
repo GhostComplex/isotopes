@@ -45,10 +45,11 @@ const DEFAULT_TTL_SECONDS = 86_400;
 const DEFAULT_CLEANUP_INTERVAL_SECONDS = 3_600;
 
 /**
- * DefaultSessionStore — in-memory session storage with file persistence.
+ * DefaultSessionStore — in-memory {@link SessionStore} with file persistence.
  *
- * Sessions are kept in memory for fast access. Message history is
- * persisted to disk as JSONL files for recovery.
+ * Sessions are kept in memory for fast access. Message histories are
+ * persisted to disk as JSONL files. Supports automatic TTL-based cleanup
+ * of expired sessions.
  */
 export class DefaultSessionStore implements SessionStore {
   private sessions = new Map<string, StoredSession>();

@@ -31,6 +31,7 @@ const log = loggers.discord;
 
 type SendableChannel = TextChannel | DMChannel | NewsChannel | ThreadChannel;
 
+/** Configuration for the Discord transport. */
 export interface DiscordTransportConfig {
   /** Discord bot token from Developer Portal */
   token: string;

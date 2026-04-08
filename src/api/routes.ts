@@ -13,12 +13,14 @@ import { VERSION } from "../index.js";
 // Types
 // ---------------------------------------------------------------------------
 
+/** Dependencies injected into route handlers. */
 export interface RouteDeps {
   sessionManager: AcpSessionManager;
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
 }
 
+/** Handler function for a matched API route. */
 export type RouteHandler = (
   req: ApiRequest,
   res: ServerResponse,

@@ -9,10 +9,10 @@ import type { AgentToolSettings, Tool } from "./types.js";
 
 const execAsync = promisify(exec);
 
-/** Tool execution handler */
+/** Function that executes a tool call and returns a string result. */
 export type ToolHandler = (args: unknown) => Promise<string>;
 
-/** Registered tool entry */
+/** A registered tool entry pairing a schema with its execution handler. */
 export interface ToolEntry {
   tool: Tool;
   handler: ToolHandler;

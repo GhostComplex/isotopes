@@ -22,6 +22,7 @@ const log = createLogger("api:server");
 // Types
 // ---------------------------------------------------------------------------
 
+/** Configuration for the HTTP API server. */
 export interface ApiServerConfig {
   /** Port to listen on */
   port: number;
@@ -35,6 +36,12 @@ export interface ApiServerConfig {
 // ApiServer
 // ---------------------------------------------------------------------------
 
+/**
+ * ApiServer — minimal HTTP REST API built on Node.js built-in `http` module.
+ *
+ * Exposes endpoints for managing ACP sessions, cron jobs, config, and
+ * daemon status. Supports CORS, JSON body parsing, and parameterized routes.
+ */
 export class ApiServer {
   private server: http.Server | null = null;
   private deps: RouteDeps;

@@ -11,12 +11,21 @@ const log = createLogger("config-reloader");
 // Types
 // ---------------------------------------------------------------------------
 
+/** Callback invoked when the config file is successfully reloaded. */
 export type ConfigReloadListener = (config: IsotopesConfigFile) => void;
 
 // ---------------------------------------------------------------------------
 // ConfigReloader
 // ---------------------------------------------------------------------------
 
+/**
+ * ConfigReloader — watches the Isotopes config file and hot-reloads on changes.
+ *
+ * Uses a {@link WorkspaceWatcher} to detect modifications to the config file.
+ * On change, the new config is parsed and validated, then dispatched to
+ * registered {@link ConfigReloadListener}s. If parsing fails, the previous
+ * valid config is retained.
+ */
 export class ConfigReloader {
   private watcher: WorkspaceWatcher;
   private currentConfig: IsotopesConfigFile | null = null;

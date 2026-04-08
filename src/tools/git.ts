@@ -10,6 +10,7 @@ const execAsync = promisify(exec);
 // Types
 // ---------------------------------------------------------------------------
 
+/** Options common to all git commands (working directory, timeout). */
 export interface GitOptions {
   /** Working directory for git commands */
   cwd?: string;
@@ -17,6 +18,7 @@ export interface GitOptions {
   timeout?: number;
 }
 
+/** Parsed result of `git status --porcelain`. */
 export interface GitStatusResult {
   staged: string[];
   modified: string[];
@@ -24,6 +26,7 @@ export interface GitStatusResult {
   raw: string;
 }
 
+/** A single commit entry from `git log`. */
 export interface GitLogEntry {
   hash: string;
   author: string;
@@ -31,6 +34,7 @@ export interface GitLogEntry {
   message: string;
 }
 
+/** Raw stdout/stderr result from a git command. */
 export interface GitExecResult {
   stdout: string;
   stderr: string;

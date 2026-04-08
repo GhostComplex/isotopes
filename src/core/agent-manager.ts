@@ -22,11 +22,12 @@ interface AgentEntry {
 }
 
 /**
- * DefaultAgentManager — in-memory agent registry.
+ * DefaultAgentManager — in-memory {@link AgentManager} implementation.
  *
- * Manages agent configs and instances. Uses an AgentCore backend
- * to create actual AgentInstance objects. Supports workspace isolation
- * where each agent can have its own workspace directory.
+ * Manages agent configs and instances backed by an {@link AgentCore}.
+ * Each agent can optionally have its own workspace directory containing
+ * SOUL.md, MEMORY.md, and other context files that are merged into
+ * the system prompt.
  */
 export class DefaultAgentManager implements AgentManager {
   private agents = new Map<string, AgentEntry>();

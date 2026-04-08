@@ -10,6 +10,7 @@ const execAsync = promisify(exec);
 // Types
 // ---------------------------------------------------------------------------
 
+/** Options common to all GitHub CLI commands (working directory, timeout). */
 export interface GhOptions {
   /** Working directory for gh commands */
   cwd?: string;
@@ -17,6 +18,7 @@ export interface GhOptions {
   timeout?: number;
 }
 
+/** A GitHub pull request. */
 export interface PullRequest {
   number: number;
   title: string;
@@ -30,6 +32,7 @@ export interface PullRequest {
   updatedAt: string;
 }
 
+/** A GitHub issue. */
 export interface Issue {
   number: number;
   title: string;
@@ -42,6 +45,7 @@ export interface Issue {
   updatedAt: string;
 }
 
+/** A GitHub repository. */
 export interface Repo {
   name: string;
   owner: string;
@@ -51,6 +55,7 @@ export interface Repo {
   isPrivate: boolean;
 }
 
+/** Options for creating a pull request via `gh pr create`. */
 export interface CreatePROptions {
   title: string;
   body?: string;
@@ -59,6 +64,7 @@ export interface CreatePROptions {
   draft?: boolean;
 }
 
+/** Options for creating an issue via `gh issue create`. */
 export interface CreateIssueOptions {
   title: string;
   body?: string;
@@ -66,6 +72,7 @@ export interface CreateIssueOptions {
   assignees?: string[];
 }
 
+/** Options for submitting a PR review via `gh pr review`. */
 export interface ReviewPROptions {
   number: number;
   event: "approve" | "request_changes" | "comment";

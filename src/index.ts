@@ -1,6 +1,14 @@
-// src/index.ts — Isotopes public API
-// Main entry point for library usage.
+/**
+ * @module isotopes
+ *
+ * Public API for the Isotopes agent framework.
+ *
+ * This module re-exports all types, classes, and functions that constitute
+ * the library's public surface. Consumers should import from `"isotopes"`
+ * (this entry point) rather than reaching into internal paths.
+ */
 
+/** Semantic version of the Isotopes library. */
 export const VERSION = "0.1.0";
 
 // ---------------------------------------------------------------------------

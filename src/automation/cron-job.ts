@@ -10,11 +10,13 @@ const log = createLogger("cron");
 // Types
 // ---------------------------------------------------------------------------
 
+/** Action to execute when a cron job triggers. */
 export type CronAction =
   | { type: "message"; content: string }
   | { type: "prompt"; prompt: string }
   | { type: "callback"; handler: string };
 
+/** A registered cron job with its parsed schedule and execution state. */
 export interface CronJob {
   id: string;
   name: string;
@@ -29,6 +31,7 @@ export interface CronJob {
   createdAt: Date;
 }
 
+/** Callback invoked when a cron job triggers. */
 export type CronJobCallback = (job: CronJob) => void | Promise<void>;
 
 /**
@@ -51,6 +54,15 @@ function generateId(): string {
 // CronScheduler
 // ---------------------------------------------------------------------------
 
+/**
+ * CronScheduler — manages cron-based scheduled tasks.
+ *
+ * Jobs are registered with a cron expression that is parsed into a
+ * {@link CronSchedule}. When the scheduler is started, it sets timers
+ * for each enabled job and re-schedules them after every trigger.
+ * Callbacks registered via {@link onTrigger} are invoked each time a
+ * job fires.
+ */
 export class CronScheduler {
   private jobs: Map<string, CronJob> = new Map();
   private timers: Map<string, NodeJS.Timeout> = new Map();

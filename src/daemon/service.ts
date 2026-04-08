@@ -15,8 +15,10 @@ const log = createLogger("daemon:service");
 // Types
 // ---------------------------------------------------------------------------
 
+/** Detected operating system platform for service integration. */
 export type ServicePlatform = "macos" | "linux" | "unsupported";
 
+/** Configuration for installing the daemon as a system service. */
 export interface ServiceConfig {
   /** Reverse-domain identifier, e.g. "ai.isotopes.daemon" */
   name: string;
@@ -37,6 +39,7 @@ export interface ServiceConfig {
 // Platform detection
 // ---------------------------------------------------------------------------
 
+/** Detect the current operating system for service integration. */
 export function getPlatform(): ServicePlatform {
   switch (os.platform()) {
     case "darwin":
@@ -131,6 +134,12 @@ WantedBy=default.target
 // ServiceManager
 // ---------------------------------------------------------------------------
 
+/**
+ * ServiceManager — installs and manages the daemon as a system service.
+ *
+ * Supports macOS launchd (plist) and Linux systemd (user unit). Provides
+ * install, uninstall, enable, disable, and status-check operations.
+ */
 export class ServiceManager {
   private platform: ServicePlatform;
 
