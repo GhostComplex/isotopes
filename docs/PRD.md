@@ -261,8 +261,8 @@ Extensible via tool registration.
 | Milestone | Scope | Status |
 |-----------|-------|--------|
 | **M0** | Core Foundation | ✅ Done |
-| **M1** | Config & Routing Enhancements | 🚧 In Progress |
-| **M2** | Feishu Transport | TBD |
+| **M1** | Config & Routing Enhancements | ✅ Done |
+| **M2** | Feishu Transport | 🚧 In Progress |
 | **M3** | ACP Protocol | TBD |
 | **M4** | Automation & Git | TBD |
 | **M5** | Daemon Mode + Web UI | TBD |
@@ -284,7 +284,7 @@ Extensible via tool registration.
 
 ---
 
-### M1: Config & Routing Enhancements 🚧
+### M1: Config & Routing Enhancements ✅
 
 **Goal:** Full parity with OpenClaw's routing capabilities.
 
@@ -304,9 +304,9 @@ bindings:
         id: "1484372470306963547"
 ```
 
-- [ ] Binding resolution by (channel, accountId, peer)
-- [ ] Priority: more specific bindings win
-- [ ] Support `peer.kind`: `group`, `dm`, `thread`
+- [x] Binding resolution by (channel, accountId, peer)
+- [x] Priority: more specific bindings win
+- [x] Support `peer.kind`: `group`, `dm`, `thread`
 
 #### 1.2 Require Mention
 ```yaml
@@ -319,14 +319,14 @@ channels:
             requireMention: false
 ```
 
-- [ ] Per-guild/group `requireMention` config
-- [ ] Default: `true` (only respond when @mentioned)
-- [ ] Mention detection via Discord.js
+- [x] Per-guild/group `requireMention` config
+- [x] Default: `true` (only respond when @mentioned)
+- [x] Mention detection via Discord.js
 
 #### 1.3 Workspace Injection
-- [ ] Load `SOUL.md` as system prompt
-- [ ] Load `TOOLS.md` as tool instructions
-- [ ] Load `MEMORY.md` as persistent context
+- [x] Load `SOUL.md` as system prompt
+- [x] Load `TOOLS.md` as tool instructions
+- [x] Load `MEMORY.md` as persistent context
 
 #### 1.4 Context Compaction
 ```yaml
@@ -336,13 +336,13 @@ agents:
       mode: safeguard  # off | safeguard | aggressive
 ```
 
-- [ ] Implement `transformContext` hook
-- [ ] LLM-based summarization for old messages
-- [ ] Token counting and threshold detection
+- [x] Implement `transformContext` hook
+- [x] LLM-based summarization for old messages
+- [x] Token counting and threshold detection
 
 #### 1.5 Session Management
-- [ ] Session auto-cleanup (TTL-based)
-- [ ] Session recovery after restart
+- [x] Session auto-cleanup (TTL-based)
+- [x] Session recovery after restart
 
 ---
 
