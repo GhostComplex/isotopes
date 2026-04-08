@@ -10,7 +10,7 @@ import {
   shouldRespondToGroupMessage,
   type FeishuMessageEvent,
 } from "./feishu.js";
-import type { AgentManager, SessionStore, AgentInstance, ChannelsConfig } from "../core/types.js";
+import type { AgentManager, SessionStore, AgentInstance, AgentEvent, ChannelsConfig } from "../core/types.js";
 import { textContent } from "../core/types.js";
 
 // Suppress console output during tests
@@ -748,9 +748,8 @@ describe("FeishuTransport", () => {
 
     it("sends error message when agent throws", async () => {
       const errorAgent: AgentInstance = {
-        prompt: vi.fn(async function* () {
+        prompt: vi.fn(async function* (): AsyncGenerator<AgentEvent> {
           throw new Error("Agent crashed");
-          yield; // unreachable but satisfies require-yield
         }),
         abort: vi.fn(),
         steer: vi.fn(),
