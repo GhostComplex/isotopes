@@ -169,8 +169,8 @@ export class WorkspaceWatcher {
               return;
             }
 
-            // Check include patterns
-            if (!matchesPatterns(fullPath, this.config.patterns)) {
+            // Check include patterns (use filename for relative path matching)
+            if (!matchesPatterns(filename, this.config.patterns)) {
               return;
             }
 

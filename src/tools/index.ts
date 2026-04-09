@@ -56,3 +56,12 @@ export type {
   SpawnSubagentResult,
   SubagentBackendConfig,
 } from "./subagent.js";
+
+export {
+  createSelfIterationTools,
+  ITERATE_SELF_TOOL,
+  CREATE_SKILL_TOOL,
+  APPEND_MEMORY_TOOL,
+  DEFAULT_SELF_ITERATION_FILES,
+} from "./self-iteration.js";
+export type { SelfIterationConfig } from "./self-iteration.js";

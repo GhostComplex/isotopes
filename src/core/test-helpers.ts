@@ -50,6 +50,7 @@ export function createMockAgentManager(instance?: AgentInstance): AgentManager {
     delete: vi.fn(),
     getPrompt: vi.fn(),
     updatePrompt: vi.fn(),
+    reloadWorkspace: vi.fn(),
   };
 }
 

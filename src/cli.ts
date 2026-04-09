@@ -25,6 +25,7 @@ import {
   createWorkspaceToolsWithGuards,
   resolveToolGuards,
 } from "./core/tools.js";
+import { createSelfIterationTools } from "./tools/self-iteration.js";
 import {
   getConfigPath,
   getIsotopesHome,
@@ -39,6 +40,7 @@ import {
   buildSystemPrompt,
   ensureWorkspaceStructure,
 } from "./core/workspace.js";
+import { HotReloadManager } from "./workspace/index.js";
 import { DaemonProcess } from "./daemon/process.js";
 import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
 
@@ -107,6 +109,7 @@ Usage:
   isotopes stop                      Stop the running daemon
   isotopes status                    Show daemon status
   isotopes restart [--config path]   Restart the daemon
+  isotopes reload [agentId]          Reload workspace (hot-reload)
 
   isotopes service install           Install as system service
   isotopes service uninstall         Remove system service
@@ -306,6 +309,20 @@ async function main() {
     for (const { tool, handler } of workspaceTools) {
       toolRegistry.register(tool, handler);
     }
+
+    // Register self-iteration tools if enabled (M10.6)
+    if (agentFile.selfIteration?.enabled) {
+      const selfIterationTools = createSelfIterationTools({
+        workspacePath: agentConfig.workspacePath,
+        allowedFiles: agentFile.selfIteration.allowedFiles,
+        backup: agentFile.selfIteration.backup ?? true,
+      });
+      for (const { tool, handler } of selfIterationTools) {
+        toolRegistry.register(tool, handler);
+      }
+      logger.info(`Self-iteration tools enabled for ${agentConfig.id}`);
+    }
+
     agentConfig.systemPrompt = [
       agentConfig.systemPrompt,
       buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, agentConfig.workspacePath),
@@ -315,6 +332,20 @@ async function main() {
     await agentManager.create(agentConfig);
     logger.info(`Created agent: ${agentConfig.id} (workspace: ${agentConfig.workspacePath}, tools: ${toolRegistry.list().length})`);
   }
+
+  // Initialize hot-reload for workspace files (M10.5)
+  const hotReload = new HotReloadManager(agentManager, { enabled: true, debounceMs: 500 });
+  for (const agentFile of config.agents) {
+    const workspacePath = agentFile.workspacePath
+      ? resolveWorkspacePath(agentFile.workspacePath)
+      : await ensureWorkspaceDir(agentFile.id);
+    hotReload.register(agentFile.id, workspacePath);
+  }
+  hotReload.onReload((event) => {
+    logger.info(`Hot-reload: workspace reloaded for "${event.agentId}" (${event.changedFiles.join(", ")})`);
+  });
+  hotReload.start();
+  logger.info(`Hot-reload enabled for ${config.agents.length} agent(s)`);
 
   // Start Discord transport if configured
   if (config.discord) {
@@ -389,11 +420,13 @@ async function main() {
   // Graceful shutdown
   process.on("SIGINT", async () => {
     logger.info("Shutting down...");
+    hotReload.stop();
     process.exit(0);
   });
 
   process.on("SIGTERM", async () => {
     logger.info("Shutting down...");
+    hotReload.stop();
     process.exit(0);
   });
 }

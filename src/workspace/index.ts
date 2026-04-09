@@ -9,3 +9,14 @@ export type {
 
 export { ConfigReloader } from "./config-reloader.js";
 export type { ConfigReloadListener } from "./config-reloader.js";
+
+export {
+  HotReloadManager,
+  WATCHED_PATTERNS,
+  IGNORE_PATTERNS,
+} from "./hot-reload.js";
+export type {
+  HotReloadConfig,
+  WorkspaceReloadedEvent,
+  ReloadEventHandler,
+} from "./hot-reload.js";

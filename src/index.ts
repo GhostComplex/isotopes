@@ -239,6 +239,11 @@ export {
   closeIssue,
   commentIssue,
   getRepo,
+  createSelfIterationTools,
+  ITERATE_SELF_TOOL,
+  CREATE_SKILL_TOOL,
+  APPEND_MEMORY_TOOL,
+  DEFAULT_SELF_ITERATION_FILES,
 } from "./tools/index.js";
 export type {
   GitOptions,
@@ -252,6 +257,7 @@ export type {
   CreatePROptions,
   CreateIssueOptions,
   ReviewPROptions,
+  SelfIterationConfig,
 } from "./tools/index.js";
 
 // ---------------------------------------------------------------------------
@@ -271,12 +277,18 @@ export {
   matchesPatterns,
   matchesIgnorePatterns,
   ConfigReloader,
+  HotReloadManager,
+  WATCHED_PATTERNS,
+  IGNORE_PATTERNS,
 } from "./workspace/index.js";
 export type {
   WatcherConfig,
   FileChange,
   ChangeHandler,
   ConfigReloadListener,
+  HotReloadConfig,
+  WorkspaceReloadedEvent,
+  ReloadEventHandler,
 } from "./workspace/index.js";
 
 // ---------------------------------------------------------------------------

@@ -61,6 +61,18 @@ export interface AgentConfigFile {
   provider?: ProviderConfigFile;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
+  /** Self-iteration configuration (M10) */
+  selfIteration?: SelfIterationConfigFile;
+}
+
+/** Self-iteration configuration in config file */
+export interface SelfIterationConfigFile {
+  /** Enable self-iteration tools. Default: false */
+  enabled?: boolean;
+  /** Allowed file patterns for iteration. Default includes workspace files and skills */
+  allowedFiles?: string[];
+  /** Create backups before overwriting files. Default: true */
+  backup?: boolean;
 }
 
 export interface AgentToolsConfigFile {

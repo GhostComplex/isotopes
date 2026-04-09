@@ -165,6 +165,8 @@ export interface AgentManager {
   delete(id: string): Promise<void>;
   getPrompt(id: string): Promise<string>;
   updatePrompt(id: string, prompt: string): Promise<void>;
+  /** Reload workspace context for an agent (hot-reload support) */
+  reloadWorkspace(id: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
