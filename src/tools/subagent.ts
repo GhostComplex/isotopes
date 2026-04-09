@@ -1,0 +1,213 @@
+// src/tools/subagent.ts — Subagent tool for spawning acpx agents
+// Allows the main agent to delegate tasks to coding agents like Claude, Codex, etc.
+
+import { createLogger } from "../core/logger.js";
+import {
+  AcpxBackend,
+  ACPX_AGENTS,
+  type AcpxAgent,
+  type AcpxResult,
+  type AcpxEvent,
+} from "../subagent/index.js";
+
+const log = createLogger("tools:subagent");
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/** Options for spawning a sub-agent */
+export interface SpawnSubagentOptions {
+  /** Which agent to use (default: claude) */
+  agent?: AcpxAgent;
+  /** Working directory for the agent (required) */
+  cwd: string;
+  /** Model override */
+  model?: string;
+  /** Timeout in seconds (default: 300) */
+  timeout?: number;
+  /** Maximum turns (default: 50) */
+  maxTurns?: number;
+  /** Auto-approve all tool calls (default: true) */
+  approveAll?: boolean;
+  /** Allowed workspace roots for validation */
+  allowedWorkspaces?: string[];
+  /** Callback for streaming events */
+  onEvent?: (event: AcpxEvent) => void;
+}
+
+/** Result from spawning a sub-agent */
+export interface SpawnSubagentResult {
+  success: boolean;
+  output?: string;
+  error?: string;
+  exitCode: number;
+  eventCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Tool implementation
+// ---------------------------------------------------------------------------
+
+/** Shared backend instance (lazy initialized) */
+let sharedBackend: AcpxBackend | undefined;
+
+function getBackend(allowedWorkspaces?: string[]): AcpxBackend {
+  // Create new backend if workspaces changed or not initialized
+  if (!sharedBackend || allowedWorkspaces) {
+    sharedBackend = new AcpxBackend(allowedWorkspaces);
+  }
+  return sharedBackend;
+}
+
+/** Counter for generating unique task IDs */
+let taskCounter = 0;
+
+/**
+ * Spawn a sub-agent to execute a task.
+ *
+ * This tool allows the main agent to delegate complex tasks (like coding,
+ * refactoring, debugging) to specialized coding agents.
+ *
+ * @param prompt - The task description for the sub-agent
+ * @param options - Spawn options
+ * @returns Result with output or error
+ *
+ * @example
+ * ```typescript
+ * const result = await spawnSubagent(
+ *   "Fix the bug in src/main.ts that causes the crash",
+ *   { agent: "claude", cwd: "/project" }
+ * );
+ * if (result.success) {
+ *   console.log("Task completed:", result.output);
+ * }
+ * ```
+ */
+export async function spawnSubagent(
+  prompt: string,
+  options: SpawnSubagentOptions,
+): Promise<SpawnSubagentResult> {
+  const agent = options.agent ?? "claude";
+  const taskId = `subagent-${++taskCounter}-${Date.now()}`;
+
+  log.info("Spawning sub-agent", { taskId, agent, cwd: options.cwd });
+
+  const backend = getBackend(options.allowedWorkspaces);
+
+  try {
+    const events = backend.spawn(taskId, {
+      agent,
+      prompt,
+      cwd: options.cwd,
+      model: options.model,
+      timeout: options.timeout ?? 300,
+      maxTurns: options.maxTurns ?? 50,
+      approveAll: options.approveAll ?? true,
+    });
+
+    // Collect events, optionally streaming via callback
+    const collected: AcpxEvent[] = [];
+    for await (const event of events) {
+      collected.push(event);
+      options.onEvent?.(event);
+    }
+
+    // Build result from collected events
+    const result = await collectResultFromEvents(collected);
+
+    log.info("Sub-agent completed", {
+      taskId,
+      success: result.success,
+      exitCode: result.exitCode,
+    });
+
+    return {
+      success: result.success,
+      output: result.output,
+      error: result.error,
+      exitCode: result.exitCode,
+      eventCount: collected.length,
+    };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    log.error("Sub-agent failed", { taskId, error });
+
+    return {
+      success: false,
+      error,
+      exitCode: 1,
+      eventCount: 0,
+    };
+  }
+}
+
+/**
+ * Cancel a running sub-agent by task ID pattern.
+ *
+ * @param pattern - Task ID or pattern to match
+ * @returns true if any tasks were cancelled
+ */
+export function cancelSubagent(pattern?: string): boolean {
+  const backend = getBackend();
+  if (pattern) {
+    return backend.cancel(pattern);
+  }
+  backend.cancelAll();
+  return true;
+}
+
+/**
+ * Check if any sub-agents are currently running.
+ */
+export function hasRunningSubagents(): boolean {
+  const backend = getBackend();
+  return backend.activeCount > 0;
+}
+
+/**
+ * Get the number of active sub-agents.
+ */
+export function getActiveSubagentCount(): number {
+  const backend = getBackend();
+  return backend.activeCount;
+}
+
+/**
+ * Get list of supported agent backends.
+ */
+export function getSupportedAgents(): readonly string[] {
+  return [...ACPX_AGENTS];
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function collectResultFromEvents(events: AcpxEvent[]): Promise<AcpxResult> {
+  let lastExitCode = 0;
+
+  const messages = events
+    .filter((e) => e.type === "message" && e.content)
+    .map((e) => e.content!)
+    .join("\n");
+
+  const errors = events
+    .filter((e) => e.type === "error" && e.error)
+    .map((e) => e.error!)
+    .join("\n");
+
+  for (const event of events) {
+    if (event.type === "done" && event.exitCode !== undefined) {
+      lastExitCode = event.exitCode;
+    }
+  }
+
+  return {
+    success: lastExitCode === 0 && !errors,
+    output: messages || undefined,
+    error: errors || undefined,
+    events,
+    exitCode: lastExitCode,
+  };
+}

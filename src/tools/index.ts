@@ -42,3 +42,15 @@ export type {
   CreateIssueOptions,
   ReviewPROptions,
 } from "./github.js";
+
+export {
+  spawnSubagent,
+  cancelSubagent,
+  hasRunningSubagents,
+  getActiveSubagentCount,
+  getSupportedAgents,
+} from "./subagent.js";
+export type {
+  SpawnSubagentOptions,
+  SpawnSubagentResult,
+} from "./subagent.js";
