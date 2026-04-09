@@ -107,6 +107,31 @@ describe("Workspace", () => {
 
       expect(ctx.systemPromptAdditions).toBe("");
       expect(ctx.memory).toBeNull();
+      expect(ctx.skillsPrompt).toBe("");
+    });
+
+    it("loads skills from workspace skills directory", async () => {
+      // Create a skill in workspace/skills/
+      const skillDir = path.join(tempDir, "skills", "web-search");
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(
+        path.join(skillDir, "SKILL.md"),
+        `---
+name: web-search
+description: Search the web using DuckDuckGo
+---
+
+# Web Search
+
+Use this skill to search the web.
+`,
+      );
+
+      const ctx = await loadWorkspaceContext(tempDir);
+
+      expect(ctx.skillsPrompt).toContain("web-search");
+      expect(ctx.skillsPrompt).toContain("Search the web using DuckDuckGo");
+      expect(ctx.skillsPrompt).toContain("<available_skills>");
     });
   });
 
@@ -175,6 +200,31 @@ describe("Workspace", () => {
       expect(result).toContain("You are Major.");
       expect(result).toContain("Use shell for commands.");
       expect(result).toContain("Previously discussed X.");
+    });
+
+    it("includes skills in system prompt when skills exist", async () => {
+      await fs.writeFile(path.join(tempDir, "SOUL.md"), "Soul");
+      
+      // Create a skill
+      const skillDir = path.join(tempDir, "skills", "git-helper");
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(
+        path.join(skillDir, "SKILL.md"),
+        `---
+name: git-helper
+description: Help with git operations
+---
+
+# Git Helper
+`,
+      );
+
+      const ctx = await loadWorkspaceContext(tempDir);
+      const result = buildSystemPrompt("Base prompt", ctx);
+
+      expect(result).toContain("git-helper");
+      expect(result).toContain("Help with git operations");
+      expect(result).toContain("<available_skills>");
     });
   });
 

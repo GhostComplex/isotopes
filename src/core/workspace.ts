@@ -3,6 +3,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { SkillLoader } from "../skills/index.js";
 
 /** Standard workspace files that contribute to system prompt */
 export const WORKSPACE_FILES = [
@@ -24,6 +25,8 @@ export interface WorkspaceContext {
   memory: string | null;
   /** Path to the workspace directory */
   workspacePath: string;
+  /** Skills prompt block (XML format) */
+  skillsPrompt: string;
 }
 
 /**
@@ -54,10 +57,15 @@ export async function loadWorkspaceContext(workspacePath: string): Promise<Works
     memory = memory ? `${memory}\n\n## Today's Notes\n\n${dailyMemory}` : dailyMemory;
   }
 
+  // Load skills from workspace
+  const skillLoader = new SkillLoader({ workspacePath });
+  const skillsPrompt = await skillLoader.generatePrompt();
+
   return {
     systemPromptAdditions: additions.join("\n\n"),
     memory,
     workspacePath,
+    skillsPrompt,
   };
 }
 
@@ -76,6 +84,10 @@ export function buildSystemPrompt(
 
   if (workspace.systemPromptAdditions) {
     parts.push("# Workspace Context\n\n" + workspace.systemPromptAdditions);
+  }
+
+  if (workspace.skillsPrompt) {
+    parts.push(workspace.skillsPrompt);
   }
 
   if (workspace.memory) {
