@@ -275,7 +275,7 @@ async function main() {
 
   // Create agents with workspace tools
   for (const agentFile of config.agents) {
-    const agentConfig = toAgentConfig(agentFile, config.provider, config.tools);
+    const agentConfig = toAgentConfig(agentFile, config.provider, config.tools, config.compaction);
 
     // Resolve workspace path
     if (agentConfig.workspacePath) {
