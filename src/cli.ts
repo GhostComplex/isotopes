@@ -385,7 +385,7 @@ async function main() {
     const threadBindingManager = new ThreadBindingManager({
       persistPath: getThreadBindingsPath(),
     });
-    await threadBindingManager.load();
+    await threadBindingManager.load({ clearStale: true });
     if (threadBindingManager.size > 0) {
       logger.info(`Loaded ${threadBindingManager.size} persisted thread binding(s)`);
     }

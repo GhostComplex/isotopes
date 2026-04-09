@@ -38,8 +38,10 @@ export class ThreadBindingManager {
   /**
    * Load bindings from the persist file.
    * Call this once at startup.
+   * 
+   * @param options.clearStale - If true, clear all bindings after loading (for startup cleanup)
    */
-  async load(): Promise<void> {
+  async load(options?: { clearStale?: boolean }): Promise<void> {
     if (!this.persistPath) return;
 
     try {
@@ -64,6 +66,13 @@ export class ThreadBindingManager {
         this.bindings.set(item.threadId, binding);
       }
       logger.debug(`Loaded ${this.bindings.size} thread binding(s) from ${this.persistPath}`);
+
+      // Clear stale bindings on startup (subagents are dead after restart)
+      if (options?.clearStale && this.bindings.size > 0) {
+        const staleCount = this.bindings.size;
+        await this.clearAll("startup cleanup: subagents dead after restart");
+        logger.info(`Cleared ${staleCount} stale thread binding(s) on startup`);
+      }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         // File doesn't exist yet, that's fine
@@ -198,6 +207,36 @@ export class ThreadBindingManager {
   /** Get the total number of active bindings. */
   get size(): number {
     return this.bindings.size;
+  }
+
+  /**
+   * Clear all bindings. Used for startup cleanup when subagents are dead.
+   * Notifies unbind listeners for each binding.
+   * 
+   * @param reason - Reason for clearing (for logging/debugging)
+   * @returns Number of bindings cleared
+   */
+  async clearAll(reason?: string): Promise<number> {
+    const count = this.bindings.size;
+    
+    // Notify listeners for each binding being cleared
+    for (const binding of this.bindings.values()) {
+      for (const listener of this.unbindListeners) {
+        listener(binding, reason);
+      }
+    }
+    
+    this.bindings.clear();
+    await this.save();
+    
+    return count;
+  }
+
+  /**
+   * Get all current bindings (for inspection/debugging).
+   */
+  all(): ThreadBinding[] {
+    return Array.from(this.bindings.values());
   }
 
   /**
