@@ -278,9 +278,11 @@ async function main() {
     // Register workspace tools for this agent
     const resolvedToolGuards = resolveToolGuards(agentConfig.toolSettings);
     const toolRegistry = new ToolRegistry();
+    const subagentEnabled = config.acp?.enabled === true;
     const workspaceTools = createWorkspaceToolsWithGuards(
       agentConfig.workspacePath,
       agentConfig.toolSettings,
+      subagentEnabled,
     );
     for (const { tool, handler } of workspaceTools) {
       toolRegistry.register(tool, handler);

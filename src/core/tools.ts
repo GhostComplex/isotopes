@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolSettings, Tool } from "./types.js";
+import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
+import type { AcpxAgent } from "../subagent/types.js";
 
 const execAsync = promisify(exec);
 
@@ -146,6 +148,90 @@ export function createTimeTool(): { tool: Tool; handler: ToolHandler } {
         }
       }
       return now.toISOString();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Subagent tool
+// ---------------------------------------------------------------------------
+
+export interface SubagentToolOptions {
+  /** Workspace path for the sub-agent */
+  workspacePath: string;
+  /** Allowed agents (defaults to all) */
+  allowedAgents?: string[];
+  /** Default timeout in seconds (default: 300) */
+  timeout?: number;
+}
+
+/**
+ * Create a sub-agent spawning tool.
+ * Allows the agent to delegate tasks to coding agents like Claude, Codex, Gemini.
+ */
+export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; handler: ToolHandler } {
+  const { workspacePath, allowedAgents, timeout = 300 } = options;
+  const supportedAgents = getSupportedAgents();
+  const agents = allowedAgents ?? [...supportedAgents];
+
+  return {
+    tool: {
+      name: "spawn_subagent",
+      description: `Spawn a coding sub-agent to execute a task. Available agents: ${agents.join(", ")}. The sub-agent runs in the workspace directory and can read/write files, execute commands, etc.`,
+      parameters: {
+        type: "object",
+        properties: {
+          task: {
+            type: "string",
+            description: "The task description for the sub-agent. Be specific about what you want it to do.",
+          },
+          agent: {
+            type: "string",
+            description: `Which agent to use. Options: ${agents.join(", ")}. Default: claude.`,
+            enum: agents,
+          },
+          working_directory: {
+            type: "string",
+            description: "Working directory for the sub-agent (relative to workspace or absolute). Defaults to workspace root.",
+          },
+        },
+        required: ["task"],
+      },
+    },
+    handler: async (args) => {
+      const { task, agent = "claude", working_directory } = args as {
+        task: string;
+        agent?: string;
+        working_directory?: string;
+      };
+
+      // Validate agent
+      if (!agents.includes(agent)) {
+        return `[error] Unknown agent: ${agent}. Available: ${agents.join(", ")}`;
+      }
+
+      // Resolve working directory
+      const cwd = working_directory
+        ? path.resolve(workspacePath, working_directory)
+        : workspacePath;
+
+      try {
+        const result = await spawnSubagent(task, {
+          agent: agent as AcpxAgent,
+          cwd,
+          timeout,
+          allowedWorkspaces: [workspacePath],
+        });
+
+        if (result.success) {
+          return result.output ?? "[sub-agent completed with no output]";
+        } else {
+          return `[sub-agent failed] ${result.error ?? "unknown error"}`;
+        }
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        return `[error] Failed to spawn sub-agent: ${error}`;
+      }
     },
   };
 }
@@ -449,6 +535,7 @@ export function createWorkspaceTools(workspacePath: string): { tool: Tool; handl
 export function createWorkspaceToolsWithGuards(
   workspacePath: string,
   settings?: AgentToolSettings,
+  subagentEnabled = false,
 ): { tool: Tool; handler: ToolHandler }[] {
   const guards = resolveToolGuards(settings);
   const fileBasePath = guards.fs.workspaceOnly ? workspacePath : undefined;
@@ -462,6 +549,10 @@ export function createWorkspaceToolsWithGuards(
 
   if (guards.cli) {
     tools.unshift(createShellTool({ cwd: workspacePath }));
+  }
+
+  if (subagentEnabled) {
+    tools.push(createSubagentTool({ workspacePath }));
   }
 
   return tools;
