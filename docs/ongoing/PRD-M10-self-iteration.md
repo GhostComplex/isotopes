@@ -20,7 +20,6 @@ Enable Isotopes agents to **self-iterate**: update their own system prompt, work
 
 - Global skill installation (only workspace-local)
 - System prompt changes affecting other agents
-- Automatic reloading without restart (can be added later)
 - Git commit/push automation (agent already has git tools)
 
 ---
@@ -179,14 +178,46 @@ agent:
 
 ---
 
-### M10.5: Integration & Hot-Reload (~100 LOC, S)
+### M10.5: Hot-Reload System (~200 LOC, M)
+
+Live reload workspace files without restart:
+
+**Implementation:**
+1. Hook `WorkspaceWatcher` to detect changes to SOUL.md, AGENTS.md, TOOLS.md, MEMORY.md, skills/*
+2. On change, call `AgentManager.reloadWorkspace(agentId)` which:
+   - Re-runs `loadWorkspaceContext(workspacePath)`
+   - Rebuilds system prompt via `buildSystemPrompt()`
+   - Updates the running agent's system prompt in-place
+3. For skills: re-run M9 skill discovery and update available skills list
+4. Emit `workspace_reloaded` event for logging/debugging
+
+**New methods:**
+```typescript
+// AgentManager
+async reloadWorkspace(agentId: string): Promise<void>;
+
+// Events
+interface WorkspaceReloadedEvent {
+  type: 'workspace_reloaded';
+  agentId: string;
+  changedFiles: string[];
+  timestamp: Date;
+}
+```
+
+**CLI:**
+- `isotopes reload <agent-id>` — manually trigger reload
+- `isotopes reload --all` — reload all agents
+
+---
+
+### M10.6: Integration (~50 LOC, S)
 
 Wire together components:
 
 1. Register `iterate_self` and `create_skill` tools when `selfIteration.enabled: true`
-2. Hook workspace watcher to trigger system prompt rebuild on changes
-3. Add `--reload` CLI command to manually trigger reload without restart
-4. Export types and functions from `src/index.ts`
+2. Enable workspace watcher by default when `selfIteration.enabled: true`
+3. Export types and functions from `src/index.ts`
 
 ---
 
@@ -221,14 +252,13 @@ agents:
 4. [ ] Backup files created before overwrites (`.bak`)
 5. [ ] Path traversal prevented (no `../` escape)
 6. [ ] Tool only available when `selfIteration.enabled: true`
-7. [ ] Changes visible after restart (hot-reload is optional stretch goal)
+7. [ ] Changes take effect immediately via hot-reload (no restart needed)
 8. [ ] Unit tests for writer, tools, and security validations
 
 ---
 
 ## Future Work (not in M10)
 
-- Live hot-reload without restart
 - Diff preview tool (show changes before applying)
 - Approval workflow (require human approval for self-iteration)
 - Metrics tracking (what iterations were made, how often)
