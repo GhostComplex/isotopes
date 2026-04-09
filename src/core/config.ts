@@ -142,6 +142,26 @@ export interface AcpConfigFile {
   defaultAgent?: string;
   /** Agent IDs allowed to participate in ACP sessions */
   allowedAgents?: string[];
+  /** Sub-agent execution settings (M7) */
+  subagent?: SubagentConfigFile;
+}
+
+/** Sub-agent execution configuration in config file (M7) */
+export interface SubagentConfigFile {
+  /** Default acpx agent to use when spawning sub-agents */
+  defaultAgent?: string;
+  /** Agents allowed to be spawned as sub-agents */
+  allowedAgents?: string[];
+  /** Default timeout in seconds for sub-agent runs */
+  timeout?: number;
+  /** Default maximum turns per sub-agent run */
+  maxTurns?: number;
+  /** Whether to auto-approve tool calls. Default: true */
+  approveAll?: boolean;
+  /** Whether to create Discord threads for sub-agent output. Default: true */
+  useThread?: boolean;
+  /** Whether to show tool call details in Discord. Default: true */
+  showToolCalls?: boolean;
 }
 
 /** Cron job configuration in config file */

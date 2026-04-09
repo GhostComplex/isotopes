@@ -293,3 +293,30 @@ export type {
   ExecResult,
   SandboxExecOptions,
 } from "./sandbox/index.js";
+
+// ---------------------------------------------------------------------------
+// Sub-agent (acpx)
+// ---------------------------------------------------------------------------
+
+export {
+  AcpxBackend,
+  parseJsonLine,
+  collectResult,
+  DiscordSink,
+  truncate,
+  formatEvent,
+  formatSummary,
+  SubagentManager,
+  ACPX_AGENTS,
+} from "./subagent/index.js";
+export type {
+  AcpxAgent,
+  AcpxSpawnOptions,
+  AcpxEventType,
+  AcpxEvent,
+  AcpxResult,
+  DiscordSinkConfig,
+  SubagentTask,
+  SendMessageFn,
+  CreateThreadFn,
+} from "./subagent/index.js";

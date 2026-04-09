@@ -267,6 +267,7 @@ Extensible via tool registration.
 | **M4** | Automation & Git | ✅ Done |
 | **M5** | Daemon Mode + Web API | ✅ Done |
 | **M6** | Sandbox Execution | ✅ Done |
+| **M7** | Sub-agent Backend (acpx) | ✅ Done |
 
 ---
 
@@ -506,6 +507,52 @@ agents:
 - [x] Base image with common dev tools
 - [x] `isotopes-sandbox:latest` default image
 - [x] Custom image support
+
+---
+
+### M7: Sub-agent Backend (acpx) ✅
+
+**Goal:** Spawn external AI agents (Claude, Codex, Gemini, etc.) via `acpx` and stream their output to Discord.
+
+#### 7.1 acpx Backend
+```yaml
+acp:
+  enabled: true
+  backend: acpx
+  subagent:
+    defaultAgent: claude
+    allowedAgents:
+      - claude
+      - codex
+      - gemini
+    timeout: 300
+    maxTurns: 50
+    approveAll: true
+    useThread: true
+    showToolCalls: true
+```
+
+- [x] AcpxBackend class wrapping `npx acpx <agent> exec`
+- [x] JSON line parsing for streaming events
+- [x] Process lifecycle management (spawn, cancel, cleanup)
+- [x] Support for all acpx agents: claude, codex, gemini, cursor, copilot, opencode, kimi, qwen
+
+#### 7.2 Discord Output Streaming
+- [x] DiscordSink for formatting and sending events to Discord
+- [x] Thread creation for sub-agent output isolation
+- [x] Configurable tool call visibility
+- [x] Completion summary with message/tool counts
+- [x] Message truncation for Discord limits
+
+#### 7.3 SubagentManager
+- [x] High-level orchestration combining AcpxBackend + DiscordSink
+- [x] Task-based spawn API
+- [x] Cancel support for running tasks
+- [x] Error handling and graceful degradation
+
+#### 7.4 Config Integration
+- [x] Sub-agent settings in ACP config section
+- [x] Default agent, timeout, max turns, thread/tool-call preferences
 
 ---
 
