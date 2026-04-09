@@ -53,8 +53,8 @@ export { textContent, messageContentToPlainText } from "./core/types.js";
 export { PiMonoCore } from "./core/pi-mono.js";
 export { DefaultAgentManager } from "./core/agent-manager.js";
 export { DefaultSessionStore } from "./core/session-store.js";
-export { ToolRegistry, createEchoTool, createTimeTool } from "./core/tools.js";
-export type { ToolHandler, ToolEntry } from "./core/tools.js";
+export { ToolRegistry, createEchoTool, createTimeTool, createSubagentTool, createWorkspaceToolsWithGuards } from "./core/tools.js";
+export type { ToolHandler, ToolEntry, SubagentToolOptions } from "./core/tools.js";
 
 // ---------------------------------------------------------------------------
 // Workspace
@@ -320,3 +320,15 @@ export type {
   SendMessageFn,
   CreateThreadFn,
 } from "./subagent/index.js";
+
+// ---------------------------------------------------------------------------
+// Subagent Discord Context (AsyncLocalStorage)
+// ---------------------------------------------------------------------------
+
+export {
+  runWithSubagentContext,
+  runWithSubagentContextAsync,
+  getSubagentContext,
+  hasSubagentContext,
+} from "./core/subagent-context.js";
+export type { SubagentDiscordContext } from "./core/subagent-context.js";

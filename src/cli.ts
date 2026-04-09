@@ -5,11 +5,17 @@
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { VERSION } from "./index.js";
-import { loadConfig, toAgentConfig, getDiscordToken } from "./core/config.js";
+import {
+  loadConfig,
+  toAgentConfig,
+  getDiscordToken,
+  resolveAcpConfig,
+} from "./core/config.js";
 import { PiMonoCore } from "./core/pi-mono.js";
 import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
 import { DiscordTransport } from "./transports/discord.js";
+import { AcpSessionManager } from "./acp/index.js";
 import { logger } from "./core/logger.js";
 import {
   ToolRegistry,
@@ -283,6 +289,7 @@ async function main() {
       agentConfig.workspacePath,
       agentConfig.toolSettings,
       subagentEnabled,
+      agentConfig.allowedWorkspaces ?? [],
     );
     for (const { tool, handler } of workspaceTools) {
       toolRegistry.register(tool, handler);
@@ -300,6 +307,7 @@ async function main() {
   // Start Discord transport if configured
   if (config.discord) {
     const token = getDiscordToken(config.discord);
+    const acpConfig = resolveAcpConfig(config.acp);
 
     // Create session store per agent (sessions live in workspace)
     const sessionStores = new Map<string, DefaultSessionStore>();
@@ -321,6 +329,13 @@ async function main() {
       await defaultSessionStore.init();
     }
 
+    const threadBindings = config.discord.threadBindings
+      ? {
+          enabled: config.discord.threadBindings.enabled ?? false,
+          spawnAcpSessions: config.discord.threadBindings.spawnAcpSessions,
+        }
+      : undefined;
+
     const discord = new DiscordTransport({
       token,
       agentManager,
@@ -330,7 +345,26 @@ async function main() {
       agentBindings: config.discord.agentBindings,
       allowDMs: config.discord.allowDMs,
       channelAllowlist: config.discord.channelAllowlist,
+      threadBindings,
     });
+
+    if (threadBindings?.enabled) {
+      if (acpConfig) {
+        const acpSessionManager = new AcpSessionManager(acpConfig);
+        discord.getThreadBindingManager().attachAcpSessionManager(acpSessionManager, {
+          spawnAcpSessions: threadBindings.spawnAcpSessions ?? false,
+        });
+        logger.info(
+          `Discord thread bindings enabled (spawnAcpSessions=${threadBindings.spawnAcpSessions ?? false})`,
+        );
+      } else if (threadBindings.spawnAcpSessions) {
+        logger.warn(
+          "discord.threadBindings.spawnAcpSessions is enabled, but ACP is not configured; sessions will not be auto-created",
+        );
+      } else {
+        logger.info("Discord thread bindings enabled");
+      }
+    }
 
     await discord.start();
     logger.info("Discord transport started");

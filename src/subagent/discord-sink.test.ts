@@ -255,6 +255,28 @@ describe("formatSummary", () => {
     expect(summary).not.toContain("message");
     expect(summary).not.toContain("tool");
   });
+
+  it("includes thread link when threadId is provided", () => {
+    const result: AcpxResult = {
+      success: true,
+      events: [{ type: "done", exitCode: 0 }],
+      exitCode: 0,
+    };
+    const summary = formatSummary(result, "thread-123");
+    expect(summary).toContain("<#thread-123>");
+    expect(summary).toContain("Details");
+  });
+
+  it("does not include thread link when threadId is not provided", () => {
+    const result: AcpxResult = {
+      success: true,
+      events: [{ type: "done", exitCode: 0 }],
+      exitCode: 0,
+    };
+    const summary = formatSummary(result);
+    expect(summary).not.toContain("<#");
+    expect(summary).not.toContain("Details");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -412,7 +434,7 @@ describe("DiscordSink", () => {
       sendMessage.mockClear();
     });
 
-    it("sends a summary message", async () => {
+    it("sends summary to the main channel (not the thread)", async () => {
       const result: AcpxResult = {
         success: true,
         events: [{ type: "done", exitCode: 0 }],
@@ -422,9 +444,25 @@ describe("DiscordSink", () => {
       await sink.finish(result);
 
       expect(sendMessage).toHaveBeenCalledTimes(1);
+      // Summary should go to main channel, not thread
       expect(sendMessage).toHaveBeenCalledWith(
-        "thread-1",
+        "channel-1",
         expect.stringContaining("Completed"),
+      );
+    });
+
+    it("includes thread link in summary when thread was created", async () => {
+      const result: AcpxResult = {
+        success: true,
+        events: [{ type: "done", exitCode: 0 }],
+        exitCode: 0,
+      };
+
+      await sink.finish(result);
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        "channel-1",
+        expect.stringContaining("<#thread-1>"),
       );
     });
 
@@ -439,7 +477,7 @@ describe("DiscordSink", () => {
       await sink.finish(result);
 
       expect(sendMessage).toHaveBeenCalledWith(
-        "thread-1",
+        "channel-1",
         expect.stringContaining("Failed"),
       );
     });
@@ -455,6 +493,90 @@ describe("DiscordSink", () => {
 
       // Should not throw
       await sink.finish(result);
+    });
+
+    it("sends to original channel when no thread was created", async () => {
+      const noThreadSink = new DiscordSink(
+        sendMessage,
+        createThread,
+        "channel-1",
+        { ...defaultConfig, useThread: false },
+      );
+      await noThreadSink.start("task");
+      sendMessage.mockClear();
+
+      const result: AcpxResult = {
+        success: true,
+        events: [{ type: "done", exitCode: 0 }],
+        exitCode: 0,
+      };
+
+      await noThreadSink.finish(result);
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        "channel-1",
+        expect.stringContaining("Completed"),
+      );
+      // No thread link when thread wasn't created
+      expect(sendMessage).toHaveBeenCalledWith(
+        "channel-1",
+        expect.not.stringContaining("<#"),
+      );
+    });
+  });
+
+  describe("finishInThread", () => {
+    beforeEach(async () => {
+      await sink.start("task");
+      sendMessage.mockClear();
+    });
+
+    it("sends summary to the thread", async () => {
+      const result: AcpxResult = {
+        success: true,
+        events: [{ type: "done", exitCode: 0 }],
+        exitCode: 0,
+      };
+
+      await sink.finishInThread(result);
+
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+      expect(sendMessage).toHaveBeenCalledWith(
+        "thread-1",
+        expect.stringContaining("Completed"),
+      );
+    });
+
+    it("is a no-op when no thread was created", async () => {
+      const noThreadSink = new DiscordSink(
+        sendMessage,
+        createThread,
+        "channel-1",
+        { ...defaultConfig, useThread: false },
+      );
+      await noThreadSink.start("task");
+      sendMessage.mockClear();
+
+      const result: AcpxResult = {
+        success: true,
+        events: [{ type: "done", exitCode: 0 }],
+        exitCode: 0,
+      };
+
+      await noThreadSink.finishInThread(result);
+
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getMainChannelId", () => {
+    it("returns original channel id", () => {
+      expect(sink.getMainChannelId()).toBe("channel-1");
+    });
+
+    it("returns original channel even after thread is created", async () => {
+      await sink.start("task");
+      expect(sink.getMainChannelId()).toBe("channel-1");
     });
   });
 

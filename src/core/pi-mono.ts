@@ -333,9 +333,19 @@ export class PiMonoCore implements AgentCore {
 // ---------------------------------------------------------------------------
 
 class PiMonoInstance implements AgentInstance {
+  private promptQueue: Promise<void> = Promise.resolve();
+
   constructor(private agent: Agent) {}
 
   async *prompt(input: string | Message[]): AsyncIterable<AgentEvent> {
+    let releaseQueue: (() => void) | undefined;
+    const waitForTurn = this.promptQueue.catch(() => undefined);
+    this.promptQueue = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+
+    await waitForTurn;
+
     // Subscribe before calling prompt so we don't miss events
     const events: (CoreEvent | null)[] = [];
     let resolve: (() => void) | null = null;
@@ -376,6 +386,7 @@ class PiMonoInstance implements AgentInstance {
       await done;
     } finally {
       unsub();
+      releaseQueue?.();
     }
   }
 

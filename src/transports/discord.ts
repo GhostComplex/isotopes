@@ -26,6 +26,10 @@ import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
 import { runAgentLoop } from "../core/agent-runner.js";
 import { buildSessionKey } from "../core/session-keys.js";
+import {
+  runWithSubagentContextAsync,
+  type SubagentDiscordContext,
+} from "../core/subagent-context.js";
 
 const log = loggers.discord;
 
@@ -54,6 +58,10 @@ export interface DiscordTransportConfig {
   threadBindings?: ThreadBindingConfig;
   /** Thread binding manager instance (created automatically if not provided) */
   threadBindingManager?: ThreadBindingManager;
+  /** Whether to enable subagent Discord streaming (default: true) */
+  enableSubagentStreaming?: boolean;
+  /** Whether to show tool calls in subagent threads (default: true) */
+  subagentShowToolCalls?: boolean;
 }
 
 /**
@@ -64,6 +72,7 @@ export interface DiscordTransportConfig {
  * - Session per channel/thread
  * - Streaming responses with typing indicator
  * - Auto-chunking for long messages
+ * - Subagent output streaming to threads
  */
 export class DiscordTransport implements Transport {
   private client: Client;
@@ -109,6 +118,11 @@ export class DiscordTransport implements Transport {
   /** Access the thread binding manager (for external consumers / M3.2+) */
   getThreadBindingManager(): ThreadBindingManager {
     return this.threadBindingManager;
+  }
+
+  /** Access the Discord client (for subagent context) */
+  getClient(): Client {
+    return this.client;
   }
 
   // ---------------------------------------------------------------------------
@@ -276,6 +290,42 @@ export class DiscordTransport implements Transport {
   }
 
   // ---------------------------------------------------------------------------
+  // Subagent context helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Create a subagent Discord context for the given channel.
+   * This context enables subagent tool to stream output to Discord threads.
+   */
+  private createSubagentContext(channel: SendableChannel): SubagentDiscordContext {
+    return {
+      sendMessage: async (channelId: string, content: string) => {
+        const targetChannel = await this.client.channels.fetch(channelId);
+        if (!targetChannel || !("send" in targetChannel)) {
+          throw new Error(`Cannot send message to channel ${channelId}`);
+        }
+        const msg = await (targetChannel as SendableChannel).send(content);
+        return { id: msg.id };
+      },
+      createThread: async (channelId: string, name: string, messageId: string) => {
+        const targetChannel = await this.client.channels.fetch(channelId);
+        if (!targetChannel || !("threads" in targetChannel)) {
+          throw new Error(`Cannot create thread in channel ${channelId}`);
+        }
+        const textChannel = targetChannel as TextChannel;
+        const message = await textChannel.messages.fetch(messageId);
+        const thread = await message.startThread({
+          name,
+          autoArchiveDuration: 60, // 1 hour
+        });
+        return { id: thread.id };
+      },
+      channelId: channel.id,
+      showToolCalls: this.config.subagentShowToolCalls ?? true,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Agent interaction
   // ---------------------------------------------------------------------------
 
@@ -293,27 +343,47 @@ export class DiscordTransport implements Transport {
       let sentMessage: DiscordMessage | null = null;
       let lastUpdate = 0;
 
-      const { responseText, errorMessage } = await runAgentLoop({
-        agent,
-        input,
-        sessionId,
-        sessionStore,
-        log,
-        onTextDelta: async (currentText) => {
-          // Stream partial updates only when content fits in a single message.
-          // Once it exceeds the limit, skip streaming and send the full
-          // multi-chunk result at the end to avoid piling up duplicate messages.
-          const now = Date.now();
-          if (now - lastUpdate > 500 && currentText.length > 0 && currentText.length <= 2000) {
-            sentMessage = await this.updateOrSendMessage(
-              channel,
-              sentMessage,
-              currentText,
-            );
-            lastUpdate = now;
-          }
-        },
-      });
+      // Create the agent loop runner function
+      const runLoop = async () => {
+        return runAgentLoop({
+          agent,
+          input,
+          sessionId,
+          sessionStore,
+          log,
+          onTextDelta: async (currentText) => {
+            // Stream partial updates only when content fits in a single message.
+            // Once it exceeds the limit, skip streaming and send the full
+            // multi-chunk result at the end to avoid piling up duplicate messages.
+            const now = Date.now();
+            if (now - lastUpdate > 500 && currentText.length > 0 && currentText.length <= 2000) {
+              sentMessage = await this.updateOrSendMessage(
+                channel,
+                sentMessage,
+                currentText,
+              );
+              lastUpdate = now;
+            }
+          },
+        });
+      };
+
+      // Run with or without subagent context based on config
+      let responseText: string;
+      let errorMessage: string | null;
+
+      if (this.config.enableSubagentStreaming !== false) {
+        // Run with subagent Discord context enabled
+        const subagentContext = this.createSubagentContext(channel);
+        const result = await runWithSubagentContextAsync(subagentContext, runLoop);
+        responseText = result.responseText;
+        errorMessage = result.errorMessage;
+      } else {
+        // Run without subagent context (original behavior)
+        const result = await runLoop();
+        responseText = result.responseText;
+        errorMessage = result.errorMessage;
+      }
 
       // Send final message
       if (responseText) {

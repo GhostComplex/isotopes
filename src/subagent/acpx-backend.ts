@@ -1,5 +1,5 @@
-// src/subagent/acpx-backend.ts — acpx sub-agent spawning backend
-// Wraps `npx acpx <agent> exec` as a child process with JSON line streaming.
+// src/subagent/acpx-backend.ts — Claude Code sub-agent spawning backend
+// Wraps `claude -p --output-format stream-json` as a child process with JSON line streaming.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
@@ -22,7 +22,7 @@ export const MAX_CONCURRENT_AGENTS = 5;
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a single JSON line from acpx stdout into an AcpxEvent.
+ * Parse a single JSON line from claude CLI stdout into an AcpxEvent.
  * Unrecognised lines are silently ignored (returns undefined).
  */
 export function parseJsonLine(line: string): AcpxEvent | undefined {
@@ -33,22 +33,86 @@ export function parseJsonLine(line: string): AcpxEvent | undefined {
     const obj = JSON.parse(trimmed) as Record<string, unknown>;
     return mapRawEvent(obj);
   } catch {
-    log.debug("Failed to parse acpx JSON line", trimmed);
+    log.debug("Failed to parse claude JSON line", trimmed);
     return undefined;
   }
 }
 
 /**
- * Map a raw JSON object to an AcpxEvent.
+ * Map a raw JSON object from claude CLI to an AcpxEvent.
  *
- * Expected fields:
- *   { type: "message" | "tool_use" | "tool_result" | "error" | "done", ... }
+ * Claude CLI stream-json format emits objects like:
+ *   { type: "assistant", message: { content: [...] } }
+ *   { type: "result", result: "...", cost_usd: 0.01 }
  */
 function mapRawEvent(obj: Record<string, unknown>): AcpxEvent | undefined {
   const type = obj.type as string | undefined;
   if (!type) return undefined;
 
   switch (type) {
+    // Claude CLI "assistant" message - contains content blocks
+    case "assistant": {
+      const message = obj.message as Record<string, unknown> | undefined;
+      if (!message) return undefined;
+      
+      const content = message.content as Array<Record<string, unknown>> | undefined;
+      if (!content || !Array.isArray(content)) return undefined;
+      
+      // Find text content
+      for (const block of content) {
+        if (block.type === "text" && typeof block.text === "string") {
+          return { type: "message", content: block.text };
+        }
+        if (block.type === "tool_use") {
+          return {
+            type: "tool_use",
+            toolName: String(block.name ?? ""),
+            toolInput: block.input,
+          };
+        }
+      }
+      return undefined;
+    }
+
+    // Claude CLI "user" message - usually tool results
+    case "user": {
+      const message = obj.message as Record<string, unknown> | undefined;
+      if (!message) return undefined;
+      
+      const content = message.content as Array<Record<string, unknown>> | undefined;
+      if (!content || !Array.isArray(content)) return undefined;
+      
+      for (const block of content) {
+        if (block.type === "tool_result") {
+          return {
+            type: "tool_result",
+            toolName: String(block.tool_use_id ?? ""),
+            toolResult: typeof block.content === "string" 
+              ? block.content 
+              : JSON.stringify(block.content),
+          };
+        }
+      }
+      return undefined;
+    }
+
+    // Claude CLI "result" - final result
+    case "result": {
+      const result = obj.result as string | undefined;
+      const subtype = obj.subtype as string | undefined;
+      
+      if (subtype === "error_max_turns") {
+        return { type: "error", error: "Max turns reached" };
+      }
+      
+      // Result contains final text output
+      if (result) {
+        return { type: "message", content: result };
+      }
+      return undefined;
+    }
+
+    // Legacy acpx format support
     case "message":
       return {
         type: "message",
@@ -90,10 +154,10 @@ function mapRawEvent(obj: Record<string, unknown>): AcpxEvent | undefined {
 // ---------------------------------------------------------------------------
 
 /**
- * Backend for spawning acpx sub-agent processes.
+ * Backend for spawning Claude Code sub-agent processes.
  *
  * Each task gets its own child process running
- * `npx acpx <agent> exec --format json --approve-all <prompt>`.
+ * `claude -p --output-format stream-json <prompt>`.
  *
  * Events are streamed as an async generator from the process stdout.
  */
@@ -140,7 +204,7 @@ export class AcpxBackend {
   }
 
   /**
-   * Validate that the agent name is a known acpx agent.
+   * Validate that the agent name is a known agent.
    * @throws Error if validation fails
    */
   validateAgent(agent: string): void {
@@ -150,35 +214,35 @@ export class AcpxBackend {
   }
 
   /**
-   * Build the command-line arguments for `npx acpx <agent> exec`.
+   * Build the command-line arguments for `claude -p`.
+   * Note: prompt is passed via stdin, not as an argument.
    */
   buildArgs(options: AcpxSpawnOptions): string[] {
-    const args: string[] = ["--format", "json"];
-
-    if (options.approveAll !== false) {
-      args.push("--approve-all");
-    }
+    const args: string[] = [
+      "-p",  // Print mode (non-interactive)
+      "--output-format", "stream-json",  // Stream JSON events
+      "--verbose",  // Required for stream-json output
+      "--dangerously-skip-permissions",  // Auto-approve all
+    ];
 
     if (options.model) {
       args.push("--model", options.model);
-    }
-
-    if (options.timeout !== undefined) {
-      args.push("--timeout", String(options.timeout));
     }
 
     if (options.maxTurns !== undefined) {
       args.push("--max-turns", String(options.maxTurns));
     }
 
-    // Prompt is the final positional argument
-    args.push(options.prompt);
+    // Add allowed tools for file operations
+    args.push("--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep", "LS");
+
+    // Note: prompt is NOT added here - it's passed via stdin
 
     return args;
   }
 
   /**
-   * Spawn an acpx sub-agent and yield events as they arrive.
+   * Spawn a Claude Code sub-agent and yield events as they arrive.
    *
    * Yields a "start" event immediately, then streams JSON-line events
    * from stdout. Errors on stderr are accumulated and emitted as error
@@ -207,19 +271,30 @@ export class AcpxBackend {
 
     const args = this.buildArgs(options);
 
-    log.info(`Spawning acpx ${options.agent} exec`, { taskId, cwd: options.cwd });
+    log.info(`Spawning claude ${options.agent}`, { taskId, cwd: options.cwd, args });
 
     const proc = spawn(
-      "acpx",
-      [options.agent, "exec", ...args],
+      "claude",
+      args,
       {
         cwd: options.cwd,
         shell: false,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],  // Changed from "ignore" to "pipe" for stdin
+        env: {
+          ...process.env,
+          // Ensure PATH includes common locations
+          PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${process.env.HOME}/.local/bin`,
+        },
       },
     );
 
     this.processes.set(taskId, proc);
+
+    // Write prompt to stdin and close it
+    if (proc.stdin) {
+      proc.stdin.write(options.prompt);
+      proc.stdin.end();
+    }
 
     // Yield start event
     yield { type: "start" };
@@ -269,9 +344,10 @@ export class AcpxBackend {
         }
       }
 
-      // Emit stderr as error event if present
-      if (stderrBuffer.trim()) {
-        enqueue({ type: "error", error: stderrBuffer.trim() });
+      // Emit stderr as error event if present (but only if it looks like an error)
+      const stderr = stderrBuffer.trim();
+      if (stderr && (stderr.toLowerCase().includes("error") || code !== 0)) {
+        enqueue({ type: "error", error: stderr });
       }
 
       exitCode = code ?? 0;
@@ -308,7 +384,7 @@ export class AcpxBackend {
     // Always yield a final done event
     yield { type: "done", exitCode };
 
-    log.info(`acpx ${options.agent} exec completed`, { taskId, exitCode });
+    log.info(`claude ${options.agent} completed`, { taskId, exitCode });
   }
 
   /**
@@ -325,7 +401,7 @@ export class AcpxBackend {
       return false;
     }
 
-    log.info(`Cancelling acpx task`, { taskId });
+    log.info(`Cancelling claude task`, { taskId });
 
     proc.kill("SIGTERM");
 

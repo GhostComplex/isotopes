@@ -67,6 +67,16 @@ function resetMocks() {
   vi.mocked(getModel).mockReset().mockImplementation((() => createDefaultMockModel()) as unknown as typeof getModel);
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -542,6 +552,59 @@ describe("prompt() event mapping", () => {
     }
 
     expect(unsub).toHaveBeenCalledOnce();
+  });
+
+  it("queues concurrent prompts on the same agent instance", async () => {
+    const listeners: Array<(e: unknown) => void> = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockAgent.subscribe as any).mockImplementation((fn: (e: unknown) => void) => {
+      listeners.push(fn);
+      return vi.fn();
+    });
+
+    const firstPrompt = deferred<void>();
+    const secondPrompt = deferred<void>();
+
+    mockAgent.prompt
+      .mockImplementationOnce(() => firstPrompt.promise)
+      .mockImplementationOnce(() => secondPrompt.promise);
+
+    const core = new PiMonoCore();
+    const instance = core.createAgent(makeConfig());
+
+    const consume = async (iterable: AsyncIterable<AgentEvent>) => {
+      const events: AgentEvent[] = [];
+      for await (const event of iterable) {
+        events.push(event);
+      }
+      return events;
+    };
+
+    const firstRun = consume(instance.prompt("first"));
+    await Promise.resolve();
+
+    const secondRun = consume(instance.prompt("second"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockAgent.prompt).toHaveBeenCalledTimes(1);
+    expect(mockAgent.prompt).toHaveBeenNthCalledWith(1, "first");
+    expect(mockAgent.subscribe).toHaveBeenCalledTimes(1);
+
+    listeners[0]?.({ type: "agent_end", messages: [] });
+    firstPrompt.resolve();
+    await firstRun;
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockAgent.prompt).toHaveBeenCalledTimes(2);
+    expect(mockAgent.prompt).toHaveBeenNthCalledWith(2, "second");
+    expect(mockAgent.subscribe).toHaveBeenCalledTimes(2);
+
+    listeners[1]?.({ type: "agent_end", messages: [] });
+    secondPrompt.resolve();
+    await secondRun;
   });
 });
 

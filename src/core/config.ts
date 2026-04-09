@@ -53,6 +53,7 @@ export interface AgentConfigFile {
   name: string;
   systemPrompt?: string;
   workspacePath?: string;
+  allowedWorkspaces?: string[];
   tools?: AgentToolsConfigFile;
   provider?: ProviderConfigFile;
   compaction?: CompactionConfigFile;
@@ -391,6 +392,7 @@ export function toAgentConfig(
     name: agent.name,
     systemPrompt: agent.systemPrompt ?? "",
     workspacePath: agent.workspacePath,
+    allowedWorkspaces: agent.allowedWorkspaces,
     toolSettings: resolveToolSettings(agent.tools, defaultTools),
     provider: (agent.provider ?? defaultProvider) as ProviderConfig | undefined,
     compaction,

@@ -7,9 +7,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolSettings, Tool } from "./types.js";
 import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
-import type { AcpxAgent } from "../subagent/types.js";
+import type { AcpxAgent, AcpxEvent, DiscordSinkConfig } from "../subagent/types.js";
+import { DiscordSink } from "../subagent/discord-sink.js";
+import { getSubagentContext } from "./subagent-context.js";
+import { createLogger } from "./logger.js";
 
 const execAsync = promisify(exec);
+const log = createLogger("tools:subagent");
 
 /** Function that executes a tool call and returns a string result. */
 export type ToolHandler = (args: unknown) => Promise<string>;
@@ -159,6 +163,8 @@ export function createTimeTool(): { tool: Tool; handler: ToolHandler } {
 export interface SubagentToolOptions {
   /** Workspace path for the sub-agent */
   workspacePath: string;
+  /** Additional allowed workspaces (from agent config) */
+  allowedWorkspaces?: string[];
   /** Allowed agents (defaults to all) */
   allowedAgents?: string[];
   /** Default timeout in seconds (default: 300) */
@@ -168,11 +174,18 @@ export interface SubagentToolOptions {
 /**
  * Create a sub-agent spawning tool.
  * Allows the agent to delegate tasks to coding agents like Claude, Codex, Gemini.
+ *
+ * When running within a Discord context (via `runWithSubagentContext`), the
+ * subagent output will be streamed to a Discord thread and a summary will be
+ * posted to the main channel when complete.
  */
 export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; handler: ToolHandler } {
-  const { workspacePath, allowedAgents, timeout = 300 } = options;
+  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout = 300 } = options;
   const supportedAgents = getSupportedAgents();
   const agents = allowedAgents ?? [...supportedAgents];
+  
+  // Combine workspace path with additional allowed workspaces
+  const allAllowedWorkspaces = [workspacePath, ...allowedWorkspaces];
 
   return {
     tool: {
@@ -215,18 +228,16 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
 
-      try {
-        const result = await spawnSubagent(task, {
-          agent: agent as AcpxAgent,
-          cwd,
-          timeout,
-          allowedWorkspaces: [workspacePath],
-        });
+      // Check for Discord context
+      const discordContext = getSubagentContext();
 
-        if (result.success) {
-          return result.output ?? "[sub-agent completed with no output]";
+      try {
+        if (discordContext) {
+          // Run with Discord streaming
+          return await runSubagentWithDiscord(task, agent as AcpxAgent, cwd, timeout, allAllowedWorkspaces, discordContext);
         } else {
-          return `[sub-agent failed] ${result.error ?? "unknown error"}`;
+          // Run without Discord streaming (original behavior)
+          return await runSubagentPlain(task, agent as AcpxAgent, cwd, timeout, allAllowedWorkspaces);
         }
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
@@ -234,6 +245,122 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
       }
     },
   };
+}
+
+/**
+ * Run subagent without Discord streaming (original behavior).
+ */
+async function runSubagentPlain(
+  task: string,
+  agent: AcpxAgent,
+  cwd: string,
+  timeout: number,
+  allowedWorkspaces: string[],
+): Promise<string> {
+  const result = await spawnSubagent(task, {
+    agent,
+    cwd,
+    timeout,
+    allowedWorkspaces,
+  });
+
+  if (result.success) {
+    return result.output ?? "[sub-agent completed with no output]";
+  } else {
+    return `[sub-agent failed] ${result.error ?? "unknown error"}`;
+  }
+}
+
+/**
+ * Run subagent with Discord streaming.
+ * Creates a thread, streams events to it, and posts a summary to the main channel.
+ */
+async function runSubagentWithDiscord(
+  task: string,
+  agent: AcpxAgent,
+  cwd: string,
+  timeout: number,
+  allowedWorkspaces: string[],
+  context: NonNullable<ReturnType<typeof getSubagentContext>>,
+): Promise<string> {
+  const { sendMessage, createThread, channelId, showToolCalls = true } = context;
+
+  // Create Discord sink with thread enabled
+  const sinkConfig: DiscordSinkConfig = {
+    showToolCalls,
+    showThinking: false,
+    useThread: true,
+  };
+
+  const sink = new DiscordSink(sendMessage, createThread, channelId, sinkConfig);
+
+  // Create a task label for the thread name
+  const taskLabel = `${agent}: ${task.slice(0, 50)}${task.length > 50 ? "..." : ""}`;
+
+  log.info("Starting sub-agent with Discord streaming", { agent, cwd, channelId });
+
+  // Start the sink (creates thread)
+  await sink.start(taskLabel);
+
+  // Collect events for building result
+  const events: AcpxEvent[] = [];
+
+  try {
+    // Run subagent with event streaming
+    const result = await spawnSubagent(task, {
+      agent,
+      cwd,
+      timeout,
+      allowedWorkspaces,
+      onEvent: async (event) => {
+        events.push(event);
+        await sink.sendEvent(event);
+      },
+    });
+
+    // Build AcpxResult for finish message
+    const acpxResult = {
+      success: result.success,
+      output: result.output,
+      error: result.error,
+      events,
+      exitCode: result.exitCode,
+    };
+
+    // Send summary to main channel
+    await sink.finish(acpxResult);
+
+    log.info("Sub-agent with Discord streaming completed", {
+      success: result.success,
+      threadId: sink.getThreadId(),
+    });
+
+    if (result.success) {
+      const threadId = sink.getThreadId();
+      const threadMention = threadId ? ` (see <#${threadId}>)` : "";
+      return `[sub-agent completed]${threadMention}\n${result.output ?? "(no output)"}`;
+    } else {
+      return `[sub-agent failed] ${result.error ?? "unknown error"}`;
+    }
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    log.error("Sub-agent with Discord streaming failed", { error });
+
+    // Send error to Discord
+    const errorEvent: AcpxEvent = { type: "error", error };
+    events.push(errorEvent);
+    await sink.sendEvent(errorEvent);
+
+    // Send failure summary
+    await sink.finish({
+      success: false,
+      error,
+      events,
+      exitCode: 1,
+    });
+
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -536,6 +663,7 @@ export function createWorkspaceToolsWithGuards(
   workspacePath: string,
   settings?: AgentToolSettings,
   subagentEnabled = false,
+  allowedWorkspaces: string[] = [],
 ): { tool: Tool; handler: ToolHandler }[] {
   const guards = resolveToolGuards(settings);
   const fileBasePath = guards.fs.workspaceOnly ? workspacePath : undefined;
@@ -552,7 +680,7 @@ export function createWorkspaceToolsWithGuards(
   }
 
   if (subagentEnabled) {
-    tools.push(createSubagentTool({ workspacePath }));
+    tools.push(createSubagentTool({ workspacePath, allowedWorkspaces }));
   }
 
   return tools;

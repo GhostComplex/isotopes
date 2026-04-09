@@ -119,6 +119,8 @@ export interface AgentConfig {
   provider?: ProviderConfig;
   /** Path to agent's workspace directory (contains SOUL.md, MEMORY.md, sessions/) */
   workspacePath?: string;
+  /** Additional allowed workspaces for subagent tool */
+  allowedWorkspaces?: string[];
   /** Context compaction configuration */
   compaction?: CompactionConfig;
   /** Sandbox execution configuration */

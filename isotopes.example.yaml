@@ -73,6 +73,10 @@ discord:
   tokenEnv: DISCORD_TOKEN      # Environment variable containing bot token
   defaultAgentId: assistant
   allowDMs: true
+  # Bind existing Discord threads to ACP sessions:
+  # threadBindings:
+  #   enabled: true
+  #   spawnAcpSessions: true
   # Multi-bot routing:
   # agentBindings:
   #   "bot-user-id-1": assistant
@@ -98,13 +102,6 @@ acp:
   defaultAgent: assistant
   allowedAgents:               # Agents allowed to spawn ACP sessions
     - assistant
-
-# =============================================================================
-# THREAD BINDINGS - Thread-based agent routing (M3)
-# =============================================================================
-# threadBindings:
-#   enabled: true
-#   spawnAcpSessions: true     # Auto-spawn ACP sessions for threads
 
 # =============================================================================
 # CRON - Scheduled tasks (M4)

@@ -76,8 +76,11 @@ export function formatEvent(event: AcpxEvent, config: DiscordSinkConfig): string
 
 /**
  * Format an AcpxResult summary for the completion message.
+ *
+ * @param result - The result to format
+ * @param threadId - Optional thread ID to include as a link
  */
-export function formatSummary(result: AcpxResult): string {
+export function formatSummary(result: AcpxResult, threadId?: string): string {
   const status = result.success ? "✅ Completed" : "❌ Failed";
   const messageCount = result.events.filter((e) => e.type === "message").length;
   const toolCount = result.events.filter((e) => e.type === "tool_use").length;
@@ -95,6 +98,11 @@ export function formatSummary(result: AcpxResult): string {
     summary += `\nError: ${truncate(result.error, 500)}`;
   }
 
+  // Add thread link if available
+  if (threadId) {
+    summary += `\n📋 Details: <#${threadId}>`;
+  }
+
   return summary;
 }
 
@@ -107,10 +115,19 @@ export function formatSummary(result: AcpxResult): string {
  *
  * Optionally creates a thread for the output. Formats events according
  * to the DiscordSinkConfig (e.g., hiding tool calls).
+ *
+ * When `useThread` is enabled:
+ * - Creates a thread for streaming message history
+ * - Sends individual events to the thread
+ * - Sends the final summary to the **main channel** (not the thread)
  */
 export class DiscordSink {
+  /** The channel where events are sent (thread if created, otherwise main channel) */
   private targetChannelId: string;
+  /** The thread ID if one was created */
   private threadId?: string;
+  /** The original main channel ID (for sending summary) */
+  private mainChannelId: string;
 
   constructor(
     private sendMessage: SendMessageFn,
@@ -119,6 +136,7 @@ export class DiscordSink {
     private config: DiscordSinkConfig,
   ) {
     this.targetChannelId = channelId;
+    this.mainChannelId = channelId;
   }
 
   /**
@@ -161,15 +179,41 @@ export class DiscordSink {
   }
 
   /**
-   * Send a completion summary message.
+   * Send a completion summary message to the main channel.
+   *
+   * When a thread was created, this sends the summary to the **main channel**
+   * so users can see the result without opening the thread. When no thread
+   * was used, it sends to the same channel where events were streamed.
+   *
+   * The summary includes a link to the thread if one was created.
    */
   async finish(result: AcpxResult): Promise<void> {
+    // Include thread link in summary when a thread was created
+    const content = formatSummary(result, this.threadId);
+
+    try {
+      // Always send the summary to the main channel, not the thread
+      await this.sendMessage(this.mainChannelId, content);
+    } catch (err) {
+      log.error("Failed to send finish message", err);
+    }
+  }
+
+  /**
+   * Send a completion summary message to the thread (if created).
+   *
+   * Use this when you want to send the summary to the thread instead of
+   * the main channel. If no thread was created, this is a no-op.
+   */
+  async finishInThread(result: AcpxResult): Promise<void> {
+    if (!this.threadId) return;
+
     const content = formatSummary(result);
 
     try {
-      await this.sendMessage(this.targetChannelId, content);
+      await this.sendMessage(this.threadId, content);
     } catch (err) {
-      log.error("Failed to send finish message", err);
+      log.error("Failed to send finish message to thread", err);
     }
   }
 
@@ -186,5 +230,12 @@ export class DiscordSink {
    */
   getTargetChannelId(): string {
     return this.targetChannelId;
+  }
+
+  /**
+   * Get the main channel ID (where summaries are sent).
+   */
+  getMainChannelId(): string {
+    return this.mainChannelId;
   }
 }
