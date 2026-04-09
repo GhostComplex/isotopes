@@ -606,6 +606,76 @@ describe("prompt() event mapping", () => {
     secondPrompt.resolve();
     await secondRun;
   });
+
+  it("releases queue and cleans up when agent.prompt() rejects", async () => {
+    const listeners: Array<(e: unknown) => void> = [];
+    const unsubs: Array<ReturnType<typeof vi.fn>> = [];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockAgent.subscribe as any).mockImplementation((fn: (e: unknown) => void) => {
+      listeners.push(fn);
+      const unsub = vi.fn();
+      unsubs.push(unsub);
+      return unsub;
+    });
+
+    const firstPrompt = deferred<void>();
+    const secondPrompt = deferred<void>();
+
+    mockAgent.prompt
+      .mockImplementationOnce(() => firstPrompt.promise)
+      .mockImplementationOnce(() => secondPrompt.promise);
+
+    const core = new PiMonoCore();
+    const instance = core.createAgent(makeConfig());
+
+    const consume = async (iterable: AsyncIterable<AgentEvent>) => {
+      const events: AgentEvent[] = [];
+      for await (const event of iterable) {
+        events.push(event);
+      }
+      return events;
+    };
+
+    // Start first prompt
+    const firstRun = consume(instance.prompt("first"));
+    await Promise.resolve();
+
+    // Queue second prompt (should wait for first)
+    const secondRun = consume(instance.prompt("second"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // First prompt is running, second is queued
+    expect(mockAgent.prompt).toHaveBeenCalledTimes(1);
+    expect(mockAgent.subscribe).toHaveBeenCalledTimes(1);
+
+    // First prompt rejects with an error
+    firstPrompt.reject(new Error("API rate limit exceeded"));
+
+    // First run should throw
+    await expect(firstRun).rejects.toThrow("API rate limit exceeded");
+
+    // Queue should be released - second prompt should start
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockAgent.prompt).toHaveBeenCalledTimes(2);
+    expect(mockAgent.prompt).toHaveBeenNthCalledWith(2, "second");
+    expect(mockAgent.subscribe).toHaveBeenCalledTimes(2);
+
+    // First subscription should have been cleaned up
+    expect(unsubs[0]).toHaveBeenCalledOnce();
+
+    // Complete second prompt normally
+    listeners[1]?.({ type: "agent_end", messages: [] });
+    secondPrompt.resolve();
+    await secondRun;
+
+    // Second subscription should also be cleaned up
+    expect(unsubs[1]).toHaveBeenCalledOnce();
+  });
 });
 
 describe("Message conversion", () => {
