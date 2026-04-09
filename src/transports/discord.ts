@@ -62,6 +62,8 @@ export interface DiscordTransportConfig {
   enableSubagentStreaming?: boolean;
   /** Whether to show tool calls in subagent threads (default: true) */
   subagentShowToolCalls?: boolean;
+  /** Whether to respond to messages from other bots. Default: false */
+  allowBots?: boolean;
 }
 
 /**
@@ -159,8 +161,11 @@ export class DiscordTransport implements Transport {
   // ---------------------------------------------------------------------------
 
   private async handleMessage(msg: DiscordMessage): Promise<void> {
-    // Ignore bot messages
-    if (msg.author.bot) return;
+    // Handle bot messages based on allowBots config
+    if (msg.author.bot && !this.config.allowBots) {
+      log.debug(`Ignoring bot message from ${msg.author.username} (allowBots=false)`);
+      return;
+    }
 
     // Check if we should respond
     if (!this.shouldRespond(msg)) return;

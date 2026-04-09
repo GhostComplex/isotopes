@@ -257,6 +257,8 @@ export interface DiscordAccountConfig {
   guilds?: Record<string, GuildConfig>;
   /** Thread binding configuration for auto-binding threads to agent sessions */
   threadBindings?: ThreadBindingConfig;
+  /** Whether to respond to messages from other bots. Default: false */
+  allowBots?: boolean;
 }
 
 /** Channels section of the configuration */

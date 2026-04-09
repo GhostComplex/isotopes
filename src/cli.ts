@@ -346,6 +346,7 @@ async function main() {
       allowDMs: config.discord.allowDMs,
       channelAllowlist: config.discord.channelAllowlist,
       threadBindings,
+      allowBots: config.discord.allowBots,
     });
 
     if (threadBindings?.enabled) {

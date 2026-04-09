@@ -128,6 +128,8 @@ export interface DiscordConfigFile {
   threadBindings?: ThreadBindingConfigFile;
   /** Subagent Discord streaming configuration (M8) */
   subagentStreaming?: SubagentStreamingConfigFile;
+  /** Whether to respond to messages from other bots. Default: false */
+  allowBots?: boolean;
 }
 
 /** Thread binding configuration in config file */
