@@ -259,6 +259,11 @@ export class DiscordTransport implements Transport {
   // ---------------------------------------------------------------------------
 
   private async handleMessage(msg: DiscordMessage): Promise<void> {
+    // Ignore messages from self
+    if (msg.author.id === this.client.user?.id) {
+      return;
+    }
+
     // Handle bot messages based on allowBots config
     if (msg.author.bot && !this.config.allowBots) {
       log.debug(`Ignoring bot message from ${msg.author.username} (allowBots=false)`);
@@ -304,7 +309,7 @@ export class DiscordTransport implements Transport {
 
     const allMessages = await sessionStore.getMessages(session.id);
     // Limit context to recent messages to prevent context overflow
-    const historyLimit = this.config.historyLimit ?? 50;
+    const historyLimit = this.config.historyLimit ?? 20;
     const promptInput = allMessages.length > historyLimit
       ? allMessages.slice(-historyLimit)
       : allMessages;
