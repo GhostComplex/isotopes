@@ -1,8 +1,11 @@
 // src/subagent/acpx-backend.test.ts — Unit tests for AcpxBackend
 
-import { describe, it, expect, beforeEach } from "vitest";
-import { AcpxBackend, parseJsonLine, collectResult } from "./acpx-backend.js";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { AcpxBackend, parseJsonLine, collectResult, MAX_CONCURRENT_AGENTS } from "./acpx-backend.js";
 import type { AcpxEvent } from "./types.js";
+import { tmpdir } from "node:os";
+import { mkdtempSync, rmdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // parseJsonLine
@@ -142,6 +145,83 @@ describe("AcpxBackend", () => {
     backend = new AcpxBackend();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ---------------------------------------------------------------------------
+  // validateAgent
+  // ---------------------------------------------------------------------------
+
+  describe("validateAgent", () => {
+    it("accepts valid agent names", () => {
+      expect(() => backend.validateAgent("claude")).not.toThrow();
+      expect(() => backend.validateAgent("codex")).not.toThrow();
+      expect(() => backend.validateAgent("gemini")).not.toThrow();
+      expect(() => backend.validateAgent("cursor")).not.toThrow();
+      expect(() => backend.validateAgent("copilot")).not.toThrow();
+      expect(() => backend.validateAgent("opencode")).not.toThrow();
+      expect(() => backend.validateAgent("kimi")).not.toThrow();
+      expect(() => backend.validateAgent("qwen")).not.toThrow();
+    });
+
+    it("rejects unknown agent names", () => {
+      expect(() => backend.validateAgent("unknown")).toThrow(/Unknown agent/);
+      expect(() => backend.validateAgent("gpt4")).toThrow(/Unknown agent/);
+      expect(() => backend.validateAgent("")).toThrow(/Unknown agent/);
+      expect(() => backend.validateAgent("../malicious")).toThrow(/Unknown agent/);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // validateCwd
+  // ---------------------------------------------------------------------------
+
+  describe("validateCwd", () => {
+    let tempDir: string;
+
+    beforeEach(() => {
+      tempDir = mkdtempSync(join(tmpdir(), "acpx-test-"));
+    });
+
+    afterEach(() => {
+      try { rmdirSync(tempDir, { recursive: true }); } catch { /* ignore */ }
+    });
+
+    it("accepts existing directories", () => {
+      expect(() => backend.validateCwd(tempDir)).not.toThrow();
+    });
+
+    it("rejects non-existent paths", () => {
+      expect(() => backend.validateCwd("/nonexistent-path-12345")).toThrow(/does not exist/);
+    });
+
+    it("rejects non-directory paths", () => {
+      const filePath = join(tempDir, "file.txt");
+      writeFileSync(filePath, "test");
+      expect(() => backend.validateCwd(filePath)).toThrow(/not a directory/);
+    });
+
+    it("validates against allowed roots when configured", () => {
+      const subDir = join(tempDir, "workspace");
+      const fsModule = require("node:fs") as typeof import("node:fs"); // eslint-disable-line @typescript-eslint/no-require-imports
+      fsModule.mkdirSync(subDir);
+      
+      const restrictedBackend = new AcpxBackend([subDir]);
+
+      // Path within allowed root should work
+      expect(() => restrictedBackend.validateCwd(subDir)).not.toThrow();
+
+      // Path outside allowed root should fail
+      expect(() => restrictedBackend.validateCwd(tempDir)).toThrow(/outside allowed workspaces/);
+    });
+
+    it("allows any path when no roots configured", () => {
+      // No roots = allow anywhere
+      expect(() => backend.validateCwd(tempDir)).not.toThrow();
+    });
+  });
+
   describe("buildArgs", () => {
     it("includes --format json by default", () => {
       const args = backend.buildArgs({
@@ -252,6 +332,13 @@ describe("AcpxBackend", () => {
   // ---------------------------------------------------------------------------
   // cancel / isRunning / activeCount
   // ---------------------------------------------------------------------------
+
+  describe("MAX_CONCURRENT_AGENTS", () => {
+    it("is exported and has a reasonable value", () => {
+      expect(MAX_CONCURRENT_AGENTS).toBeGreaterThan(0);
+      expect(MAX_CONCURRENT_AGENTS).toBeLessThanOrEqual(10);
+    });
+  });
 
   describe("cancel", () => {
     it("returns false for unknown taskId", () => {

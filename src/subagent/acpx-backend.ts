@@ -2,14 +2,20 @@
 // Wraps `npx acpx <agent> exec` as a child process with JSON line streaming.
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
+import { resolve, normalize } from "node:path";
 import { createLogger } from "../core/logger.js";
-import type {
-  AcpxEvent,
-  AcpxResult,
-  AcpxSpawnOptions,
+import {
+  ACPX_AGENTS,
+  type AcpxEvent,
+  type AcpxResult,
+  type AcpxSpawnOptions,
 } from "./types.js";
 
 const log = createLogger("subagent:acpx");
+
+/** Maximum concurrent sub-agent processes allowed */
+export const MAX_CONCURRENT_AGENTS = 5;
 
 // ---------------------------------------------------------------------------
 // JSON line parsing
@@ -95,6 +101,54 @@ export class AcpxBackend {
   /** Active child processes keyed by taskId */
   private processes: Map<string, ChildProcess> = new Map();
 
+  /** Allowed workspace roots for cwd validation */
+  private allowedRoots: string[];
+
+  constructor(allowedWorkspaceRoots?: string[]) {
+    this.allowedRoots = allowedWorkspaceRoots ?? [];
+  }
+
+  /**
+   * Validate that the given cwd is a real directory within allowed workspaces.
+   * @throws Error if validation fails
+   */
+  validateCwd(cwd: string): void {
+    const resolved = resolve(cwd);
+    const normalized = normalize(resolved);
+
+    // Check directory exists
+    if (!existsSync(normalized)) {
+      throw new Error(`Working directory does not exist: ${cwd}`);
+    }
+
+    // Check it's a directory
+    const stat = statSync(normalized);
+    if (!stat.isDirectory()) {
+      throw new Error(`Working directory is not a directory: ${cwd}`);
+    }
+
+    // If allowed roots are configured, validate path is within them
+    if (this.allowedRoots.length > 0) {
+      const isAllowed = this.allowedRoots.some((root) => {
+        const normalizedRoot = normalize(resolve(root));
+        return normalized === normalizedRoot || normalized.startsWith(normalizedRoot + "/");
+      });
+      if (!isAllowed) {
+        throw new Error(`Working directory outside allowed workspaces: ${cwd}`);
+      }
+    }
+  }
+
+  /**
+   * Validate that the agent name is a known acpx agent.
+   * @throws Error if validation fails
+   */
+  validateAgent(agent: string): void {
+    if (!ACPX_AGENTS.has(agent)) {
+      throw new Error(`Unknown agent: ${agent}. Allowed: ${[...ACPX_AGENTS].join(", ")}`);
+    }
+  }
+
   /**
    * Build the command-line arguments for `npx acpx <agent> exec`.
    */
@@ -132,11 +186,25 @@ export class AcpxBackend {
    *
    * @param taskId - Unique identifier for this task (used for cancellation)
    * @param options - Spawn options (agent, prompt, cwd, etc.)
+   * @throws Error if validation fails or max concurrent limit reached
    */
   async *spawn(
     taskId: string,
     options: AcpxSpawnOptions,
   ): AsyncGenerator<AcpxEvent> {
+    // Security: validate agent name at runtime
+    this.validateAgent(options.agent);
+
+    // Security: validate cwd is a real directory within allowed workspaces
+    this.validateCwd(options.cwd);
+
+    // Security: enforce concurrent process limit
+    if (this.processes.size >= MAX_CONCURRENT_AGENTS) {
+      throw new Error(
+        `Max concurrent sub-agents reached (${MAX_CONCURRENT_AGENTS}). Cancel existing tasks first.`
+      );
+    }
+
     const args = this.buildArgs(options);
 
     log.info(`Spawning acpx ${options.agent} exec`, { taskId, cwd: options.cwd });
@@ -268,8 +336,9 @@ export class AcpxBackend {
       }
     }, 5_000);
 
-    // Clean up timer when process exits
-    proc.on("close", () => clearTimeout(timer));
+    // Ensure timer doesn't prevent Node from exiting and is cleaned up
+    timer.unref();
+    proc.once("close", () => clearTimeout(timer));
 
     return true;
   }
