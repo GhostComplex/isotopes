@@ -7,6 +7,9 @@ import type { AcpSessionManager } from "../acp/session-manager.js";
 /** Callback invoked when a new thread binding is created */
 export type ThreadBindingCallback = (binding: ThreadBinding) => void;
 
+/** Callback invoked when a thread binding is removed */
+export type ThreadUnbindCallback = (binding: ThreadBinding, reason?: string) => void;
+
 /**
  * ThreadBindingManager — manages the mapping of Discord threads to agent sessions.
  *
@@ -20,6 +23,7 @@ export type ThreadBindingCallback = (binding: ThreadBinding) => void;
 export class ThreadBindingManager {
   private bindings: Map<string, ThreadBinding> = new Map();
   private listeners: ThreadBindingCallback[] = [];
+  private unbindListeners: ThreadUnbindCallback[] = [];
   private acpSessionManager: AcpSessionManager | null = null;
   private spawnAcpSessions = false;
 
@@ -82,8 +86,31 @@ export class ThreadBindingManager {
   }
 
   /** Remove a binding by thread ID. Returns true if a binding was removed. */
-  unbind(threadId: string): boolean {
-    return this.bindings.delete(threadId);
+  unbind(threadId: string, reason?: string): boolean {
+    const binding = this.bindings.get(threadId);
+    if (!binding) {
+      return false;
+    }
+    this.bindings.delete(threadId);
+
+    // Notify unbind listeners
+    for (const listener of this.unbindListeners) {
+      listener(binding, reason);
+    }
+
+    return true;
+  }
+
+  /**
+   * Remove a binding by session ID. Returns true if a binding was removed.
+   * Useful for auto-unbinding when a subagent session completes.
+   */
+  unbindBySessionId(sessionId: string, reason?: string): boolean {
+    const binding = this.getBySessionId(sessionId);
+    if (!binding) {
+      return false;
+    }
+    return this.unbind(binding.threadId, reason);
   }
 
   /** Look up a binding by its session ID (reverse lookup). */
@@ -110,6 +137,18 @@ export class ThreadBindingManager {
     return () => {
       const idx = this.listeners.indexOf(callback);
       if (idx !== -1) this.listeners.splice(idx, 1);
+    };
+  }
+
+  /**
+   * Register a callback that fires whenever a thread binding is removed.
+   * Returns an unsubscribe function.
+   */
+  onUnbind(callback: ThreadUnbindCallback): () => void {
+    this.unbindListeners.push(callback);
+    return () => {
+      const idx = this.unbindListeners.indexOf(callback);
+      if (idx !== -1) this.unbindListeners.splice(idx, 1);
     };
   }
 }

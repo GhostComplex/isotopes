@@ -303,6 +303,11 @@ export class DiscordTransport implements Transport {
    * This context enables subagent tool to stream output to Discord threads.
    */
   private createSubagentContext(channel: SendableChannel): SubagentDiscordContext {
+    const threadBindingConfig = this.config.threadBindings;
+    const autoUnbindEnabled = threadBindingConfig?.autoUnbindOnComplete !== false;
+    const sendFarewell = threadBindingConfig?.sendFarewell ?? false;
+    const farewellMessage = threadBindingConfig?.farewellMessage ?? "Task completed. Returning to parent channel.";
+
     return {
       sendMessage: async (channelId: string, content: string) => {
         const targetChannel = await this.client.channels.fetch(channelId);
@@ -327,6 +332,32 @@ export class DiscordTransport implements Transport {
       },
       channelId: channel.id,
       showToolCalls: this.config.subagentShowToolCalls ?? true,
+      onComplete: autoUnbindEnabled
+        ? async (threadId: string) => {
+            log.debug(`Subagent completed, auto-unbinding thread ${threadId}`);
+
+            // Send farewell message if configured
+            if (sendFarewell) {
+              try {
+                const thread = await this.client.channels.fetch(threadId);
+                if (thread && "send" in thread) {
+                  await (thread as SendableChannel).send(farewellMessage);
+                }
+              } catch (err) {
+                log.warn("Failed to send farewell message", {
+                  threadId,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }
+
+            // Unbind the thread
+            const removed = this.threadBindingManager.unbind(threadId, "subagent-complete");
+            if (removed) {
+              log.info(`Auto-unbound thread ${threadId} after subagent completion`);
+            }
+          }
+        : undefined,
     };
   }
 

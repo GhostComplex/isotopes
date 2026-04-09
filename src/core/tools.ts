@@ -283,7 +283,7 @@ async function runSubagentWithDiscord(
   allowedWorkspaces: string[],
   context: NonNullable<ReturnType<typeof getSubagentContext>>,
 ): Promise<string> {
-  const { sendMessage, createThread, channelId, showToolCalls = true } = context;
+  const { sendMessage, createThread, channelId, showToolCalls = true, onComplete } = context;
 
   // Create Discord sink with thread enabled
   const sinkConfig: DiscordSinkConfig = {
@@ -330,13 +330,22 @@ async function runSubagentWithDiscord(
     // Send summary to main channel
     await sink.finish(acpxResult);
 
+    // Call onComplete callback for auto-unbind
+    const threadId = sink.getThreadId();
+    if (onComplete && threadId) {
+      try {
+        await onComplete(threadId);
+      } catch (err) {
+        log.warn("onComplete callback failed", { error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
     log.info("Sub-agent with Discord streaming completed", {
       success: result.success,
-      threadId: sink.getThreadId(),
+      threadId,
     });
 
     if (result.success) {
-      const threadId = sink.getThreadId();
       const threadMention = threadId ? ` (see <#${threadId}>)` : "";
       return `[sub-agent completed]${threadMention}\n${result.output ?? "(no output)"}`;
     } else {
@@ -358,6 +367,16 @@ async function runSubagentWithDiscord(
       events,
       exitCode: 1,
     });
+
+    // Call onComplete callback even on failure (for cleanup)
+    const threadId = sink.getThreadId();
+    if (onComplete && threadId) {
+      try {
+        await onComplete(threadId);
+      } catch (callbackErr) {
+        log.warn("onComplete callback failed", { error: callbackErr instanceof Error ? callbackErr.message : String(callbackErr) });
+      }
+    }
 
     throw err;
   }

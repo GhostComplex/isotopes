@@ -303,6 +303,12 @@ export interface ThreadBindingConfig {
   enabled: boolean;
   /** Whether to spawn ACP sessions when threads are created (M3.2+) */
   spawnAcpSessions?: boolean;
+  /** Whether to automatically unbind thread when subagent completes (default: true) */
+  autoUnbindOnComplete?: boolean;
+  /** Whether to send a farewell message when unbinding (default: false) */
+  sendFarewell?: boolean;
+  /** Custom farewell message to send when unbinding */
+  farewellMessage?: string;
 }
 
 /** A binding between a Discord thread and an agent session */

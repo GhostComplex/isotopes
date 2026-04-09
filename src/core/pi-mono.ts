@@ -360,10 +360,19 @@ class PiMonoInstance implements AgentInstance {
       typeof input === "string"
         ? this.agent.prompt(input)
         : this.agent.prompt(input.map(toAgentMessage))
-    ).then(() => {
-      events.push(null); // sentinel
-      resolve?.();
-    });
+    ).then(
+      () => {
+        events.push(null); // sentinel for normal completion
+        resolve?.();
+      },
+      (err) => {
+        // Push error sentinel so the while loop exits
+        events.push(null);
+        resolve?.();
+        // Re-throw to propagate the error to `await done`
+        throw err;
+      },
+    );
 
     try {
       let finished = false;

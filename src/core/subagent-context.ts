@@ -21,6 +21,8 @@ export interface SubagentDiscordContext {
   channelId: string;
   /** Whether to show tool calls in the thread */
   showToolCalls?: boolean;
+  /** Callback invoked when subagent completes (for auto-unbind) */
+  onComplete?: (threadId: string) => void | Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
