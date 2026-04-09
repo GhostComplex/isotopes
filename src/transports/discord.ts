@@ -160,6 +160,8 @@ export interface DiscordTransportConfig {
   subagentShowToolCalls?: boolean;
   /** Whether to respond to messages from other bots. Default: false */
   allowBots?: boolean;
+  /** Maximum number of messages to include in context. Default: 50 */
+  historyLimit?: number;
 }
 
 /**
@@ -300,7 +302,12 @@ export class DiscordTransport implements Transport {
     };
     await sessionStore.addMessage(session.id, userMessage);
 
-    const promptInput = await sessionStore.getMessages(session.id);
+    const allMessages = await sessionStore.getMessages(session.id);
+    // Limit context to recent messages to prevent context overflow
+    const historyLimit = this.config.historyLimit ?? 50;
+    const promptInput = allMessages.length > historyLimit
+      ? allMessages.slice(-historyLimit)
+      : allMessages;
 
     // Run agent and stream response
     await this.runAgentAndRespond(
