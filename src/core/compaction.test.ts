@@ -12,6 +12,9 @@ import {
   compactMessages,
   createTransformContext,
   resolveCompactionConfig,
+  isContextOverflow,
+  forceCompact,
+  iterativeCompact,
 } from "./compaction.js";
 
 // ---------------------------------------------------------------------------
@@ -376,5 +379,223 @@ describe("createTransformContext", () => {
 
     expect(result).toBe(messages);
     expect(summarize).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isContextOverflow
+// ---------------------------------------------------------------------------
+
+describe("isContextOverflow", () => {
+  it("returns false for undefined or empty error message", () => {
+    expect(isContextOverflow(undefined)).toBe(false);
+    expect(isContextOverflow("")).toBe(false);
+  });
+
+  it("detects Anthropic overflow error", () => {
+    expect(isContextOverflow("prompt is too long: 213462 tokens > 200000 maximum")).toBe(true);
+  });
+
+  it("detects OpenAI overflow error", () => {
+    expect(isContextOverflow("Your input exceeds the context window of this model")).toBe(true);
+  });
+
+  it("detects Google Gemini overflow error", () => {
+    expect(isContextOverflow("The input token count (1196265) exceeds the maximum number of tokens allowed (1048575)")).toBe(true);
+  });
+
+  it("detects generic overflow patterns", () => {
+    expect(isContextOverflow("context length exceeded")).toBe(true);
+    expect(isContextOverflow("too many tokens in request")).toBe(true);
+    expect(isContextOverflow("token limit exceeded")).toBe(true);
+  });
+
+  it("detects Cerebras 400/413 status code errors", () => {
+    expect(isContextOverflow("400 status code (no body)")).toBe(true);
+    expect(isContextOverflow("413 (no body)")).toBe(true);
+  });
+
+  it("returns false for non-overflow errors", () => {
+    expect(isContextOverflow("rate limit exceeded")).toBe(false);
+    expect(isContextOverflow("invalid API key")).toBe(false);
+    expect(isContextOverflow("network timeout")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// forceCompact
+// ---------------------------------------------------------------------------
+
+describe("forceCompact", () => {
+  it("compacts messages regardless of threshold", async () => {
+    // Small messages that wouldn't trigger normal compaction
+    const messages = makeMessages(20, 100);
+    const summarize = vi.fn().mockResolvedValue("forced summary");
+
+    const result = await forceCompact({
+      messages,
+      config: makeConfig({ preserveRecent: 5 }),
+      summarize,
+    });
+
+    // Should have 1 summary + 5 recent = 6 messages
+    expect(result).toHaveLength(6);
+    expect(summarize).toHaveBeenCalledOnce();
+
+    const summary = result[0] as unknown as Record<string, unknown>;
+    expect(summary.content).toContain("[Previous conversation summary]");
+    expect(summary.content).toContain("forced summary");
+  });
+
+  it("returns original messages when not enough to compact", async () => {
+    const messages = makeMessages(5, 100);
+    const summarize = vi.fn();
+
+    const result = await forceCompact({
+      messages,
+      config: makeConfig({ preserveRecent: 5 }),
+      summarize,
+    });
+
+    expect(result).toBe(messages);
+    expect(summarize).not.toHaveBeenCalled();
+  });
+
+  it("throws when summarize fails", async () => {
+    const messages = makeMessages(20, 100);
+    const summarize = vi.fn().mockRejectedValue(new Error("LLM error"));
+
+    await expect(
+      forceCompact({
+        messages,
+        config: makeConfig({ preserveRecent: 5 }),
+        summarize,
+      }),
+    ).rejects.toThrow("LLM error");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// iterativeCompact
+// ---------------------------------------------------------------------------
+
+describe("iterativeCompact", () => {
+  it("returns messages unchanged if already under threshold", async () => {
+    const messages = makeMessages(5, 100);
+    const summarize = vi.fn();
+
+    const result = await iterativeCompact({
+      messages,
+      config: makeConfig(),
+      summarize,
+    });
+
+    expect(result).toBe(messages);
+    expect(summarize).not.toHaveBeenCalled();
+  });
+
+  it("performs multiple rounds until under threshold", async () => {
+    // Create messages that need multiple rounds of compaction
+    // Start with 100 messages * 5000 chars = 500000 chars → ~166666 tokens (with JSON estimate)
+    const messages = makeMessages(100, 5000);
+    let callCount = 0;
+    const summarize = vi.fn().mockImplementation(() => {
+      callCount++;
+      // Each summary is small, simulating good compression
+      return Promise.resolve(`Round ${callCount} summary - brief`);
+    });
+
+    const result = await iterativeCompact({
+      messages,
+      config: makeConfig({
+        contextWindow: 128_000,
+        threshold: 0.5,
+        preserveRecent: 10,
+      }),
+      summarize,
+      maxRounds: 3,
+    });
+
+    // Should have compacted at least once
+    expect(summarize).toHaveBeenCalled();
+    // Result should be smaller than original
+    expect(result.length).toBeLessThan(messages.length);
+  });
+
+  it("stops at max rounds even if still over threshold", async () => {
+    // Very large messages that can't be compacted enough
+    const messages = makeMessages(20, 50_000);
+    const summarize = vi.fn().mockResolvedValue("x".repeat(40_000)); // Summary is still big
+
+    const result = await iterativeCompact({
+      messages,
+      config: makeConfig({
+        contextWindow: 10_000,
+        threshold: 0.5,
+        preserveRecent: 5,
+      }),
+      summarize,
+      maxRounds: 2,
+    });
+
+    // Should have attempted maxRounds compactions
+    expect(summarize).toHaveBeenCalledTimes(2);
+    // Should return what we have even if still over threshold
+    expect(result).toBeDefined();
+  });
+
+  it("stops when not enough messages to compact further", async () => {
+    // 15 messages with large content that exceeds threshold
+    // preserveRecent=14 means after first compaction we have 1 summary + 14 recent = 15 messages
+    // But 15 messages with preserveRecent=14 means only 1 message can be summarized
+    // Eventually we hit the minimum and can't compact further
+    const messages = makeMessages(15, 10_000);
+    const summarize = vi.fn().mockResolvedValue("short summary");
+
+    const result = await iterativeCompact({
+      messages,
+      config: makeConfig({
+        contextWindow: 50_000,
+        threshold: 0.3,
+        preserveRecent: 14,
+      }),
+      summarize,
+      maxRounds: 5,
+    });
+
+    // Should have attempted compaction
+    expect(summarize).toHaveBeenCalled();
+    // Result should be returned
+    expect(result).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Token estimation with JSON content
+// ---------------------------------------------------------------------------
+
+describe("estimateMessageTokens with JSON content", () => {
+  it("uses more conservative estimate for JSON-like content", () => {
+    const jsonMsg = makeMessage("assistant", '{"type":"text","output":"result"}');
+    const textMsg = makeMessage("user", "This is a plain text message here");
+
+    // JSON should use 3 chars/token, text uses 4 chars/token
+    // JSON: 35 chars → ceil(35/3) = 12 tokens
+    // Text: 35 chars → ceil(35/4) = 9 tokens
+    expect(estimateMessageTokens(jsonMsg)).toBeGreaterThan(estimateMessageTokens(textMsg));
+  });
+
+  it("detects array JSON content", () => {
+    const arrayMsg = makeMessage("assistant", '[{"id":1},{"id":2}]');
+    // 19 chars, JSON-like → ceil(19/3) = 7 tokens
+    expect(estimateMessageTokens(arrayMsg)).toBe(7);
+  });
+
+  it("detects tool result patterns", () => {
+    const toolResultMsg = makeMessage("assistant", 'Some prefix "output": "tool result here"');
+    // Contains "output": pattern, should be treated as JSON-like
+    const plainMsg = makeMessage("user", "Some prefix output tool result here");
+
+    expect(estimateMessageTokens(toolResultMsg)).toBeGreaterThan(estimateMessageTokens(plainMsg));
   });
 });
