@@ -19,9 +19,9 @@ This implements the [Agent Skills standard](https://agentskills.io/specification
 ## Non-Goals (v1)
 
 - `/skill:name` slash command registration (future)
-- Remote skill installation (ClawHub) (future)
 - `allowed-tools` frontmatter enforcement (future)
 - MCP integration (explicitly not needed)
+- Remote skill installation (not planned)
 
 ---
 
@@ -267,5 +267,4 @@ agents:
 
 - `/skill:name` command registration
 - `allowed-tools` frontmatter enforcement
-- Remote skill installation from ClawHub
 - Skill versioning and updates
