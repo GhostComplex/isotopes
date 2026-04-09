@@ -267,6 +267,7 @@ Extensible via tool registration.
 | **M4** | Automation & Git | ✅ Done |
 | **M5** | Daemon Mode + Web API | ✅ Done |
 | **M6** | Sandbox Execution | ✅ Done |
+| **M7** | Claude CLI Runner | ✅ Done |
 
 ---
 
@@ -506,6 +507,42 @@ agents:
 - [x] Base image with common dev tools
 - [x] `isotopes-sandbox:latest` default image
 - [x] Custom image support
+
+---
+
+### M7: Claude CLI Runner ✅
+
+**Goal:** Enable Isotopes to spawn Claude Code CLI as a subprocess and stream its output to Discord in real-time.
+
+#### 7.1 Claude CLI Runner
+```typescript
+const runner = new ClaudeRunner({
+  cliPath: "claude",
+  timeout: 600_000,
+  permissionMode: "bypassPermissions",
+});
+```
+
+- [x] Spawn `claude --print --output-format=stream-json --permission-mode=bypassPermissions`
+- [x] Parse JSON stream events from stdout via `JsonStreamParser`
+- [x] Collect and return aggregated results
+- [x] Support cancel/timeout with graceful shutdown (SIGTERM → SIGKILL)
+
+#### 7.2 JSON Stream Parser
+- [x] Newline-delimited JSON parsing with buffering across chunks
+- [x] Normalize raw event types to `ClaudeEventType` union
+- [x] Handle partial lines, invalid JSON, and unknown event types
+
+#### 7.3 Discord Sink
+- [x] Create thread for task output (when `useThread` enabled)
+- [x] Format assistant messages, tool calls, thinking, and errors
+- [x] Split long messages to fit Discord's 2000-char limit
+- [x] Post completion summary (success/failure)
+
+#### 7.4 SubagentManager
+- [x] High-level coordinator combining `ClaudeRunner` + `DiscordSink`
+- [x] Single `spawn()` method for running tasks with Discord streaming
+- [x] Task cancellation and status checking
 
 ---
 

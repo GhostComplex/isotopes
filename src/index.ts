@@ -293,3 +293,24 @@ export type {
   ExecResult,
   SandboxExecOptions,
 } from "./sandbox/index.js";
+
+// ---------------------------------------------------------------------------
+// Subagent (Claude CLI Runner)
+// ---------------------------------------------------------------------------
+
+export {
+  ClaudeRunner,
+  JsonStreamParser,
+  DiscordSink,
+  SubagentManager,
+} from "./subagent/index.js";
+export type {
+  ClaudeRunnerConfig,
+  ClaudeTask,
+  ClaudeEventType,
+  ClaudeEvent,
+  ClaudeResult,
+  DiscordSinkConfig,
+  DiscordChannel,
+  SpawnOptions,
+} from "./subagent/index.js";
