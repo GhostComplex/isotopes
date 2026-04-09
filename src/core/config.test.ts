@@ -11,6 +11,8 @@ import {
   resolveToolSettings,
   resolveCompactionConfigFromFile,
   resolveSessionConfig,
+  resolveAcpConfig,
+  resolveSandboxConfigFromFile,
 } from "./config.js";
 
 describe("Config", () => {
@@ -426,6 +428,137 @@ session:
       const config = await loadConfig(configPath);
       expect(config.session?.ttl).toBe(43200);
       expect(config.session?.cleanupInterval).toBe(1800);
+    });
+  });
+
+  describe("resolveAcpConfig", () => {
+    it("returns undefined when config is undefined", () => {
+      expect(resolveAcpConfig()).toBeUndefined();
+    });
+
+    it("returns undefined when enabled is false", () => {
+      expect(resolveAcpConfig({ enabled: false, defaultAgent: "a" })).toBeUndefined();
+    });
+
+    it("returns config when enabled with valid fields", () => {
+      const config = resolveAcpConfig({
+        enabled: true,
+        defaultAgent: "major",
+        backend: "acpx",
+      });
+
+      expect(config).toBeDefined();
+      expect(config!.enabled).toBe(true);
+      expect(config!.defaultAgent).toBe("major");
+      expect(config!.backend).toBe("acpx");
+    });
+
+    it("defaults backend to 'acpx' when not specified", () => {
+      const config = resolveAcpConfig({
+        enabled: true,
+        defaultAgent: "major",
+      });
+
+      expect(config!.backend).toBe("acpx");
+    });
+
+    it("passes through allowedAgents", () => {
+      const config = resolveAcpConfig({
+        enabled: true,
+        defaultAgent: "major",
+        allowedAgents: ["major", "sac"],
+      });
+
+      expect(config!.allowedAgents).toEqual(["major", "sac"]);
+    });
+
+    it("throws on invalid backend", () => {
+      expect(() =>
+        resolveAcpConfig({
+          enabled: true,
+          defaultAgent: "major",
+          backend: "invalid" as "acpx",
+        }),
+      ).toThrow('Invalid acp.backend "invalid"');
+    });
+
+    it("throws when defaultAgent is missing", () => {
+      expect(() =>
+        resolveAcpConfig({ enabled: true }),
+      ).toThrow("acp.defaultAgent is required when ACP is enabled");
+    });
+  });
+
+  describe("resolveSandboxConfigFromFile", () => {
+    it("returns undefined when neither agent nor default config provided", () => {
+      expect(resolveSandboxConfigFromFile("test-agent")).toBeUndefined();
+    });
+
+    it("resolves agent-level sandbox config", () => {
+      const config = resolveSandboxConfigFromFile("test-agent", {
+        mode: "all",
+        docker: { image: "custom:latest" },
+      });
+
+      expect(config).toBeDefined();
+      expect(config!.mode).toBe("all");
+      expect(config!.docker?.image).toBe("custom:latest");
+    });
+
+    it("resolves default sandbox config when agent has none", () => {
+      const config = resolveSandboxConfigFromFile(
+        "test-agent",
+        undefined,
+        { mode: "non-main" },
+      );
+
+      expect(config).toBeDefined();
+      expect(config!.mode).toBe("non-main");
+    });
+
+    it("agent config overrides default config", () => {
+      const config = resolveSandboxConfigFromFile(
+        "test-agent",
+        { mode: "off" },
+        { mode: "all" },
+      );
+
+      expect(config!.mode).toBe("off");
+    });
+  });
+
+  describe("loadConfig — edge cases", () => {
+    it("throws when file does not exist", async () => {
+      const configPath = path.join(tempDir, "nonexistent.yaml");
+
+      await expect(loadConfig(configPath)).rejects.toThrow();
+    });
+
+    it("loads file with unknown extension by trying YAML first", async () => {
+      const configPath = path.join(tempDir, "config.toml");
+      await fs.writeFile(
+        configPath,
+        `
+agents:
+  - id: test
+    name: Test
+`,
+      );
+
+      const config = await loadConfig(configPath);
+      expect(config.agents).toHaveLength(1);
+      expect(config.agents[0].id).toBe("test");
+    });
+
+    it("falls back to JSON for unknown extension when YAML fails", async () => {
+      const configPath = path.join(tempDir, "config.dat");
+      await fs.writeFile(
+        configPath,
+        JSON.stringify({ agents: [{ id: "json-test", name: "JSON" }] }),
+      );
+
+      const config = await loadConfig(configPath);
+      expect(config.agents[0].id).toBe("json-test");
     });
   });
 });
