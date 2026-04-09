@@ -261,6 +261,7 @@ agents:
 
 - Diff preview tool (show changes before applying)
 - **Subagent abort capability** — ability to interrupt a subagent running in a thread from parent channel (e.g., `/abort <thread-id>` command or "stop" message trigger)
+- **Stale thread binding cleanup on restart** — when Isotopes restarts, clear thread bindings for subagents that were killed mid-execution (root cause: forced restart kills subagent but thread binding persists, causing messages to route to dead thread)
 - Approval workflow (require human approval for self-iteration)
 - Metrics tracking (what iterations were made, how often)
 - Rollback command (restore from backup)
