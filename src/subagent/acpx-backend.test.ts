@@ -206,7 +206,7 @@ describe("AcpxBackend", () => {
       const subDir = join(tempDir, "workspace");
       const fsModule = require("node:fs") as typeof import("node:fs"); // eslint-disable-line @typescript-eslint/no-require-imports
       fsModule.mkdirSync(subDir);
-      
+
       const restrictedBackend = new AcpxBackend([subDir]);
 
       // Path within allowed root should work
@@ -223,33 +223,45 @@ describe("AcpxBackend", () => {
   });
 
   describe("buildArgs", () => {
-    it("includes --format json by default", () => {
+    it("includes print mode and stream-json output by default", () => {
       const args = backend.buildArgs({
         agent: "claude",
         prompt: "test prompt",
         cwd: "/tmp",
       });
-      expect(args).toContain("--format");
-      expect(args).toContain("json");
+      expect(args).toContain("-p");
+      expect(args).toContain("--output-format");
+      expect(args).toContain("stream-json");
+      expect(args).toContain("--verbose");
     });
 
-    it("includes --approve-all by default", () => {
+    it("includes non-interactive permission bypass by default", () => {
       const args = backend.buildArgs({
         agent: "claude",
         prompt: "test prompt",
         cwd: "/tmp",
       });
-      expect(args).toContain("--approve-all");
+      expect(args).toContain("--dangerously-skip-permissions");
     });
 
-    it("omits --approve-all when explicitly false", () => {
+    it("includes the allowed tool list", () => {
       const args = backend.buildArgs({
         agent: "claude",
         prompt: "test prompt",
         cwd: "/tmp",
-        approveAll: false,
       });
-      expect(args).not.toContain("--approve-all");
+
+      const idx = args.indexOf("--allowedTools");
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(args.slice(idx + 1)).toEqual([
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Glob",
+        "Grep",
+        "LS",
+      ]);
     });
 
     it("includes --model when specified", () => {
@@ -264,16 +276,15 @@ describe("AcpxBackend", () => {
       expect(args[modelIdx + 1]).toBe("claude-sonnet-4-20250514");
     });
 
-    it("includes --timeout when specified", () => {
+    it("does not encode timeout in CLI args", () => {
       const args = backend.buildArgs({
         agent: "claude",
         prompt: "test",
         cwd: "/tmp",
         timeout: 300,
       });
-      const idx = args.indexOf("--timeout");
-      expect(idx).toBeGreaterThanOrEqual(0);
-      expect(args[idx + 1]).toBe("300");
+      expect(args).not.toContain("--timeout");
+      expect(args).not.toContain("300");
     });
 
     it("includes --max-turns when specified", () => {
@@ -288,7 +299,7 @@ describe("AcpxBackend", () => {
       expect(args[idx + 1]).toBe("10");
     });
 
-    it("puts prompt as the last argument", () => {
+    it("does not include prompt in args because it is passed via stdin", () => {
       const args = backend.buildArgs({
         agent: "claude",
         prompt: "do something cool",
@@ -296,7 +307,7 @@ describe("AcpxBackend", () => {
         model: "fast-model",
         timeout: 60,
       });
-      expect(args[args.length - 1]).toBe("do something cool");
+      expect(args).not.toContain("do something cool");
     });
 
     it("builds minimal args correctly", () => {
@@ -305,7 +316,13 @@ describe("AcpxBackend", () => {
         prompt: "hello",
         cwd: "/home",
       });
-      expect(args).toEqual(["--format", "json", "--approve-all", "hello"]);
+      expect(args).toEqual([
+        "-p",
+        "--output-format", "stream-json",
+        "--verbose",
+        "--dangerously-skip-permissions",
+        "--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep", "LS",
+      ]);
     });
 
     it("builds full args correctly", () => {
@@ -319,12 +336,13 @@ describe("AcpxBackend", () => {
         maxTurns: 5,
       });
       expect(args).toEqual([
-        "--format", "json",
-        "--approve-all",
+        "-p",
+        "--output-format", "stream-json",
+        "--verbose",
+        "--dangerously-skip-permissions",
         "--model", "gemini-2.5-pro",
-        "--timeout", "120",
         "--max-turns", "5",
-        "write tests",
+        "--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep", "LS",
       ]);
     });
   });
