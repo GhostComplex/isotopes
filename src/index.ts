@@ -80,6 +80,8 @@ export {
   getDiscordToken,
   resolveAcpConfig,
   resolveSandboxConfigFromFile,
+  resolveSubagentConfig,
+  DEFAULT_SUBAGENT_ALLOWED_TOOLS,
 } from "./core/config.js";
 export type {
   IsotopesConfigFile,
@@ -91,6 +93,10 @@ export type {
   CronJobConfigFile,
   SandboxConfigFile,
   SandboxDockerConfigFile,
+  SubagentConfigFile,
+  SubagentPermissionMode,
+  SubagentStreamingConfigFile,
+  ResolvedSubagentConfig,
 } from "./core/config.js";
 
 // ---------------------------------------------------------------------------
@@ -319,6 +325,7 @@ export type {
   SubagentTask,
   SendMessageFn,
   CreateThreadFn,
+  AcpxBackendOptions,
 } from "./subagent/index.js";
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import type { AcpxEvent } from "./types.js";
 import { tmpdir } from "node:os";
 import { mkdtempSync, rmdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { DEFAULT_SUBAGENT_ALLOWED_TOOLS } from "../core/config.js";
 
 // ---------------------------------------------------------------------------
 // parseJsonLine
@@ -235,16 +236,21 @@ describe("AcpxBackend", () => {
       expect(args).toContain("--verbose");
     });
 
-    it("includes non-interactive permission bypass by default", () => {
+    // M8: Default is now 'allowlist' mode, not 'skip' mode
+    it("uses allowlist permission mode by default (M8)", () => {
       const args = backend.buildArgs({
         agent: "claude",
         prompt: "test prompt",
         cwd: "/tmp",
       });
-      expect(args).toContain("--dangerously-skip-permissions");
+      // Should NOT include --dangerously-skip-permissions by default
+      expect(args).not.toContain("--dangerously-skip-permissions");
+      // Should include --allowedTools with default list
+      expect(args).toContain("--allowedTools");
     });
 
-    it("includes the allowed tool list", () => {
+    // M8: Test that default allowed tools match the safe list (no Bash)
+    it("includes the default allowed tool list without Bash (M8)", () => {
       const args = backend.buildArgs({
         agent: "claude",
         prompt: "test prompt",
@@ -253,14 +259,63 @@ describe("AcpxBackend", () => {
 
       const idx = args.indexOf("--allowedTools");
       expect(idx).toBeGreaterThanOrEqual(0);
-      expect(args.slice(idx + 1)).toEqual([
-        "Read",
-        "Write",
-        "Edit",
-        "Bash",
-        "Glob",
-        "Grep",
-      ]);
+      expect(args.slice(idx + 1)).toEqual(DEFAULT_SUBAGENT_ALLOWED_TOOLS);
+      // Verify Bash is not in the default list
+      expect(args.slice(idx + 1)).not.toContain("Bash");
+    });
+
+    // M8: Test skip permission mode
+    it("uses --dangerously-skip-permissions when permissionMode is 'skip'", () => {
+      const skipBackend = new AcpxBackend({
+        permissionMode: "skip",
+      });
+      const args = skipBackend.buildArgs({
+        agent: "claude",
+        prompt: "test",
+        cwd: "/tmp",
+      });
+      expect(args).toContain("--dangerously-skip-permissions");
+    });
+
+    // M8: Test default permission mode (no flags)
+    it("includes no permission flags when permissionMode is 'default'", () => {
+      const defaultBackend = new AcpxBackend({
+        permissionMode: "default",
+      });
+      const args = defaultBackend.buildArgs({
+        agent: "claude",
+        prompt: "test",
+        cwd: "/tmp",
+      });
+      expect(args).not.toContain("--dangerously-skip-permissions");
+      expect(args).not.toContain("--allowedTools");
+    });
+
+    // M8: Test custom allowed tools
+    it("uses custom allowedTools when provided", () => {
+      const customBackend = new AcpxBackend({
+        permissionMode: "allowlist",
+        allowedTools: ["Read", "Write", "Bash"],
+      });
+      const args = customBackend.buildArgs({
+        agent: "claude",
+        prompt: "test",
+        cwd: "/tmp",
+      });
+      const idx = args.indexOf("--allowedTools");
+      expect(args.slice(idx + 1)).toContain("Bash");
+    });
+
+    // M8: Test per-spawn option override
+    it("allows per-spawn permissionMode override", () => {
+      // Backend defaults to 'allowlist', but spawn uses 'skip'
+      const args = backend.buildArgs({
+        agent: "claude",
+        prompt: "test",
+        cwd: "/tmp",
+        permissionMode: "skip",
+      });
+      expect(args).toContain("--dangerously-skip-permissions");
     });
 
     it("includes --model when specified", () => {
@@ -309,7 +364,8 @@ describe("AcpxBackend", () => {
       expect(args).not.toContain("do something cool");
     });
 
-    it("builds minimal args correctly", () => {
+    // M8: Updated to reflect new default (allowlist mode, no Bash)
+    it("builds minimal args correctly with default allowlist mode (M8)", () => {
       const args = backend.buildArgs({
         agent: "codex",
         prompt: "hello",
@@ -319,18 +375,17 @@ describe("AcpxBackend", () => {
         "-p",
         "--output-format", "stream-json",
         "--verbose",
-        "--dangerously-skip-permissions",
-        "--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep",
+        "--allowedTools", ...DEFAULT_SUBAGENT_ALLOWED_TOOLS,
       ]);
     });
 
-    it("builds full args correctly", () => {
+    // M8: Updated to reflect new behavior
+    it("builds full args correctly with model and maxTurns (M8)", () => {
       const args = backend.buildArgs({
         agent: "gemini",
         prompt: "write tests",
         cwd: "/project",
         model: "gemini-2.5-pro",
-        approveAll: true,
         timeout: 120,
         maxTurns: 5,
       });
@@ -338,11 +393,28 @@ describe("AcpxBackend", () => {
         "-p",
         "--output-format", "stream-json",
         "--verbose",
-        "--dangerously-skip-permissions",
+        "--allowedTools", ...DEFAULT_SUBAGENT_ALLOWED_TOOLS,
         "--model", "gemini-2.5-pro",
         "--max-turns", "5",
-        "--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep",
       ]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // workspacesKey (M8.5)
+  // ---------------------------------------------------------------------------
+
+  describe("workspacesKey", () => {
+    it("generates a consistent key from allowed workspaces", () => {
+      const backend1 = new AcpxBackend(["/a", "/b"]);
+      const backend2 = new AcpxBackend(["/b", "/a"]); // Different order
+      // Keys should be the same after sorting
+      expect(backend1.workspacesKey).toBe(backend2.workspacesKey);
+    });
+
+    it("generates empty key when no workspaces", () => {
+      const backend1 = new AcpxBackend();
+      expect(backend1.workspacesKey).toBe("");
     });
   });
 

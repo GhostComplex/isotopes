@@ -2,7 +2,7 @@
 // Wraps `claude -p --output-format stream-json` as a child process with JSON line streaming.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { createLogger } from "../core/logger.js";
 import {
@@ -11,6 +11,8 @@ import {
   type AcpxResult,
   type AcpxSpawnOptions,
 } from "./types.js";
+import type { SubagentPermissionMode } from "../core/config.js";
+import { DEFAULT_SUBAGENT_ALLOWED_TOOLS } from "../core/config.js";
 
 const log = createLogger("subagent:acpx");
 
@@ -154,6 +156,27 @@ function mapRawEvent(obj: Record<string, unknown>): AcpxEvent | undefined {
 // ---------------------------------------------------------------------------
 
 /**
+ * Configuration options for AcpxBackend (M8).
+ */
+export interface AcpxBackendOptions {
+  /** Allowed workspace roots for cwd validation */
+  allowedWorkspaceRoots?: string[];
+  /**
+   * Permission mode for tool execution (M8)
+   * - "skip" — Use --dangerously-skip-permissions (full access, no prompts)
+   * - "allowlist" — Use --allowedTools with configured list (recommended)
+   * - "default" — Use claude CLI defaults (interactive prompts)
+   * Default: "allowlist"
+   */
+  permissionMode?: SubagentPermissionMode;
+  /**
+   * Tool allowlist for "allowlist" permission mode (M8)
+   * Default: ["Read", "Write", "Edit", "Glob", "Grep", "LS"]
+   */
+  allowedTools?: string[];
+}
+
+/**
  * Backend for spawning Claude Code sub-agent processes.
  *
  * Each task gets its own child process running
@@ -168,17 +191,47 @@ export class AcpxBackend {
   /** Allowed workspace roots for cwd validation */
   private allowedRoots: string[];
 
-  constructor(allowedWorkspaceRoots?: string[]) {
-    this.allowedRoots = allowedWorkspaceRoots ?? [];
+  /** Permission mode for tool execution (M8) */
+  private permissionMode: SubagentPermissionMode;
+
+  /** Tool allowlist for "allowlist" mode (M8) */
+  private allowedTools: string[];
+
+  /** Workspace key for singleton comparison (M8.5) */
+  public workspacesKey: string;
+
+  constructor(options?: string[] | AcpxBackendOptions) {
+    // Support legacy constructor signature: new AcpxBackend(allowedWorkspaceRoots)
+    if (Array.isArray(options) || options === undefined) {
+      this.allowedRoots = options ?? [];
+      this.permissionMode = "allowlist";
+      this.allowedTools = [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
+    } else {
+      this.allowedRoots = options.allowedWorkspaceRoots ?? [];
+      this.permissionMode = options.permissionMode ?? "allowlist";
+      this.allowedTools = options.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
+    }
+
+    // Compute workspace key for singleton comparison (M8.5)
+    this.workspacesKey = this.allowedRoots.slice().sort().join(":");
   }
 
   /**
    * Validate that the given cwd is a real directory within allowed workspaces.
+   * Uses realpathSync to resolve symlinks and prevent escape attacks (M8.3).
    * @throws Error if validation fails
    */
   validateCwd(cwd: string): void {
     const resolved = resolve(cwd);
-    const normalized = normalize(resolved);
+    
+    // M8.3: Use realpathSync when path exists to resolve symlinks
+    let normalized: string;
+    try {
+      normalized = realpathSync(resolved);
+    } catch {
+      // Path doesn't exist yet — fall back to normalize
+      normalized = normalize(resolved);
+    }
 
     // Check directory exists
     if (!existsSync(normalized)) {
@@ -194,7 +247,13 @@ export class AcpxBackend {
     // If allowed roots are configured, validate path is within them
     if (this.allowedRoots.length > 0) {
       const isAllowed = this.allowedRoots.some((root) => {
-        const normalizedRoot = normalize(resolve(root));
+        // M8.3: Use realpathSync for allowed roots too
+        let normalizedRoot: string;
+        try {
+          normalizedRoot = realpathSync(resolve(root));
+        } catch {
+          normalizedRoot = normalize(resolve(root));
+        }
         return normalized === normalizedRoot || normalized.startsWith(normalizedRoot + "/");
       });
       if (!isAllowed) {
@@ -216,14 +275,46 @@ export class AcpxBackend {
   /**
    * Build the command-line arguments for `claude -p`.
    * Note: prompt is passed via stdin, not as an argument.
+   *
+   * M8.1: Supports configurable permission modes:
+   * - "skip" — --dangerously-skip-permissions (full access)
+   * - "allowlist" — --allowedTools with configured list (recommended)
+   * - "default" — no permission flags (uses claude CLI defaults)
    */
   buildArgs(options: AcpxSpawnOptions): string[] {
     const args: string[] = [
       "-p",  // Print mode (non-interactive)
       "--output-format", "stream-json",  // Stream JSON events
       "--verbose",  // Required for stream-json output
-      "--dangerously-skip-permissions",  // Auto-approve all
     ];
+
+    // M8.1: Apply permission mode
+    const permissionMode = options.permissionMode ?? this.permissionMode;
+    const allowedTools = options.allowedTools ?? this.allowedTools;
+
+    switch (permissionMode) {
+      case "skip":
+        // Full access without any permission prompts
+        args.push("--dangerously-skip-permissions");
+        log.debug("Using permissionMode 'skip' — all tool calls auto-approved");
+        break;
+
+      case "allowlist":
+        // Use --allowedTools with configured list
+        if (allowedTools.length > 0) {
+          args.push("--allowedTools", ...allowedTools);
+          log.debug(`Using permissionMode 'allowlist' with tools: ${allowedTools.join(", ")}`);
+        } else {
+          // Empty allowlist — use default mode
+          log.debug("permissionMode 'allowlist' with empty tools list — using defaults");
+        }
+        break;
+
+      case "default":
+        // No permission flags — use claude CLI defaults (interactive prompts)
+        log.debug("Using permissionMode 'default' — claude CLI default behavior");
+        break;
+    }
 
     if (options.model) {
       args.push("--model", options.model);
@@ -232,9 +323,6 @@ export class AcpxBackend {
     if (options.maxTurns !== undefined) {
       args.push("--max-turns", String(options.maxTurns));
     }
-
-    // Add allowed tools for file operations
-    args.push("--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep");
 
     // Note: prompt is NOT added here - it's passed via stdin
 

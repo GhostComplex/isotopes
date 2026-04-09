@@ -1,6 +1,8 @@
 // src/subagent/types.ts — Type definitions for sub-agent spawning via acpx
 // Defines agent types, spawn options, event types, and result structures.
 
+import type { SubagentPermissionMode } from "../core/config.js";
+
 // ---------------------------------------------------------------------------
 // Agent types
 // ---------------------------------------------------------------------------
@@ -42,8 +44,24 @@ export interface AcpxSpawnOptions {
   cwd: string;
   /** Model override (e.g., "claude-sonnet-4-20250514") */
   model?: string;
-  /** Auto-approve all tool calls. Default: true */
+  /**
+   * @deprecated Use permissionMode instead.
+   * Auto-approve all tool calls. Default: true
+   */
   approveAll?: boolean;
+  /**
+   * Permission mode for tool execution (M8)
+   * - "skip" — Use --dangerously-skip-permissions (full access, no prompts)
+   * - "allowlist" — Use --allowedTools with configured list (recommended)
+   * - "default" — Use claude CLI defaults (interactive prompts)
+   * Default: "allowlist" (inherited from backend config)
+   */
+  permissionMode?: SubagentPermissionMode;
+  /**
+   * Tool allowlist for "allowlist" permission mode (M8)
+   * Default: inherited from backend config
+   */
+  allowedTools?: string[];
   /** Timeout in seconds for the entire run */
   timeout?: number;
   /** Maximum number of agent turns */
@@ -135,8 +153,22 @@ export interface SubagentTask {
   showToolCalls?: boolean;
   /** Model override */
   model?: string;
-  /** Auto-approve all tool calls */
+  /**
+   * @deprecated Use permissionMode instead.
+   * Auto-approve all tool calls
+   */
   approveAll?: boolean;
+  /**
+   * Permission mode for tool execution (M8)
+   * - "skip" — Use --dangerously-skip-permissions (full access, no prompts)
+   * - "allowlist" — Use --allowedTools with configured list (recommended)
+   * - "default" — Use claude CLI defaults (interactive prompts)
+   */
+  permissionMode?: SubagentPermissionMode;
+  /**
+   * Tool allowlist for "allowlist" permission mode (M8)
+   */
+  allowedTools?: string[];
   /** Timeout in seconds */
   timeout?: number;
   /** Maximum number of agent turns */

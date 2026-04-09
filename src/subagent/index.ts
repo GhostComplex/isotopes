@@ -34,6 +34,7 @@ export type {
 export { ACPX_AGENTS } from "./types.js";
 
 export { AcpxBackend, parseJsonLine, collectResult } from "./acpx-backend.js";
+export type { AcpxBackendOptions } from "./acpx-backend.js";
 
 export {
   DiscordSink,
@@ -99,6 +100,8 @@ export class SubagentManager {
         cwd: task.cwd,
         model: task.model,
         approveAll: task.approveAll,
+        permissionMode: task.permissionMode,
+        allowedTools: task.allowedTools,
         timeout: task.timeout,
         maxTurns: task.maxTurns,
       })) {

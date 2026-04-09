@@ -19,6 +19,9 @@ import type {
 } from "./types.js";
 import type { AcpConfig } from "../acp/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "../sandbox/config.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("config");
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -123,6 +126,8 @@ export interface DiscordConfigFile {
   channelAllowlist?: string[];
   /** Thread binding configuration for auto-binding threads to agent sessions */
   threadBindings?: ThreadBindingConfigFile;
+  /** Subagent Discord streaming configuration (M8) */
+  subagentStreaming?: SubagentStreamingConfigFile;
 }
 
 /** Thread binding configuration in config file */
@@ -131,6 +136,71 @@ export interface ThreadBindingConfigFile {
   enabled?: boolean;
   /** Whether to spawn ACP sessions when threads are created (M3.2+) */
   spawnAcpSessions?: boolean;
+}
+
+/** Subagent Discord streaming configuration (M8) */
+export interface SubagentStreamingConfigFile {
+  /** Whether subagent streaming to Discord is enabled. Default: true */
+  enabled?: boolean;
+  /** Whether to show tool call details in Discord. Default: true */
+  showToolCalls?: boolean;
+}
+
+/** Permission mode for subagent tool execution (M8) */
+export type SubagentPermissionMode = "skip" | "allowlist" | "default";
+
+/** Default allowed tools for subagent execution (M8) */
+export const DEFAULT_SUBAGENT_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "LS"];
+
+/** Sub-agent execution configuration in config file (M7/M8) */
+export interface SubagentConfigFile {
+  /** Default acpx agent to use when spawning sub-agents */
+  defaultAgent?: string;
+  /** Agents allowed to be spawned as sub-agents */
+  allowedAgents?: string[];
+  /** Default timeout in seconds for sub-agent runs */
+  timeout?: number;
+  /** Default maximum turns per sub-agent run */
+  maxTurns?: number;
+  /**
+   * Permission mode for subagent tool execution (M8)
+   * - "skip" — Use --dangerously-skip-permissions (full access, no prompts)
+   * - "allowlist" — Use --allowedTools with configured list (recommended)
+   * - "default" — Use claude CLI defaults (interactive prompts, not suitable for automation)
+   * Default: "allowlist"
+   */
+  permissionMode?: SubagentPermissionMode;
+  /**
+   * Tool allowlist for subagent execution (M8)
+   * Only used when permissionMode: "allowlist"
+   * Default: ["Read", "Write", "Edit", "Glob", "Grep", "LS"]
+   */
+  allowedTools?: string[];
+  /**
+   * Enable shell access for subagents (M8)
+   * Adds "Bash" to allowedTools when permissionMode: "allowlist"
+   * WARNING: Combined with permissionMode: "skip", this allows arbitrary command execution
+   * Default: false
+   */
+  enableShell?: boolean;
+  /** @deprecated Use permissionMode instead. Whether to auto-approve tool calls. Default: true */
+  approveAll?: boolean;
+  /** Whether to create Discord threads for sub-agent output. Default: true */
+  useThread?: boolean;
+  /** Whether to show tool call details in Discord. Default: true */
+  showToolCalls?: boolean;
+}
+
+/** Resolved subagent configuration with defaults applied (M8) */
+export interface ResolvedSubagentConfig {
+  defaultAgent?: string;
+  allowedAgents?: string[];
+  timeout?: number;
+  maxTurns?: number;
+  permissionMode: SubagentPermissionMode;
+  allowedTools: string[];
+  useThread: boolean;
+  showToolCalls: boolean;
 }
 
 /** ACP (Agent Communication Protocol) configuration in config file */
@@ -143,26 +213,8 @@ export interface AcpConfigFile {
   defaultAgent?: string;
   /** Agent IDs allowed to participate in ACP sessions */
   allowedAgents?: string[];
-  /** Sub-agent execution settings (M7) */
+  /** Sub-agent execution settings (M7/M8) */
   subagent?: SubagentConfigFile;
-}
-
-/** Sub-agent execution configuration in config file (M7) */
-export interface SubagentConfigFile {
-  /** Default acpx agent to use when spawning sub-agents */
-  defaultAgent?: string;
-  /** Agents allowed to be spawned as sub-agents */
-  allowedAgents?: string[];
-  /** Default timeout in seconds for sub-agent runs */
-  timeout?: number;
-  /** Default maximum turns per sub-agent run */
-  maxTurns?: number;
-  /** Whether to auto-approve tool calls. Default: true */
-  approveAll?: boolean;
-  /** Whether to create Discord threads for sub-agent output. Default: true */
-  useThread?: boolean;
-  /** Whether to show tool call details in Discord. Default: true */
-  showToolCalls?: boolean;
 }
 
 /** Cron job configuration in config file */
@@ -198,6 +250,11 @@ export interface IsotopesConfigFile {
   acp?: AcpConfigFile;
   /** Channel-level cron job definitions */
   cron?: CronJobConfigFile[];
+  /**
+   * @deprecated Moved to discord.threadBindings in M8.
+   * Thread binding configuration for auto-binding threads to agent sessions.
+   */
+  threadBindings?: ThreadBindingConfigFile;
 }
 
 export function resolveToolSettings(
@@ -263,6 +320,7 @@ export function resolveSessionConfig(
 }
 
 const VALID_ACP_BACKENDS = new Set<string>(["acpx", "claude-code", "codex"]);
+const VALID_PERMISSION_MODES = new Set<SubagentPermissionMode>(["skip", "allowlist", "default"]);
 
 /**
  * Resolve ACP config from the config file.
@@ -290,6 +348,68 @@ export function resolveAcpConfig(
     backend,
     defaultAgent: acpConfig.defaultAgent,
     allowedAgents: acpConfig.allowedAgents,
+  };
+}
+
+/**
+ * Resolve subagent config with defaults applied (M8).
+ * Validates permission mode and logs security warnings.
+ */
+export function resolveSubagentConfig(
+  subagentConfig?: SubagentConfigFile,
+): ResolvedSubagentConfig {
+  const permissionMode = subagentConfig?.permissionMode ?? "allowlist";
+  
+  // Validate permission mode
+  if (!VALID_PERMISSION_MODES.has(permissionMode)) {
+    throw new Error(
+      `Invalid acp.subagent.permissionMode "${permissionMode}" (must be skip, allowlist, or default)`,
+    );
+  }
+
+  // Build allowed tools list
+  let allowedTools = subagentConfig?.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
+  
+  // Add Bash if enableShell is true and not already in list
+  if (subagentConfig?.enableShell && !allowedTools.includes("Bash")) {
+    allowedTools = [...allowedTools, "Bash"];
+  }
+
+  // Security warnings (M8.1)
+  if (permissionMode === "skip") {
+    log.warn(
+      "⚠️  SECURITY WARNING: acp.subagent.permissionMode is set to 'skip'. " +
+      "Sub-agents will have unrestricted tool access without any permission prompts. " +
+      "This is NOT recommended for production use.",
+    );
+    
+    if (subagentConfig?.enableShell) {
+      log.warn(
+        "⚠️  CRITICAL SECURITY WARNING: permissionMode 'skip' combined with enableShell: true " +
+        "allows sub-agents to execute ARBITRARY SHELL COMMANDS without approval. " +
+        "Only use this configuration in fully trusted, isolated environments.",
+      );
+    }
+  }
+
+  // Handle deprecated approveAll
+  if (subagentConfig?.approveAll !== undefined) {
+    log.warn(
+      "⚠️  DEPRECATION WARNING: acp.subagent.approveAll is deprecated. " +
+      "Use acp.subagent.permissionMode instead. " +
+      "(approveAll: true → permissionMode: 'skip', approveAll: false → permissionMode: 'default')",
+    );
+  }
+
+  return {
+    defaultAgent: subagentConfig?.defaultAgent,
+    allowedAgents: subagentConfig?.allowedAgents,
+    timeout: subagentConfig?.timeout,
+    maxTurns: subagentConfig?.maxTurns,
+    permissionMode,
+    allowedTools,
+    useThread: subagentConfig?.useThread ?? true,
+    showToolCalls: subagentConfig?.showToolCalls ?? true,
   };
 }
 
@@ -343,6 +463,24 @@ function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
 // ---------------------------------------------------------------------------
 
 /**
+ * Migrate deprecated top-level threadBindings to discord.threadBindings (M8).
+ * Logs a deprecation warning if migration occurs.
+ */
+function migrateThreadBindings(config: IsotopesConfigFile): void {
+  if (config.threadBindings && !config.discord?.threadBindings) {
+    log.warn(
+      "⚠️  DEPRECATION WARNING: Top-level 'threadBindings' configuration is deprecated. " +
+      "Please move it to 'discord.threadBindings'. Auto-migrating for this session.",
+    );
+    
+    if (!config.discord) {
+      config.discord = {};
+    }
+    config.discord.threadBindings = config.threadBindings;
+  }
+}
+
+/**
  * Load configuration from a file (YAML or JSON).
  * Supports environment variable substitution in string values.
  */
@@ -371,7 +509,12 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
   }
 
   // Process environment variables
-  return processEnvVars(config);
+  config = processEnvVars(config);
+
+  // M8: Migrate deprecated threadBindings
+  migrateThreadBindings(config);
+
+  return config;
 }
 
 /**
