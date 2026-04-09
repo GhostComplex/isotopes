@@ -49,8 +49,10 @@ export {
   hasRunningSubagents,
   getActiveSubagentCount,
   getSupportedAgents,
+  initSubagentBackend,
 } from "./subagent.js";
 export type {
   SpawnSubagentOptions,
   SpawnSubagentResult,
+  SubagentBackendConfig,
 } from "./subagent.js";

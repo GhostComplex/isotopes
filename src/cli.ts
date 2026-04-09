@@ -10,7 +10,9 @@ import {
   toAgentConfig,
   getDiscordToken,
   resolveAcpConfig,
+  resolveSubagentConfig,
 } from "./core/config.js";
+import { initSubagentBackend } from "./tools/subagent.js";
 import { PiMonoCore } from "./core/pi-mono.js";
 import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
@@ -256,6 +258,16 @@ async function main() {
 
   const config = await loadConfig(configPath);
   logger.info(`Loaded ${config.agents.length} agent(s)`);
+
+  // Initialize subagent backend with config (M8)
+  if (config.acp?.enabled) {
+    const subagentConfig = resolveSubagentConfig(config.acp.subagent);
+    initSubagentBackend({
+      permissionMode: subagentConfig.permissionMode,
+      allowedTools: subagentConfig.allowedTools,
+    });
+    logger.info(`Subagent backend initialized (permissionMode: ${subagentConfig.permissionMode})`);
+  }
 
   // Initialize core with tool registry
   const core = new PiMonoCore();

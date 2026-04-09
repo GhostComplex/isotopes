@@ -9,12 +9,21 @@ import {
   type AcpxResult,
   type AcpxEvent,
 } from "../subagent/index.js";
+import type { SubagentPermissionMode } from "../core/config.js";
 
 const log = createLogger("tools:subagent");
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/** Configuration for the subagent backend (from acp.subagent in config) */
+export interface SubagentBackendConfig {
+  /** Permission mode for tool execution */
+  permissionMode?: SubagentPermissionMode;
+  /** Allowed tools for allowlist mode */
+  allowedTools?: string[];
+}
 
 /** Options for spawning a sub-agent */
 export interface SpawnSubagentOptions {
@@ -52,10 +61,33 @@ export interface SpawnSubagentResult {
 /** Shared backend instance (lazy initialized) */
 let sharedBackend: AcpxBackend | undefined;
 
+/** Cached backend config */
+let backendConfig: SubagentBackendConfig = {};
+
+/**
+ * Initialize the subagent backend with configuration.
+ * Should be called during app startup with config from acp.subagent.
+ * 
+ * @param config - Configuration from resolveSubagentConfig()
+ */
+export function initSubagentBackend(config: SubagentBackendConfig): void {
+  backendConfig = config;
+  // Clear existing backend so it gets recreated with new config
+  sharedBackend = undefined;
+  log.info("Subagent backend initialized", { 
+    permissionMode: config.permissionMode ?? "allowlist",
+    allowedTools: config.allowedTools,
+  });
+}
+
 function getBackend(allowedWorkspaces?: string[]): AcpxBackend {
   // Create new backend if workspaces changed or not initialized
   if (!sharedBackend || allowedWorkspaces) {
-    sharedBackend = new AcpxBackend(allowedWorkspaces);
+    sharedBackend = new AcpxBackend({
+      allowedWorkspaceRoots: allowedWorkspaces,
+      permissionMode: backendConfig.permissionMode,
+      allowedTools: backendConfig.allowedTools,
+    });
   }
   return sharedBackend;
 }
