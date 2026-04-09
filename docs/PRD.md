@@ -516,8 +516,8 @@ agents:
 | `AgentCore` | `PiMonoCore` | Custom agent loop |
 | `AgentManager` | `DefaultAgentManager` | — |
 | `SessionStore` | `DefaultSessionStore` | `SqliteSessionStore` |
-| `Transport` | `DiscordTransport` | `FeishuTransport`, `WebTransport` |
-| `Tool` | `ShellTool`, `FileTool` | `GitHubTool`, `WebSearchTool` |
+| `Transport` | `DiscordTransport`, `FeishuTransport` | `WebTransport` |
+| `Tool` | `ToolRegistry` (shell, file, git, github) | `WebSearchTool` |
 
 ---
 

@@ -1,9 +1,9 @@
-# 🫥 Isotopes - Technical Design
+# Isotopes - Technical Design
 
-> Version: 0.1.0 (MVP)
-> Date: 2026-04-03
+> Version: 0.3.0
+> Date: 2026-04-08
 
-This document contains architecture and interface specifications for Isotopes.
+This document describes the architecture and core interfaces of Isotopes.
 For product requirements, see [PRD.md](./PRD.md).
 
 ---
@@ -11,51 +11,73 @@ For product requirements, see [PRD.md](./PRD.md).
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Discord Transport                    │
-│  - Message handling                                     │
-│  - Thread streaming                                     │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────┐
-│                     Orchestrator                        │
-│  ┌─────────────────┐  ┌─────────────────────────────┐   │
-│  │  Agent Manager  │  │  Session Store (JSONL)      │   │
-│  │  (JSON file)    │  │                             │   │
-│  └────────┬────────┘  └──────────────┬──────────────┘   │
-│           │                          │                  │
-│           ▼                          ▼                  │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │                   Data Layer                     │   │
-│  │  data/                                           │   │
-│  │  ├── agents.json        (agent metadata)         │   │
-│  │  └── agents/{id}/                                │   │
-│  │      ├── SOUL.md        (system prompt)          │   │
-│  │      ├── TOOLS.md       (tool instructions)      │   │
-│  │      ├── MEMORY.md      (persistent memory)      │   │
-│  │      └── sessions/*.jsonl                        │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────┐
-│               Agent Core (Pluggable Interface)          │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  interface AgentCore {                           │   │
-│  │    createAgent(config): AgentInstance            │   │
-│  │  }                                               │   │
-│  │  ─────────────────────────────────────────────   │   │
-│  │  class PiMonoCore implements AgentCore           │   │
-│  │  class CustomCore implements AgentCore (future)  │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────┐
-│                   Providers (External)                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │OpenAI Proxy │  │Anthropic   │  │  Direct APIs    │  │
-│  │(ollama,etc) │  │   Proxy    │  │ (OpenAI, etc.)  │  │
-│  └─────────────┘  └─────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                       Transports                            │
+│    Discord         |  Feishu           |  Web API           │
+│  (channels,        | (groups, P2P,     | (REST, status,     │
+│   threads, DMs)    |  WebSocket)       |  sessions, cron)   │
+└──────────────┬────────────────┬───────────────┬─────────────┘
+               │                │               │
+┌──────────────┴────────────────┴───────────────┴─────────────┐
+│                      Message Router                         │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  Binding Resolution                                 │    │
+│  │  - Match by (channel, accountId, peer)              │    │
+│  │  - More-specific bindings take priority             │    │
+│  │  - Mention filtering (requireMention per guild)     │    │
+│  ├─────────────────────────────────────────────────────┤    │
+│  │  ACP Protocol                                       │    │
+│  │  - Session manager (lifecycle, Claude/Codex)        │    │
+│  │  - Message bus (agent-to-agent routing)             │    │
+│  │  - Shared context (cross-agent state)               │    │
+│  └─────────────────────────────────────────────────────┘    │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────┴──────────────────────────────────┐
+│                      Orchestrator                           │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │Agent Manager│  │Session Store │  │ Cron Scheduler   │   │
+│  │(CRUD, prompt│  │(JSONL, key   │  │ (expression      │   │
+│  │ delegation) │  │ lookup, TTL) │  │  parser, jobs)   │   │
+│  └─────────────┘  └──────────────┘  └──────────────────┘   │
+│  ┌──────────────────┐  ┌──────────────────────────────┐    │
+│  │Workspace Watcher │  │ Config Reloader              │    │
+│  │(fs.watch, glob)  │  │ (hot-reload on file change)  │    │
+│  └──────────────────┘  └──────────────────────────────┘    │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Context Compaction (safeguard | aggressive | off)    │   │
+│  │ - Token counting, LLM-based summarization           │   │
+│  └──────────────────────────────────────────────────────┘   │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────┴──────────────────────────────────┐
+│          Agent Core (Pluggable: @mariozechner/pi-*)         │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  interface AgentCore {                               │   │
+│  │    createAgent(config): AgentInstance                 │   │
+│  │  }                                                   │   │
+│  │  ─────────────────────────────────────               │   │
+│  │  PiMonoCore (current implementation)                 │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Tool System                                         │   │
+│  │  - ToolRegistry (register, list, invoke)             │   │
+│  │  - Built-in: shell, read_file, write_file, list_dir  │   │
+│  │  - Git: status, log, diff, add, commit, push, pull   │   │
+│  │  - GitHub: PRs, issues, repos (via gh CLI)           │   │
+│  │  - Tool guards (cli: bool, fs.workspaceOnly: bool)   │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Sandbox Executor (Docker)                           │   │
+│  │  - Container lifecycle management                    │   │
+│  │  - Workspace volume mounting (rw | ro)               │   │
+│  │  - Per-agent mode: off | non-main | all              │   │
+│  └──────────────────────────────────────────────────────┘   │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────┴──────────────────────────────────┐
+│     Providers (OpenAI Proxy | Anthropic Proxy | Direct)     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -72,8 +94,8 @@ interface AgentCore {
 interface AgentInstance {
   prompt(input: string | Message[]): AsyncIterable<AgentEvent>;
   abort(): void;
-  steer(msg: Message): void;
-  followUp(msg: Message): void;
+  steer(msg: Message): void;       // Real-time user interrupt
+  followUp(msg: Message): void;    // Queue follow-up after current turn
 }
 
 interface AgentConfig {
@@ -81,7 +103,11 @@ interface AgentConfig {
   name: string;
   systemPrompt: string;
   tools?: Tool[];
+  toolSettings?: AgentToolSettings;
   provider?: ProviderConfig;
+  workspacePath?: string;
+  compaction?: CompactionConfig;
+  sandbox?: SandboxConfig;
 }
 
 type AgentEvent =
@@ -90,15 +116,8 @@ type AgentEvent =
   | { type: 'tool_call'; id: string; name: string; args: unknown }
   | { type: 'tool_result'; id: string; output: string; isError?: boolean }
   | { type: 'turn_end' }
-  | { type: 'agent_end'; messages: Message[] }
+  | { type: 'agent_end'; messages: Message[]; stopReason?: string }
   | { type: 'error'; error: Error };
-
-interface ProviderConfig {
-  type: 'openai-proxy' | 'anthropic-proxy' | 'openai' | 'anthropic';
-  baseUrl?: string;
-  apiKey?: string;
-  model?: string;
-}
 ```
 
 ### AgentManager
@@ -121,28 +140,17 @@ interface AgentManager {
 interface SessionStore {
   create(agentId: string, metadata?: SessionMetadata): Promise<Session>;
   get(sessionId: string): Promise<Session | undefined>;
+  findByKey(key: string): Promise<Session | undefined>;
   addMessage(sessionId: string, message: Message): Promise<void>;
   getMessages(sessionId: string): Promise<Message[]>;
   delete(sessionId: string): Promise<void>;
 }
 
-interface Session {
-  id: string;
-  agentId: string;
-  metadata?: SessionMetadata;
-  lastActiveAt: Date;
-}
-
 interface SessionMetadata {
+  key?: string;
   transport: 'discord' | 'feishu' | 'web';
   channelId?: string;
   threadId?: string;
-}
-
-interface SessionStoreConfig {
-  dataDir: string;
-  maxSessions?: number;      // default: 100
-  maxTotalSizeMB?: number;   // default: 100
 }
 ```
 
@@ -157,60 +165,42 @@ interface Transport {
 
 ---
 
-## Directory Structure
+## Data Layout
 
 ```
-isotopes/
-├── src/
-│   ├── core/
-│   │   ├── types.ts         # AgentCore interface + types
-│   │   └── pi-mono.ts       # Pi-Mono implementation
-│   ├── orchestrator/
-│   │   ├── agent-manager.ts # JsonAgentManager
-│   │   └── session-store.ts # JsonlSessionStore
-│   ├── transports/
-│   │   └── discord.ts       # Discord transport
-│   ├── config/
-│   │   └── index.ts         # YAML loader
-│   └── index.ts             # Main entry
-├── data/                    # Runtime data (gitignored)
-├── docs/
-└── package.json
+~/.isotopes/
+├── isotopes.yaml            # Main config
+├── isotopes.pid             # Daemon PID
+├── workspaces/
+│   └── {agentId}/
+│       ├── SOUL.md          # System prompt additions
+│       ├── TOOLS.md         # Tool instructions (optional)
+│       ├── MEMORY.md        # Persistent memory (optional)
+│       └── sessions/
+│           ├── sessions.json    # Session index
+│           └── {sessionId}.jsonl
+└── logs/
+    └── isotopes-YYYY-MM-DD.log
 ```
 
 ---
 
-## Configuration
+## Extension Points
 
-```yaml
-providers:
-  openai-proxy:
-    baseUrl: http://localhost:4141/v1
-    apiKey: optional
-  anthropic-proxy:
-    baseUrl: http://localhost:4141/v1
-    apiKey: optional
-  openai:
-    apiKey: ${OPENAI_API_KEY}
-  anthropic:
-    apiKey: ${ANTHROPIC_API_KEY}
-
-defaultProvider: openai-proxy
-defaultModel: claude-sonnet-4-20250514
-
-discord:
-  token: ${DISCORD_TOKEN}
-
-storage:
-  dataDir: ./data
-  maxSessions: 100
-  maxTotalSizeMB: 100
-```
+| Interface | Current Implementation | Purpose |
+|-----------|----------------------|---------|
+| `AgentCore` | `PiMonoCore` | Pluggable agent backend |
+| `AgentManager` | `DefaultAgentManager` | Agent lifecycle |
+| `SessionStore` | `DefaultSessionStore` | Session persistence |
+| `Transport` | `DiscordTransport`, `FeishuTransport` | Message I/O |
+| `ToolRegistry` | Built-in tools + user-registered | Agent capabilities |
 
 ---
 
-## Design Notes
+## Design Principles
 
-- **Keep core layer thin** — wrapper only translates types, no heavy abstractions or tight coupling with Pi-Mono
-- **Session auto-cleanup** — LRU eviction when limits exceeded
-- **Prompts in markdown** — follows OpenClaw pattern (SOUL.md, TOOLS.md, MEMORY.md)
+- **Keep core layer thin** — wrapper translates types, no heavy abstractions
+- **Session auto-cleanup** — TTL-based expiration with periodic sweeps
+- **Prompts in markdown** — `SOUL.md`, `TOOLS.md`, `MEMORY.md` per agent workspace
+- **Config over code** — single YAML file drives multi-agent setup
+- **Pluggable everything** — agent core, transports, tools, and sandbox are all swappable interfaces
