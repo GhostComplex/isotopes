@@ -186,8 +186,23 @@ Built-in tools:
 - `shell` — Execute shell commands
 - `read_file`, `write_file`, `list_dir` — File operations
 - `get_current_time` — Current timestamp
+- `iterate_self`, `create_skill`, `append_memory` — Self-iteration tools
 
 Extensible via tool registration.
+
+### 7. Skills System
+On-demand loading of task-specific instructions:
+- Skills discovered from `~/.isotopes/skills/` and `{workspace}/skills/`
+- SKILL.md format with frontmatter (name, description)
+- Progressive disclosure — only descriptions in system prompt, full content loaded on-demand
+- Compatible with [AgentSkills spec](https://agentskills.io/specification)
+
+### 8. Self-Iteration
+Agents can modify their own configuration:
+- Update SOUL.md, MEMORY.md, TOOLS.md via `iterate_self` tool
+- Create new skills via `create_skill` tool
+- Append learnings via `append_memory` tool
+- Hot-reload system applies changes without restart
 
 ---
 
@@ -242,11 +257,17 @@ Extensible via tool registration.
 ```
 ~/.isotopes/
 ├── isotopes.yaml            # Main config
+├── skills/                  # Global skills
+│   └── {skill-name}/
+│       └── SKILL.md
 ├── workspaces/
 │   └── {agentId}/
 │       ├── SOUL.md          # System prompt
 │       ├── TOOLS.md         # Tool instructions (optional)
 │       ├── MEMORY.md        # Persistent memory (optional)
+│       ├── skills/          # Workspace-local skills
+│       │   └── {skill-name}/
+│       │       └── SKILL.md
 │       └── sessions/
 │           ├── sessions.json    # Session index
 │           └── {sessionId}.jsonl
@@ -269,8 +290,12 @@ Extensible via tool registration.
 | **M6** | Sandbox Execution | ✅ Done |
 | **M7** | Sub-agent Backend | ✅ Done |
 | **M8** | Subagent Security & Config | 📋 Backlog |
+| **M9** | Skills System | ✅ Done |
+| **M10** | Self-Iteration System | ✅ Done |
 
 > **Completed milestones (M0-M7)**: See [archived/PRD-milestones-M0-M7.md](./archived/PRD-milestones-M0-M7.md)  
+> **M9 Skills**: See [archived/PRD-M9-skills.md](./archived/PRD-M9-skills.md)  
+> **M10 Self-Iteration**: See [archived/PRD-M10-self-iteration.md](./archived/PRD-M10-self-iteration.md)  
 > **Backlog items**: See [backlog/](./backlog/)
 
 ---
@@ -283,7 +308,7 @@ Extensible via tool registration.
 | `AgentManager` | `DefaultAgentManager` | — |
 | `SessionStore` | `DefaultSessionStore` | `SqliteSessionStore` |
 | `Transport` | `DiscordTransport`, `FeishuTransport` | `WebTransport` |
-| `Tool` | `ToolRegistry` (shell, file, git, github) | `WebSearchTool` |
+| `Tool` | `ToolRegistry` (shell, file, git, github, self-iteration) | `WebSearchTool` |
 
 ---
 
