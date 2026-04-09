@@ -196,7 +196,7 @@ export class AcpSessionManager {
     this.listeners.push(callback);
     return () => {
       const idx = this.listeners.indexOf(callback);
-      if (idx >= 0) this.listeners.splice(idx, 1);
+      if (idx !== -1) this.listeners.splice(idx, 1);
     };
   }
 

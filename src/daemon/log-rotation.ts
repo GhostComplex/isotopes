@@ -2,7 +2,7 @@
 // Rotates log files when they exceed a configured size, with optional gzip.
 
 import fs from "node:fs/promises";
-import fss from "node:fs";
+import fsSync from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { createLogger } from "../core/logger.js";
@@ -163,8 +163,8 @@ export class LogRotator {
   }
 
   private async compressFile(src: string, dst: string): Promise<void> {
-    const input = fss.createReadStream(src);
-    const output = fss.createWriteStream(dst);
+    const input = fsSync.createReadStream(src);
+    const output = fsSync.createWriteStream(dst);
     const gzip = createGzip();
 
     await pipeline(input, gzip, output);

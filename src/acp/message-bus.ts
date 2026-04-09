@@ -156,7 +156,7 @@ export class AgentMessageBus {
       const list = this.agentHandlers.get(agentId);
       if (!list) return;
       const idx = list.indexOf(handler);
-      if (idx >= 0) list.splice(idx, 1);
+      if (idx !== -1) list.splice(idx, 1);
       if (list.length === 0) this.agentHandlers.delete(agentId);
     };
   }
@@ -177,7 +177,7 @@ export class AgentMessageBus {
       const list = this.sessionHandlers.get(sessionId);
       if (!list) return;
       const idx = list.indexOf(handler);
-      if (idx >= 0) list.splice(idx, 1);
+      if (idx !== -1) list.splice(idx, 1);
       if (list.length === 0) this.sessionHandlers.delete(sessionId);
     };
   }

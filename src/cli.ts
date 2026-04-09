@@ -32,8 +32,7 @@ import {
   ensureWorkspaceStructure,
 } from "./core/workspace.js";
 import { DaemonProcess } from "./daemon/process.js";
-import { ServiceManager, getPlatform } from "./daemon/service.js";
-import type { ServiceConfig } from "./daemon/service.js";
+import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
 
 // ---------------------------------------------------------------------------
 // Constants

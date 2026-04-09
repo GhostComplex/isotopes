@@ -18,8 +18,7 @@ import type {
   SessionConfig,
 } from "./types.js";
 import type { AcpConfig } from "../acp/types.js";
-import { resolveSandboxConfig } from "../sandbox/config.js";
-import type { SandboxConfig } from "../sandbox/config.js";
+import { resolveSandboxConfig, type SandboxConfig } from "../sandbox/config.js";
 
 // ---------------------------------------------------------------------------
 // Validation helpers

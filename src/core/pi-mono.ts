@@ -1,21 +1,20 @@
 // src/core/pi-mono.ts — Thin wrapper around @mariozechner/pi-agent-core Agent
 // Implements the AgentCore / AgentInstance interfaces from types.ts.
 
-import { Agent } from "@mariozechner/pi-agent-core";
-import type { AgentEvent as CoreEvent, AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
-import { getModel, completeSimple } from "@mariozechner/pi-ai";
-import type { Model, Api } from "@mariozechner/pi-ai";
+import { Agent, type AgentEvent as CoreEvent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
+import { getModel, completeSimple, type Model, type Api } from "@mariozechner/pi-ai";
 
-import type {
-  AgentConfig,
-  AgentCore,
-  AgentEvent,
-  AgentInstance,
-  Message,
-  MessageContentBlock,
-  Tool,
+import {
+  messageContentToPlainText,
+  textContent,
+  type AgentConfig,
+  type AgentCore,
+  type AgentEvent,
+  type AgentInstance,
+  type Message,
+  type MessageContentBlock,
+  type Tool,
 } from "./types.js";
-import { messageContentToPlainText, textContent } from "./types.js";
 import type { ToolRegistry } from "./tools.js";
 import { createTransformContext, resolveCompactionConfig } from "./compaction.js";
 import { createLogger } from "./logger.js";

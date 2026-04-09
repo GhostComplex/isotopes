@@ -2,17 +2,17 @@
 // Handles Feishu bot connection via WebSocket, message routing, and response streaming.
 
 import * as lark from "@larksuiteoapi/node-sdk";
-import type {
-  AgentInstance,
-  AgentManager,
-  Binding,
-  BindingPeer,
-  ChannelsConfig,
-  Message,
-  SessionStore,
-  Transport,
+import {
+  textContent,
+  type AgentInstance,
+  type AgentManager,
+  type Binding,
+  type BindingPeer,
+  type ChannelsConfig,
+  type Message,
+  type SessionStore,
+  type Transport,
 } from "../core/types.js";
-import { textContent } from "../core/types.js";
 import { resolveBinding } from "../core/bindings.js";
 import { loggers } from "../core/logger.js";
 import { runAgentLoop } from "../core/agent-runner.js";

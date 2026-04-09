@@ -2,10 +2,9 @@
 // Manages the lifecycle of sandbox containers per-agent and routes
 // command execution through them.
 
-import type { ContainerInfo, ContainerManager, ExecResult } from "./container.js";
-import type { SandboxConfig, WorkspaceAccess } from "./config.js";
-import { shouldSandbox } from "./config.js";
 import { createLogger } from "../core/logger.js";
+import type { ContainerInfo, ContainerManager, ExecResult } from "./container.js";
+import { shouldSandbox, type SandboxConfig, type WorkspaceAccess } from "./config.js";
 
 const log = createLogger("sandbox:executor");
 

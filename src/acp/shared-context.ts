@@ -102,7 +102,7 @@ export class SharedContextManager {
     if (!ctx) return false;
 
     const idx = ctx.participants.indexOf(sessionId);
-    if (idx < 0) return false;
+    if (idx === -1) return false;
 
     ctx.participants.splice(idx, 1);
     ctx.updatedAt = new Date();

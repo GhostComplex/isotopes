@@ -11,16 +11,16 @@ import {
   type NewsChannel,
   type ThreadChannel,
 } from "discord.js";
-import type {
-  AgentInstance,
-  AgentManager,
-  ChannelsConfig,
-  Message,
-  SessionStore,
-  ThreadBindingConfig,
-  Transport,
+import {
+  textContent,
+  type AgentInstance,
+  type AgentManager,
+  type ChannelsConfig,
+  type Message,
+  type SessionStore,
+  type ThreadBindingConfig,
+  type Transport,
 } from "../core/types.js";
-import { textContent } from "../core/types.js";
 import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";

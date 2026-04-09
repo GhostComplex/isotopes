@@ -141,7 +141,7 @@ export async function add(
   options: GitOptions = {},
 ): Promise<string> {
   if (files.length === 0) {
-    throw new Error("git add requires at least one file path");
+    throw new Error("Git add requires at least one file path");
   }
   const { stdout } = await gitExec(["add", "--", ...files], options);
   return stdout;

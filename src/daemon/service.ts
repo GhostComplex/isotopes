@@ -4,11 +4,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { exec as execCb } from "node:child_process";
+import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { createLogger } from "../core/logger.js";
 
-const execAsync = promisify(execCb);
+const execAsync = promisify(exec);
 const log = createLogger("daemon:service");
 
 // ---------------------------------------------------------------------------

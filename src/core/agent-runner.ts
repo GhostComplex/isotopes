@@ -1,8 +1,7 @@
 // src/core/agent-runner.ts — Shared agent event loop
 // Iterates over agent.prompt() and collects the response, handling errors uniformly.
 
-import type { AgentInstance, Message, SessionStore } from "./types.js";
-import { textContent } from "./types.js";
+import { textContent, type AgentInstance, type Message, type SessionStore } from "./types.js";
 import type { Logger } from "./logger.js";
 
 /** Result of running an agent prompt to completion */
