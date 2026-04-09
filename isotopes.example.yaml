@@ -1,49 +1,142 @@
-# Isotopes Example Configuration
-# Copy to isotopes.yaml and customize
+# Isotopes v2 Example Configuration
+# Copy to ~/.isotopes/isotopes.yaml and customize
 
-# Default provider for all agents
+# =============================================================================
+# PROVIDER - Default LLM provider for all agents
+# =============================================================================
 provider:
-  type: anthropic
+  type: anthropic              # anthropic | openai | anthropic-proxy
   model: claude-sonnet-4-20250514
   apiKey: ${ANTHROPIC_API_KEY}
+  # For proxy providers:
+  # baseUrl: https://your-proxy.example.com
 
-# Tool guards and defaults
+# =============================================================================
+# TOOLS - Tool permissions and guards
+# =============================================================================
 tools:
-  # CLI/shell execution is off by default.
-  cli: false
+  cli: false                   # CLI/shell execution (default: off for safety)
   fs:
-    # Restrict file tools to the agent workspace by default.
-    workspaceOnly: true
+    workspaceOnly: true        # Restrict file tools to agent workspace
 
-# Session management
+# =============================================================================
+# COMPACTION - Context window management (M1)
+# =============================================================================
+compaction:
+  mode: safeguard              # off | safeguard | aggressive
+  contextWindow: 100000        # Max tokens before compaction triggers
+  threshold: 0.8               # Trigger at 80% of context window
+
+# =============================================================================
+# SANDBOX - Secure code execution (M6)
+# =============================================================================
+sandbox:
+  mode: off                    # off | non-main | all
+  workspaceAccess: rw          # rw | ro
+  docker:
+    image: node:20-slim
+    network: bridge            # bridge | host | none
+    memoryLimit: 512m
+    cpuLimit: 1.0
+
+# =============================================================================
+# SESSION - Session management and persistence
+# =============================================================================
 session:
-  ttl: 86400           # Session time-to-live in seconds (default: 24h)
-  cleanupInterval: 3600 # Cleanup sweep interval in seconds (default: 1h)
+  ttl: 86400                   # Session TTL in seconds (default: 24h)
+  cleanupInterval: 3600        # Cleanup interval in seconds (default: 1h)
 
-# Agent definitions
+# =============================================================================
+# AGENTS - Agent definitions
+# =============================================================================
 agents:
   - id: assistant
     name: Assistant
     systemPrompt: You are a helpful AI assistant.
     workspacePath: ./workspaces/assistant
-    # Optional: enable CLI/shell for a specific agent
+    # Per-agent overrides (optional):
     # tools:
     #   cli: true
-    # Optional: override provider per agent
+    # compaction:
+    #   mode: aggressive
+    # sandbox:
+    #   mode: docker
     # provider:
     #   type: openai
     #   model: gpt-4o
     #   apiKey: ${OPENAI_API_KEY}
 
-# Discord transport (optional)
+# =============================================================================
+# DISCORD - Discord transport (M2)
+# =============================================================================
 discord:
-  tokenEnv: DISCORD_TOKEN
+  tokenEnv: DISCORD_TOKEN      # Environment variable containing bot token
   defaultAgentId: assistant
-  # Map bot user IDs to agents for multi-agent routing
-  # agentBindings:
-  #   "123456789": assistant
   allowDMs: true
-  # Limit to specific channels (empty = all)
+  # Multi-bot routing:
+  # agentBindings:
+  #   "bot-user-id-1": assistant
+  #   "bot-user-id-2": coder
+  # Channel allowlist (empty = all channels):
   # channelAllowlist:
   #   - "channel-id-1"
-  #   - "channel-id-2"
+
+# =============================================================================
+# FEISHU - Feishu/Lark transport (M2)
+# =============================================================================
+# feishu:
+#   appId: ${FEISHU_APP_ID}
+#   appSecret: ${FEISHU_APP_SECRET}
+#   defaultAgentId: assistant
+
+# =============================================================================
+# ACP - Agent Communication Protocol (M3)
+# =============================================================================
+acp:
+  enabled: false
+  backend: claude-code         # acpx | claude-code | codex
+  defaultAgent: assistant
+  allowedAgents:               # Agents allowed to spawn ACP sessions
+    - assistant
+
+# =============================================================================
+# THREAD BINDINGS - Thread-based agent routing (M3)
+# =============================================================================
+# threadBindings:
+#   enabled: true
+#   spawnAcpSessions: true     # Auto-spawn ACP sessions for threads
+
+# =============================================================================
+# CRON - Scheduled tasks (M4)
+# =============================================================================
+# cron:
+#   - name: daily-report
+#     expression: "0 9 * * *"  # 9 AM daily
+#     agentId: assistant
+#     action:
+#       type: prompt
+#       prompt: "Generate daily report"
+#   - name: weekly-cleanup
+#     expression: "0 0 * * 0"  # Midnight on Sunday
+#     agentId: assistant
+#     action:
+#       type: prompt
+#       prompt: "Clean up old sessions"
+
+# =============================================================================
+# API - REST API server (M5)
+# =============================================================================
+api:
+  port: 3000
+  host: 127.0.0.1
+  # corsOrigins:
+  #   - "http://localhost:5173"
+
+# =============================================================================
+# WORKSPACE - Hot-reload and file watching (M4)
+# =============================================================================
+# workspace:
+#   watchConfig: true          # Auto-reload config on change
+#   watchPatterns:
+#     - "**/*.md"
+#     - "**/*.yaml"
