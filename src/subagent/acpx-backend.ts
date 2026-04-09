@@ -210,8 +210,8 @@ export class AcpxBackend {
     log.info(`Spawning acpx ${options.agent} exec`, { taskId, cwd: options.cwd });
 
     const proc = spawn(
-      "npx",
-      ["acpx", options.agent, "exec", ...args],
+      "acpx",
+      [options.agent, "exec", ...args],
       {
         cwd: options.cwd,
         shell: false,
