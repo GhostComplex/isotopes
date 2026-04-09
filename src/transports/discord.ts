@@ -35,6 +35,102 @@ const log = loggers.discord;
 
 type SendableChannel = TextChannel | DMChannel | NewsChannel | ThreadChannel;
 
+// ---------------------------------------------------------------------------
+// SegmentedStreamBuffer — buffers streaming text and flushes at sentence boundaries
+// ---------------------------------------------------------------------------
+
+/** Sentence boundary patterns for flush detection */
+const SENTENCE_BOUNDARIES = [". ", "! ", "? ", "\n\n"];
+
+/**
+ * Buffers streaming text and flushes at sentence/paragraph boundaries.
+ * This prevents message.edit() spam which causes other bots to see truncated content.
+ */
+export class SegmentedStreamBuffer {
+  private buffer = "";
+  private readonly maxBufferSize: number;
+  private readonly onFlush: (text: string) => Promise<void>;
+
+  /**
+   * @param onFlush - Callback invoked when buffer is flushed (sends new message)
+   * @param maxBufferSize - Max characters before forcing flush at next boundary (default 500)
+   */
+  constructor(onFlush: (text: string) => Promise<void>, maxBufferSize = 500) {
+    this.onFlush = onFlush;
+    this.maxBufferSize = maxBufferSize;
+  }
+
+  /**
+   * Add text to the buffer. Will flush automatically at sentence boundaries
+   * when buffer exceeds maxBufferSize.
+   */
+  async append(text: string): Promise<void> {
+    this.buffer += text;
+    await this.tryFlush();
+  }
+
+  /**
+   * Flush all remaining content in the buffer.
+   * Call this when streaming is complete.
+   */
+  async flushRemaining(): Promise<void> {
+    if (this.buffer.length > 0) {
+      await this.onFlush(this.buffer);
+      this.buffer = "";
+    }
+  }
+
+  /**
+   * Check if buffer should be flushed and do so if appropriate.
+   * Flushes when buffer >= maxBufferSize AND a sentence boundary is found.
+   */
+  private async tryFlush(): Promise<void> {
+    if (this.buffer.length < this.maxBufferSize) {
+      return;
+    }
+
+    // Find the last sentence boundary in the buffer
+    const boundaryIndex = this.findLastBoundary();
+    if (boundaryIndex === -1) {
+      // No boundary found yet, keep buffering
+      return;
+    }
+
+    // Flush up to and including the boundary
+    const toFlush = this.buffer.slice(0, boundaryIndex);
+    this.buffer = this.buffer.slice(boundaryIndex);
+
+    if (toFlush.length > 0) {
+      await this.onFlush(toFlush);
+    }
+  }
+
+  /**
+   * Find the last sentence boundary position in the buffer.
+   * Returns the index AFTER the boundary (i.e., where to split).
+   */
+  private findLastBoundary(): number {
+    let lastIndex = -1;
+
+    for (const boundary of SENTENCE_BOUNDARIES) {
+      const idx = this.buffer.lastIndexOf(boundary);
+      if (idx !== -1) {
+        const endPos = idx + boundary.length;
+        if (endPos > lastIndex) {
+          lastIndex = endPos;
+        }
+      }
+    }
+
+    return lastIndex;
+  }
+
+  /** Get the current buffer content (for testing/debugging) */
+  getBuffer(): string {
+    return this.buffer;
+  }
+}
+
 /** Configuration for the Discord transport. */
 export interface DiscordTransportConfig {
   /** Discord bot token from Developer Portal */
@@ -376,8 +472,17 @@ export class DiscordTransport implements Transport {
     const typing = this.startTyping(channel);
 
     try {
-      let sentMessage: DiscordMessage | null = null;
-      let lastUpdate = 0;
+      // Track what we've already sent via the segmented buffer
+      let lastSentLength = 0;
+
+      // Create segmented stream buffer that sends new messages at sentence boundaries
+      const streamBuffer = new SegmentedStreamBuffer(async (text: string) => {
+        // Chunk if needed and send as new messages
+        const chunks = this.chunkMessage(text);
+        for (const chunk of chunks) {
+          await channel.send(chunk);
+        }
+      });
 
       // Create the agent loop runner function
       const runLoop = async () => {
@@ -388,43 +493,36 @@ export class DiscordTransport implements Transport {
           sessionStore,
           log,
           onTextDelta: async (currentText) => {
-            // Stream partial updates only when content fits in a single message.
-            // Once it exceeds the limit, skip streaming and send the full
-            // multi-chunk result at the end to avoid piling up duplicate messages.
-            const now = Date.now();
-            if (now - lastUpdate > 500 && currentText.length > 0 && currentText.length <= 2000) {
-              sentMessage = await this.updateOrSendMessage(
-                channel,
-                sentMessage,
-                currentText,
-              );
-              lastUpdate = now;
+            // Extract only the new delta text since last callback
+            const delta = currentText.slice(lastSentLength);
+            lastSentLength = currentText.length;
+
+            if (delta.length > 0) {
+              await streamBuffer.append(delta);
             }
           },
         });
       };
 
       // Run with or without subagent context based on config
-      let responseText: string;
       let errorMessage: string | null;
 
       if (this.config.enableSubagentStreaming !== false) {
         // Run with subagent Discord context enabled
         const subagentContext = this.createSubagentContext(channel);
         const result = await runWithSubagentContextAsync(subagentContext, runLoop);
-        responseText = result.responseText;
+        
         errorMessage = result.errorMessage;
       } else {
         // Run without subagent context (original behavior)
         const result = await runLoop();
-        responseText = result.responseText;
+        
         errorMessage = result.errorMessage;
       }
 
-      // Send final message
-      if (responseText) {
-        await this.updateOrSendMessage(channel, sentMessage, responseText);
-      }
+      // Flush any remaining content in the buffer
+      await streamBuffer.flushRemaining();
+
       if (errorMessage) {
         const finalErrorMessage = `❌ ${errorMessage}`;
         await sessionStore.addMessage(sessionId, {
@@ -446,33 +544,6 @@ export class DiscordTransport implements Transport {
     } finally {
       typing.stop();
     }
-  }
-
-  private async updateOrSendMessage(
-    channel: SendableChannel,
-    existing: DiscordMessage | null,
-    content: string,
-  ): Promise<DiscordMessage> {
-    // Chunk if too long
-    const chunks = this.chunkMessage(content);
-
-    if (existing && chunks.length === 1) {
-      // Update existing message
-      await existing.edit(chunks[0]);
-      return existing;
-    }
-
-    // Send new message(s)
-    let lastMsg: DiscordMessage | null = null;
-    for (const chunk of chunks) {
-      if (existing && !lastMsg) {
-        await existing.edit(chunk);
-        lastMsg = existing;
-      } else {
-        lastMsg = await channel.send(chunk);
-      }
-    }
-    return lastMsg!;
   }
 
   private chunkMessage(content: string, maxLength = 2000): string[] {
