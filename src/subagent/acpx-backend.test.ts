@@ -260,7 +260,6 @@ describe("AcpxBackend", () => {
         "Bash",
         "Glob",
         "Grep",
-        "LS",
       ]);
     });
 
@@ -321,7 +320,7 @@ describe("AcpxBackend", () => {
         "--output-format", "stream-json",
         "--verbose",
         "--dangerously-skip-permissions",
-        "--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep", "LS",
+        "--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep",
       ]);
     });
 
@@ -342,7 +341,7 @@ describe("AcpxBackend", () => {
         "--dangerously-skip-permissions",
         "--model", "gemini-2.5-pro",
         "--max-turns", "5",
-        "--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep", "LS",
+        "--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep",
       ]);
     });
   });

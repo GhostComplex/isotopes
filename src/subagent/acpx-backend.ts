@@ -234,7 +234,7 @@ export class AcpxBackend {
     }
 
     // Add allowed tools for file operations
-    args.push("--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep", "LS");
+    args.push("--allowedTools", "Read", "Write", "Edit", "Bash", "Glob", "Grep");
 
     // Note: prompt is NOT added here - it's passed via stdin
 
