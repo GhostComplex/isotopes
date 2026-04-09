@@ -17,6 +17,7 @@ import { PiMonoCore } from "./core/pi-mono.js";
 import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
 import { DiscordTransport } from "./transports/discord.js";
+import { ThreadBindingManager } from "./core/thread-bindings.js";
 import { AcpSessionManager } from "./acp/index.js";
 import { logger } from "./core/logger.js";
 import {
@@ -34,6 +35,7 @@ import {
   ensureWorkspaceDir,
   getSessionsDir,
   resolveWorkspacePath,
+  getThreadBindingsPath,
 } from "./core/paths.js";
 import {
   loadWorkspaceContext,
@@ -379,6 +381,15 @@ async function main() {
         }
       : undefined;
 
+    // Create and load persistent thread binding manager
+    const threadBindingManager = new ThreadBindingManager({
+      persistPath: getThreadBindingsPath(),
+    });
+    await threadBindingManager.load();
+    if (threadBindingManager.size > 0) {
+      logger.info(`Loaded ${threadBindingManager.size} persisted thread binding(s)`);
+    }
+
     const discord = new DiscordTransport({
       token,
       agentManager,
@@ -389,6 +400,7 @@ async function main() {
       allowDMs: config.discord.allowDMs,
       channelAllowlist: config.discord.channelAllowlist,
       threadBindings,
+      threadBindingManager,
       allowBots: config.discord.allowBots,
     });
 

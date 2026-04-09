@@ -66,6 +66,14 @@ export function getConfigPath(): string {
   return path.join(getIsotopesHome(), "isotopes.yaml");
 }
 
+/**
+ * Get the thread bindings file path.
+ * Fixed location: ~/.isotopes/thread-bindings.json
+ */
+export function getThreadBindingsPath(): string {
+  return path.join(getIsotopesHome(), "thread-bindings.json");
+}
+
 // ---------------------------------------------------------------------------
 // Directory initialization
 // ---------------------------------------------------------------------------

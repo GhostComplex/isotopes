@@ -1,8 +1,11 @@
 // src/core/thread-bindings.ts — Thread binding manager for Discord thread → agent session mapping
 // Stores and resolves bindings between Discord threads and agent sessions.
 
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 import type { ThreadBinding } from "./types.js";
 import type { AcpSessionManager } from "../acp/session-manager.js";
+import { logger } from "./logger.js";
 
 /** Callback invoked when a new thread binding is created */
 export type ThreadBindingCallback = (binding: ThreadBinding) => void;
@@ -26,6 +29,73 @@ export class ThreadBindingManager {
   private unbindListeners: ThreadUnbindCallback[] = [];
   private acpSessionManager: AcpSessionManager | null = null;
   private spawnAcpSessions = false;
+  private persistPath: string | null = null;
+
+  constructor(options?: { persistPath?: string }) {
+    this.persistPath = options?.persistPath ?? null;
+  }
+
+  /**
+   * Load bindings from the persist file.
+   * Call this once at startup.
+   */
+  async load(): Promise<void> {
+    if (!this.persistPath) return;
+
+    try {
+      const data = await readFile(this.persistPath, "utf-8");
+      const serialized = JSON.parse(data) as Array<{
+        threadId: string;
+        parentChannelId: string;
+        sessionId?: string;
+        agentId: string;
+        createdAt: string;
+      }>;
+
+      this.bindings.clear();
+      for (const item of serialized) {
+        const binding: ThreadBinding = {
+          threadId: item.threadId,
+          parentChannelId: item.parentChannelId,
+          sessionId: item.sessionId,
+          agentId: item.agentId,
+          createdAt: new Date(item.createdAt),
+        };
+        this.bindings.set(item.threadId, binding);
+      }
+      logger.debug(`Loaded ${this.bindings.size} thread binding(s) from ${this.persistPath}`);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        // File doesn't exist yet, that's fine
+        return;
+      }
+      logger.warn(`Failed to load thread bindings: ${err}`);
+    }
+  }
+
+  /**
+   * Save bindings to the persist file.
+   * Called automatically on bind/unbind.
+   */
+  private async save(): Promise<void> {
+    if (!this.persistPath) return;
+
+    try {
+      const serialized = Array.from(this.bindings.values()).map((b) => ({
+        threadId: b.threadId,
+        parentChannelId: b.parentChannelId,
+        sessionId: b.sessionId,
+        agentId: b.agentId,
+        createdAt: b.createdAt.toISOString(),
+      }));
+
+      // Ensure directory exists
+      await mkdir(path.dirname(this.persistPath), { recursive: true });
+      await writeFile(this.persistPath, JSON.stringify(serialized, null, 2));
+    } catch (err) {
+      logger.warn(`Failed to save thread bindings: ${err}`);
+    }
+  }
 
   /**
    * Attach an AcpSessionManager to auto-spawn ACP sessions on bind.
@@ -71,6 +141,7 @@ export class ThreadBindingManager {
     }
 
     this.bindings.set(threadId, full);
+    void this.save();
 
     // Notify listeners
     for (const listener of this.listeners) {
@@ -92,6 +163,7 @@ export class ThreadBindingManager {
       return false;
     }
     this.bindings.delete(threadId);
+    void this.save();
 
     // Notify unbind listeners
     for (const listener of this.unbindListeners) {

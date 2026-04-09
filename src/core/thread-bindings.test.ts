@@ -1,6 +1,9 @@
 // src/core/thread-bindings.test.ts — Unit tests for ThreadBindingManager
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { ThreadBindingManager } from "./thread-bindings.js";
 
 describe("ThreadBindingManager", () => {
@@ -328,6 +331,96 @@ describe("ThreadBindingManager", () => {
       manager.bind("thread-2", { parentChannelId: "c2", agentId: "a2" });
       manager.unbind("thread-2");
       expect(listener).toHaveBeenCalledTimes(1); // not called again
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // persistence
+  // ---------------------------------------------------------------------------
+
+  describe("persistence", () => {
+    it("should save bindings to file on bind", async () => {
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "thread-bindings-"));
+      const persistPath = path.join(tmpDir, "bindings.json");
+
+      const mgr = new ThreadBindingManager({ persistPath });
+      mgr.bind("thread-1", { parentChannelId: "channel-1", agentId: "agent-1" });
+
+      // Wait for async save
+      await new Promise((r) => setTimeout(r, 50));
+
+      const data = await fs.readFile(persistPath, "utf-8");
+      const parsed = JSON.parse(data);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].threadId).toBe("thread-1");
+
+      // Cleanup
+      await fs.rm(tmpDir, { recursive: true });
+    });
+
+    it("should load bindings from file", async () => {
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "thread-bindings-"));
+      const persistPath = path.join(tmpDir, "bindings.json");
+
+      // Pre-create file
+      await fs.writeFile(
+        persistPath,
+        JSON.stringify([
+          {
+            threadId: "thread-1",
+            parentChannelId: "channel-1",
+            agentId: "agent-1",
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+      );
+
+      const mgr = new ThreadBindingManager({ persistPath });
+      await mgr.load();
+
+      expect(mgr.size).toBe(1);
+      expect(mgr.get("thread-1")?.agentId).toBe("agent-1");
+
+      // Cleanup
+      await fs.rm(tmpDir, { recursive: true });
+    });
+
+    it("should handle missing file gracefully", async () => {
+      const mgr = new ThreadBindingManager({ persistPath: "/nonexistent/path.json" });
+      await expect(mgr.load()).resolves.toBeUndefined();
+    });
+
+    it("should remove bindings from file on unbind", async () => {
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "thread-bindings-"));
+      const persistPath = path.join(tmpDir, "bindings.json");
+
+      const mgr = new ThreadBindingManager({ persistPath });
+      mgr.bind("thread-1", { parentChannelId: "channel-1", agentId: "agent-1" });
+      mgr.bind("thread-2", { parentChannelId: "channel-2", agentId: "agent-2" });
+
+      // Wait for async save
+      await new Promise((r) => setTimeout(r, 50));
+
+      mgr.unbind("thread-1");
+
+      // Wait for async save
+      await new Promise((r) => setTimeout(r, 50));
+
+      const data = await fs.readFile(persistPath, "utf-8");
+      const parsed = JSON.parse(data);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].threadId).toBe("thread-2");
+
+      // Cleanup
+      await fs.rm(tmpDir, { recursive: true });
+    });
+
+    it("should not save when persistPath is not set", async () => {
+      const mgr = new ThreadBindingManager();
+      mgr.bind("thread-1", { parentChannelId: "channel-1", agentId: "agent-1" });
+
+      // No error, no file created
+      expect(mgr.size).toBe(1);
     });
   });
 });
