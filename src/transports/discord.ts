@@ -309,6 +309,10 @@ export class DiscordTransport implements Transport {
       ? allMessages.slice(-historyLimit)
       : allMessages;
 
+    // Clear agent internal state before prompting with fresh context
+    // This prevents message accumulation across prompts
+    agent.clearMessages?.();
+
     // Run agent and stream response
     await this.runAgentAndRespond(
       agent,

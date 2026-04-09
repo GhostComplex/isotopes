@@ -137,6 +137,10 @@ export interface AgentInstance {
   abort(): void;
   steer(msg: Message): void;
   followUp(msg: Message): void;
+  /** Force context compaction for overflow recovery. Returns true if compaction occurred. */
+  forceCompact?(): Promise<boolean>;
+  /** Clear internal message state before prompting with fresh context */
+  clearMessages?(): void;
 }
 
 // ---------------------------------------------------------------------------

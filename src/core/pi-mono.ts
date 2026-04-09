@@ -16,7 +16,14 @@ import {
   type Tool,
 } from "./types.js";
 import type { ToolRegistry } from "./tools.js";
-import { createTransformContext, resolveCompactionConfig } from "./compaction.js";
+import {
+  createTransformContext,
+  resolveCompactionConfig,
+  isContextOverflow,
+  forceCompact,
+  iterativeCompact,
+  estimateTotalTokens,
+} from "./compaction.js";
 import { createLogger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
@@ -250,6 +257,12 @@ function toAgentTool(tool: Tool, handler: (args: unknown) => Promise<string>): A
 // PiMonoCore
 // ---------------------------------------------------------------------------
 
+/** Options passed to PiMonoInstance for overflow recovery */
+interface CompactionContext {
+  config: ReturnType<typeof resolveCompactionConfig>;
+  summarize: (prompt: string, signal?: AbortSignal) => Promise<string>;
+}
+
 /**
  * PiMonoCore — {@link AgentCore} implementation backed by pi-agent-core.
  *
@@ -284,6 +297,7 @@ export class PiMonoCore implements AgentCore {
 
     // Build transformContext hook for context compaction
     let transformContext: ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>) | undefined;
+    let compactionContext: CompactionContext | undefined;
 
     if (config.compaction && config.compaction.mode !== "off") {
       const compactionConfig = resolveCompactionConfig(config.compaction);
@@ -309,6 +323,9 @@ export class PiMonoCore implements AgentCore {
         config: compactionConfig,
         summarize,
       });
+
+      // Pass compaction context to instance for overflow recovery
+      compactionContext = { config: compactionConfig, summarize };
     }
 
     const agent = new Agent({
@@ -324,7 +341,7 @@ export class PiMonoCore implements AgentCore {
         : {}),
     });
 
-    return new PiMonoInstance(agent);
+    return new PiMonoInstance(agent, compactionContext);
   }
 }
 
@@ -332,10 +349,16 @@ export class PiMonoCore implements AgentCore {
 // PiMonoInstance — wraps a single pi-agent-core Agent instance
 // ---------------------------------------------------------------------------
 
+/** Maximum number of overflow recovery attempts */
+const MAX_OVERFLOW_RETRIES = 2;
+
 class PiMonoInstance implements AgentInstance {
   private promptQueue: Promise<void> = Promise.resolve();
 
-  constructor(private agent: Agent) {}
+  constructor(
+    private agent: Agent,
+    private compactionContext?: CompactionContext,
+  ) {}
 
   async *prompt(input: string | Message[]): AsyncIterable<AgentEvent> {
     let releaseQueue: (() => void) | undefined;
@@ -346,11 +369,37 @@ class PiMonoInstance implements AgentInstance {
 
     await waitForTurn;
 
-    // Subscribe before calling prompt so we don't miss events
+    try {
+      // Attempt prompt with overflow recovery
+      yield* this.promptWithOverflowRecovery(input);
+    } finally {
+      releaseQueue?.();
+    }
+  }
+
+  /**
+   * Execute prompt with overflow detection and recovery.
+   * If an overflow error is detected, compact context and retry.
+   */
+  private async *promptWithOverflowRecovery(
+    input: string | Message[],
+    retryCount = 0,
+  ): AsyncIterable<AgentEvent> {
     const events: (CoreEvent | null)[] = [];
     let resolve: (() => void) | null = null;
+    let overflowDetected = false;
+    let overflowErrorMessage: string | undefined;
 
     const unsub = this.agent.subscribe((e: CoreEvent) => {
+      // Check for overflow in agent_end events
+      if (e.type === "agent_end") {
+        const messages = e.messages.map(fromAgentMessage);
+        const { errorMessage } = getAgentEndMetadata(messages);
+        if (errorMessage && isContextOverflow(errorMessage)) {
+          overflowDetected = true;
+          overflowErrorMessage = errorMessage;
+        }
+      }
       events.push(e);
       resolve?.();
     });
@@ -366,16 +415,22 @@ class PiMonoInstance implements AgentInstance {
         resolve?.();
       },
       (err) => {
-        // Push error sentinel so the while loop exits
+        // Check if the error itself indicates overflow
+        const errMessage = err instanceof Error ? err.message : String(err);
+        if (isContextOverflow(errMessage)) {
+          overflowDetected = true;
+          overflowErrorMessage = errMessage;
+        }
         events.push(null);
         resolve?.();
-        // Re-throw to propagate the error to `await done`
         throw err;
       },
     );
 
     try {
       let finished = false;
+      const collectedEvents: AgentEvent[] = [];
+
       while (!finished) {
         if (events.length === 0) {
           await new Promise<void>((r) => {
@@ -389,13 +444,70 @@ class PiMonoInstance implements AgentInstance {
             break;
           }
           const mapped = mapEvent(ev);
-          if (mapped) yield mapped;
+          if (mapped) {
+            collectedEvents.push(mapped);
+          }
         }
       }
-      await done;
+
+      // Try to await done, but catch overflow errors
+      try {
+        await done;
+      } catch (err) {
+        const errMessage = err instanceof Error ? err.message : String(err);
+        if (isContextOverflow(errMessage)) {
+          overflowDetected = true;
+          overflowErrorMessage = errMessage;
+        } else {
+          // Re-throw non-overflow errors
+          throw err;
+        }
+      }
+
+      // Handle overflow recovery
+      if (overflowDetected && this.compactionContext && retryCount < MAX_OVERFLOW_RETRIES) {
+        log.warn(
+          `Context overflow detected (attempt ${retryCount + 1}/${MAX_OVERFLOW_RETRIES}): ${overflowErrorMessage}`,
+        );
+
+        // Get current messages from agent state and perform iterative compaction
+        const currentMessages = this.agent.state.messages;
+        const tokensBefore = estimateTotalTokens(currentMessages);
+
+        log.info(`Performing overflow recovery compaction: ~${tokensBefore} tokens in ${currentMessages.length} messages`);
+
+        try {
+          const compactedMessages = await iterativeCompact({
+            messages: currentMessages,
+            config: this.compactionContext.config,
+            summarize: this.compactionContext.summarize,
+            maxRounds: 3,
+          });
+
+          const tokensAfter = estimateTotalTokens(compactedMessages);
+          log.info(
+            `Overflow recovery compaction complete: ~${tokensBefore} → ~${tokensAfter} tokens`,
+          );
+
+          // Replace agent messages with compacted version
+          this.agent.replaceMessages(compactedMessages);
+
+          // Retry the prompt with compacted context
+          // Don't re-yield the failed events, start fresh
+          yield* this.promptWithOverflowRecovery(input, retryCount + 1);
+          return;
+        } catch (compactErr) {
+          log.error("Overflow recovery compaction failed", compactErr);
+          // Fall through to yield original events
+        }
+      }
+
+      // Yield all collected events
+      for (const event of collectedEvents) {
+        yield event;
+      }
     } finally {
       unsub();
-      releaseQueue?.();
     }
   }
 
@@ -409,6 +521,51 @@ class PiMonoInstance implements AgentInstance {
 
   followUp(msg: Message): void {
     this.agent.followUp(toAgentMessage(msg));
+  }
+
+  clearMessages(): void {
+    this.agent.clearMessages();
+  }
+
+  /**
+   * Force context compaction for overflow recovery.
+   * Returns true if compaction occurred, false if not possible or not configured.
+   */
+  async forceCompact(): Promise<boolean> {
+    if (!this.compactionContext) {
+      log.warn("forceCompact called but compaction is not configured");
+      return false;
+    }
+
+    const currentMessages = this.agent.state.messages;
+    const preserveRecent = this.compactionContext.config.preserveRecent ?? 10;
+
+    if (currentMessages.length <= preserveRecent) {
+      log.warn(
+        `Cannot force compact: only ${currentMessages.length} messages, need more than ${preserveRecent}`,
+      );
+      return false;
+    }
+
+    const tokensBefore = estimateTotalTokens(currentMessages);
+    log.info(`Force compacting: ~${tokensBefore} tokens in ${currentMessages.length} messages`);
+
+    try {
+      const compactedMessages = await forceCompact({
+        messages: currentMessages,
+        config: this.compactionContext.config,
+        summarize: this.compactionContext.summarize,
+      });
+
+      const tokensAfter = estimateTotalTokens(compactedMessages);
+      log.info(`Force compaction complete: ~${tokensBefore} → ~${tokensAfter} tokens`);
+
+      this.agent.replaceMessages(compactedMessages);
+      return true;
+    } catch (err) {
+      log.error("Force compaction failed", err);
+      return false;
+    }
   }
 }
 
