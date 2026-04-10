@@ -212,6 +212,8 @@ export interface SessionStore {
   findByKey(key: string): Promise<Session | undefined>;
   addMessage(sessionId: string, message: Message): Promise<void>;
   getMessages(sessionId: string): Promise<Message[]>;
+  /** Replace all messages in a session (used by compaction) */
+  replaceMessages(sessionId: string, messages: Message[]): Promise<void>;
   delete(sessionId: string): Promise<void>;
 }
 

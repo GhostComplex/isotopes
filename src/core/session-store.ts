@@ -156,6 +156,32 @@ export class DefaultSessionStore implements SessionStore {
     return [...session.messages!];
   }
 
+  async replaceMessages(sessionId: string, messages: Message[]): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session "${sessionId}" not found`);
+    }
+
+    // Update in-memory messages
+    session.messages = [...messages];
+    session.messagesLoaded = true;
+    session.lastActiveAt = new Date();
+
+    // Rewrite the transcript file with the new messages
+    const file = this.transcriptFile(sessionId);
+    const lines = messages.map((message) => {
+      const record: PersistedTranscriptRecord = {
+        type: "message",
+        timestamp: message.timestamp ?? Date.now(),
+        message,
+      };
+      return JSON.stringify(record);
+    });
+    await fs.writeFile(file, lines.join("\n") + "\n");
+
+    this.debouncedPersistIndex();
+  }
+
   async delete(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session?.metadata?.key) {

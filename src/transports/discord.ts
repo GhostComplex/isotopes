@@ -16,6 +16,7 @@ import {
   type AgentInstance,
   type AgentManager,
   type ChannelsConfig,
+  type CompactionConfig,
   type Message,
   type SessionStore,
   type ThreadBindingConfig,
@@ -30,6 +31,12 @@ import {
   runWithSubagentContextAsync,
   type SubagentDiscordContext,
 } from "../core/subagent-context.js";
+import {
+  shouldCompact,
+  compactMessages,
+  resolveCompactionConfig,
+} from "../core/compaction.js";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
 const log = loggers.discord;
 
@@ -162,6 +169,8 @@ export interface DiscordTransportConfig {
   allowBots?: boolean;
   /** Maximum number of messages to include in context. Default: 50 */
   historyLimit?: number;
+  /** Compaction configuration for context management */
+  compaction?: Partial<CompactionConfig>;
 }
 
 /**
@@ -308,14 +317,26 @@ export class DiscordTransport implements Transport {
     await sessionStore.addMessage(session.id, userMessage);
 
     const allMessages = await sessionStore.getMessages(session.id);
-    // Limit context to recent messages to prevent context overflow
-    const historyLimit = this.config.historyLimit ?? 20;
-    const promptInput = allMessages.length > historyLimit
-      ? allMessages.slice(-historyLimit)
-      : allMessages;
+
+    // Apply compaction BEFORE historyLimit slice to preserve context
+    let messagesToProcess = allMessages;
+    const compactionConfig = resolveCompactionConfig(this.config.compaction);
+    if (compactionConfig.mode !== "off") {
+      const compacted = await this.maybeCompact(session.id, sessionStore, allMessages, agent);
+      if (compacted !== allMessages) {
+        // Compaction happened - use compacted messages
+        messagesToProcess = compacted;
+      }
+    }
+
+    // Now apply historyLimit to (possibly compacted) messages
+    const historyLimit = this.config.historyLimit ?? 50;
+    const promptInput = messagesToProcess.length > historyLimit
+      ? messagesToProcess.slice(-historyLimit)
+      : messagesToProcess;
 
     // Debug: Log context window contents
-    log.info(`[context-debug] Session ${session.id}: total=${allMessages.length}, sending=${promptInput.length}, historyLimit=${historyLimit}`);
+    log.info(`[context-debug] Session ${session.id}: total=${allMessages.length}, afterCompaction=${messagesToProcess.length}, sending=${promptInput.length}, historyLimit=${historyLimit}`);
     for (let i = 0; i < promptInput.length; i++) {
       const m = promptInput[i];
       const contentStr = Array.isArray(m.content) 
@@ -482,6 +503,63 @@ export class DiscordTransport implements Transport {
           }
         : undefined,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Compaction
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Check if compaction is needed and apply it.
+   * Updates the session store with compacted messages if compaction occurs.
+   */
+  private async maybeCompact(
+    sessionId: string,
+    sessionStore: SessionStore,
+    messages: Message[],
+    agent: AgentInstance,
+  ): Promise<Message[]> {
+    const config = resolveCompactionConfig(this.config.compaction);
+
+    // Convert to AgentMessage format for compaction check
+    const agentMessages = messages as unknown as AgentMessage[];
+
+    if (!shouldCompact(agentMessages, config)) {
+      return messages;
+    }
+
+    log.info(`[compaction] Session ${sessionId}: triggering compaction for ${messages.length} messages`);
+
+    try {
+      // Create summarizer using the agent
+      const summarize = async (prompt: string): Promise<string> => {
+        const response = agent.prompt(prompt);
+        // Collect the streaming response
+        let result = "";
+        for await (const event of response) {
+          if (event.type === "text_delta") {
+            result += event.text;
+          }
+        }
+        return result;
+      };
+
+      const compacted = await compactMessages({
+        messages: agentMessages,
+        config,
+        summarize,
+      });
+
+      // Replace session messages with compacted version
+      await sessionStore.replaceMessages(sessionId, compacted as unknown as Message[]);
+
+      log.info(`[compaction] Session ${sessionId}: compacted to ${compacted.length} messages`);
+
+      return compacted as unknown as Message[];
+    } catch (err) {
+      log.error(`[compaction] Session ${sessionId}: compaction failed`, err);
+      return messages;
+    }
   }
 
   // ---------------------------------------------------------------------------
