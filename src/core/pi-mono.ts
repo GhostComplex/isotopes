@@ -25,6 +25,8 @@ import {
   estimateTotalTokens,
 } from "./compaction.js";
 import { createLogger } from "./logger.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -358,7 +360,49 @@ class PiMonoInstance implements AgentInstance {
   constructor(
     private agent: Agent,
     private compactionContext?: CompactionContext,
-  ) {}
+  ) {
+    // Debug payload logger — logs LLM request context on each turn
+    if (process.env.LOG_LEVEL === "debug" || process.env.DEBUG) {
+      this.agent.subscribe((e: CoreEvent) => {
+        if (e.type === "agent_start") {
+          this.logDebugPayload();
+        }
+      });
+    }
+  }
+
+  /**
+   * Log the current agent state (system prompt, messages, tools) for debugging.
+   * Only active when LOG_LEVEL=debug or DEBUG is set.
+   */
+  private logDebugPayload(): void {
+    try {
+      const state = this.agent.state;
+      const payload = {
+        timestamp: new Date().toISOString(),
+        systemPromptLength: state.systemPrompt?.length ?? 0,
+        systemPrompt: state.systemPrompt,
+        messagesCount: state.messages?.length ?? 0,
+        messages: state.messages?.map((m) => ({
+          role: m.role,
+          content:
+            typeof m.content === "string"
+              ? m.content.slice(0, 500)
+              : JSON.stringify(m.content).slice(0, 500),
+        })),
+        toolsCount: state.tools?.length ?? 0,
+        toolNames: state.tools?.map((t) => t.name) ?? [],
+      };
+      const logDir = process.env.ISOTOPES_LOG_DIR || path.join(process.env.HOME || "/tmp", ".isotopes", "logs");
+      fs.appendFileSync(
+        path.join(logDir, "debug-payload.jsonl"),
+        JSON.stringify(payload) + "\n",
+      );
+      log.debug("Payload logged to debug-payload.jsonl");
+    } catch {
+      // Silently ignore logging errors
+    }
+  }
 
   async *prompt(input: string | Message[]): AsyncIterable<AgentEvent> {
     let releaseQueue: (() => void) | undefined;
