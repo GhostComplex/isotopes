@@ -163,19 +163,21 @@ Use this skill to search the web.
 
       // Sections should be separated by "---"
       const sections = result.split("\n\n---\n\n");
-      expect(sections.length).toBe(3); // base + workspace context + memory
+      expect(sections.length).toBe(4); // base + workspace path + workspace context + memory
       expect(sections[0]).toBe("Base prompt");
-      expect(sections[1]).toContain("# Workspace Context");
-      expect(sections[2]).toContain("# Memory");
+      expect(sections[1]).toContain("# Workspace");
+      expect(sections[1]).toContain("Your working directory is:");
+      expect(sections[2]).toContain("# Workspace Context");
+      expect(sections[3]).toContain("# Memory");
     });
 
-    it("omits workspace section when no workspace files exist", async () => {
+    it("includes workspace path even when no workspace files exist", async () => {
       const ctx = await loadWorkspaceContext(tempDir);
       const result = buildSystemPrompt("Base prompt", ctx);
 
-      // No workspace files → systemPromptAdditions is empty, memory is null
-      // Should return just the base prompt with no additions
-      expect(result).toBe("Base prompt");
+      // No workspace files → still has workspace path section
+      expect(result).toContain("Your working directory is:");
+      expect(result).not.toContain("# Workspace Context");
     });
 
     it("includes workspace context but omits memory when MEMORY.md is absent", async () => {

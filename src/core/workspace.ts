@@ -8,9 +8,11 @@ import { SkillLoader } from "../skills/index.js";
 /** Standard workspace files that contribute to system prompt */
 export const WORKSPACE_FILES = [
   "SOUL.md",
+  "IDENTITY.md",
   "USER.md",
   "TOOLS.md",
   "AGENTS.md",
+  "BOOTSTRAP.md",
 ] as const;
 
 /** Memory files loaded for context */
@@ -81,6 +83,9 @@ export function buildSystemPrompt(
   }
 
   const parts = [basePrompt];
+
+  // Inject workspace path (like OpenClaw's ## Workspace section)
+  parts.push(`# Workspace\n\nYour working directory is: ${workspace.workspacePath}`);
 
   if (workspace.systemPromptAdditions) {
     parts.push("# Workspace Context\n\n" + workspace.systemPromptAdditions);

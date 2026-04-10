@@ -34,7 +34,6 @@ import {
   ensureDirectories,
   ensureWorkspaceDir,
   getSessionsDir,
-  resolveWorkspacePath,
   getThreadBindingsPath,
 } from "./core/paths.js";
 import {
@@ -43,6 +42,8 @@ import {
   ensureWorkspaceStructure,
 } from "./core/workspace.js";
 import { HotReloadManager } from "./workspace/index.js";
+import { seedWorkspaceTemplates } from "./workspace/templates.js";
+import { reconcileWorkspaceState } from "./workspace/state.js";
 import { DaemonProcess } from "./daemon/process.js";
 import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
 
@@ -279,22 +280,34 @@ async function main() {
   const agentManager = new DefaultAgentManager(core);
 
   // Create agents with workspace tools
+  const agentWorkspaces = new Map<string, string>();
+  const isSingleAgent = config.agents.length === 1;
+
   for (const agentFile of config.agents) {
     const agentConfig = toAgentConfig(agentFile, config.provider, config.tools, config.compaction);
 
-    // Resolve workspace path
-    if (agentConfig.workspacePath) {
-      agentConfig.workspacePath = resolveWorkspacePath(agentConfig.workspacePath);
-    } else {
-      // Default workspace: ~/.isotopes/workspaces/<agentId>
-      agentConfig.workspacePath = await ensureWorkspaceDir(agentConfig.id);
+    // Workspace layout (mirrors OpenClaw):
+    //   Single agent:    ~/.isotopes/workspace/
+    //   Multiple agents: ~/.isotopes/workspace-{agentId}/
+    const workspaceKey = isSingleAgent ? "default" : agentConfig.id;
+    const workspacePath = await ensureWorkspaceDir(workspaceKey);
+    agentWorkspaces.set(agentConfig.id, workspacePath);
+
+    // Seed workspace templates on first creation (M11.2)
+    const seededFiles = await seedWorkspaceTemplates(workspacePath);
+    if (seededFiles.length > 0) {
+      logger.info(`Seeded ${seededFiles.length} template file(s) for ${agentConfig.id}: ${seededFiles.join(", ")}`);
     }
 
-    // Ensure workspace directory structure exists (sessions/, memory/)
-    await ensureWorkspaceStructure(agentConfig.workspacePath);
+    // Reconcile workspace state (M11.3)
+    await reconcileWorkspaceState(workspacePath);
 
-    // Load workspace context (SOUL.md, TOOLS.md, MEMORY.md)
-    const workspaceContext = await loadWorkspaceContext(agentConfig.workspacePath);
+    // Ensure workspace directory structure exists (sessions/, memory/)
+    await ensureWorkspaceStructure(workspacePath);
+
+    // Load workspace context (SOUL.md, TOOLS.md, MEMORY.md, BOOTSTRAP.md, etc.)
+    const workspaceContext = await loadWorkspaceContext(workspacePath);
+    const baseSystemPrompt = agentConfig.systemPrompt; // Store before workspace assembly
     agentConfig.systemPrompt = buildSystemPrompt(agentConfig.systemPrompt, workspaceContext);
     logger.debug(`Loaded workspace context for ${agentConfig.id}: systemPrompt=${workspaceContext.systemPromptAdditions.length > 0}, memory=${workspaceContext.memory !== null}`);
 
@@ -303,10 +316,10 @@ async function main() {
     const toolRegistry = new ToolRegistry();
     const subagentEnabled = config.acp?.enabled === true;
     const workspaceTools = createWorkspaceToolsWithGuards(
-      agentConfig.workspacePath,
+      workspacePath,
       agentConfig.toolSettings,
       subagentEnabled,
-      agentConfig.allowedWorkspaces ?? [],
+      [],
     );
     for (const { tool, handler } of workspaceTools) {
       toolRegistry.register(tool, handler);
@@ -315,7 +328,7 @@ async function main() {
     // Register self-iteration tools if enabled (M10.6)
     if (agentFile.selfIteration?.enabled) {
       const selfIterationTools = createSelfIterationTools({
-        workspacePath: agentConfig.workspacePath,
+        workspacePath,
         allowedFiles: agentFile.selfIteration.allowedFiles,
         backup: agentFile.selfIteration.backup ?? true,
       });
@@ -325,23 +338,22 @@ async function main() {
       logger.info(`Self-iteration tools enabled for ${agentConfig.id}`);
     }
 
+    // Build tool guard prompt and store it for hot-reload persistence (M11.4)
+    const toolGuardPrompt = buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, workspacePath);
     agentConfig.systemPrompt = [
       agentConfig.systemPrompt,
-      buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, agentConfig.workspacePath),
+      toolGuardPrompt,
     ].filter(Boolean).join("\n\n---\n\n");
     core.setToolRegistry(agentConfig.id, toolRegistry);
 
-    await agentManager.create(agentConfig);
-    logger.info(`Created agent: ${agentConfig.id} (workspace: ${agentConfig.workspacePath}, tools: ${toolRegistry.list().length})`);
+    await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, baseSystemPrompt });
+    logger.info(`Created agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${toolRegistry.list().length})`);
   }
 
   // Initialize hot-reload for workspace files (M10.5)
   const hotReload = new HotReloadManager(agentManager, { enabled: true, debounceMs: 500 });
-  for (const agentFile of config.agents) {
-    const workspacePath = agentFile.workspacePath
-      ? resolveWorkspacePath(agentFile.workspacePath)
-      : await ensureWorkspaceDir(agentFile.id);
-    hotReload.register(agentFile.id, workspacePath);
+  for (const [agentId, workspacePath] of agentWorkspaces) {
+    hotReload.register(agentId, workspacePath);
   }
   hotReload.onReload((event) => {
     logger.info(`Hot-reload: workspace reloaded for "${event.agentId}" (${event.changedFiles.join(", ")})`);
@@ -358,7 +370,8 @@ async function main() {
     const sessionStores = new Map<string, DefaultSessionStore>();
 
     for (const agentFile of config.agents) {
-      const sessionsDir = getSessionsDir(agentFile.id);
+      const workspacePath = agentWorkspaces.get(agentFile.id);
+      const sessionsDir = workspacePath ? path.join(workspacePath, "sessions") : getSessionsDir(agentFile.id);
       sessionStores.set(agentFile.id, new DefaultSessionStore({ dataDir: sessionsDir }));
     }
 
@@ -368,8 +381,12 @@ async function main() {
     const defaultAgentId = config.discord.defaultAgentId || config.agents[0]?.id;
     let defaultSessionStore = sessionStores.get(defaultAgentId);
     if (!defaultSessionStore) {
+      const fallbackWorkspace = agentWorkspaces.get(defaultAgentId || "default");
+      const fallbackSessionsDir = fallbackWorkspace
+        ? path.join(fallbackWorkspace, "sessions")
+        : getSessionsDir(defaultAgentId || "default");
       defaultSessionStore = new DefaultSessionStore({
-        dataDir: getSessionsDir(defaultAgentId || "default"),
+        dataDir: fallbackSessionsDir,
       });
       await defaultSessionStore.init();
     }

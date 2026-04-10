@@ -14,11 +14,27 @@ import {
   type WorkspaceContext,
 } from "./workspace.js";
 
+/** Options for creating an agent with workspace awareness. */
+export interface AgentCreateOptions {
+  /** Resolved workspace path for this agent */
+  workspacePath?: string;
+  /** Tool guard prompt section (stored for hot-reload persistence) */
+  toolGuardPrompt?: string;
+  /** Base system prompt before workspace assembly (for hot-reload rebuild) */
+  baseSystemPrompt?: string;
+}
+
 /** Internal entry combining config, instance, and workspace */
 interface AgentEntry {
   config: AgentConfig;
   instance: AgentInstance;
   workspace: WorkspaceContext | null;
+  /** Base system prompt before workspace assembly (for hot-reload) */
+  baseSystemPrompt: string;
+  /** Resolved workspace path */
+  workspacePath?: string;
+  /** Tool guard prompt section (re-appended on hot-reload) */
+  toolGuardPrompt?: string;
 }
 
 /**
@@ -34,26 +50,27 @@ export class DefaultAgentManager implements AgentManager {
 
   constructor(private core: AgentCore) {}
 
-  async create(config: AgentConfig): Promise<AgentInstance> {
+  /**
+   * Create a new agent.
+   *
+   * When called from cli.ts, the system prompt is already fully assembled
+   * (workspace context + tool guards included). The options provide workspace
+   * metadata needed for hot-reload.
+   */
+  async create(config: AgentConfig, options?: AgentCreateOptions): Promise<AgentInstance> {
     if (this.agents.has(config.id)) {
       throw new Error(`Agent "${config.id}" already exists`);
     }
 
-    // Load workspace context if workspacePath is specified
-    let workspace: WorkspaceContext | null = null;
-    if (config.workspacePath) {
-      await ensureWorkspaceStructure(config.workspacePath);
-      workspace = await loadWorkspaceContext(config.workspacePath);
-    }
-
-    // Build final system prompt with workspace additions
-    const finalConfig: AgentConfig = {
-      ...config,
-      systemPrompt: buildSystemPrompt(config.systemPrompt, workspace),
-    };
-
-    const instance = this.core.createAgent(finalConfig);
-    this.agents.set(config.id, { config, instance, workspace });
+    const instance = this.core.createAgent(config);
+    this.agents.set(config.id, {
+      config,
+      instance,
+      workspace: null,
+      baseSystemPrompt: options?.baseSystemPrompt ?? config.systemPrompt,
+      workspacePath: options?.workspacePath,
+      toolGuardPrompt: options?.toolGuardPrompt,
+    });
     return instance;
   }
 
@@ -83,22 +100,13 @@ export class DefaultAgentManager implements AgentManager {
       id, // id cannot be changed
     };
 
-    // Reload workspace if path changed or exists
-    let workspace: WorkspaceContext | null = null;
-    if (updated.workspacePath) {
-      await ensureWorkspaceStructure(updated.workspacePath);
-      workspace = await loadWorkspaceContext(updated.workspacePath);
-    }
-
-    // Build final system prompt
-    const finalConfig: AgentConfig = {
-      ...updated,
-      systemPrompt: buildSystemPrompt(updated.systemPrompt, workspace),
-    };
-
     // Re-create instance with new config
-    const instance = this.core.createAgent(finalConfig);
-    this.agents.set(id, { config: updated, instance, workspace });
+    const instance = this.core.createAgent(updated);
+    this.agents.set(id, {
+      ...entry,
+      config: updated,
+      instance,
+    });
     return instance;
   }
 
@@ -121,14 +129,43 @@ export class DefaultAgentManager implements AgentManager {
     await this.update(id, { systemPrompt: prompt });
   }
 
-  /** Reload workspace context for an agent (e.g., after MEMORY.md changes) */
+  /**
+   * Reload workspace context for an agent (hot-reload support).
+   *
+   * Re-reads workspace files from disk, rebuilds the system prompt from
+   * the base prompt + fresh workspace context + stored tool guard prompt.
+   */
   async reloadWorkspace(id: string): Promise<void> {
     const entry = this.agents.get(id);
     if (!entry) {
       throw new Error(`Agent "${id}" not found`);
     }
-    if (entry.config.workspacePath) {
-      await this.update(id, {}); // Re-runs workspace loading
+
+    if (!entry.workspacePath) {
+      return; // No workspace to reload
+    }
+
+    // Re-load workspace from disk
+    await ensureWorkspaceStructure(entry.workspacePath);
+    const workspace = await loadWorkspaceContext(entry.workspacePath);
+
+    // Rebuild system prompt: base + workspace context + tool guards
+    // We use a stored "base" prompt that doesn't include old workspace content
+    // to avoid double-appending. The base prompt is the original systemPrompt
+    // from config (before any workspace assembly).
+    //
+    // However, cli.ts pre-assembles the full prompt. So we need to extract
+    // the base prompt from the original config. We stored it in baseSystemPrompt.
+    let systemPrompt = buildSystemPrompt(entry.baseSystemPrompt, workspace);
+    if (entry.toolGuardPrompt) {
+      systemPrompt = [systemPrompt, entry.toolGuardPrompt].filter(Boolean).join("\n\n---\n\n");
+    }
+
+    await this.update(id, { systemPrompt });
+    // Update workspace reference on the entry
+    const updatedEntry = this.agents.get(id);
+    if (updatedEntry) {
+      updatedEntry.workspace = workspace;
     }
   }
 }

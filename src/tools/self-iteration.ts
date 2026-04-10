@@ -32,8 +32,8 @@ export interface SelfIterationConfig {
 /** Arguments for the iterate_self tool. */
 interface IterateSelfArgs {
   file: string;
-  action: "replace" | "append" | "patch";
-  content: string;
+  action: "replace" | "append" | "patch" | "delete";
+  content?: string;
 }
 
 /** Arguments for the create_skill tool. */
@@ -55,9 +55,11 @@ interface AppendMemoryArgs {
 
 const DEFAULT_SELF_ITERATION_FILES = [
   "SOUL.md",
+  "IDENTITY.md",
   "AGENTS.md",
   "TOOLS.md",
   "MEMORY.md",
+  "BOOTSTRAP.md",
   "memory/*.md",
   "skills/**/*.md",
   "skills/**/*.yaml",
@@ -70,17 +72,19 @@ const DEFAULT_SELF_ITERATION_FILES = [
 
 const ITERATE_SELF_TOOL: Tool = {
   name: "iterate_self",
-  description: `Update your own workspace files (SOUL.md, AGENTS.md, TOOLS.md, MEMORY.md, or skills).
+  description: `Update your own workspace files (SOUL.md, AGENTS.md, TOOLS.md, IDENTITY.md, MEMORY.md, or skills).
 
 Use this tool when you:
 - Learn something worth encoding into your configuration
 - Want to update your personality or behavior guidelines (SOUL.md)
 - Need to add new tools documentation (TOOLS.md)
 - Want to update your operating instructions (AGENTS.md)
+- Need to complete the hatch ritual by deleting BOOTSTRAP.md
 
 Actions:
 - "replace": Replace the entire file content
 - "append": Add content to the end of the file
+- "delete": Delete a file (only BOOTSTRAP.md can be deleted)
 - "patch": Apply a diff-style patch (not yet implemented, use replace for now)
 
 A backup (.bak) is created before any changes.`,
@@ -89,19 +93,19 @@ A backup (.bak) is created before any changes.`,
     properties: {
       file: {
         type: "string",
-        description: "Workspace file to update (e.g., 'SOUL.md', 'TOOLS.md', 'skills/my-skill/SKILL.md')",
+        description: "Workspace file to update (e.g., 'SOUL.md', 'TOOLS.md', 'IDENTITY.md', 'skills/my-skill/SKILL.md')",
       },
       action: {
         type: "string",
-        enum: ["replace", "append", "patch"],
-        description: "How to apply the change",
+        enum: ["replace", "append", "patch", "delete"],
+        description: "How to apply the change. 'delete' removes the file (only BOOTSTRAP.md).",
       },
       content: {
         type: "string",
-        description: "New content (for replace/append) or patch (for patch)",
+        description: "New content (for replace/append) or patch (for patch). Not required for delete.",
       },
     },
-    required: ["file", "action", "content"],
+    required: ["file", "action"],
   },
 };
 
@@ -112,10 +116,40 @@ function createIterateSelfHandler(config: SelfIterationConfig): ToolHandler {
 
     log.info(`iterate_self: ${action} on ${file}`);
 
+    if (action === "delete") {
+      // Only allow deleting BOOTSTRAP.md for safety
+      if (file !== "BOOTSTRAP.md") {
+        return JSON.stringify({
+          success: false,
+          error: "Only BOOTSTRAP.md can be deleted via iterate_self.",
+        });
+      }
+      const fullPath = path.join(config.workspacePath, file);
+      try {
+        await fsp.unlink(fullPath);
+        log.info("BOOTSTRAP.md deleted — hatch complete");
+        return JSON.stringify({
+          success: true,
+          message: "BOOTSTRAP.md deleted. Hatch complete — you're you now.",
+        });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        return JSON.stringify({ success: false, error: errorMessage });
+      }
+    }
+
     if (action === "patch") {
       return JSON.stringify({
         success: false,
         error: "Patch action not yet implemented. Use 'replace' or 'append' instead.",
+      });
+    }
+
+    // Content is required for replace/append actions
+    if (!content) {
+      return JSON.stringify({
+        success: false,
+        error: `Content is required for '${action}' action.`,
       });
     }
 

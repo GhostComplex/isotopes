@@ -6,6 +6,13 @@ import path from "node:path";
 import fs from "node:fs/promises";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** The default agent ID used for single-agent setups. */
+const DEFAULT_AGENT_ID = "default";
+
+// ---------------------------------------------------------------------------
 // Base directories
 // ---------------------------------------------------------------------------
 
@@ -16,14 +23,6 @@ import fs from "node:fs/promises";
  */
 export function getIsotopesHome(): string {
   return process.env.ISOTOPES_HOME || path.join(os.homedir(), ".isotopes");
-}
-
-/**
- * Get the workspaces directory.
- * Default: ~/.isotopes/workspaces
- */
-export function getWorkspacesDir(): string {
-  return path.join(getIsotopesHome(), "workspaces");
 }
 
 /**
@@ -40,15 +39,20 @@ export function getLogsDir(): string {
 
 /**
  * Get the workspace directory for an agent.
- * Default: ~/.isotopes/workspaces/<agentId>
+ *
+ * Layout mirrors OpenClaw:
+ * - Default agent: ~/.isotopes/workspace/
+ * - Named agent:   ~/.isotopes/workspace-{agentId}/
  */
 export function getWorkspacePath(agentId: string): string {
-  return path.join(getWorkspacesDir(), agentId);
+  if (agentId === DEFAULT_AGENT_ID) {
+    return path.join(getIsotopesHome(), "workspace");
+  }
+  return path.join(getIsotopesHome(), `workspace-${agentId}`);
 }
 
 /**
  * Get the sessions directory for an agent (inside workspace).
- * Default: ~/.isotopes/workspaces/<agentId>/sessions
  */
 export function getSessionsDir(agentId: string): string {
   return path.join(getWorkspacePath(agentId), "sessions");
@@ -83,7 +87,6 @@ export function getThreadBindingsPath(): string {
  */
 export async function ensureDirectories(): Promise<void> {
   await fs.mkdir(getIsotopesHome(), { recursive: true });
-  await fs.mkdir(getWorkspacesDir(), { recursive: true });
   await fs.mkdir(getLogsDir(), { recursive: true });
 }
 
@@ -97,18 +100,3 @@ export async function ensureWorkspaceDir(agentId: string): Promise<string> {
   return workspacePath;
 }
 
-// ---------------------------------------------------------------------------
-// Path resolution
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve a workspace path.
- * If relative, resolves to ~/.isotopes/workspaces/<path>
- * If absolute, uses as-is.
- */
-export function resolveWorkspacePath(workspacePath: string): string {
-  if (path.isAbsolute(workspacePath)) {
-    return workspacePath;
-  }
-  return path.join(getWorkspacesDir(), workspacePath);
-}

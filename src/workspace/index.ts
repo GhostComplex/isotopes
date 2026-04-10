@@ -1,4 +1,4 @@
-// src/workspace/index.ts — Barrel exports for the workspace watcher module
+// src/workspace/index.ts — Barrel exports for the workspace module
 
 export { WorkspaceWatcher, globToRegExp, matchesPatterns, matchesIgnorePatterns } from "./watcher.js";
 export type {
@@ -20,3 +20,18 @@ export type {
   WorkspaceReloadedEvent,
   ReloadEventHandler,
 } from "./hot-reload.js";
+
+export {
+  seedWorkspaceTemplates,
+  isBrandNewWorkspace,
+  getWorkspaceTemplates,
+} from "./templates.js";
+export type { WorkspaceTemplate } from "./templates.js";
+
+export {
+  readWorkspaceState,
+  writeWorkspaceState,
+  isSetupComplete,
+  reconcileWorkspaceState,
+} from "./state.js";
+export type { WorkspaceState } from "./state.js";

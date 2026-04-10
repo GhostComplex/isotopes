@@ -38,9 +38,11 @@ export type ReloadEventHandler = (event: WorkspaceReloadedEvent) => void | Promi
 /** Workspace files that trigger a reload when changed. */
 export const WATCHED_PATTERNS = [
   "SOUL.md",
+  "IDENTITY.md",
   "USER.md",
   "TOOLS.md",
   "AGENTS.md",
+  "BOOTSTRAP.md",
   "MEMORY.md",
   "memory/*.md",
   "skills/**/*.md",

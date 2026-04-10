@@ -5,12 +5,10 @@ import path from "node:path";
 import os from "node:os";
 import {
   getIsotopesHome,
-  getWorkspacesDir,
   getLogsDir,
   getWorkspacePath,
   getSessionsDir,
   getConfigPath,
-  resolveWorkspacePath,
 } from "./paths.js";
 
 describe("paths", () => {
@@ -34,13 +32,6 @@ describe("paths", () => {
     });
   });
 
-  describe("getWorkspacesDir", () => {
-    it("returns ~/.isotopes/workspaces", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "workspaces");
-      expect(getWorkspacesDir()).toBe(expected);
-    });
-  });
-
   describe("getLogsDir", () => {
     it("returns ~/.isotopes/logs", () => {
       const expected = path.join(os.homedir(), ".isotopes", "logs");
@@ -49,15 +40,25 @@ describe("paths", () => {
   });
 
   describe("getWorkspacePath", () => {
-    it("returns workspace path for agent", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "workspaces", "assistant");
+    it("returns ~/.isotopes/workspace for default agent", () => {
+      const expected = path.join(os.homedir(), ".isotopes", "workspace");
+      expect(getWorkspacePath("default")).toBe(expected);
+    });
+
+    it("returns ~/.isotopes/workspace-{id} for named agent", () => {
+      const expected = path.join(os.homedir(), ".isotopes", "workspace-assistant");
       expect(getWorkspacePath("assistant")).toBe(expected);
     });
   });
 
   describe("getSessionsDir", () => {
-    it("returns sessions dir inside workspace", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "workspaces", "assistant", "sessions");
+    it("returns sessions dir inside default workspace", () => {
+      const expected = path.join(os.homedir(), ".isotopes", "workspace", "sessions");
+      expect(getSessionsDir("default")).toBe(expected);
+    });
+
+    it("returns sessions dir inside named workspace", () => {
+      const expected = path.join(os.homedir(), ".isotopes", "workspace-assistant", "sessions");
       expect(getSessionsDir("assistant")).toBe(expected);
     });
   });
@@ -71,22 +72,6 @@ describe("paths", () => {
     it("respects ISOTOPES_HOME", () => {
       vi.stubEnv("ISOTOPES_HOME", "/custom");
       expect(getConfigPath()).toBe("/custom/isotopes.yaml");
-    });
-  });
-
-  describe("resolveWorkspacePath", () => {
-    it("returns absolute path as-is", () => {
-      expect(resolveWorkspacePath("/absolute/path")).toBe("/absolute/path");
-    });
-
-    it("resolves relative path to workspaces dir", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "workspaces", "my-agent");
-      expect(resolveWorkspacePath("my-agent")).toBe(expected);
-    });
-
-    it("handles nested relative paths", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "workspaces", "team", "agent");
-      expect(resolveWorkspacePath("team/agent")).toBe(expected);
     });
   });
 });

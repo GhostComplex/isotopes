@@ -36,7 +36,6 @@ describe("Config", () => {
 agents:
   - id: test
     name: Test Agent
-    systemPrompt: You are helpful
 `,
       );
 
@@ -123,8 +122,6 @@ provider:
 agents:
   - id: assistant
     name: Assistant
-    systemPrompt: Be helpful
-    workspacePath: ./workspaces/assistant
     provider:
       type: openai
       model: gpt-4o
@@ -177,16 +174,13 @@ agents:
       const agentFile = {
         id: "test",
         name: "Test Agent",
-        systemPrompt: "Be helpful",
-        workspacePath: "./workspace",
       };
 
       const config = toAgentConfig(agentFile);
 
       expect(config.id).toBe("test");
       expect(config.name).toBe("Test Agent");
-      expect(config.systemPrompt).toBe("Be helpful");
-      expect(config.workspacePath).toBe("./workspace");
+      expect(config.systemPrompt).toBe("");
     });
 
     it("uses default provider when agent has none", () => {
