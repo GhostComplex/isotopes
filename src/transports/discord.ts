@@ -160,7 +160,7 @@ export interface DiscordTransportConfig {
   subagentShowToolCalls?: boolean;
   /** Whether to respond to messages from other bots. Default: false */
   allowBots?: boolean;
-  /** Maximum number of messages to include in context. Default: 50 */
+  /** Maximum number of messages to fetch from Discord API when joining a conversation. Default: 50 */
   historyLimit?: number;
 }
 
@@ -308,14 +308,13 @@ export class DiscordTransport implements Transport {
     await sessionStore.addMessage(session.id, userMessage);
 
     const allMessages = await sessionStore.getMessages(session.id);
-    // Limit context to recent messages to prevent context overflow
-    const historyLimit = this.config.historyLimit ?? 20;
-    const promptInput = allMessages.length > historyLimit
-      ? allMessages.slice(-historyLimit)
-      : allMessages;
+    
+    // Session messages go to agent without truncation - compaction handles context window
+    // historyLimit is only for external context (Discord API history fetch when joining conversation)
+    const promptInput = allMessages;
 
     // Debug: Log context window contents
-    log.info(`[context-debug] Session ${session.id}: total=${allMessages.length}, sending=${promptInput.length}, historyLimit=${historyLimit}`);
+    log.info(`[context-debug] Session ${session.id}: total=${allMessages.length}, sending=${promptInput.length}`);
     for (let i = 0; i < promptInput.length; i++) {
       const m = promptInput[i];
       const contentStr = Array.isArray(m.content) 
