@@ -13,10 +13,15 @@ import {
   type SessionStore,
   type Transport,
 } from "../core/types.js";
+import type { ContextConfigFile } from "../core/config.js";
 import { resolveBinding } from "../core/bindings.js";
 import { loggers } from "../core/logger.js";
 import { runAgentLoop } from "../core/agent-runner.js";
 import { buildSessionKey, type SessionScope } from "../core/session-keys.js";
+import { preparePromptMessages } from "../core/context.js";
+import { ChannelHistoryBuffer, buildHistoryContext } from "../core/channel-history.js";
+import { DedupeCache } from "../core/dedupe.js";
+import { InboundDebouncer } from "../core/debounce.js";
 
 const log = loggers.feishu;
 
@@ -147,6 +152,8 @@ export interface FeishuTransportConfig {
   bindings?: Binding[];
   /** Legacy per-bot agent bindings: { [botOpenId]: agentId } */
   agentBindings?: Record<string, string>;
+  /** Context management configuration */
+  context?: ContextConfigFile;
 }
 
 /** Shape of the `im.message.receive_v1` event data from the Feishu SDK. */
@@ -233,9 +240,19 @@ export class FeishuTransport implements Transport {
   private wsClient: lark.WSClient;
   private eventDispatcher: lark.EventDispatcher;
   private started = false;
+  private channelHistory: ChannelHistoryBuffer;
+  private dedupe: DedupeCache;
+  private debouncer: InboundDebouncer;
 
   constructor(config: FeishuTransportConfig) {
     this.config = config;
+    this.channelHistory = new ChannelHistoryBuffer({
+      maxEntriesPerChannel: config.context?.channelHistoryLimit ?? 20,
+    });
+    this.dedupe = new DedupeCache();
+    this.debouncer = new InboundDebouncer({
+      windowMs: config.context?.debounceWindowMs ?? 1500,
+    });
 
     // Create API client for sending messages
     this.client = new lark.Client({
@@ -277,6 +294,7 @@ export class FeishuTransport implements Transport {
     if (!this.started) return;
 
     log.info("Stopping Feishu WebSocket connection...");
+    this.debouncer.dispose();
     this.wsClient.close();
     this.started = false;
     log.info("Feishu WebSocket connection closed");
@@ -295,11 +313,31 @@ export class FeishuTransport implements Transport {
       return;
     }
 
+    const userId = sender.sender_id?.open_id ?? sender.sender_id?.user_id ?? "unknown";
+
+    // Deduplication — prevent processing the same message twice
+    if (this.config.context?.dedupe !== false && this.dedupe.isDuplicate(`${this.config.appId}:${message.chat_id}:${message.message_id}`)) {
+      log.debug(`Dedup: ignoring duplicate message ${message.message_id}`);
+      return;
+    }
+
     // In groups, check whether the bot should respond (config-driven)
     if (message.chat_type === "group") {
       const botOpenId = this.config.botOpenId;
       const mentioned = botOpenId ? isBotMentioned(message.mentions, botOpenId) : false;
       if (!shouldRespondToGroupMessage(message.chat_id, mentioned, this.config.channels)) {
+        // Record to channel history buffer even when not responding
+        if (this.config.context?.channelHistory !== false) {
+          const rawText = extractTextFromFeishuMessage(message.content, message.message_type);
+          if (rawText?.trim()) {
+            this.channelHistory.append(message.chat_id, {
+              sender: userId,
+              body: stripFeishuMentions(rawText),
+              timestamp: parseInt(message.create_time, 10),
+              messageId: message.message_id,
+            });
+          }
+        }
         log.debug("Ignoring group message: bot not mentioned and requireMention is enabled");
         return;
       }
@@ -313,13 +351,24 @@ export class FeishuTransport implements Transport {
     }
 
     // Strip @mention tokens for clean agent input
-    const text = message.chat_type === "group" ? stripFeishuMentions(rawText) : rawText;
+    let text = message.chat_type === "group" ? stripFeishuMentions(rawText) : rawText;
     if (!text) {
       log.debug("Ignoring message: empty after stripping mentions");
       return;
     }
 
-    const userId = sender.sender_id?.open_id ?? sender.sender_id?.user_id ?? "unknown";
+    // Debounce — combine rapid-fire messages from the same user (opt-in)
+    if (this.config.context?.debounce) {
+      const debounceKey = `feishu:${message.chat_id}:${userId}`;
+      const debounced = await this.debouncer.submit(
+        debounceKey, text, message.message_id,
+        parseInt(message.create_time, 10),
+        { userId, chatId: message.chat_id },
+      );
+      if (!debounced) return;
+      text = debounced.text;
+    }
+
     log.debug(`Received ${message.chat_type} message from user ${userId}: ${text.substring(0, 50)}...`);
 
     // Resolve agent via bindings → agentBindings → defaultAgentId
@@ -349,10 +398,16 @@ export class FeishuTransport implements Transport {
     const sessionKey = buildFeishuSessionKey(botId, scopeId, agentId, message.chat_type as "p2p" | "group");
     const session = await this.findOrCreateSession(sessionKey, agentId);
 
+    // Consume channel history and build enriched content
+    const historyEntries = (this.config.context?.channelHistory !== false && message.chat_type === "group")
+      ? this.channelHistory.consumeAndClear(message.chat_id)
+      : [];
+    const enrichedText = buildHistoryContext(historyEntries, text);
+
     // Add user message to session
     const userMessage: Message = {
       role: "user",
-      content: textContent(text),
+      content: textContent(enrichedText),
       timestamp: parseInt(message.create_time, 10),
       metadata: {
         userId,
@@ -362,8 +417,18 @@ export class FeishuTransport implements Transport {
     };
     await this.config.sessionStore.addMessage(session.id, userMessage);
 
-    // Retrieve full conversation history for the agent
-    const promptInput = await this.config.sessionStore.getMessages(session.id);
+    // Prepare prompt — limitHistoryTurns + sanitize + prune
+    const allMessages = await this.config.sessionStore.getMessages(session.id);
+    const ctx = this.config.context;
+    const promptInput = preparePromptMessages(allMessages, {
+      historyTurns: ctx?.historyTurns ?? 20,
+      protectRecentAssistant: ctx?.pruning?.protectRecent ?? 3,
+      toolResultHeadChars: ctx?.pruning?.headChars ?? 1500,
+      toolResultTailChars: ctx?.pruning?.tailChars ?? 1500,
+    });
+
+    // Clear agent internal state before prompting with fresh context
+    agent.clearMessages?.();
 
     // Run agent and send reply
     await this.runAgentAndReply(agent, promptInput, message.chat_id, session.id);

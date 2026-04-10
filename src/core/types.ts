@@ -252,6 +252,15 @@ export interface Binding {
 export interface GuildConfig {
   /** Whether the bot must be @mentioned to respond. Default: true */
   requireMention?: boolean;
+  /** Per-guild context configuration overrides */
+  context?: {
+    /** Max user turns to include in prompt context */
+    historyTurns?: number;
+    /** Enable channel history buffer */
+    channelHistory?: boolean;
+    /** Max entries in channel history buffer */
+    channelHistoryLimit?: number;
+  };
 }
 
 /** Discord account configuration within the channels section */

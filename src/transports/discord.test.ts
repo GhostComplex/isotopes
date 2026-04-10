@@ -23,6 +23,7 @@ type MockIncomingMessage = {
   channel: MockChannel;
   mentions: { has: ReturnType<typeof vi.fn> };
   thread?: undefined;
+  id?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -560,6 +561,165 @@ describe("DiscordTransport", () => {
       });
 
       expect(transportWithThreads.getThreadBindingManager()).toBeInstanceOf(ThreadBindingManager);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Context management
+  // ---------------------------------------------------------------------------
+
+  describe("context management", () => {
+    function makeChannel(): MockChannel {
+      return {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+      };
+    }
+
+    function makeMsg(overrides: Partial<MockIncomingMessage> = {}): MockIncomingMessage {
+      return {
+        author: { bot: false, username: "tester", id: "user-1" },
+        content: "<@bot-123> hello bot",
+        createdTimestamp: Date.now(),
+        guild: { id: "guild-1" },
+        channelId: "channel-1",
+        channel: makeChannel(),
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        thread: undefined,
+        id: `msg-${Date.now()}`,
+        ...overrides,
+      };
+    }
+
+    it("records channel history for non-mention messages", async () => {
+      const channels: ChannelsConfig = {
+        discord: {
+          accounts: {
+            testacct: {
+              guilds: { "guild-1": { requireMention: true } },
+            },
+          },
+        },
+      };
+
+      const transportCtx = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels,
+        accountId: "testacct",
+      });
+
+      // Send a message without mentioning the bot — should be recorded to channel history
+      const msg = makeMsg({
+        content: "just chatting",
+        mentions: { has: vi.fn(() => false) },
+      });
+
+      await (transportCtx as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Agent should NOT have been called
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).not.toHaveBeenCalled();
+    });
+
+    it("injects channel history into user message when bot is triggered", async () => {
+      const transportMention = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels: {
+          discord: {
+            accounts: {
+              testacct: {
+                guilds: { "guild-1": { requireMention: true } },
+              },
+            },
+          },
+        },
+        accountId: "testacct",
+      });
+
+      const handleMsg2 = (m: MockIncomingMessage) =>
+        (transportMention as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(m);
+
+      // Non-mention message — recorded to channel history
+      await handleMsg2(makeMsg({
+        content: "I think we should use Redis",
+        mentions: { has: vi.fn(() => false) },
+        id: "msg-1",
+      }));
+
+      // Now send a mention message — channel history should be consumed
+      await handleMsg2(makeMsg({
+        content: "<@bot-123> what do you think?",
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        id: "msg-2",
+      }));
+
+      // The user message stored in session should contain channel history context
+      expect(sessionStore.addMessage).toHaveBeenCalled();
+      const addedMessage = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      const messageText = addedMessage.content[0].text;
+      expect(messageText).toContain("Chat messages since your last reply");
+      expect(messageText).toContain("I think we should use Redis");
+      expect(messageText).toContain("what do you think?");
+    });
+
+    it("deduplicates messages with the same ID", async () => {
+      const transportCtx = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+      });
+
+      const handleMessage = (m: MockIncomingMessage) =>
+        (transportCtx as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(m);
+
+      const msg1 = makeMsg({ id: "same-msg-id" });
+      const msg2 = makeMsg({ id: "same-msg-id" });
+
+      await handleMessage(msg1);
+      await handleMessage(msg2);
+
+      // Agent should only be called once (second message is a duplicate)
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls preparePromptMessages instead of raw slice", async () => {
+      const agent = agentManager.get("default")!;
+      const promptSpy = vi.spyOn(agent, "prompt");
+
+      // Provide messages that would be affected by limitHistoryTurns
+      sessionStore.getMessages = vi.fn().mockResolvedValue([
+        { role: "user", content: textContent("old") },
+        { role: "assistant", content: textContent("old reply") },
+        { role: "user", content: textContent("recent") },
+        { role: "assistant", content: textContent("recent reply") },
+        { role: "user", content: textContent("hello bot") },
+      ]);
+
+      const transportCtx = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        context: { historyTurns: 2 },
+      });
+
+      const msg = makeMsg({ id: "unique-msg" });
+      await (transportCtx as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Should have been called with truncated messages (last 2 user turns)
+      expect(promptSpy).toHaveBeenCalled();
+      const promptInput = promptSpy.mock.calls[0][0] as { role: string }[];
+      // With historyTurns=2, only the last 2 user turns should be kept
+      const userMessages = promptInput.filter(m => m.role === "user");
+      expect(userMessages.length).toBeLessThanOrEqual(2);
     });
   });
 });

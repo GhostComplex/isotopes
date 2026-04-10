@@ -402,6 +402,7 @@ async function main() {
       threadBindings,
       threadBindingManager,
       allowBots: config.discord.allowBots,
+      context: config.discord.context,
     });
 
     if (threadBindings?.enabled) {

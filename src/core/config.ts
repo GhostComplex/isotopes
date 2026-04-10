@@ -128,6 +128,31 @@ export interface BindingConfigFile {
   match: BindingMatchConfigFile;
 }
 
+/** Context management configuration (shared across transports) */
+export interface ContextConfigFile {
+  /** Max user turns to include in prompt context. Default: 20 */
+  historyTurns?: number;
+  /** Enable channel history buffer (lurking context). Default: true */
+  channelHistory?: boolean;
+  /** Max entries in channel history buffer per channel. Default: 20 */
+  channelHistoryLimit?: number;
+  /** Enable message deduplication. Default: true */
+  dedupe?: boolean;
+  /** Enable message debounce (combine rapid messages). Default: false */
+  debounce?: boolean;
+  /** Debounce window in milliseconds. Default: 1500 */
+  debounceWindowMs?: number;
+  /** Tool result pruning options */
+  pruning?: {
+    /** Number of recent assistant messages to protect from pruning. Default: 3 */
+    protectRecent?: number;
+    /** Head chars for soft trim. Default: 1500 */
+    headChars?: number;
+    /** Tail chars for soft trim. Default: 1500 */
+    tailChars?: number;
+  };
+}
+
 /** Discord transport configuration */
 export interface DiscordConfigFile {
   token?: string;
@@ -142,6 +167,8 @@ export interface DiscordConfigFile {
   subagentStreaming?: SubagentStreamingConfigFile;
   /** Whether to respond to messages from other bots. Default: false */
   allowBots?: boolean;
+  /** Context management configuration */
+  context?: ContextConfigFile;
 }
 
 /** Thread binding configuration in config file */

@@ -21,6 +21,7 @@ import {
   type ThreadBindingConfig,
   type Transport,
 } from "../core/types.js";
+import type { ContextConfigFile } from "../core/config.js";
 import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
@@ -30,6 +31,10 @@ import {
   runWithSubagentContextAsync,
   type SubagentDiscordContext,
 } from "../core/subagent-context.js";
+import { preparePromptMessages } from "../core/context.js";
+import { ChannelHistoryBuffer, buildHistoryContext } from "../core/channel-history.js";
+import { DedupeCache } from "../core/dedupe.js";
+import { InboundDebouncer } from "../core/debounce.js";
 
 const log = loggers.discord;
 
@@ -160,8 +165,8 @@ export interface DiscordTransportConfig {
   subagentShowToolCalls?: boolean;
   /** Whether to respond to messages from other bots. Default: false */
   allowBots?: boolean;
-  /** Maximum number of messages to include in context. Default: 50 */
-  historyLimit?: number;
+  /** Context management configuration */
+  context?: ContextConfigFile;
 }
 
 /**
@@ -179,10 +184,20 @@ export class DiscordTransport implements Transport {
   private config: DiscordTransportConfig;
   private ready = false;
   private threadBindingManager: ThreadBindingManager;
+  private channelHistory: ChannelHistoryBuffer;
+  private dedupe: DedupeCache;
+  private debouncer: InboundDebouncer;
 
   constructor(config: DiscordTransportConfig) {
     this.config = config;
     this.threadBindingManager = config.threadBindingManager ?? new ThreadBindingManager();
+    this.channelHistory = new ChannelHistoryBuffer({
+      maxEntriesPerChannel: config.context?.channelHistoryLimit ?? 20,
+    });
+    this.dedupe = new DedupeCache();
+    this.debouncer = new InboundDebouncer({
+      windowMs: config.context?.debounceWindowMs ?? 1500,
+    });
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -211,6 +226,7 @@ export class DiscordTransport implements Transport {
   }
 
   async stop(): Promise<void> {
+    this.debouncer.dispose();
     this.client.destroy();
     this.ready = false;
   }
@@ -259,23 +275,55 @@ export class DiscordTransport implements Transport {
   // ---------------------------------------------------------------------------
 
   private async handleMessage(msg: DiscordMessage): Promise<void> {
-    // Ignore messages from self
-    if (msg.author.id === this.client.user?.id) {
-      return;
-    }
-
-    // Handle bot messages based on allowBots config
+    // 1. Filter self and bot messages
+    if (msg.author.id === this.client.user?.id) return;
     if (msg.author.bot && !this.config.allowBots) {
       log.debug(`Ignoring bot message from ${msg.author.username} (allowBots=false)`);
       return;
     }
 
-    // Check if we should respond
-    if (!this.shouldRespond(msg)) return;
+    // 2. Deduplication — prevent processing the same message twice (gateway replays)
+    const botId = this.client.user?.id ?? "unknown";
+    if (this.config.context?.dedupe !== false && this.dedupe.isDuplicate(`${botId}:${msg.channelId}:${msg.id}`)) {
+      log.debug(`Dedup: ignoring duplicate message ${msg.id}`);
+      return;
+    }
+
+    // 3. Should-respond check — record to channel history if not responding
+    const respond = this.shouldRespond(msg);
+    if (!respond) {
+      if (msg.guild && this.config.context?.channelHistory !== false) {
+        const content = this.extractContent(msg);
+        if (content.trim()) {
+          this.channelHistory.append(msg.channelId, {
+            sender: msg.author.username,
+            body: content,
+            timestamp: msg.createdTimestamp,
+            messageId: msg.id,
+          });
+        }
+      }
+      return;
+    }
 
     log.debug(`Received message from ${msg.author.username}: ${msg.content.substring(0, 50)}...`);
 
-    // Resolve agent
+    // 4. Extract content
+    let content = this.extractContent(msg);
+    if (!content.trim()) return;
+
+    // 5. Debounce — combine rapid-fire messages from the same user (opt-in)
+    if (this.config.context?.debounce) {
+      const debounceKey = `discord:${msg.channelId}:${msg.author.id}`;
+      const debounced = await this.debouncer.submit(
+        debounceKey, content, msg.id, msg.createdTimestamp,
+        { userId: msg.author.id, username: msg.author.username },
+      );
+      if (!debounced) return; // secondary caller — primary handles the combined message
+      content = debounced.text;
+    }
+
+    // 6. Resolve agent
     const agentId = this.resolveAgentId(msg);
     log.debug(`Routing message to agent: ${agentId}`);
 
@@ -286,19 +334,19 @@ export class DiscordTransport implements Transport {
     }
 
     const sessionStore = this.getSessionStore(agentId);
-
-    // Get or create session
     const sessionKey = this.getSessionKey(msg, agentId);
     const session = await this.findOrCreateSession(sessionStore, sessionKey, agentId, msg);
 
-    // Extract message content (strip @mentions)
-    const content = this.extractContent(msg);
-    if (!content.trim()) return;
+    // 7. Consume channel history and build enriched content
+    const historyEntries = (this.config.context?.channelHistory !== false && msg.guild)
+      ? this.channelHistory.consumeAndClear(msg.channelId)
+      : [];
+    const enrichedContent = buildHistoryContext(historyEntries, content);
 
-    // Add user message to session
+    // 8. Add user message to session
     const userMessage: Message = {
       role: "user",
-      content: textContent(content),
+      content: textContent(enrichedContent),
       timestamp: msg.createdTimestamp,
       metadata: {
         userId: msg.author.id,
@@ -307,36 +355,21 @@ export class DiscordTransport implements Transport {
     };
     await sessionStore.addMessage(session.id, userMessage);
 
+    // 9. Prepare prompt — limitHistoryTurns + sanitize + prune
     const allMessages = await sessionStore.getMessages(session.id);
-    // Limit context to recent messages to prevent context overflow
-    const historyLimit = this.config.historyLimit ?? 20;
-    const promptInput = allMessages.length > historyLimit
-      ? allMessages.slice(-historyLimit)
-      : allMessages;
+    const ctx = this.config.context;
+    const promptInput = preparePromptMessages(allMessages, {
+      historyTurns: ctx?.historyTurns ?? 20,
+      protectRecentAssistant: ctx?.pruning?.protectRecent ?? 3,
+      toolResultHeadChars: ctx?.pruning?.headChars ?? 1500,
+      toolResultTailChars: ctx?.pruning?.tailChars ?? 1500,
+    });
 
-    // Debug: Log context window contents
-    log.info(`[context-debug] Session ${session.id}: total=${allMessages.length}, sending=${promptInput.length}, historyLimit=${historyLimit}`);
-    for (let i = 0; i < promptInput.length; i++) {
-      const m = promptInput[i];
-      const contentStr = Array.isArray(m.content) 
-        ? m.content.map(c => 'text' in c ? c.text : '[block]').join(' ')
-        : String(m.content);
-      const preview = contentStr.slice(0, 100).replace(/\n/g, ' ');
-      log.debug(`[context-debug] msg[${i}] role=${m.role} len=${contentStr.length} preview="${preview}..."`);
-    }
+    log.debug(`Session ${session.id}: total=${allMessages.length}, sending=${promptInput.length}`);
 
-    // Clear agent internal state before prompting with fresh context
-    // This prevents message accumulation across prompts
+    // 10. Clear agent internal state and run
     agent.clearMessages?.();
-
-    // Run agent and stream response
-    await this.runAgentAndRespond(
-      agent,
-      promptInput,
-      msg.channel as SendableChannel,
-      session.id,
-      sessionStore,
-    );
+    await this.runAgentAndRespond(agent, promptInput, msg.channel as SendableChannel, session.id, sessionStore);
   }
 
   private shouldRespond(msg: DiscordMessage): boolean {
