@@ -314,6 +314,17 @@ export class DiscordTransport implements Transport {
       ? allMessages.slice(-historyLimit)
       : allMessages;
 
+    // Debug: Log context window contents
+    log.info(`[context-debug] Session ${session.id}: total=${allMessages.length}, sending=${promptInput.length}, historyLimit=${historyLimit}`);
+    for (let i = 0; i < promptInput.length; i++) {
+      const m = promptInput[i];
+      const contentStr = Array.isArray(m.content) 
+        ? m.content.map(c => 'text' in c ? c.text : '[block]').join(' ')
+        : String(m.content);
+      const preview = contentStr.slice(0, 100).replace(/\n/g, ' ');
+      log.debug(`[context-debug] msg[${i}] role=${m.role} len=${contentStr.length} preview="${preview}..."`);
+    }
+
     // Clear agent internal state before prompting with fresh context
     // This prevents message accumulation across prompts
     agent.clearMessages?.();
