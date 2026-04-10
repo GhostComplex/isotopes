@@ -134,4 +134,15 @@ describe("buildHistoryContext", () => {
     expect(aIdx).toBeLessThan(bIdx);
     expect(bIdx).toBeLessThan(cIdx);
   });
+
+  it("labels bot entries with (bot) suffix", () => {
+    const entries: HistoryEntry[] = [
+      { sender: "Alice", body: "hello", isBot: false },
+      { sender: "Major", body: "I fixed it", isBot: true },
+    ];
+    const result = buildHistoryContext(entries, "who are you");
+    expect(result).toContain("Alice: hello");
+    expect(result).toContain("Major (bot): I fixed it");
+    expect(result).not.toMatch(/^Major: /m);
+  });
 });

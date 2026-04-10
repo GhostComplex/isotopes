@@ -300,6 +300,7 @@ export class DiscordTransport implements Transport {
             body: content,
             timestamp: msg.createdTimestamp,
             messageId: msg.id,
+            isBot: msg.author.bot ?? false,
           });
         }
       }

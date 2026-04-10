@@ -11,6 +11,8 @@ export interface HistoryEntry {
   body: string;
   timestamp?: number;
   messageId?: string;
+  /** Whether the sender is a bot/agent (used to disambiguate in context) */
+  isBot?: boolean;
 }
 
 export interface ChannelHistoryBufferOptions {
@@ -113,6 +115,9 @@ export function buildHistoryContext(
 ): string {
   if (entries.length === 0) return currentMessage;
 
-  const lines = entries.map((e) => `${e.sender}: ${e.body}`);
+  const lines = entries.map((e) => {
+    const label = e.isBot ? `${e.sender} (bot)` : e.sender;
+    return `${label}: ${e.body}`;
+  });
   return `${HISTORY_MARKER}\n${lines.join("\n")}\n\n${CURRENT_MARKER}\n${currentMessage}`;
 }
