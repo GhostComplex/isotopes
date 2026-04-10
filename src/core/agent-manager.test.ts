@@ -26,7 +26,6 @@ function createMockCore(): AgentCore {
 function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
   return {
     id: "test-agent",
-    name: "Test Agent",
     systemPrompt: "You are a test agent.",
     ...overrides,
   };
@@ -94,8 +93,8 @@ describe("DefaultAgentManager", () => {
     });
 
     it("returns all agent configs", async () => {
-      await manager.create(makeConfig({ id: "agent-1", name: "Agent 1" }));
-      await manager.create(makeConfig({ id: "agent-2", name: "Agent 2" }));
+      await manager.create(makeConfig({ id: "agent-1" }));
+      await manager.create(makeConfig({ id: "agent-2" }));
 
       const configs = manager.list();
       expect(configs).toHaveLength(2);
@@ -109,14 +108,14 @@ describe("DefaultAgentManager", () => {
       await manager.create(config);
 
       const updated = await manager.update("test-agent", {
-        name: "Updated Agent",
+        systemPrompt: "Updated prompt",
       });
 
       expect(updated).toBeDefined();
       expect(core.createAgent).toHaveBeenCalledTimes(2);
 
       const configs = manager.list();
-      expect(configs[0].name).toBe("Updated Agent");
+      expect(configs[0].systemPrompt).toBe("Updated prompt");
     });
 
     it("preserves id even if update tries to change it", async () => {
@@ -124,7 +123,7 @@ describe("DefaultAgentManager", () => {
 
       await manager.update("test-agent", {
         id: "different-id",
-        name: "Updated",
+        systemPrompt: "Updated",
       } as Partial<AgentConfig>);
 
       const configs = manager.list();
@@ -133,7 +132,7 @@ describe("DefaultAgentManager", () => {
 
     it("throws if agent not found", async () => {
       await expect(
-        manager.update("non-existent", { name: "New Name" }),
+        manager.update("non-existent", { systemPrompt: "New" }),
       ).rejects.toThrow('Agent "non-existent" not found');
     });
   });

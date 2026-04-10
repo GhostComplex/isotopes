@@ -112,7 +112,6 @@ export interface ProviderConfig {
 /** Complete configuration needed to create an {@link AgentInstance}. */
 export interface AgentConfig {
   id: string;
-  name: string;
   systemPrompt: string;
   tools?: Tool[];
   toolSettings?: AgentToolSettings;

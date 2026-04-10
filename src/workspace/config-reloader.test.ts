@@ -19,7 +19,7 @@ describe("ConfigReloader", () => {
   function makeConfig(overrides?: Partial<IsotopesConfigFile>): IsotopesConfigFile {
     return {
       agents: [
-        { id: "test-agent", name: "Test Agent" },
+        { id: "test-agent" },
       ],
       ...overrides,
     };
@@ -89,12 +89,12 @@ describe("ConfigReloader", () => {
       await reloader.start();
 
       // Verify initial state
-      expect(reloader.getConfig()!.agents[0].name).toBe("Test Agent");
+      expect(reloader.getConfig()!.agents[0].id).toBe("test-agent");
 
       // Modify the config
       await writeConfig(
         makeConfig({
-          agents: [{ id: "updated-agent", name: "Updated Agent" }],
+          agents: [{ id: "updated-agent" }],
         }),
       );
 
@@ -103,7 +103,6 @@ describe("ConfigReloader", () => {
 
       const newConfig = reloader.getConfig();
       expect(newConfig!.agents[0].id).toBe("updated-agent");
-      expect(newConfig!.agents[0].name).toBe("Updated Agent");
 
       reloader.stop();
     });
@@ -124,7 +123,7 @@ describe("ConfigReloader", () => {
       // Modify config
       await writeConfig(
         makeConfig({
-          agents: [{ id: "new-agent", name: "New Agent" }],
+          agents: [{ id: "new-agent" }],
         }),
       );
 
@@ -154,7 +153,7 @@ describe("ConfigReloader", () => {
       // Modify config
       await writeConfig(
         makeConfig({
-          agents: [{ id: "x", name: "X" }],
+          agents: [{ id: "x" }],
         }),
       );
 
@@ -180,7 +179,7 @@ describe("ConfigReloader", () => {
       // Modify config
       await writeConfig(
         makeConfig({
-          agents: [{ id: "y", name: "Y" }],
+          agents: [{ id: "y" }],
         }),
       );
 

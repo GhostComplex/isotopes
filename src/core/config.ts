@@ -53,7 +53,6 @@ export interface ProviderConfigFile {
 /** Agent configuration in config file */
 export interface AgentConfigFile {
   id: string;
-  name: string;
   tools?: AgentToolsConfigFile;
   provider?: ProviderConfigFile;
   compaction?: CompactionConfigFile;
@@ -570,7 +569,6 @@ export function toAgentConfig(
 
   return {
     id: agent.id,
-    name: agent.name,
     systemPrompt: "",
     toolSettings: resolveToolSettings(agent.tools, defaultTools),
     provider: (agent.provider ?? defaultProvider) as ProviderConfig | undefined,

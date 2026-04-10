@@ -35,7 +35,6 @@ describe("Config", () => {
         `
 agents:
   - id: test
-    name: Test Agent
 `,
       );
 
@@ -43,7 +42,6 @@ agents:
 
       expect(config.agents).toHaveLength(1);
       expect(config.agents[0].id).toBe("test");
-      expect(config.agents[0].name).toBe("Test Agent");
     });
 
     it("loads JSON config", async () => {
@@ -51,7 +49,7 @@ agents:
       await fs.writeFile(
         configPath,
         JSON.stringify({
-          agents: [{ id: "test", name: "Test" }],
+          agents: [{ id: "test" }],
         }),
       );
 
@@ -79,7 +77,6 @@ agents:
         `
 agents:
   - id: test
-    name: Test
 provider:
   type: openai
   apiKey: \${TEST_API_KEY}
@@ -98,7 +95,6 @@ provider:
         `
 agents:
   - id: test
-    name: Test
 provider:
   type: openai
   model: \${MODEL:-gpt-4}
@@ -121,7 +117,6 @@ provider:
 
 agents:
   - id: assistant
-    name: Assistant
     provider:
       type: openai
       model: gpt-4o
@@ -155,7 +150,6 @@ tools:
 
 agents:
   - id: assistant
-    name: Assistant
     tools:
       cli: true
 `,
@@ -173,18 +167,16 @@ agents:
     it("converts config file agent to AgentConfig", () => {
       const agentFile = {
         id: "test",
-        name: "Test Agent",
       };
 
       const config = toAgentConfig(agentFile);
 
       expect(config.id).toBe("test");
-      expect(config.name).toBe("Test Agent");
       expect(config.systemPrompt).toBe("");
     });
 
     it("uses default provider when agent has none", () => {
-      const agentFile = { id: "test", name: "Test" };
+      const agentFile = { id: "test" };
       const defaultProvider = { type: "openai" as const, model: "gpt-4" };
 
       const config = toAgentConfig(agentFile, defaultProvider);
@@ -196,7 +188,6 @@ agents:
     it("prefers agent provider over default", () => {
       const agentFile = {
         id: "test",
-        name: "Test",
         provider: { type: "anthropic" as const, model: "claude-3" },
       };
       const defaultProvider = { type: "openai" as const, model: "gpt-4" };
@@ -209,7 +200,6 @@ agents:
     it("merges tool settings with defaults", () => {
       const agentFile = {
         id: "test",
-        name: "Test",
         tools: { cli: true },
       };
       const config = toAgentConfig(agentFile, undefined, {
@@ -224,7 +214,6 @@ agents:
     it("includes compaction config from agent-level", () => {
       const agentFile = {
         id: "test",
-        name: "Test",
         compaction: { mode: "aggressive" },
       };
       const config = toAgentConfig(agentFile);
@@ -233,7 +222,7 @@ agents:
     });
 
     it("includes compaction config from defaults", () => {
-      const agentFile = { id: "test", name: "Test" };
+      const agentFile = { id: "test" };
       const config = toAgentConfig(agentFile, undefined, undefined, {
         mode: "safeguard",
       });
@@ -244,7 +233,6 @@ agents:
     it("agent compaction overrides default compaction", () => {
       const agentFile = {
         id: "test",
-        name: "Test",
         compaction: { mode: "off" },
       };
       const config = toAgentConfig(agentFile, undefined, undefined, {
@@ -255,7 +243,7 @@ agents:
     });
 
     it("omits compaction when neither agent nor default has it", () => {
-      const agentFile = { id: "test", name: "Test" };
+      const agentFile = { id: "test" };
       const config = toAgentConfig(agentFile);
 
       expect(config.compaction).toBeUndefined();
@@ -412,7 +400,6 @@ agents:
         `
 agents:
   - id: test
-    name: Test
 session:
   ttl: 43200
   cleanupInterval: 1800
@@ -535,7 +522,6 @@ session:
         `
 agents:
   - id: test
-    name: Test
 `,
       );
 
@@ -548,7 +534,7 @@ agents:
       const configPath = path.join(tempDir, "config.dat");
       await fs.writeFile(
         configPath,
-        JSON.stringify({ agents: [{ id: "json-test", name: "JSON" }] }),
+        JSON.stringify({ agents: [{ id: "json-test" }] }),
       );
 
       const config = await loadConfig(configPath);

@@ -51,7 +51,6 @@ import { ToolRegistry } from "./tools.js";
 function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
   return {
     id: "test-agent",
-    name: "Test Agent",
     systemPrompt: "You are a test agent.",
     ...overrides,
   };
@@ -216,7 +215,7 @@ describe("PiMonoCore.createAgent", () => {
 
     core.createAgent(makeConfig({ id: "agent-a" }));
     core.createAgent(makeConfig({ id: "agent-b" }));
-    core.createAgent(makeConfig({ id: "agent-a", name: "Agent A Reloaded" }));
+    core.createAgent(makeConfig({ id: "agent-a" }));
 
     const agentCalls = vi.mocked(Agent).mock.calls;
     const lastThreeCalls = agentCalls.slice(-3);
