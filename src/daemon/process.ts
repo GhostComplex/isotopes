@@ -141,6 +141,11 @@ export class DaemonProcess {
     const child = spawn(process.argv[0], [cliEntry], {
       detached: true,
       stdio: ["ignore", outFd.fd, errFd.fd],
+      // Set cwd to user home to avoid inheriting caller's cwd.
+      // Without this, file tools with workspaceOnly=false resolve relative
+      // paths against the caller's cwd, which may be another agent's workspace,
+      // causing identity contamination (#92).
+      cwd: process.env.HOME || "/",
       env: {
         ...process.env,
         ISOTOPES_DAEMON: "1",

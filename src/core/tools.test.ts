@@ -272,6 +272,30 @@ describe("Built-in tools", () => {
         await fs.rm(outsideFile, { force: true });
       }
     });
+
+    it("resolves relative paths against basePath even when constrainToWorkspace is false", async () => {
+      const testFile = path.join(tempDir, "identity.md");
+      await fs.writeFile(testFile, "workspace content");
+
+      const { handler } = createReadFileTool({ basePath: tempDir, constrainToWorkspace: false });
+      const result = await handler({ path: "identity.md" });
+
+      expect(result).toBe("workspace content");
+    });
+
+    it("allows absolute paths outside workspace when constrainToWorkspace is false", async () => {
+      const outsideFile = path.join(os.tmpdir(), `outside-allowed-${Date.now()}.txt`);
+      await fs.writeFile(outsideFile, "allowed content");
+
+      try {
+        const { handler } = createReadFileTool({ basePath: tempDir, constrainToWorkspace: false });
+        const result = await handler({ path: outsideFile });
+
+        expect(result).toBe("allowed content");
+      } finally {
+        await fs.rm(outsideFile, { force: true });
+      }
+    });
   });
 
   describe("createWriteFileTool", () => {
