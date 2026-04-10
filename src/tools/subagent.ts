@@ -82,7 +82,8 @@ export function initSubagentBackend(config: SubagentBackendConfig): void {
 
 function getBackend(allowedWorkspaces?: string[]): AcpxBackend {
   // Create new backend if workspaces changed or not initialized
-  if (!sharedBackend || allowedWorkspaces) {
+  const key = allowedWorkspaces?.sort().join(":") ?? "";
+  if (!sharedBackend || sharedBackend.workspacesKey !== key) {
     sharedBackend = new AcpxBackend({
       allowedWorkspaceRoots: allowedWorkspaces,
       permissionMode: backendConfig.permissionMode,
