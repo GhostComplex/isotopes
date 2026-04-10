@@ -33,7 +33,7 @@ compaction:
 # =============================================================================
 discord:
   tokenEnv: DISCORD_TOKEN      # env var containing bot token
-  defaultAgentId: assistant
+  defaultAgentId: main
   allowDMs: true
   threadBindings:
     enabled: true
@@ -60,7 +60,7 @@ discord:
 acp:
   enabled: true
   backend: acpx                # acpx | claude-code | codex
-  defaultAgent: assistant
+  defaultAgent: main
   allowedAgents:
     - assistant
 
