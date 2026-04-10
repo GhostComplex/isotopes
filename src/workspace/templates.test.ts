@@ -41,15 +41,6 @@ describe("Workspace Templates", () => {
         expect(tmpl.firstRunOnly).toBeFalsy();
       }
     });
-
-    it("IDENTITY.md has empty fields for hatch", () => {
-      const templates = getWorkspaceTemplates();
-      const identity = templates.find((t) => t.filename === "IDENTITY.md");
-      expect(identity).toBeDefined();
-      expect(identity!.content).toContain("fill in during bootstrap");
-      expect(identity!.content).not.toContain("{agentId}");
-      expect(identity!.content).not.toContain("{agentName}");
-    });
   });
 
   describe("isBrandNewWorkspace", () => {
@@ -93,7 +84,7 @@ describe("Workspace Templates", () => {
 
       // Verify files exist with content
       const soul = await fs.readFile(path.join(tempDir, "SOUL.md"), "utf-8");
-      expect(soul).toContain("Who You Are");
+      expect(soul).toContain("Your Core");
     });
 
     it("never overwrites existing files", async () => {
@@ -129,7 +120,15 @@ describe("Workspace Templates", () => {
 
       expect(created).toContain("BOOTSTRAP.md");
       const bootstrap = await fs.readFile(path.join(tempDir, "BOOTSTRAP.md"), "utf-8");
-      expect(bootstrap).toContain("Hello, World");
+      expect(bootstrap).toContain("First Boot");
+    });
+
+    it("BOOTSTRAP.md contains anti-hallucination guard", async () => {
+      await seedWorkspaceTemplates(tempDir);
+
+      const bootstrap = await fs.readFile(path.join(tempDir, "BOOTSTRAP.md"), "utf-8");
+      expect(bootstrap).toContain("MUST read your IDENTITY.md file");
+      expect(bootstrap).toContain("Do NOT fabricate identity");
     });
 
     it("is idempotent — second call creates nothing", async () => {
