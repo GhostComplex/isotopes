@@ -7,6 +7,7 @@ import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
 import { createLogger } from "../core/logger.js";
 import { textContent } from "../core/types.js";
+import { isSilentReply } from "../transports/silent-reply.js";
 
 const log = createLogger("api:chat");
 
@@ -94,6 +95,13 @@ addRoute("POST", "/api/chat/message", async (req, res, deps) => {
       content: textContent(responseText),
       timestamp: Date.now(),
     });
+  }
+
+  // Suppress silent replies — log internally but don't return content to client
+  if (isSilentReply(responseText)) {
+    log.info(`Silent reply detected (${responseText.trim()}), suppressing WebChat response`);
+    sendJson(res, 200, { sessionId, reply: null, silent: true });
+    return;
   }
 
   if (errorMessage) {
@@ -198,6 +206,12 @@ addRoute("POST", "/api/chat/stream", async (req, res, deps) => {
       content: textContent(responseText),
       timestamp: Date.now(),
     });
+  }
+
+  // Signal silent reply to the client so the UI can suppress display
+  if (isSilentReply(responseText)) {
+    log.info(`Silent reply detected (${responseText.trim()}), signaling SSE client`);
+    writeSseEvent(res, JSON.stringify({ silent: true }));
   }
 
   // Signal stream end

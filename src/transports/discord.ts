@@ -26,6 +26,7 @@ import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
 import { runAgentLoop } from "../core/agent-runner.js";
+import { isSilentReply } from "./silent-reply.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey } from "../core/session-keys.js";
 import {
@@ -570,18 +571,28 @@ export class DiscordTransport implements Transport {
 
       // Run with or without subagent context based on config
       let errorMessage: string | null;
+      let responseText: string;
 
       if (this.config.enableSubagentStreaming !== false) {
         // Run with subagent Discord context enabled
         const subagentContext = this.createSubagentContext(channel);
         const result = await runWithSubagentContextAsync(subagentContext, runLoop);
-        
+
         errorMessage = result.errorMessage;
+        responseText = result.responseText;
       } else {
         // Run without subagent context (original behavior)
         const result = await runLoop();
-        
+
         errorMessage = result.errorMessage;
+        responseText = result.responseText;
+      }
+
+      // Check for silent reply tokens — suppress outbound delivery
+      if (isSilentReply(responseText)) {
+        log.info(`Silent reply detected (${responseText.trim()}), suppressing Discord send`);
+        typing.stop();
+        return;
       }
 
       // Flush any remaining content in the buffer

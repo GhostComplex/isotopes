@@ -17,6 +17,7 @@ import type { ContextConfigFile } from "../core/config.js";
 import { resolveBinding } from "../core/bindings.js";
 import { loggers } from "../core/logger.js";
 import { runAgentLoop } from "../core/agent-runner.js";
+import { isSilentReply } from "./silent-reply.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey, type SessionScope } from "../core/session-keys.js";
 import { preparePromptMessages } from "../core/context.js";
@@ -468,6 +469,12 @@ export class FeishuTransport implements Transport {
         log,
         usageTracker: this.config.usageTracker,
       });
+
+      // Check for silent reply tokens — suppress outbound delivery
+      if (isSilentReply(responseText)) {
+        log.info(`Silent reply detected (${responseText.trim()}), suppressing Feishu send`);
+        return;
+      }
 
       // Send reply to Feishu
       const replyText = errorMessage ? `Error: ${errorMessage}` : responseText;
