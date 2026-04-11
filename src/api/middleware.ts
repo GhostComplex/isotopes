@@ -151,8 +151,31 @@ export function handleRouteError(res: ServerResponse, err: unknown): void {
 // Request logging
 // ---------------------------------------------------------------------------
 
+/**
+ * Endpoints that should not be logged to avoid log pollution.
+ * These are typically high-frequency polling endpoints.
+ */
+const SILENT_ENDPOINTS = [
+  "/api/logs",  // Dashboard polls every 2s
+];
+
+/**
+ * Check if a URL should be silently handled (not logged).
+ */
+function isSilentEndpoint(url: string | undefined): boolean {
+  if (!url) return false;
+  // Strip query string for matching
+  const pathname = url.split("?")[0];
+  return SILENT_ENDPOINTS.some((ep) => pathname === ep);
+}
+
 /** Log an incoming request with timing */
 export function logRequest(req: IncomingMessage, res: ServerResponse): void {
+  // Skip logging for high-frequency polling endpoints
+  if (isSilentEndpoint(req.url)) {
+    return;
+  }
+
   const start = Date.now();
   const { method, url } = req;
 
