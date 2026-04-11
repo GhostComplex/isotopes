@@ -59,6 +59,8 @@ export interface AgentConfigFile {
   sandbox?: SandboxConfigFile;
   /** Self-iteration configuration (M10) */
   selfIteration?: SelfIterationConfigFile;
+  /** Additional workspace paths allowed for subagent cwd */
+  allowedWorkspaces?: string[];
 }
 
 /** Self-iteration configuration in config file */

@@ -319,7 +319,7 @@ async function main() {
       workspacePath,
       agentConfig.toolSettings,
       subagentEnabled,
-      [],
+      agentFile.allowedWorkspaces ?? [],
     );
     for (const { tool, handler } of workspaceTools) {
       toolRegistry.register(tool, handler);
