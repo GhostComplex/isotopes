@@ -345,6 +345,8 @@ async function main() {
       const { tool: iterTool, handler: iterHandler } = createIterateCodebaseTool({
         workspacePath,
         repoPath: process.cwd(),
+        subagentEnabled: config.acp?.enabled === true,
+        allowedWorkspaces: agentAllowedWorkspaces,
       });
       toolRegistry.register(iterTool, iterHandler);
     }

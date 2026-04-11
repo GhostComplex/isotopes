@@ -97,6 +97,17 @@ function getBackend(allowedWorkspaces?: string[]): AcpxBackend {
 let taskCounter = 0;
 
 /**
+ * Get the shared AcpxBackend instance for use by other modules (e.g. IterationExecutor).
+ * Returns undefined if the backend hasn't been initialized (no permissionMode set).
+ */
+export function getSubagentBackend(allowedWorkspaces?: string[]): AcpxBackend | undefined {
+  if (!backendConfig.permissionMode) {
+    return undefined;
+  }
+  return getBackend(allowedWorkspaces);
+}
+
+/**
  * Spawn a sub-agent to execute a task.
  *
  * This tool allows the main agent to delegate complex tasks (like coding,

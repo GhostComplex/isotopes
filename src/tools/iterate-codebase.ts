@@ -8,6 +8,7 @@ import { IterationPlanner } from "../iteration/planner.js";
 import { IterationExecutor } from "../iteration/executor.js";
 import { IterationReporter } from "../iteration/reporter.js";
 import { createLogger } from "../core/logger.js";
+import { getSubagentBackend } from "./subagent.js";
 
 const log = createLogger("tools:iterate-codebase");
 
@@ -20,6 +21,10 @@ export interface IterateCodebaseConfig {
   workspacePath: string;
   /** Path to the repository root (for git/PR operations) */
   repoPath: string;
+  /** Whether to enable subagent-backed code execution */
+  subagentEnabled?: boolean;
+  /** Allowed workspace roots passed to the subagent backend */
+  allowedWorkspaces?: string[];
 }
 
 interface IterateCodebaseArgs {
@@ -70,8 +75,15 @@ function createIterateCodebaseHandler(
     const planner = new IterationPlanner({
       workspacePath: config.workspacePath,
     });
+
+    // Get subagent backend at runtime if enabled
+    const subagent = config.subagentEnabled
+      ? getSubagentBackend(config.allowedWorkspaces)
+      : undefined;
+
     const executor = new IterationExecutor({
       workspacePath: config.workspacePath,
+      subagent,
     });
     const reporter = new IterationReporter();
 
