@@ -16,6 +16,7 @@ import {
 import { AcpSessionManager } from "../acp/session-manager.js";
 import { AgentMessageBus } from "../acp/message-bus.js";
 import type { AcpConfig } from "../acp/types.js";
+import type { AgentManager } from "../core/types.js";
 
 function createTestContext(overrides?: Partial<SessionsToolContext>): SessionsToolContext {
   const config: AcpConfig = {
@@ -220,7 +221,7 @@ describe("createSessionTools", () => {
     expect(names).toContain("sessions_history");
     expect(names).toContain("sessions_yield");
     expect(names).toContain("sessions_kill");
-    expect(names).toContain("sessions_status");
+    expect(names).toContain("session_status");
     expect(tools).toHaveLength(8);
   });
 });
@@ -979,7 +980,7 @@ describe("sessions_kill", () => {
   });
 });
 
-describe("sessions_status", () => {
+describe("session_status", () => {
   let ctx: SessionsToolContext;
 
   beforeEach(() => {
@@ -988,26 +989,72 @@ describe("sessions_status", () => {
 
   it("returns tool with correct schema", () => {
     const { tool } = createSessionsStatusTool(ctx);
-    expect(tool.name).toBe("sessions_status");
-    expect(tool.parameters.required).toContain("session_id");
+    expect(tool.name).toBe("session_status");
+    // No required params — defaults to current session
+    expect(tool.parameters.properties).toHaveProperty("session_id");
+    expect(tool.parameters.properties).toHaveProperty("sessionKey");
+    expect(tool.parameters.properties).toHaveProperty("model");
   });
 
-  it("returns correct fields for active session", async () => {
+  it("returns enhanced fields for active session", async () => {
     const session = ctx.sessionManager.createSession("agent-a");
     ctx.sessionManager.addMessage(session.id, { role: "user", content: "hello" });
     ctx.sessionManager.addMessage(session.id, { role: "assistant", content: "hi" });
 
-    const { handler } = createSessionsStatusTool(ctx);
+    const statusCtx = createTestContext({
+      sessionManager: ctx.sessionManager,
+      messageBus: ctx.messageBus,
+      currentSessionId: session.id,
+    });
+
+    const { handler } = createSessionsStatusTool(statusCtx);
     const result = JSON.parse(await handler({ session_id: session.id }));
 
     expect(result.session_id).toBe(session.id);
     expect(result.agent_id).toBe("agent-a");
     expect(result.status).toBe("active");
-    expect(result.message_count).toBe(2);
     expect(result.thread_id).toBeNull();
+    // Usage stats
+    expect(result.usage.message_count).toBe(2);
+    expect(result.usage.user_messages).toBe(1);
+    expect(result.usage.assistant_messages).toBe(1);
+    expect(result.usage.system_messages).toBe(0);
+    // Session age
+    expect(result.session_age_ms).toBeGreaterThanOrEqual(0);
     // Verify timestamps are valid ISO strings
     expect(new Date(result.created_at).toISOString()).toBe(result.created_at);
     expect(new Date(result.last_activity).toISOString()).toBe(result.last_activity);
+    // Model/provider null without agentManager
+    expect(result.model).toBeNull();
+    expect(result.model_override).toBeNull();
+    expect(result.provider).toBeNull();
+    // Uptime null without startedAt
+    expect(result.uptime_ms).toBeNull();
+    // Linked context null without agentManager
+    expect(result.linked_context).toBeNull();
+  });
+
+  it("defaults to current session when no session_id provided", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    const statusCtx = createTestContext({
+      sessionManager: ctx.sessionManager,
+      messageBus: ctx.messageBus,
+      currentSessionId: session.id,
+    });
+
+    const { handler } = createSessionsStatusTool(statusCtx);
+    const result = JSON.parse(await handler({}));
+
+    expect(result.session_id).toBe(session.id);
+    expect(result.agent_id).toBe("agent-a");
+  });
+
+  it("returns error when no session_id and no current session", async () => {
+    const noSessionCtx = createTestContext({ currentSessionId: undefined });
+    const { handler } = createSessionsStatusTool(noSessionCtx);
+    const result = JSON.parse(await handler({}));
+
+    expect(result.error).toContain("No session_id or sessionKey provided");
   });
 
   it("returns thread_id when session is bound to a thread", async () => {
@@ -1037,7 +1084,6 @@ describe("sessions_status", () => {
   });
 
   it("allows status of allowed agent's session", async () => {
-    // agent-b is in allowedAgents
     const session = ctx.sessionManager.createSession("agent-b");
 
     const { handler } = createSessionsStatusTool(ctx);
@@ -1068,12 +1114,162 @@ describe("sessions_status", () => {
     expect(result.error).toContain("Access denied");
   });
 
-  it("returns zero message_count for empty session", async () => {
+  it("returns zero message counts for empty session", async () => {
     const session = ctx.sessionManager.createSession("agent-a");
 
     const { handler } = createSessionsStatusTool(ctx);
     const result = JSON.parse(await handler({ session_id: session.id }));
 
-    expect(result.message_count).toBe(0);
+    expect(result.usage.message_count).toBe(0);
+    expect(result.usage.user_messages).toBe(0);
+    expect(result.usage.assistant_messages).toBe(0);
+    expect(result.usage.system_messages).toBe(0);
+  });
+
+  it("returns uptime when startedAt is provided", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    const startedAt = new Date(Date.now() - 60_000); // started 60s ago
+
+    const uptimeCtx = createTestContext({
+      sessionManager: ctx.sessionManager,
+      messageBus: ctx.messageBus,
+      startedAt,
+    });
+
+    const { handler } = createSessionsStatusTool(uptimeCtx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.uptime_ms).toBeGreaterThanOrEqual(59_000);
+    expect(result.uptime_ms).toBeLessThanOrEqual(62_000);
+  });
+
+  it("looks up session by sessionKey (thread ID)", async () => {
+    const session = ctx.sessionManager.createSession("agent-a", "thread-789");
+
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ sessionKey: "thread-789" }));
+
+    expect(result.session_id).toBe(session.id);
+    expect(result.thread_id).toBe("thread-789");
+  });
+
+  it("looks up session by sessionKey (session ID)", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ sessionKey: session.id }));
+
+    expect(result.session_id).toBe(session.id);
+  });
+
+  it("returns error for unknown sessionKey", async () => {
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ sessionKey: "unknown-key" }));
+
+    expect(result.error).toContain("No session found for key");
+  });
+
+  it("sets model override", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    const overrides = new Map<string, string>();
+    const overrideCtx = createTestContext({
+      sessionManager: ctx.sessionManager,
+      messageBus: ctx.messageBus,
+      modelOverrides: overrides,
+    });
+
+    const { handler } = createSessionsStatusTool(overrideCtx);
+    const result = JSON.parse(
+      await handler({ session_id: session.id, model: "claude-sonnet-4-6" }),
+    );
+
+    expect(result.model_override).toBe("claude-sonnet-4-6");
+    expect(result.model).toBe("claude-sonnet-4-6");
+    expect(overrides.get(session.id)).toBe("claude-sonnet-4-6");
+  });
+
+  it("resets model override with model=default", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    const overrides = new Map<string, string>([[session.id, "claude-sonnet-4-6"]]);
+    const overrideCtx = createTestContext({
+      sessionManager: ctx.sessionManager,
+      messageBus: ctx.messageBus,
+      modelOverrides: overrides,
+    });
+
+    const { handler } = createSessionsStatusTool(overrideCtx);
+    const result = JSON.parse(
+      await handler({ session_id: session.id, model: "default" }),
+    );
+
+    expect(result.model_override).toBeNull();
+    expect(result.model).toBeNull(); // No agentManager, so falls back to null
+    expect(overrides.has(session.id)).toBe(false);
+  });
+
+  it("returns error when model param used without modelOverrides support", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+
+    // Default ctx has no modelOverrides
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(
+      await handler({ session_id: session.id, model: "claude-sonnet-4-6" }),
+    );
+
+    expect(result.error).toContain("Model overrides not supported");
+  });
+
+  it("returns model and provider from agentManager", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+
+    const mockAgentManager: AgentManager = {
+      create: async () => { throw new Error("not implemented"); },
+      get: () => undefined,
+      list: () => [
+        {
+          id: "agent-a",
+          systemPrompt: "test",
+          provider: {
+            type: "anthropic" as const,
+            model: "claude-opus-4-6",
+            baseUrl: "https://api.anthropic.com",
+          },
+        },
+      ],
+      update: async () => { throw new Error("not implemented"); },
+      delete: async () => {},
+      getPrompt: async () => "",
+      updatePrompt: async () => {},
+      reloadWorkspace: async () => {},
+    };
+
+    const managerCtx = createTestContext({
+      sessionManager: ctx.sessionManager,
+      messageBus: ctx.messageBus,
+      agentManager: mockAgentManager,
+    });
+
+    const { handler } = createSessionsStatusTool(managerCtx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.model).toBe("claude-opus-4-6");
+    expect(result.provider).toBe("anthropic");
+    expect(result.provider_base_url).toBe("https://api.anthropic.com");
+  });
+
+  it("counts system messages in usage stats", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.addMessage(session.id, { role: "user", content: "q1" });
+    ctx.sessionManager.addMessage(session.id, { role: "assistant", content: "a1" });
+    ctx.sessionManager.addMessage(session.id, { role: "system", content: "sys" });
+    ctx.sessionManager.addMessage(session.id, { role: "user", content: "q2" });
+
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.usage.message_count).toBe(4);
+    expect(result.usage.user_messages).toBe(2);
+    expect(result.usage.assistant_messages).toBe(1);
+    expect(result.usage.system_messages).toBe(1);
   });
 });
