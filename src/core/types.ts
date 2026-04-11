@@ -75,6 +75,26 @@ export interface AgentToolSettings {
 }
 
 // ---------------------------------------------------------------------------
+// Usage — token consumption and cost tracking
+// ---------------------------------------------------------------------------
+
+/** Token usage and cost breakdown for a single LLM turn. */
+export interface Usage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Events (streamed from AgentInstance.prompt)
 // ---------------------------------------------------------------------------
 
@@ -90,7 +110,7 @@ export type AgentEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'tool_call'; id: string; name: string; args: unknown }
   | { type: 'tool_result'; id: string; output: string; isError?: boolean }
-  | { type: 'turn_end' }
+  | { type: 'turn_end'; usage?: Usage }
   | { type: 'agent_end'; messages: Message[]; stopReason?: string; errorMessage?: string }
   | { type: 'error'; error: Error };
 
@@ -184,6 +204,8 @@ export interface SessionMetadata {
   transport: 'discord' | 'feishu' | 'web';
   channelId?: string;
   threadId?: string;
+  /** If true, session is exempt from TTL-based cleanup */
+  persistent?: boolean;
 }
 
 /** Session TTL and cleanup configuration */

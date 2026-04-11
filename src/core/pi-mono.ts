@@ -14,6 +14,7 @@ import {
   type Message,
   type MessageContentBlock,
   type Tool,
+  type Usage,
 } from "./types.js";
 import type { ToolRegistry } from "./tools.js";
 import {
@@ -633,8 +634,13 @@ function mapEvent(e: CoreEvent): AgentEvent | null {
     case "turn_start":
       return { type: "turn_start" };
 
-    case "turn_end":
+    case "turn_end": {
+      const msg = e.message;
+      if (msg && "role" in msg && msg.role === "assistant" && "usage" in msg) {
+        return { type: "turn_end", usage: msg.usage as Usage };
+      }
       return { type: "turn_end" };
+    }
 
     case "message_update": {
       // Extract text deltas from the assistant message event

@@ -7,6 +7,7 @@ import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { AgentManager, SessionStore } from "../core/types.js";
+import type { UsageTracker } from "../core/usage-tracker.js";
 import {
   applyCors,
   parseJsonBody,
@@ -58,8 +59,9 @@ export class ApiServer {
     configReloader?: ConfigReloader,
     agentManager?: AgentManager,
     chatSessionStore?: SessionStore,
+    usageTracker?: UsageTracker,
   ) {
-    this.deps = { sessionManager, cronScheduler, configReloader, agentManager, chatSessionStore };
+    this.deps = { sessionManager, cronScheduler, configReloader, agentManager, chatSessionStore, usageTracker };
   }
 
   /**

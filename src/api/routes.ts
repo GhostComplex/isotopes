@@ -11,6 +11,7 @@ import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { AgentManager, SessionStore } from "../core/types.js";
+import type { UsageTracker } from "../core/usage-tracker.js";
 import { getIsotopesHome, getLogsDir } from "../core/paths.js";
 import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middleware.js";
 
@@ -27,6 +28,8 @@ export interface RouteDeps {
   agentManager?: AgentManager;
   /** Session store for WebChat routes */
   chatSessionStore?: SessionStore;
+  /** Usage tracker for token/cost accumulation */
+  usageTracker?: UsageTracker;
 }
 
 /** Handler function for a matched API route. */
@@ -407,6 +410,22 @@ addRoute("GET", "/api/logs", async (req, res) => {
   } catch (err) {
     handleRouteError(res, err);
   }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/usage — global usage stats
+// ---------------------------------------------------------------------------
+
+addRoute("GET", "/api/usage", (_req, res, deps) => {
+  sendJson(res, 200, deps.usageTracker?.getGlobal() ?? { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sessions/:id/usage — per-session usage stats
+// ---------------------------------------------------------------------------
+
+addRoute("GET", "/api/sessions/:id/usage", (req, res, deps) => {
+  sendJson(res, 200, deps.usageTracker?.getSession(req.params.id) ?? { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
 });
 
 // ---------------------------------------------------------------------------

@@ -48,6 +48,7 @@ addRoute("POST", "/api/chat/message", async (req, res, deps) => {
   if (!sessionId) {
     const session = await chatSessionStore.create(body.agentId, {
       transport: "web",
+      persistent: true,
     });
     sessionId = session.id;
   }
@@ -68,6 +69,10 @@ addRoute("POST", "/api/chat/message", async (req, res, deps) => {
     for await (const event of agent.prompt(messages)) {
       if (event.type === "text_delta") {
         responseText += event.text;
+      } else if (event.type === "turn_end") {
+        if (deps.usageTracker && event.usage) {
+          deps.usageTracker.record(sessionId!, event.usage);
+        }
       } else if (event.type === "agent_end") {
         if (event.stopReason === "error") {
           errorMessage = event.errorMessage ?? "Unknown agent error";
@@ -137,6 +142,7 @@ addRoute("POST", "/api/chat/stream", async (req, res, deps) => {
   if (!sessionId) {
     const session = await chatSessionStore.create(body.agentId, {
       transport: "web",
+      persistent: true,
     });
     sessionId = session.id;
   }
@@ -167,6 +173,10 @@ addRoute("POST", "/api/chat/stream", async (req, res, deps) => {
       if (event.type === "text_delta") {
         responseText += event.text;
         writeSseEvent(res, JSON.stringify({ text: event.text }));
+      } else if (event.type === "turn_end") {
+        if (deps.usageTracker && event.usage) {
+          deps.usageTracker.record(sessionId!, event.usage);
+        }
       } else if (event.type === "agent_end") {
         if (event.stopReason === "error") {
           const msg = event.errorMessage ?? "Unknown agent error";

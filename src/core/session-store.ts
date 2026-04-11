@@ -201,6 +201,7 @@ export class DefaultSessionStore implements SessionStore {
     const expired: string[] = [];
 
     for (const [id, session] of this.sessions) {
+      if (session.metadata?.persistent) continue;
       const ageSeconds = (now - session.lastActiveAt.getTime()) / 1_000;
       if (ageSeconds > ttl) {
         expired.push(id);

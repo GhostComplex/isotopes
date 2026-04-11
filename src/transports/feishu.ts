@@ -17,6 +17,7 @@ import type { ContextConfigFile } from "../core/config.js";
 import { resolveBinding } from "../core/bindings.js";
 import { loggers } from "../core/logger.js";
 import { runAgentLoop } from "../core/agent-runner.js";
+import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey, type SessionScope } from "../core/session-keys.js";
 import { preparePromptMessages } from "../core/context.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../core/channel-history.js";
@@ -154,6 +155,8 @@ export interface FeishuTransportConfig {
   agentBindings?: Record<string, string>;
   /** Context management configuration */
   context?: ContextConfigFile;
+  /** Usage tracker for per-session/global token accumulation */
+  usageTracker?: UsageTracker;
 }
 
 /** Shape of the `im.message.receive_v1` event data from the Feishu SDK. */
@@ -463,6 +466,7 @@ export class FeishuTransport implements Transport {
         sessionId,
         sessionStore: this.config.sessionStore,
         log,
+        usageTracker: this.config.usageTracker,
       });
 
       // Send reply to Feishu

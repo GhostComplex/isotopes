@@ -26,6 +26,7 @@ import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
 import { runAgentLoop } from "../core/agent-runner.js";
+import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey } from "../core/session-keys.js";
 import {
   runWithSubagentContextAsync,
@@ -167,6 +168,8 @@ export interface DiscordTransportConfig {
   allowBots?: boolean;
   /** Context management configuration */
   context?: ContextConfigFile;
+  /** Usage tracker for per-session/global token accumulation */
+  usageTracker?: UsageTracker;
 }
 
 /**
@@ -561,6 +564,7 @@ export class DiscordTransport implements Transport {
               await streamBuffer.append(delta);
             }
           },
+          usageTracker: this.config.usageTracker,
         });
       };
 

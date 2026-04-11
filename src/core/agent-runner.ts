@@ -3,6 +3,7 @@
 
 import { textContent, type AgentInstance, type Message, type SessionStore } from "./types.js";
 import type { Logger } from "./logger.js";
+import type { UsageTracker } from "./usage-tracker.js";
 
 /** Result of running an agent prompt to completion */
 export interface AgentRunResult {
@@ -28,6 +29,8 @@ export interface RunAgentOptions {
   log: Logger;
   /** Optional callback fired after each text_delta */
   onTextDelta?: OnTextDelta;
+  /** Optional usage tracker for per-session/global accumulation */
+  usageTracker?: UsageTracker;
 }
 
 /**
@@ -44,7 +47,7 @@ export interface RunAgentOptions {
  * stay in the transport layer via the onTextDelta callback.
  */
 export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
-  const { agent, input, sessionId, sessionStore, log, onTextDelta } = opts;
+  const { agent, input, sessionId, sessionStore, log, onTextDelta, usageTracker } = opts;
 
   let responseText = "";
   let errorMessage: string | null = null;
@@ -54,6 +57,10 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
       responseText += event.text;
       if (onTextDelta) {
         await onTextDelta(responseText);
+      }
+    } else if (event.type === "turn_end") {
+      if (usageTracker && event.usage) {
+        usageTracker.record(sessionId, event.usage);
       }
     } else if (event.type === "agent_end") {
       // Store final assistant message

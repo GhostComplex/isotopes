@@ -49,6 +49,7 @@ import { DaemonProcess } from "./daemon/process.js";
 import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
 import { ApiServer } from "./api/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
+import { UsageTracker } from "./core/usage-tracker.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -380,6 +381,7 @@ async function main() {
     acpConfig ?? { enabled: false, backend: "acpx", defaultAgent: config.agents[0]?.id ?? "default" },
   );
   const cronScheduler = new CronScheduler();
+  const usageTracker = new UsageTracker();
 
   // Start Discord transport if configured
   if (config.discord) {
@@ -439,6 +441,7 @@ async function main() {
       threadBindingManager,
       allowBots: config.discord.allowBots,
       context: config.discord.context,
+      usageTracker,
     });
 
     if (threadBindings?.enabled) {
@@ -479,6 +482,7 @@ async function main() {
     undefined,       // configReloader
     agentManager,
     chatSessionStore,
+    usageTracker,
   );
   await apiServer.start();
   logger.info("Dashboard available at http://127.0.0.1:2712/dashboard");
