@@ -6,6 +6,7 @@ import type { Tool } from "../core/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { AgentMessageBus, AgentMessage } from "../acp/message-bus.js";
+import type { AcpSessionStatus } from "../acp/types.js";
 
 const log = createLogger("tools:sessions");
 
@@ -476,9 +477,9 @@ export function createSessionsListTool(
       }
 
       try {
-        const filter: { agentId?: string; status?: "active" | "idle" | "terminated" } = {};
+        const filter: { agentId?: string; status?: AcpSessionStatus } = {};
         if (agent_id) filter.agentId = agent_id;
-        if (status) filter.status = status as "active" | "idle" | "terminated";
+        if (status) filter.status = status as AcpSessionStatus;
 
         const allSessions = ctx.sessionManager.listSessions(
           Object.keys(filter).length > 0 ? filter : undefined,
@@ -615,6 +616,149 @@ export function createSessionsHistoryTool(
 }
 
 // ---------------------------------------------------------------------------
+// sessions_yield
+// ---------------------------------------------------------------------------
+
+/** Valid target status for each (current_status, action) pair. null = invalid. */
+const YIELD_TRANSITIONS: Record<string, Record<string, AcpSessionStatus | null>> = {
+  active:     { terminate: "terminated", pause: "paused", resume: null },
+  paused:     { terminate: "terminated", pause: null,     resume: "active" },
+  idle:       { terminate: "terminated", pause: "paused", resume: null },
+  terminated: { terminate: null,         pause: null,     resume: null },
+};
+
+/**
+ * Create the `sessions_yield` tool.
+ *
+ * Allows agents to terminate, pause, or resume ACP sessions they own or
+ * are permitted to access via allowedAgents.
+ */
+export function createSessionsYieldTool(
+  ctx: SessionsToolContext,
+): { tool: Tool; handler: ToolHandler } {
+  return {
+    tool: {
+      name: "sessions_yield",
+      description:
+        "Terminate, pause, or resume an ACP session. " +
+        "Defaults to the current session if session_id is omitted.",
+      parameters: {
+        type: "object",
+        properties: {
+          session_id: {
+            type: "string",
+            description: "Target session ID. Defaults to current session.",
+          },
+          action: {
+            type: "string",
+            enum: ["terminate", "pause", "resume"],
+            description: "Action to perform on the session",
+          },
+          reason: {
+            type: "string",
+            description: "Optional reason for audit logging",
+          },
+        },
+        required: ["action"],
+      },
+    },
+    handler: async (args) => {
+      const { session_id, action, reason } = args as {
+        session_id?: string;
+        action: "terminate" | "pause" | "resume";
+        reason?: string;
+      };
+
+      const targetId = session_id ?? ctx.currentSessionId;
+
+      if (!targetId) {
+        return JSON.stringify({
+          success: false,
+          message: "No session_id provided and no current session",
+        });
+      }
+
+      const session = ctx.sessionManager.getSession(targetId);
+      if (!session) {
+        return JSON.stringify({
+          success: false,
+          message: `Session not found: ${targetId}`,
+        });
+      }
+
+      // Access control: agent must own the session OR session's agent is in allowedAgents
+      const allowedAgents = ctx.sessionManager.getConfig().allowedAgents ?? [];
+      const isOwner = session.agentId === ctx.currentAgentId;
+      const isAllowed = allowedAgents.includes(session.agentId);
+
+      if (!isOwner && !isAllowed) {
+        return JSON.stringify({
+          success: false,
+          session_id: targetId,
+          message: `Access denied to session: ${targetId}`,
+        });
+      }
+
+      const previousStatus = session.status;
+      const newStatus = YIELD_TRANSITIONS[previousStatus]?.[action];
+
+      // No-op: pause an already paused session
+      if (newStatus === null && action === "pause" && previousStatus === "paused") {
+        return JSON.stringify({
+          success: true,
+          session_id: targetId,
+          previous_status: previousStatus,
+          new_status: previousStatus,
+        });
+      }
+
+      // Invalid transition
+      if (newStatus === null || newStatus === undefined) {
+        let message: string;
+        if (action === "terminate" && previousStatus === "terminated") {
+          message = "Session already terminated";
+        } else if (action === "resume") {
+          message = `Cannot resume session in status "${previousStatus}"`;
+        } else {
+          message = `Cannot ${action} session in status "${previousStatus}"`;
+        }
+
+        return JSON.stringify({
+          success: false,
+          session_id: targetId,
+          previous_status: previousStatus,
+          new_status: previousStatus,
+          message,
+        });
+      }
+
+      // Execute the transition
+      if (action === "terminate") {
+        ctx.sessionManager.terminateSession(targetId);
+      } else {
+        ctx.sessionManager.updateSession(targetId, { status: newStatus });
+      }
+
+      log.info("Session yield", {
+        sessionId: targetId,
+        callingAgent: ctx.currentAgentId,
+        action,
+        previousStatus,
+        newStatus,
+        reason,
+      });
+
+      return JSON.stringify({
+        success: true,
+        session_id: targetId,
+        previous_status: previousStatus,
+        new_status: newStatus,
+      });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -631,5 +775,6 @@ export function createSessionTools(
     createSessionsSendTool(ctx),
     createSessionsListTool(ctx),
     createSessionsHistoryTool(ctx),
+    createSessionsYieldTool(ctx),
   ];
 }

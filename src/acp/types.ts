@@ -25,7 +25,7 @@ export interface AcpConfig {
 // ---------------------------------------------------------------------------
 
 /** Status of an ACP session */
-export type AcpSessionStatus = "active" | "idle" | "terminated";
+export type AcpSessionStatus = "active" | "idle" | "paused" | "terminated";
 
 /** A single message in an ACP session history */
 export interface AcpMessage {
