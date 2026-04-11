@@ -2,7 +2,7 @@
 // Exposes AcpSessionManager and AgentMessageBus to agents as callable tools.
 
 import { createLogger } from "../core/logger.js";
-import type { Tool } from "../core/types.js";
+import type { AgentManager, Tool } from "../core/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { AgentMessageBus, AgentMessage } from "../acp/message-bus.js";
@@ -22,6 +22,12 @@ export interface SessionsToolContext {
   currentAgentId: string;
   /** Session ID of the calling agent's current session */
   currentSessionId?: string;
+  /** Agent manager for model/provider/workspace lookups (used by session_status) */
+  agentManager?: AgentManager;
+  /** Timestamp when the process started (used by session_status for uptime) */
+  startedAt?: Date;
+  /** Per-session model overrides, keyed by session ID */
+  modelOverrides?: Map<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -845,40 +851,87 @@ export function createSessionsKillTool(
 }
 
 // ---------------------------------------------------------------------------
-// sessions_status
+// session_status
 // ---------------------------------------------------------------------------
 
+/** Duck-typed subset of DefaultAgentManager for workspace access */
+interface AgentManagerWithWorkspace {
+  getWorkspace?: (id: string) => {
+    systemPromptAdditions?: string;
+    memory?: string | null;
+    workspacePath?: string;
+    skillsPrompt?: string;
+  } | undefined;
+}
+
 /**
- * Create the `sessions_status` tool.
+ * Create the `session_status` tool.
  *
- * Returns detailed status and metadata for a specific ACP session.
- * Access control: same as sessions_kill.
+ * Returns rich session status including model, provider, usage stats, uptime,
+ * and linked workspace context. Optionally sets a per-session model override
+ * or queries another session by session key.
  */
 export function createSessionsStatusTool(
   ctx: SessionsToolContext,
 ): { tool: Tool; handler: ToolHandler } {
   return {
     tool: {
-      name: "sessions_status",
+      name: "session_status",
       description:
-        "Get the current status and metadata for a specific ACP session.",
+        "Get detailed session status including model, provider, usage stats, uptime, " +
+        "and linked context. Pass `model` to set a per-session model override " +
+        '(use model="default" to reset). Pass `sessionKey` to view another session.',
       parameters: {
         type: "object",
         properties: {
           session_id: {
             type: "string",
-            description: "Session ID to query",
+            description: "Session ID to query (defaults to current session)",
+          },
+          sessionKey: {
+            type: "string",
+            description: "Look up a session by its key instead of ID",
+          },
+          model: {
+            type: "string",
+            description:
+              'Set a per-session model override. Use "default" to reset to the agent\'s configured model.',
           },
         },
-        required: ["session_id"],
       },
     },
     handler: async (args) => {
-      const { session_id } = args as { session_id: string };
+      const { session_id, sessionKey, model } = args as {
+        session_id?: string;
+        sessionKey?: string;
+        model?: string;
+      };
 
-      const session = ctx.sessionManager.getSession(session_id);
+      // Resolve target session ID
+      let targetId = session_id ?? ctx.currentSessionId;
+
+      // sessionKey lookup via ACP sessions (match by session key or thread ID)
+      if (sessionKey) {
+        const allSessions = ctx.sessionManager.listSessions();
+        const match = allSessions.find(
+          (s) => s.id === sessionKey || s.threadId === sessionKey,
+        );
+        if (match) {
+          targetId = match.id;
+        } else {
+          return JSON.stringify({ error: `No session found for key: ${sessionKey}` });
+        }
+      }
+
+      if (!targetId) {
+        return JSON.stringify({
+          error: "No session_id or sessionKey provided and no current session",
+        });
+      }
+
+      const session = ctx.sessionManager.getSession(targetId);
       if (!session) {
-        return JSON.stringify({ error: `Session not found: ${session_id}` });
+        return JSON.stringify({ error: `Session not found: ${targetId}` });
       }
 
       // Access control: agent must own the session OR session's agent is in allowedAgents
@@ -887,10 +940,76 @@ export function createSessionsStatusTool(
       const isAllowed = allowedAgents.includes(session.agentId);
 
       if (!isOwner && !isAllowed) {
-        return JSON.stringify({
-          error: `Access denied to session: ${session_id}`,
-        });
+        return JSON.stringify({ error: `Access denied to session: ${targetId}` });
       }
+
+      // Handle model override
+      if (model !== undefined) {
+        if (!ctx.modelOverrides) {
+          return JSON.stringify({ error: "Model overrides not supported in this context" });
+        }
+        if (model === "default") {
+          ctx.modelOverrides.delete(targetId);
+          log.info("Model override reset", {
+            sessionId: targetId,
+            agentId: ctx.currentAgentId,
+          });
+        } else {
+          ctx.modelOverrides.set(targetId, model);
+          log.info("Model override set", {
+            sessionId: targetId,
+            model,
+            agentId: ctx.currentAgentId,
+          });
+        }
+      }
+
+      // Gather agent config for model/provider info
+      let agentModel: string | null = null;
+      let providerType: string | null = null;
+      let providerBaseUrl: string | null = null;
+      let workspaceFiles: string[] | null = null;
+
+      if (ctx.agentManager) {
+        const configs = ctx.agentManager.list();
+        const agentConfig = configs.find((c) => c.id === session.agentId);
+        if (agentConfig) {
+          agentModel = agentConfig.provider?.model ?? null;
+          providerType = agentConfig.provider?.type ?? null;
+          providerBaseUrl = agentConfig.provider?.baseUrl ?? null;
+        }
+
+        // Linked context: check workspace
+        const mgr = ctx.agentManager as AgentManagerWithWorkspace;
+        const workspace = mgr.getWorkspace?.(session.agentId);
+        if (workspace) {
+          workspaceFiles = [];
+          if (workspace.systemPromptAdditions) workspaceFiles.push("SOUL.md");
+          if (workspace.memory) workspaceFiles.push("MEMORY.md");
+          if (workspace.skillsPrompt) workspaceFiles.push("SKILLS");
+          if (workspace.workspacePath) workspaceFiles.push(workspace.workspacePath);
+        }
+      }
+
+      // Effective model (override takes precedence)
+      const modelOverride = ctx.modelOverrides?.get(targetId) ?? null;
+      const effectiveModel = modelOverride ?? agentModel;
+
+      // Usage stats from message history
+      const userMessages = session.history.filter((m) => m.role === "user").length;
+      const assistantMessages = session.history.filter(
+        (m) => m.role === "assistant",
+      ).length;
+      const systemMessages = session.history.filter(
+        (m) => m.role === "system",
+      ).length;
+
+      // Uptime
+      const now = new Date();
+      const uptimeMs = ctx.startedAt
+        ? now.getTime() - ctx.startedAt.getTime()
+        : null;
+      const sessionAgeMs = now.getTime() - session.createdAt.getTime();
 
       return JSON.stringify({
         session_id: session.id,
@@ -898,8 +1017,20 @@ export function createSessionsStatusTool(
         status: session.status,
         created_at: session.createdAt.toISOString(),
         last_activity: session.lastActivityAt.toISOString(),
-        message_count: session.history.length,
         thread_id: session.threadId ?? null,
+        model: effectiveModel,
+        model_override: modelOverride,
+        provider: providerType,
+        provider_base_url: providerBaseUrl ?? null,
+        usage: {
+          message_count: session.history.length,
+          user_messages: userMessages,
+          assistant_messages: assistantMessages,
+          system_messages: systemMessages,
+        },
+        uptime_ms: uptimeMs,
+        session_age_ms: sessionAgeMs,
+        linked_context: workspaceFiles,
       });
     },
   };
