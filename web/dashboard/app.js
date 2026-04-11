@@ -4,6 +4,13 @@ const API_BASE = window.location.origin;
 const app = document.getElementById("app");
 let logInterval = null;
 
+// Log filter state
+let logFilter = {
+  level: "all", // all, DEBUG, INFO, WARN, ERROR
+  search: "",
+};
+let rawLogs = "";
+
 // ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
@@ -37,6 +44,62 @@ function formatDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString();
+}
+
+// ---------------------------------------------------------------------------
+// Log filtering
+// ---------------------------------------------------------------------------
+
+function getLogLevel(line) {
+  if (line.includes("[DEBUG]") || line.includes(" DEBUG ")) return "DEBUG";
+  if (line.includes("[INFO]") || line.includes(" INFO ")) return "INFO";
+  if (line.includes("[WARN]") || line.includes(" WARN ") || line.includes("[WARNING]")) return "WARN";
+  if (line.includes("[ERROR]") || line.includes(" ERROR ")) return "ERROR";
+  return "INFO"; // default
+}
+
+function filterLogs(logs) {
+  if (!logs) return "";
+  const lines = logs.split("\n");
+  const filtered = lines.filter((line) => {
+    // Level filter
+    if (logFilter.level !== "all") {
+      const lineLevel = getLogLevel(line);
+      if (lineLevel !== logFilter.level) return false;
+    }
+    // Search filter
+    if (logFilter.search) {
+      if (!line.toLowerCase().includes(logFilter.search.toLowerCase())) return false;
+    }
+    return true;
+  });
+  return filtered.join("\n");
+}
+
+function updateLogDisplay() {
+  const viewer = document.getElementById("log-viewer");
+  if (!viewer) return;
+  const filtered = filterLogs(rawLogs);
+  viewer.textContent = filtered || "(no matching logs)";
+  viewer.scrollTop = viewer.scrollHeight;
+
+  // Update line count
+  const countEl = document.getElementById("log-count");
+  if (countEl) {
+    const total = rawLogs ? rawLogs.split("\n").filter((l) => l.trim()).length : 0;
+    const shown = filtered ? filtered.split("\n").filter((l) => l.trim()).length : 0;
+    countEl.textContent = logFilter.level === "all" && !logFilter.search ? `${total} lines` : `${shown} / ${total} lines`;
+  }
+}
+
+function onLevelChange(e) {
+  logFilter.level = e.target.value;
+  updateLogDisplay();
+}
+
+function onSearchChange(e) {
+  logFilter.search = e.target.value;
+  updateLogDisplay();
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +159,9 @@ function renderSessionTable(sessions) {
         </tr>
       </thead>
       <tbody>
-        ${sessions.map(s => `
+        ${sessions
+          .map(
+            (s) => `
           <tr class="clickable" onclick="location.hash='#/sessions/${s.id}'">
             <td>${escapeHtml(s.id.slice(0, 8))}...</td>
             <td>${escapeHtml(s.agentId)}</td>
@@ -104,7 +169,9 @@ function renderSessionTable(sessions) {
             <td>${s.messageCount}</td>
             <td>${formatDate(s.lastActivityAt)}</td>
           </tr>
-        `).join("")}
+        `
+          )
+          .join("")}
       </tbody>
     </table>
   `;
@@ -144,15 +211,21 @@ async function renderSessionDetail(id) {
       </div>
       <h1>Transcript</h1>
       <div class="transcript">
-        ${session.history.length === 0
-          ? `<div class="loading">No messages</div>`
-          : session.history.map(m => `
+        ${
+          session.history.length === 0
+            ? `<div class="loading">No messages</div>`
+            : session.history
+                .map(
+                  (m) => `
             <div class="message">
               <div class="message-role ${m.role}">${escapeHtml(m.role)}</div>
               <div class="message-content">${escapeHtml(m.content)}</div>
               <div class="message-time">${formatDate(m.timestamp)}</div>
             </div>
-          `).join("")}
+          `
+                )
+                .join("")
+        }
       </div>
     `;
   } catch (err) {
@@ -168,9 +241,10 @@ async function renderCron() {
     const jobs = await api("/api/cron");
     app.innerHTML = `
       <h1>Cron Jobs</h1>
-      ${jobs.length === 0
-        ? `<div class="loading">No cron jobs configured</div>`
-        : `
+      ${
+        jobs.length === 0
+          ? `<div class="loading">No cron jobs configured</div>`
+          : `
           <table>
             <thead>
               <tr>
@@ -183,7 +257,9 @@ async function renderCron() {
               </tr>
             </thead>
             <tbody>
-              ${jobs.map(j => `
+              ${jobs
+                .map(
+                  (j) => `
                 <tr>
                   <td>${escapeHtml(j.name)}</td>
                   <td><code>${escapeHtml(j.expression)}</code></td>
@@ -192,10 +268,13 @@ async function renderCron() {
                   <td>${formatDate(j.lastRun)}</td>
                   <td>${formatDate(j.nextRun)}</td>
                 </tr>
-              `).join("")}
+              `
+                )
+                .join("")}
             </tbody>
           </table>
-        `}
+        `
+      }
     `;
   } catch (err) {
     app.innerHTML = `<div class="error">Failed to load cron jobs: ${escapeHtml(err.message)}</div>`;
@@ -203,10 +282,30 @@ async function renderCron() {
 }
 
 async function renderLogs() {
+  // Reset filter state when entering logs page
+  logFilter = { level: "all", search: "" };
+  rawLogs = "";
+
   app.innerHTML = `
     <h1>Logs</h1>
+    <div class="log-controls">
+      <select id="log-level" class="log-select">
+        <option value="all">All Levels</option>
+        <option value="DEBUG">DEBUG</option>
+        <option value="INFO">INFO</option>
+        <option value="WARN">WARN</option>
+        <option value="ERROR">ERROR</option>
+      </select>
+      <input type="text" id="log-search" class="log-search" placeholder="Search logs...">
+      <span id="log-count" class="log-count"></span>
+    </div>
     <div class="log-viewer" id="log-viewer">Loading...</div>
   `;
+
+  // Attach event listeners
+  document.getElementById("log-level").addEventListener("change", onLevelChange);
+  document.getElementById("log-search").addEventListener("input", onSearchChange);
+
   await refreshLogs();
   logInterval = setInterval(refreshLogs, 2000);
 }
@@ -214,10 +313,8 @@ async function renderLogs() {
 async function refreshLogs() {
   try {
     const data = await api("/api/logs?lines=200");
-    const viewer = document.getElementById("log-viewer");
-    if (!viewer) return;
-    viewer.textContent = data.logs || "(no logs)";
-    viewer.scrollTop = viewer.scrollHeight;
+    rawLogs = data.logs || "";
+    updateLogDisplay();
   } catch (err) {
     const viewer = document.getElementById("log-viewer");
     if (viewer) viewer.textContent = `Error loading logs: ${err.message}`;
@@ -243,7 +340,7 @@ async function route() {
   const path = getRoute();
 
   // Update active nav link
-  document.querySelectorAll(".nav-link").forEach(link => {
+  document.querySelectorAll(".nav-link").forEach((link) => {
     const route = link.getAttribute("data-route");
     const isActive =
       (route === "status" && (path === "/" || path === "")) ||
