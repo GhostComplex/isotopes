@@ -151,8 +151,22 @@ export interface ContextConfigFile {
   };
 }
 
+/** Per-account Discord bot configuration */
+export interface DiscordAccountConfigFile {
+  token?: string;
+  tokenEnv?: string;
+  defaultAgentId?: string;
+  agentBindings?: Record<string, string>;
+  /** Per-account overrides (optional) */
+  allowDMs?: boolean;
+  channelAllowlist?: string[];
+}
+
 /** Discord transport configuration */
 export interface DiscordConfigFile {
+  /** Multi-bot: keyed by account ID */
+  accounts?: Record<string, DiscordAccountConfigFile>;
+  /** Legacy single-bot fields (backward compat) */
   token?: string;
   tokenEnv?: string;
   defaultAgentId?: string;
@@ -516,6 +530,33 @@ function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
 // ---------------------------------------------------------------------------
 
 /**
+ * Normalize Discord config: if legacy single-bot fields (token/tokenEnv) are present
+ * without an explicit `accounts` map, wrap them into `accounts: { default: {...} }`.
+ * This ensures downstream code always deals with the multi-account shape.
+ */
+export function normalizeDiscordAccounts(config: IsotopesConfigFile): void {
+  if (!config.discord) return;
+
+  // If accounts already defined, nothing to normalize
+  if (config.discord.accounts && Object.keys(config.discord.accounts).length > 0) return;
+
+  // If legacy token/tokenEnv exists, wrap into accounts.default
+  if (config.discord.token || config.discord.tokenEnv) {
+    config.discord.accounts = {
+      default: {
+        token: config.discord.token,
+        tokenEnv: config.discord.tokenEnv,
+        defaultAgentId: config.discord.defaultAgentId,
+        agentBindings: config.discord.agentBindings,
+        allowDMs: config.discord.allowDMs,
+        channelAllowlist: config.discord.channelAllowlist,
+      },
+    };
+    log.debug("Normalized legacy discord.token into discord.accounts.default");
+  }
+}
+
+/**
  * Migrate deprecated top-level threadBindings to discord.threadBindings (M8).
  * Logs a deprecation warning if migration occurs.
  */
@@ -592,6 +633,9 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
 
   // Process environment variables
   config = processEnvVars(config);
+
+  // Normalize discord accounts (legacy single-bot → multi-account)
+  normalizeDiscordAccounts(config);
 
   // M8: Migrate deprecated threadBindings
   migrateThreadBindings(config);
@@ -691,8 +735,9 @@ export function toBindings(
 
 /**
  * Get Discord token from config (supports env var reference).
+ * Accepts either a DiscordConfigFile (legacy) or a DiscordAccountConfigFile (multi-bot).
  */
-export function getDiscordToken(discord: DiscordConfigFile): string {
+export function getDiscordToken(discord: DiscordConfigFile | DiscordAccountConfigFile): string {
   if (discord.token) {
     return discord.token;
   }

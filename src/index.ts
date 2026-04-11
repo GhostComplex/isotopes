@@ -79,6 +79,7 @@ export {
   loadConfig,
   toAgentConfig,
   getDiscordToken,
+  normalizeDiscordAccounts,
   resolveAcpConfig,
   resolveSandboxConfigFromFile,
   resolveSubagentConfig,
@@ -89,6 +90,7 @@ export type {
   AgentConfigFile,
   AgentDefaultsConfigFile,
   DiscordConfigFile,
+  DiscordAccountConfigFile,
   ProviderConfigFile,
   ThreadBindingConfigFile,
   AcpConfigFile,
@@ -156,6 +158,9 @@ export type { MentionContext } from "./core/mention.js";
 
 export { DiscordTransport } from "./transports/discord.js";
 export type { DiscordTransportConfig } from "./transports/discord.js";
+
+export { DiscordTransportManager } from "./transports/discord-manager.js";
+export type { DiscordTransportManagerConfig, DiscordSharedConfig } from "./transports/discord-manager.js";
 
 export { FeishuTransport, extractTextFromFeishuMessage, buildFeishuSessionKey, stripFeishuMentions, isBotMentioned, resolveAgentId } from "./transports/feishu.js";
 export type { FeishuTransportConfig, FeishuMessageEvent } from "./transports/feishu.js";

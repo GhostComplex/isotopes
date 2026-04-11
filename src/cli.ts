@@ -8,7 +8,6 @@ import { VERSION } from "./index.js";
 import {
   loadConfig,
   toAgentConfig,
-  getDiscordToken,
   resolveAcpConfig,
   resolveSubagentConfig,
 } from "./core/config.js";
@@ -16,7 +15,7 @@ import { initSubagentBackend } from "./tools/subagent.js";
 import { PiMonoCore } from "./core/pi-mono.js";
 import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
-import { DiscordTransport } from "./transports/discord.js";
+import { DiscordTransportManager } from "./transports/discord-manager.js";
 import { ThreadBindingManager } from "./core/thread-bindings.js";
 import { AcpSessionManager } from "./acp/index.js";
 import { logger } from "./core/logger.js";
@@ -384,85 +383,94 @@ async function main() {
   const usageTracker = new UsageTracker();
 
   // Start Discord transport if configured
+  let discordManager: DiscordTransportManager | undefined;
+
   if (config.discord) {
-    const token = getDiscordToken(config.discord);
+    // Accounts are always normalized by loadConfig (legacy token → accounts.default)
+    const accounts = config.discord.accounts ?? {};
 
-    // Create session store per agent (sessions live in workspace)
-    const sessionStores = new Map<string, DefaultSessionStore>();
+    if (Object.keys(accounts).length === 0) {
+      logger.warn("Discord config present but no accounts or token configured — skipping");
+    } else {
+      // Create session store per agent (sessions live in workspace)
+      const sessionStores = new Map<string, DefaultSessionStore>();
 
-    for (const agentFile of config.agents) {
-      const workspacePath = agentWorkspaces.get(agentFile.id);
-      const sessionsDir = workspacePath ? path.join(workspacePath, "sessions") : getSessionsDir(agentFile.id);
-      sessionStores.set(agentFile.id, new DefaultSessionStore({ dataDir: sessionsDir }));
-    }
-
-    await Promise.all([...sessionStores.values()].map((store) => store.init()));
-
-    // Use first agent's session store as default
-    const defaultAgentId = config.discord.defaultAgentId || config.agents[0]?.id;
-    let defaultSessionStore = sessionStores.get(defaultAgentId);
-    if (!defaultSessionStore) {
-      const fallbackWorkspace = agentWorkspaces.get(defaultAgentId || "default");
-      const fallbackSessionsDir = fallbackWorkspace
-        ? path.join(fallbackWorkspace, "sessions")
-        : getSessionsDir(defaultAgentId || "default");
-      defaultSessionStore = new DefaultSessionStore({
-        dataDir: fallbackSessionsDir,
-      });
-      await defaultSessionStore.init();
-    }
-
-    const threadBindings = config.discord.threadBindings
-      ? {
-          enabled: config.discord.threadBindings.enabled ?? false,
-          spawnAcpSessions: config.discord.threadBindings.spawnAcpSessions,
-        }
-      : undefined;
-
-    // Create and load persistent thread binding manager
-    const threadBindingManager = new ThreadBindingManager({
-      persistPath: getThreadBindingsPath(),
-    });
-    await threadBindingManager.load({ clearStale: true });
-    if (threadBindingManager.size > 0) {
-      logger.info(`Loaded ${threadBindingManager.size} persisted thread binding(s)`);
-    }
-
-    const discord = new DiscordTransport({
-      token,
-      agentManager,
-      sessionStore: defaultSessionStore,
-      sessionStoreForAgent: (agentId) => sessionStores.get(agentId) || defaultSessionStore,
-      defaultAgentId,
-      agentBindings: config.discord.agentBindings,
-      allowDMs: config.discord.allowDMs,
-      channelAllowlist: config.discord.channelAllowlist,
-      threadBindings,
-      threadBindingManager,
-      allowBots: config.discord.allowBots,
-      context: config.discord.context,
-      usageTracker,
-    });
-
-    if (threadBindings?.enabled) {
-      if (acpConfig) {
-        discord.getThreadBindingManager().attachAcpSessionManager(acpSessionManager, {
-          spawnAcpSessions: threadBindings.spawnAcpSessions ?? false,
-        });
-        logger.info(
-          `Discord thread bindings enabled (spawnAcpSessions=${threadBindings.spawnAcpSessions ?? false})`,
-        );
-      } else if (threadBindings.spawnAcpSessions) {
-        logger.warn(
-          "discord.threadBindings.spawnAcpSessions is enabled, but ACP is not configured; sessions will not be auto-created",
-        );
-      } else {
-        logger.info("Discord thread bindings enabled");
+      for (const agentFile of config.agents) {
+        const workspacePath = agentWorkspaces.get(agentFile.id);
+        const sessionsDir = workspacePath ? path.join(workspacePath, "sessions") : getSessionsDir(agentFile.id);
+        sessionStores.set(agentFile.id, new DefaultSessionStore({ dataDir: sessionsDir }));
       }
-    }
 
-    await discord.start();
-    logger.info("Discord transport started");
+      await Promise.all([...sessionStores.values()].map((store) => store.init()));
+
+      // Use first agent's session store as default
+      const defaultAgentId = config.discord.defaultAgentId || config.agents[0]?.id;
+      let defaultSessionStore = sessionStores.get(defaultAgentId);
+      if (!defaultSessionStore) {
+        const fallbackWorkspace = agentWorkspaces.get(defaultAgentId || "default");
+        const fallbackSessionsDir = fallbackWorkspace
+          ? path.join(fallbackWorkspace, "sessions")
+          : getSessionsDir(defaultAgentId || "default");
+        defaultSessionStore = new DefaultSessionStore({
+          dataDir: fallbackSessionsDir,
+        });
+        await defaultSessionStore.init();
+      }
+
+      const threadBindings = config.discord.threadBindings
+        ? {
+            enabled: config.discord.threadBindings.enabled ?? false,
+            spawnAcpSessions: config.discord.threadBindings.spawnAcpSessions,
+          }
+        : undefined;
+
+      // Create and load persistent thread binding manager
+      const threadBindingManager = new ThreadBindingManager({
+        persistPath: getThreadBindingsPath(),
+      });
+      await threadBindingManager.load({ clearStale: true });
+      if (threadBindingManager.size > 0) {
+        logger.info(`Loaded ${threadBindingManager.size} persisted thread binding(s)`);
+      }
+
+      discordManager = new DiscordTransportManager({
+        accounts,
+        shared: {
+          agentManager,
+          sessionStore: defaultSessionStore,
+          sessionStoreForAgent: (agentId) => sessionStores.get(agentId) || defaultSessionStore,
+          channels: config.channels,
+          threadBindings,
+          threadBindingManager,
+          enableSubagentStreaming: config.discord.subagentStreaming?.enabled,
+          subagentShowToolCalls: config.discord.subagentStreaming?.showToolCalls,
+          allowBots: config.discord.allowBots,
+          context: config.discord.context,
+          usageTracker,
+        },
+      });
+
+      if (threadBindings?.enabled) {
+        // Attach ACP session manager to thread binding manager once (shared across all accounts)
+        if (acpConfig) {
+          threadBindingManager.attachAcpSessionManager(acpSessionManager, {
+            spawnAcpSessions: threadBindings.spawnAcpSessions ?? false,
+          });
+          logger.info(
+            `Discord thread bindings enabled (spawnAcpSessions=${threadBindings.spawnAcpSessions ?? false})`,
+          );
+        } else if (threadBindings.spawnAcpSessions) {
+          logger.warn(
+            "discord.threadBindings.spawnAcpSessions is enabled, but ACP is not configured; sessions will not be auto-created",
+          );
+        } else {
+          logger.info("Discord thread bindings enabled");
+        }
+      }
+
+      await discordManager.start();
+      logger.info(`Discord transport started (${discordManager.size} account(s))`);
+    }
   }
 
   // Start API server (dashboard + REST API + WebChat)
@@ -495,6 +503,7 @@ async function main() {
   process.on("SIGINT", async () => {
     logger.info("Shutting down...");
     hotReload.stop();
+    if (discordManager) await discordManager.stop();
     await apiServer.stop();
     process.exit(0);
   });
@@ -502,6 +511,7 @@ async function main() {
   process.on("SIGTERM", async () => {
     logger.info("Shutting down...");
     hotReload.stop();
+    if (discordManager) await discordManager.stop();
     await apiServer.stop();
     process.exit(0);
   });
