@@ -27,6 +27,7 @@ import {
   resolveToolGuards,
 } from "./core/tools.js";
 import { createSelfIterationTools } from "./tools/self-iteration.js";
+import { createIterateCodebaseTool } from "./tools/iterate-codebase.js";
 import {
   getConfigPath,
   getIsotopesHome,
@@ -339,6 +340,13 @@ async function main() {
         toolRegistry.register(tool, handler);
       }
       logger.info(`Self-iteration tools enabled for ${agentConfig.id}`);
+
+      // Register iterate_codebase tool alongside self-iteration
+      const { tool: iterTool, handler: iterHandler } = createIterateCodebaseTool({
+        workspacePath,
+        repoPath: process.cwd(),
+      });
+      toolRegistry.register(iterTool, iterHandler);
     }
 
     // Build tool guard prompt and store it for hot-reload persistence (M11.4)
