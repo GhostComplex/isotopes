@@ -265,8 +265,16 @@ export interface CronJobConfigFile {
   enabled?: boolean;
 }
 
-/** Root configuration file structure */
-export interface IsotopesConfigFile {
+/** Agent defaults — shared configuration inherited by all agents unless overridden */
+export interface AgentDefaultsConfigFile {
+  provider?: ProviderConfigFile;
+  tools?: AgentToolsConfigFile;
+  compaction?: CompactionConfigFile;
+  sandbox?: SandboxConfigFile;
+}
+
+/** Raw config file structure — agents can be array or object form */
+export interface IsotopesConfigFileRaw {
   /** Default provider for all agents */
   provider?: ProviderConfigFile;
   /** Default tool policy/guards for all agents */
@@ -277,8 +285,8 @@ export interface IsotopesConfigFile {
   sandbox?: SandboxConfigFile;
   /** Session management (TTL, cleanup) */
   session?: SessionConfig;
-  /** Agent definitions */
-  agents: AgentConfigFile[];
+  /** Agent definitions — array form or object with defaults + list */
+  agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[] };
   /** Agent ↔ Channel bindings */
   bindings?: BindingConfigFile[];
   /** Discord transport config */
@@ -294,6 +302,12 @@ export interface IsotopesConfigFile {
    * Thread binding configuration for auto-binding threads to agent sessions.
    */
   threadBindings?: ThreadBindingConfigFile;
+}
+
+/** Normalized config — agents is always an array, agentDefaults extracted */
+export interface IsotopesConfigFile extends Omit<IsotopesConfigFileRaw, "agents"> {
+  agents: AgentConfigFile[];
+  agentDefaults?: AgentDefaultsConfigFile;
 }
 
 export function resolveToolSettings(
@@ -522,30 +536,59 @@ function migrateThreadBindings(config: IsotopesConfigFile): void {
 /**
  * Load configuration from a file (YAML or JSON).
  * Supports environment variable substitution in string values.
+ * Normalizes the agents union type so downstream always sees agents as an array.
  */
 export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> {
   const content = await fs.readFile(filePath, "utf-8");
   const ext = path.extname(filePath).toLowerCase();
 
-  let config: IsotopesConfigFile;
+  let raw: IsotopesConfigFileRaw;
 
   if (ext === ".yaml" || ext === ".yml") {
-    config = YAML.parse(content) as IsotopesConfigFile;
+    raw = YAML.parse(content) as IsotopesConfigFileRaw;
   } else if (ext === ".json") {
-    config = JSON.parse(content) as IsotopesConfigFile;
+    raw = JSON.parse(content) as IsotopesConfigFileRaw;
   } else {
     // Try YAML first, then JSON
     try {
-      config = YAML.parse(content) as IsotopesConfigFile;
+      raw = YAML.parse(content) as IsotopesConfigFileRaw;
     } catch {
-      config = JSON.parse(content) as IsotopesConfigFile;
+      raw = JSON.parse(content) as IsotopesConfigFileRaw;
     }
   }
 
-  // Validate required fields
-  if (!config.agents || !Array.isArray(config.agents)) {
-    throw new Error("Config must have an 'agents' array");
+  // Normalize agents: support both array form and object form { defaults, list }
+  let agentList: AgentConfigFile[];
+  let agentDefaults: AgentDefaultsConfigFile | undefined;
+
+  if (Array.isArray(raw.agents)) {
+    // Legacy array form — no defaults
+    agentList = raw.agents;
+  } else if (
+    raw.agents &&
+    typeof raw.agents === "object" &&
+    "list" in raw.agents
+  ) {
+    // Object form — extract defaults and normalize to array
+    if (!Array.isArray(raw.agents.list)) {
+      throw new Error("Config agents.list must be an array");
+    }
+    agentList = raw.agents.list;
+    agentDefaults = raw.agents.defaults;
+  } else {
+    throw new Error("Config must have an 'agents' array or an 'agents' object with a 'list' field");
   }
+
+  if (agentList.length === 0) {
+    throw new Error("Config must have at least one agent");
+  }
+
+  // Build normalized config — agents is always an array from here on
+  let config: IsotopesConfigFile = {
+    ...raw,
+    agents: agentList,
+    agentDefaults,
+  };
 
   // Process environment variables
   config = processEnvVars(config);
@@ -558,22 +601,32 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
 
 /**
  * Convert config file agent to AgentConfig.
+ * Merge priority: agent > agentDefaults > global
  */
 export function toAgentConfig(
   agent: AgentConfigFile,
-  defaultProvider?: ProviderConfigFile,
-  defaultTools?: AgentToolsConfigFile,
-  defaultCompaction?: CompactionConfigFile,
-  defaultSandbox?: SandboxConfigFile,
+  agentDefaults?: AgentDefaultsConfigFile,
+  globalProvider?: ProviderConfigFile,
+  globalTools?: AgentToolsConfigFile,
+  globalCompaction?: CompactionConfigFile,
+  globalSandbox?: SandboxConfigFile,
 ): AgentConfig {
-  const compaction = resolveCompactionConfigFromFile(agent.compaction, defaultCompaction);
-  const sandbox = resolveSandboxConfigFromFile(agent.id, agent.sandbox, defaultSandbox);
+  // 3-tier merge: agent > defaults > global (shallow replace per block)
+  const provider = agent.provider ?? agentDefaults?.provider ?? globalProvider;
+  const tools = agent.tools ?? agentDefaults?.tools ?? globalTools;
+  const agentCompaction = agent.compaction ?? agentDefaults?.compaction ?? globalCompaction;
+  const agentSandboxFile = agent.sandbox ?? agentDefaults?.sandbox ?? globalSandbox;
+
+  const compaction = resolveCompactionConfigFromFile(agentCompaction);
+  const sandbox = agentSandboxFile
+    ? resolveSandboxConfigFromFile(agent.id, agentSandboxFile)
+    : undefined;
 
   return {
     id: agent.id,
     systemPrompt: "",
-    toolSettings: resolveToolSettings(agent.tools, defaultTools),
-    provider: (agent.provider ?? defaultProvider) as ProviderConfig | undefined,
+    toolSettings: resolveToolSettings(tools),
+    provider: provider as ProviderConfig | undefined,
     compaction,
     sandbox,
   };

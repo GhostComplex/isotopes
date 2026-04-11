@@ -288,7 +288,7 @@ async function main() {
   const isSingleAgent = config.agents.length === 1;
 
   for (const agentFile of config.agents) {
-    const agentConfig = toAgentConfig(agentFile, config.provider, config.tools, config.compaction);
+    const agentConfig = toAgentConfig(agentFile, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
 
     // Workspace layout (mirrors OpenClaw):
     //   Single agent:    ~/.isotopes/workspace/

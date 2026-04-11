@@ -87,6 +87,7 @@ export {
 export type {
   IsotopesConfigFile,
   AgentConfigFile,
+  AgentDefaultsConfigFile,
   DiscordConfigFile,
   ProviderConfigFile,
   ThreadBindingConfigFile,
