@@ -123,6 +123,7 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
   // Chat sessions (file-persisted)
   let chatSessions: Array<{
     id: string;
+    key?: string;
     agentId: string;
     threadId: string | undefined;
     status: string;
@@ -135,6 +136,7 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
     const sessions = await deps.chatSessionStore.list();
     chatSessions = sessions.map((s) => ({
       id: s.id,
+      key: s.metadata?.key,
       agentId: s.agentId,
       threadId: s.metadata?.threadId,
       status: "active" as const,

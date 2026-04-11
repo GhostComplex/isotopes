@@ -27,6 +27,24 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Format session key for display (e.g., "discord:bot:123:channel:456:main" → "discord #456 (main)")
+function formatSessionKey(session) {
+  if (!session.key) {
+    return session.id.slice(0, 8) + '...';
+  }
+  // Parse key like "discord:{botId}:channel:{channelId}:{agentId}"
+  const parts = session.key.split(':');
+  if (parts.length >= 5 && parts[2] === 'channel') {
+    const transport = parts[0];
+    const channelId = parts[3];
+    const agentId = parts[4] || session.agentId;
+    return `${transport} #${channelId.slice(-6)} (${agentId})`;
+  }
+  // Fallback: truncate key
+  return session.key.length > 30 ? session.key.slice(0, 30) + '...' : session.key;
+}
+
+
 function formatUptime(seconds) {
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
@@ -151,7 +169,7 @@ function renderSessionTable(sessions) {
     <table>
       <thead>
         <tr>
-          <th>ID</th>
+          <th>Session</th>
           <th>Agent</th>
           <th>Status</th>
           <th>Messages</th>
@@ -163,7 +181,7 @@ function renderSessionTable(sessions) {
           .map(
             (s) => `
           <tr class="clickable" onclick="location.hash='#/sessions/${s.id}'">
-            <td>${escapeHtml(s.id.slice(0, 8))}...</td>
+            <td>${escapeHtml(formatSessionKey(s))}</td>
             <td>${escapeHtml(s.agentId)}</td>
             <td><span class="badge badge-${s.status}">${escapeHtml(s.status)}</span></td>
             <td>${s.messageCount}</td>
@@ -194,7 +212,7 @@ async function renderSessionDetail(id) {
     const session = await api(`/api/sessions/${encodeURIComponent(id)}`);
     app.innerHTML = `
       <a href="#/sessions" class="back-link">&larr; Back to sessions</a>
-      <h1>Session ${escapeHtml(session.id.slice(0, 8))}...</h1>
+      <h1>Session ${escapeHtml(formatSessionKey(session))}</h1>
       <div class="cards">
         <div class="card">
           <div class="card-label">Agent</div>
