@@ -24,35 +24,47 @@
 
 ### 1. Task Registry
 
-维护 session → taskId mapping，让我们能从 session context 找到 running task。
+维护 taskId → metadata mapping，支持按 session/channel 查询。
 
 ```typescript
 // src/subagent/task-registry.ts
+interface TaskInfo {
+  taskId: string;
+  sessionId: string;
+  channelId: string;
+  startedAt: Date;
+}
+
 class TaskRegistry {
   private tasks: Map<string, TaskInfo> = new Map();
   
   register(taskId: string, sessionId: string, channelId: string): void;
   unregister(taskId: string): void;
-  getBySession(sessionId: string): TaskInfo | undefined;
-  getByChannel(channelId: string): TaskInfo[];
-  cancelBySession(sessionId: string): boolean;
+  get(taskId: string): TaskInfo | undefined;
+  getBySession(sessionId: string): TaskInfo[];
+  list(): TaskInfo[];
 }
 ```
 
 ### 2. API Endpoints
 
 ```typescript
-// DELETE /api/sessions/:sessionId/subagent
-// Cancel running subagent for this session
-router.delete("/sessions/:sessionId/subagent", (req, res) => {
-  const cancelled = taskRegistry.cancelBySession(req.params.sessionId);
-  res.json({ cancelled });
-});
-
 // GET /api/subagents
 // List all running subagents
 router.get("/subagents", (req, res) => {
   res.json({ tasks: taskRegistry.list() });
+});
+
+// DELETE /api/subagents/:taskId
+// Cancel a specific subagent by taskId
+router.delete("/subagents/:taskId", (req, res) => {
+  const task = taskRegistry.get(req.params.taskId);
+  if (!task) {
+    return res.status(404).json({ error: "Task not found" });
+  }
+  subagentManager.cancel(req.params.taskId);
+  taskRegistry.unregister(req.params.taskId);
+  res.json({ cancelled: true, taskId: req.params.taskId });
 });
 ```
 
@@ -60,37 +72,38 @@ router.get("/subagents", (req, res) => {
 
 | File | Change |
 |------|--------|
-| `src/subagent/task-registry.ts` | **新建** — session↔task mapping |
+| `src/subagent/task-registry.ts` | **新建** — taskId↔session mapping |
 | `src/tools/subagent.ts` | 调用 registry.register/unregister |
-| `src/api/routes/sessions.ts` | 添加 DELETE endpoint |
-| `src/api/routes/subagents.ts` | **新建** — list running tasks |
+| `src/api/routes/subagents.ts` | **新建** — GET list + DELETE cancel |
+| `src/api/index.ts` | 注册 subagents routes |
 
 ### 4. Implementation Order
 
-1. `task-registry.ts` — registry + tests
+1. `task-registry.ts` + tests
 2. `subagent.ts` — integrate registry
-3. `api/routes` — endpoints
+3. `api/routes/subagents.ts` — endpoints
 
 ### 5. Non-Goals (this PR)
 
-- **Message trigger** — 不做。误触风险高（"stop doing X and start Y" 会被误判）
+- **Message trigger** — 不做。误触风险高
 - Auto-abort timeout（已有 maxTurns 限制）
-- `/abort <thread-id>` CLI 命令
-- Feishu abort trigger
+- `/abort` CLI 命令
+- Feishu/Discord 特殊处理
 
 ## Test Plan
 
 1. **Unit: TaskRegistry**
    - `register()` / `unregister()` lifecycle
-   - `getBySession()` / `getByChannel()` lookup
-   - `cancelBySession()` calls backend.cancel()
+   - `get()` / `getBySession()` / `list()` lookup
 
-2. **Integration**
-   - API: `DELETE /api/sessions/:id/subagent` → task cancelled
-   - API: `GET /api/subagents` → returns running tasks
+2. **Unit: API routes**
+   - `GET /api/subagents` → returns task list
+   - `DELETE /api/subagents/:taskId` → cancels + 200
+   - `DELETE /api/subagents/:taskId` (not found) → 404
 
 ## Decisions
 
 1. **Abort 后通知 parent agent** — 是，返回 "已取消" 消息
 2. **需要 confirmation** — 否，直接执行
 3. **Message trigger auto abort** — 否，只支持显式 API 调用
+4. **API path** — `/api/subagents/:taskId` 而非 `/api/sessions/:id/subagent`
