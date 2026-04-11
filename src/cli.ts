@@ -363,10 +363,16 @@ async function main() {
   hotReload.start();
   logger.info(`Hot-reload enabled for ${config.agents.length} agent(s)`);
 
+  // Shared instances for Discord transport and API server
+  const acpConfig = resolveAcpConfig(config.acp);
+  const acpSessionManager = new AcpSessionManager(
+    acpConfig ?? { enabled: false, backend: "acpx", defaultAgent: config.agents[0]?.id ?? "default" },
+  );
+  const cronScheduler = new CronScheduler();
+
   // Start Discord transport if configured
   if (config.discord) {
     const token = getDiscordToken(config.discord);
-    const acpConfig = resolveAcpConfig(config.acp);
 
     // Create session store per agent (sessions live in workspace)
     const sessionStores = new Map<string, DefaultSessionStore>();
@@ -426,7 +432,6 @@ async function main() {
 
     if (threadBindings?.enabled) {
       if (acpConfig) {
-        const acpSessionManager = new AcpSessionManager(acpConfig);
         discord.getThreadBindingManager().attachAcpSessionManager(acpSessionManager, {
           spawnAcpSessions: threadBindings.spawnAcpSessions ?? false,
         });
@@ -447,14 +452,9 @@ async function main() {
   }
 
   // Start API server (dashboard + REST API)
-  const acpConfigResolved = resolveAcpConfig(config.acp);
-  const sessionManager = new AcpSessionManager(
-    acpConfigResolved ?? { enabled: false, backend: "acpx", defaultAgent: config.agents[0]?.id ?? "default" },
-  );
-  const cronScheduler = new CronScheduler();
   const apiServer = new ApiServer(
     { port: 2712 },
-    sessionManager,
+    acpSessionManager,
     cronScheduler,
   );
   await apiServer.start();
