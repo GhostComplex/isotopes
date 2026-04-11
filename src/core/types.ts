@@ -208,6 +208,8 @@ export interface SessionStore {
   addMessage(sessionId: string, message: Message): Promise<void>;
   getMessages(sessionId: string): Promise<Message[]>;
   delete(sessionId: string): Promise<void>;
+  /** List all sessions (lightweight, no message bodies). */
+  list(): Promise<Session[]>;
 }
 
 // ---------------------------------------------------------------------------

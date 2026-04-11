@@ -107,22 +107,45 @@ addRoute("GET", "/api/status", (_req, res, deps) => {
 // GET /api/sessions — list all sessions
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/sessions", (_req, res, deps) => {
-  const sessions = deps.sessionManager.listSessions();
+addRoute("GET", "/api/sessions", async (_req, res, deps) => {
+  // ACP sessions (in-memory)
+  const acpSessions = deps.sessionManager.listSessions().map((s) => ({
+    id: s.id,
+    agentId: s.agentId,
+    threadId: s.threadId,
+    status: s.status,
+    createdAt: s.createdAt.toISOString(),
+    lastActivityAt: s.lastActivityAt.toISOString(),
+    messageCount: s.history.length,
+    source: "acp" as const,
+  }));
 
-  sendJson(
-    res,
-    200,
-    sessions.map((s) => ({
+  // Chat sessions (file-persisted)
+  let chatSessions: Array<{
+    id: string;
+    agentId: string;
+    threadId: string | undefined;
+    status: string;
+    createdAt: string;
+    lastActivityAt: string;
+    messageCount: number;
+    source: string;
+  }> = [];
+  if (deps.chatSessionStore) {
+    const sessions = await deps.chatSessionStore.list();
+    chatSessions = sessions.map((s) => ({
       id: s.id,
       agentId: s.agentId,
-      threadId: s.threadId,
-      status: s.status,
-      createdAt: s.createdAt.toISOString(),
-      lastActivityAt: s.lastActivityAt.toISOString(),
-      messageCount: s.history.length,
-    })),
-  );
+      threadId: s.metadata?.threadId,
+      status: "active" as const,
+      createdAt: s.lastActiveAt.toISOString(),
+      lastActivityAt: s.lastActiveAt.toISOString(),
+      messageCount: 0,
+      source: "chat" as const,
+    }));
+  }
+
+  sendJson(res, 200, [...acpSessions, ...chatSessions]);
 });
 
 // ---------------------------------------------------------------------------

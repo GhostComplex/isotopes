@@ -156,6 +156,10 @@ export class DefaultSessionStore implements SessionStore {
     return [...session.messages!];
   }
 
+  async list(): Promise<Session[]> {
+    return [...this.sessions.values()].map((s) => this.toSession(s));
+  }
+
   async delete(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session?.metadata?.key) {
