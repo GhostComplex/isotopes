@@ -9,6 +9,7 @@ import {
   getWorkspacePath,
   getSessionsDir,
   getConfigPath,
+  resolveExplicitWorkspacePath,
 } from "./paths.js";
 
 describe("paths", () => {
@@ -72,6 +73,31 @@ describe("paths", () => {
     it("respects ISOTOPES_HOME", () => {
       vi.stubEnv("ISOTOPES_HOME", "/custom");
       expect(getConfigPath()).toBe("/custom/isotopes.yaml");
+    });
+  });
+
+  describe("resolveExplicitWorkspacePath", () => {
+    it("returns absolute paths as-is", () => {
+      expect(resolveExplicitWorkspacePath("/Users/foo/workspace")).toBe("/Users/foo/workspace");
+    });
+
+    it("resolves relative paths from ISOTOPES_HOME", () => {
+      vi.stubEnv("ISOTOPES_HOME", "/custom/home");
+      expect(resolveExplicitWorkspacePath("./my-workspace")).toBe(
+        path.resolve("/custom/home", "./my-workspace"),
+      );
+    });
+
+    it("resolves bare relative paths from ISOTOPES_HOME", () => {
+      vi.stubEnv("ISOTOPES_HOME", "/custom/home");
+      expect(resolveExplicitWorkspacePath("agents/major")).toBe(
+        path.resolve("/custom/home", "agents/major"),
+      );
+    });
+
+    it("resolves relative paths from default home when ISOTOPES_HOME is unset", () => {
+      const expected = path.resolve(path.join(os.homedir(), ".isotopes"), "my-workspace");
+      expect(resolveExplicitWorkspacePath("my-workspace")).toBe(expected);
     });
   });
 });

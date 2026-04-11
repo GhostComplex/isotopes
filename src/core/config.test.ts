@@ -228,6 +228,26 @@ agents:
 
       await expect(loadConfig(configPath)).rejects.toThrow();
     });
+    it("loads agent workspace path from config", async () => {
+      const configPath = path.join(tempDir, "workspace.yaml");
+      await fs.writeFile(
+        configPath,
+        `
+agents:
+  - id: major
+    workspace: /custom/major-workspace
+  - id: tachikoma
+    workspace: ./tachikoma-ws
+  - id: default-agent
+`,
+      );
+
+      const config = await loadConfig(configPath);
+
+      expect(config.agents[0].workspace).toBe("/custom/major-workspace");
+      expect(config.agents[1].workspace).toBe("./tachikoma-ws");
+      expect(config.agents[2].workspace).toBeUndefined();
+    });
   });
 
   describe("toAgentConfig", () => {

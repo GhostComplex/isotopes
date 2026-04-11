@@ -215,6 +215,8 @@ export {
   getSessionsDir as getAgentSessionsDir,
   ensureDirectories,
   ensureWorkspaceDir,
+  resolveExplicitWorkspacePath,
+  ensureExplicitWorkspaceDir,
 } from "./core/paths.js";
 
 // ---------------------------------------------------------------------------

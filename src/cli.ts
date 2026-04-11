@@ -34,9 +34,11 @@ import {
   getIsotopesHome,
   getLogsDir,
   ensureDirectories,
+  ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
   getSessionsDir,
   getThreadBindingsPath,
+  resolveExplicitWorkspacePath,
 } from "./core/paths.js";
 import {
   loadWorkspaceContext,
@@ -293,11 +295,19 @@ async function main() {
   for (const agentFile of config.agents) {
     const agentConfig = toAgentConfig(agentFile, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
 
-    // Workspace layout (mirrors OpenClaw):
-    //   Single agent:    ~/.isotopes/workspace/
-    //   Multiple agents: ~/.isotopes/workspace-{agentId}/
-    const workspaceKey = isSingleAgent ? "default" : agentConfig.id;
-    const workspacePath = await ensureWorkspaceDir(workspaceKey);
+    // Workspace layout:
+    //   Explicit config:  agent.workspace (absolute or relative to ISOTOPES_HOME)
+    //   Single agent:     ~/.isotopes/workspace/
+    //   Multiple agents:  ~/.isotopes/workspace-{agentId}/
+    let workspacePath: string;
+    if (agentFile.workspace) {
+      const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
+      workspacePath = await ensureExplicitWorkspaceDir(resolved);
+      logger.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
+    } else {
+      const workspaceKey = isSingleAgent ? "default" : agentConfig.id;
+      workspacePath = await ensureWorkspaceDir(workspaceKey);
+    }
     agentWorkspaces.set(agentConfig.id, workspacePath);
 
     // Seed workspace templates on first creation (M11.2)

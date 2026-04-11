@@ -91,6 +91,17 @@ export async function ensureDirectories(): Promise<void> {
 }
 
 /**
+ * Resolve an explicit workspace path (#214).
+ * Absolute paths are returned as-is; relative paths resolve from ISOTOPES_HOME.
+ */
+export function resolveExplicitWorkspacePath(workspacePath: string): string {
+  if (path.isAbsolute(workspacePath)) {
+    return workspacePath;
+  }
+  return path.resolve(getIsotopesHome(), workspacePath);
+}
+
+/**
  * Ensure workspace directory exists for an agent.
  */
 export async function ensureWorkspaceDir(agentId: string): Promise<string> {
@@ -98,5 +109,15 @@ export async function ensureWorkspaceDir(agentId: string): Promise<string> {
   await fs.mkdir(workspacePath, { recursive: true });
   await fs.mkdir(getSessionsDir(agentId), { recursive: true });
   return workspacePath;
+}
+
+/**
+ * Ensure an explicit workspace directory exists (#214).
+ * Creates the workspace and a sessions/ subdirectory.
+ */
+export async function ensureExplicitWorkspaceDir(resolvedPath: string): Promise<string> {
+  await fs.mkdir(resolvedPath, { recursive: true });
+  await fs.mkdir(path.join(resolvedPath, "sessions"), { recursive: true });
+  return resolvedPath;
 }
 
