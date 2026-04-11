@@ -67,3 +67,10 @@ export {
 export type { SelfIterationConfig } from "./self-iteration.js";
 
 export { createWebFetchTool } from "./web.js";
+
+export {
+  createSessionsSpawnTool,
+  createSessionsAnnounceTool,
+  createSessionTools,
+} from "./sessions.js";
+export type { SessionsToolContext } from "./sessions.js";

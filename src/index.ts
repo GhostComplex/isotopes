@@ -249,6 +249,9 @@ export {
   CREATE_SKILL_TOOL,
   APPEND_MEMORY_TOOL,
   DEFAULT_SELF_ITERATION_FILES,
+  createSessionsSpawnTool,
+  createSessionsAnnounceTool,
+  createSessionTools,
 } from "./tools/index.js";
 export type {
   GitOptions,
@@ -263,6 +266,7 @@ export type {
   CreateIssueOptions,
   ReviewPROptions,
   SelfIterationConfig,
+  SessionsToolContext,
 } from "./tools/index.js";
 
 // ---------------------------------------------------------------------------
