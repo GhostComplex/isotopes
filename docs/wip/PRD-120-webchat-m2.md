@@ -1,188 +1,87 @@
-# PRD-120: WebChat M2 — Concurrent Sessions, Auth, Rate Limit
+# PRD-120: WebChat M2 — Session Sidebar + 切换
 
-## Problem
+## 问题
 
-WebChat M1 (#99) 提供了基础的 chat API，但缺少生产级功能：
-1. **并发安全问题**：同一 session 可以同时收到多个请求，agent.prompt() 可能 race
-2. **无认证**：任何人都能调用 API
-3. **无限流**：可以被刷爆
-4. **无清理**：idle session 永远堆积
+WebChat 只能看到当前 session。看不到历史 sessions，也看不到 ACP sessions（Discord 等）。
 
-## Solution
+## 目标
 
-### 1. Session Lock / Queue
+Phase 1: **Session sidebar + 切换 + history 加载**（本 PR）
+Phase 2: 跨 session 注入（defer，开新 issue）
 
-**问题**：两个请求同时 hit 同一个 sessionId，都调用 `agent.prompt()`，消息顺序和状态会乱。
+## 现状
 
-**方案**：Per-session mutex lock
+- `GET /api/sessions` 已经合并 ACP + chat sessions（PR #132）
+- `GET /api/sessions/:id/messages` 已有
+- WebChat 前端是 vanilla JS：`web/chat/app.js`、`index.html`、`styles.css`
+- 无需后端改动
 
-```typescript
-// src/api/session-lock.ts
-export class SessionLock {
-  private locks = new Map<string, Promise<void>>();
+## 设计
 
-  async acquire(sessionId: string): Promise<() => void> {
-    // Wait for existing lock to release
-    while (this.locks.has(sessionId)) {
-      await this.locks.get(sessionId);
-    }
-    
-    // Create new lock
-    let releaseFn: () => void;
-    const lockPromise = new Promise<void>(resolve => {
-      releaseFn = resolve;
-    });
-    this.locks.set(sessionId, lockPromise);
-    
-    return () => {
-      this.locks.delete(sessionId);
-      releaseFn!();
-    };
-  }
-}
+### 前端改动
+
+**1. HTML 结构** (`index.html`)
+```
+<div class="chat-wrapper">
+  <aside class="session-sidebar">
+    <div class="sidebar-header">Sessions</div>
+    <div id="session-list" class="session-list"></div>
+  </aside>
+  <div class="chat-container">
+    <!-- 现有内容 -->
+  </div>
+</div>
 ```
 
-**集成**：在 chat.ts 的 `/api/chat/message` 和 `/api/chat/stream` 开头 acquire lock，结束时 release。
+**2. Session 列表** (`app.js`)
+- 启动时调用 `GET /api/sessions`
+- 渲染列表：session name / ID，source badge（ACP/Chat），message count
+- 当前 session 高亮
+- 定时刷新（30s）与 Dashboard 对齐
 
-### 2. API Key Auth
+**3. Session 切换逻辑**
+- 点击 session → 调用 `GET /api/sessions/:id/messages`
+- 清空 `messagesEl`，渲染 history
+- 更新 `sessionId`，后续消息发到该 session
+- 如果是 ACP session → 只读（Phase 1 不支持往 ACP session 发消息）
 
-**方案**：简单 Bearer token，在 config 里配置
+**4. New Chat**
+- 现有 `newChat()` 保持不变
+- 创建新 chat session，添加到列表顶部
 
-```yaml
-# isotopes.yaml
-api:
-  auth:
-    enabled: true
-    keys:
-      - "sk-webchat-xxx"  # 可以配多个
-```
+### CSS 改动 (`styles.css`)
+- `.chat-wrapper` — flex 容器
+- `.session-sidebar` — 左侧 sidebar，width 240px
+- `.session-item` — 列表项样式
+- `.session-item.active` — 当前 session 高亮
+- `.source-badge` — ACP/Chat 标签
 
-**实现**：
-- 新建 `src/api/auth.ts` — 中间件函数
-- 检查 `Authorization: Bearer <key>` header
-- 匹配 `config.api.auth.keys` 数组中任一个
-- 不匹配返回 401
+## 边界条件
 
-**哪些路由需要 auth**：
-- `/api/chat/*` — 需要（面向外部用户）
-- `/api/status`, `/api/sessions`, `/api/logs` — 可选（dashboard 内部用）
+| 场景 | 处理 |
+|------|------|
+| 点击 ACP session | 加载 history，显示只读提示，禁用输入 |
+| Session 被删除 | 刷新列表时移除，如果是当前 session 则自动新建 |
+| 0 个 session | 显示空状态，引导 New Chat |
 
-简化方案：只给 `/api/chat/*` 加 auth，其他路由暂不加。
+## 不做（Phase 2）
 
-### 3. Rate Limit
+- 往 ACP session 发消息（跨 session 注入）
+- Session 删除/rename UI
+- Session 搜索/过滤
 
-**方案**：Per-IP sliding window
+## 文件变更
 
-```typescript
-// src/api/rate-limit.ts
-export class RateLimiter {
-  private windows = new Map<string, number[]>();
-  
-  constructor(
-    private maxRequests: number = 60,
-    private windowMs: number = 60_000,
-  ) {}
+| 文件 | 改动 |
+|------|------|
+| `web/chat/index.html` | 添加 sidebar 结构 |
+| `web/chat/app.js` | 添加 session list/switch 逻辑 |
+| `web/chat/styles.css` | 添加 sidebar 样式 |
 
-  check(ip: string): { allowed: boolean; retryAfter?: number } {
-    const now = Date.now();
-    const timestamps = this.windows.get(ip) ?? [];
-    
-    // Remove expired timestamps
-    const valid = timestamps.filter(t => now - t < this.windowMs);
-    
-    if (valid.length >= this.maxRequests) {
-      const oldestValid = valid[0];
-      const retryAfter = Math.ceil((oldestValid + this.windowMs - now) / 1000);
-      return { allowed: false, retryAfter };
-    }
-    
-    valid.push(now);
-    this.windows.set(ip, valid);
-    return { allowed: true };
-  }
+## 测试
 
-  // Periodic cleanup of stale entries
-  cleanup(): void {
-    const now = Date.now();
-    for (const [ip, timestamps] of this.windows) {
-      const valid = timestamps.filter(t => now - t < this.windowMs);
-      if (valid.length === 0) {
-        this.windows.delete(ip);
-      } else {
-        this.windows.set(ip, valid);
-      }
-    }
-  }
-}
-```
-
-**Config**：
-```yaml
-api:
-  rateLimit:
-    enabled: true
-    maxRequests: 60
-    windowMs: 60000
-```
-
-**Response**：429 Too Many Requests + `Retry-After` header
-
-### 4. Idle Session Cleanup
-
-**方案**：定时扫描，删除超过 TTL 的 session
-
-```typescript
-// 在 DefaultSessionStore 或新的 SessionCleaner 类
-startCleanupTimer(ttlMs: number = 24 * 60 * 60 * 1000): void {
-  setInterval(async () => {
-    const sessions = await this.list();
-    const now = Date.now();
-    
-    for (const session of sessions) {
-      if (now - session.lastActiveAt.getTime() > ttlMs) {
-        await this.delete(session.id);
-      }
-    }
-  }, 60 * 60 * 1000); // Check hourly
-}
-```
-
-**Config**：
-```yaml
-api:
-  sessionTtl: 86400000  # 24 hours in ms
-```
-
-## File Changes
-
-| File | Change |
-|------|--------|
-| `src/api/session-lock.ts` | **New** — SessionLock class |
-| `src/api/auth.ts` | **New** — authMiddleware function |
-| `src/api/rate-limit.ts` | **New** — RateLimiter class |
-| `src/api/chat.ts` | Import + use lock, auth, rate limit |
-| `src/api/middleware.ts` | Add helper for 401/429 responses |
-| `src/core/session-store.ts` | Add cleanup timer method |
-| `src/workspace/config-types.ts` | Add `api.auth`, `api.rateLimit`, `api.sessionTtl` |
-| `src/api/*.test.ts` | Unit tests for each new component |
-
-## Implementation Order
-
-1. **session-lock.ts** + test — 独立，无依赖
-2. **rate-limit.ts** + test — 独立，无依赖
-3. **auth.ts** + test — 独立，需要 config types
-4. **config-types.ts** — 加 api.* 字段
-5. **chat.ts** — 集成上面三个
-6. **session-store.ts** — cleanup timer
-7. **Integration test** — E2E 验证
-
-## Out of Scope (Future)
-
-- OAuth / JWT — 复杂，暂不需要
-- Per-user rate limit — 需要 user identity，暂不需要
-- Session persistence across restart — DefaultSessionStore 已经有
-
-## Questions
-
-1. Dashboard API 是否也加 auth？（建议暂不，因为只在 localhost 监听）
-2. Rate limit 是否区分 `/api/chat/message` vs `/api/chat/stream`？（建议统一计数）
+- [ ] 启动后显示 session 列表
+- [ ] 点击 session 加载 history
+- [ ] 切换 session 后发消息到正确 session
+- [ ] ACP session 显示只读提示
+- [ ] New Chat 创建新 session 并添加到列表
