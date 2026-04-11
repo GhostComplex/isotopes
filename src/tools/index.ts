@@ -74,3 +74,9 @@ export {
   createSessionTools,
 } from "./sessions.js";
 export type { SessionsToolContext } from "./sessions.js";
+
+export {
+  createSubagentsListTool,
+  createSubagentsStatusTool,
+  createSubagentsCancelTool,
+} from "./subagent-management.js";
