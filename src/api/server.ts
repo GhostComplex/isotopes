@@ -22,6 +22,9 @@ import { serveDashboard, serveChat } from "./static.js";
 // Register chat routes (side-effect import)
 import "./chat.js";
 
+// Register subagent routes (side-effect import)
+import "./subagents.js";
+
 const log = createLogger("api:server");
 
 // ---------------------------------------------------------------------------

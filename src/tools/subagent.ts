@@ -9,6 +9,7 @@ import {
   type AcpxResult,
   type AcpxEvent,
 } from "../subagent/index.js";
+import { taskRegistry } from "../subagent/task-registry.js";
 import type { SubagentPermissionMode } from "../core/config.js";
 
 const log = createLogger("tools:subagent");
@@ -43,6 +44,10 @@ export interface SpawnSubagentOptions {
   allowedWorkspaces?: string[];
   /** Callback for streaming events */
   onEvent?: (event: AcpxEvent) => void;
+  /** Session ID for task registry tracking */
+  sessionId?: string;
+  /** Channel ID for task registry tracking */
+  channelId?: string;
 }
 
 /** Result from spawning a sub-agent */
@@ -139,6 +144,9 @@ export async function spawnSubagent(
 
   const backend = getBackend(options.allowedWorkspaces);
 
+  // Register task for tracking/abort
+  taskRegistry.register(taskId, options.sessionId ?? "", options.channelId ?? "");
+
   try {
     const events = backend.spawn(taskId, {
       agent,
@@ -166,6 +174,8 @@ export async function spawnSubagent(
       exitCode: result.exitCode,
     });
 
+    taskRegistry.unregister(taskId);
+
     return {
       success: result.success,
       output: result.output,
@@ -176,6 +186,8 @@ export async function spawnSubagent(
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     log.error("Sub-agent failed", { taskId, error });
+
+    taskRegistry.unregister(taskId);
 
     return {
       success: false,
