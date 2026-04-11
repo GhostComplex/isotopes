@@ -712,4 +712,48 @@ describe("compaction tool_use/tool_result pairing", () => {
     const firstRecent = result[1] as unknown as Record<string, unknown>;
     expect(firstRecent.role).not.toBe("tool_result");
   });
+
+  it("does not orphan tool_use when split lands right after it (backward check)", async () => {
+    // Scenario: split falls right after assistant+tool_use, before the tool_result.
+    // The forward check won't catch this because recentMessages[0] is NOT a tool_result —
+    // it's a user message. The backward check must detect that oldMessages ends with tool_use.
+    //
+    // Index:  0     1              2            3     4         5
+    // Msgs:  [user, assistant+tool, tool_result, user, assistant, user]
+    // preserveRecent=3 → naive split at index 3 → oldMessages = [user, assistant+tool, tool_result]
+    // That's fine (tool pair is together in old). But preserveRecent=2 → naive split at index 4
+    // → oldMessages = [..., assistant+tool, tool_result, user] — also fine.
+    //
+    // The real problem: preserveRecent=4 → split at index 2 → oldMessages = [user, assistant+tool]
+    // The assistant+tool_use is orphaned in oldMessages with no tool_result!
+    // Backward check should move split to index 1.
+    const messages: AgentMessage[] = [
+      makeMessage("user", "x".repeat(20000)),
+      makeToolUseMessage("tool-1"),
+      makeToolResultMessage("tool-1"),
+      makeMessage("user", "x".repeat(100)),
+      makeMessage("assistant", "x".repeat(100)),
+      makeMessage("user", "x".repeat(100)),
+    ];
+
+    const summarize = vi.fn().mockResolvedValue("summary");
+
+    const result = await forceCompact({
+      messages,
+      config: makeConfig({ preserveRecent: 4 }),
+      summarize,
+    });
+
+    // The assistant+tool_use and its tool_result should both be in recent (after summary)
+    const roles = result.slice(1).map((m) => (m as unknown as Record<string, unknown>).role);
+    // assistant+tool_use must not be in the summarized portion — it should appear in recent
+    const hasToolUseInRecent = result.slice(1).some((m) => {
+      const msg = m as unknown as Record<string, unknown>;
+      return msg.role === "assistant" && Array.isArray(msg.content) &&
+        (msg.content as Array<Record<string, unknown>>).some((b) => b.type === "tool_use");
+    });
+    expect(hasToolUseInRecent).toBe(true);
+    // And its tool_result should follow
+    expect(roles).toContain("tool_result");
+  });
 });

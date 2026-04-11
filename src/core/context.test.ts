@@ -166,6 +166,23 @@ describe("sanitizeToolUseResultPairing", () => {
     const msgs = [toolResult("a", "t1"), toolResult("b", "t2")];
     expect(sanitizeToolUseResultPairing(msgs)).toEqual([]);
   });
+
+  it("handles tool_result with empty content array without throwing", () => {
+    const emptyContentResult: Message = {
+      role: "tool_result",
+      content: [] as unknown as Message["content"],
+      metadata: { toolCallId: "t1" },
+    };
+    const msgs = [
+      user("do it"),
+      assistantWithToolUse("calling", [{ id: "t1" }]),
+      emptyContentResult,
+      user("next"),
+    ];
+    // Should not throw — and should find the toolCallId via metadata fallback
+    const result = sanitizeToolUseResultPairing(msgs);
+    expect(result.length).toBe(4);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ import {
   iterativeCompact,
   estimateTotalTokens,
 } from "./compaction.js";
+import { sanitizeToolUseResultPairing } from "./context.js";
 import { createLogger } from "./logger.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -528,13 +529,18 @@ class PiMonoInstance implements AgentInstance {
             maxRounds: 3,
           });
 
-          const tokensAfter = estimateTotalTokens(compactedMessages);
+          // Sanitize tool_use/tool_result pairing after compaction (#141)
+          const sanitized = sanitizeToolUseResultPairing(
+            compactedMessages.map(fromAgentMessage),
+          ).map(toAgentMessage);
+
+          const tokensAfter = estimateTotalTokens(sanitized);
           log.info(
             `Overflow recovery compaction complete: ~${tokensBefore} → ~${tokensAfter} tokens`,
           );
 
-          // Replace agent messages with compacted version
-          this.agent.replaceMessages(compactedMessages);
+          // Replace agent messages with sanitized compacted version
+          this.agent.replaceMessages(sanitized);
 
           // Retry the prompt with compacted context
           // Don't re-yield the failed events, start fresh
@@ -604,7 +610,12 @@ class PiMonoInstance implements AgentInstance {
       const tokensAfter = estimateTotalTokens(compactedMessages);
       log.info(`Force compaction complete: ~${tokensBefore} → ~${tokensAfter} tokens`);
 
-      this.agent.replaceMessages(compactedMessages);
+      // Sanitize tool_use/tool_result pairing after compaction (#141)
+      const sanitized = sanitizeToolUseResultPairing(
+        compactedMessages.map(fromAgentMessage),
+      ).map(toAgentMessage);
+
+      this.agent.replaceMessages(sanitized);
       return true;
     } catch (err) {
       log.error("Force compaction failed", err);

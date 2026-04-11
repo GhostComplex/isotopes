@@ -202,27 +202,43 @@ function isToolResult(message: AgentMessage): boolean {
 }
 
 /**
+ * Check if an assistant message contains tool_use blocks.
+ */
+function hasToolUse(message: AgentMessage): boolean {
+  const msg = message as unknown as Record<string, unknown>;
+  if (msg.role !== "assistant") return false;
+  if (!Array.isArray(msg.content)) return false;
+  return (msg.content as Array<Record<string, unknown>>).some(
+    (block) => block.type === "tool_use",
+  );
+}
+
+/**
  * Find a safe split index that doesn't break tool_use/tool_result pairing.
- * 
+ *
  * The problem: if we split between an assistant message with tool_use and
  * its corresponding tool_result, the API will reject the orphaned tool_result.
- * 
- * Solution: if recentMessages starts with tool_result(s), move the split
- * backward to include the preceding assistant message with tool_use.
+ *
+ * Solution:
+ * 1. Forward check: if recentMessages starts with tool_result(s), move the
+ *    split backward to include the preceding assistant message with tool_use.
+ * 2. Backward check: if oldMessages ends with an assistant containing tool_use,
+ *    move the split backward so the tool_use (and its results) go to recentMessages.
  */
 function findSafeSplitIndex(messages: AgentMessage[], initialSplitIndex: number): number {
   let splitIndex = initialSplitIndex;
-  
-  // Move split backward while recentMessages[0] is a tool_result
+
+  // Forward check: move split backward while recentMessages[0] is a tool_result
   while (splitIndex > 0 && isToolResult(messages[splitIndex])) {
     splitIndex--;
   }
-  
-  // Now splitIndex points to the first non-tool_result message.
-  // But we need to check: if the message just before this is an assistant
-  // with tool_use, we need to include it too (keep the pair together).
-  // Actually, the above loop already handles this: we keep moving back
-  // past all tool_results until we hit the assistant that spawned them.
+
+  // Backward check: if the last message in oldMessages (i.e. messages[splitIndex - 1])
+  // is an assistant with tool_use, move the split back so the tool_use goes to
+  // recentMessages along with its tool_result(s).
+  if (splitIndex > 0 && hasToolUse(messages[splitIndex - 1])) {
+    splitIndex--;
+  }
   
   // Edge case: if we moved all the way to 0, there's nothing to summarize
   if (splitIndex <= 0) {

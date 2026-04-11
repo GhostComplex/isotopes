@@ -94,8 +94,9 @@ export function sanitizeToolUseResultPairing(messages: Message[]): Message[] {
       if (trimmed[j].role === "assistant" && getToolUseIds(trimmed[j]).length > 0) break;
       if (trimmed[j].role === "tool_result") {
         // toolCallId may be in metadata or on the content block itself
+        const firstBlock = trimmed[j].content[0] as { toolCallId?: string } | undefined;
         const callId = (trimmed[j].metadata?.toolCallId as string | undefined)
-          ?? (trimmed[j].content[0] as { toolCallId?: string }).toolCallId;
+          ?? firstBlock?.toolCallId;
         if (callId) foundResultIds.add(callId);
       }
     }
