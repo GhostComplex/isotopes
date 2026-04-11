@@ -199,6 +199,8 @@ export interface DiscordConfigFile {
   allowBots?: boolean;
   /** Context management configuration */
   context?: ContextConfigFile;
+  /** Discord user IDs allowed to execute slash commands */
+  adminUsers?: string[];
 }
 
 /** Thread binding configuration in config file */

@@ -29,6 +29,8 @@ export interface DiscordSharedConfig {
   allowBots?: boolean;
   context?: ContextConfigFile;
   usageTracker?: UsageTracker;
+  /** Discord user IDs allowed to execute slash commands */
+  adminUsers?: string[];
 }
 
 /** Configuration for the DiscordTransportManager */
@@ -78,6 +80,7 @@ export class DiscordTransportManager {
         allowBots: shared.allowBots,
         context: shared.context,
         usageTracker: shared.usageTracker,
+        adminUsers: shared.adminUsers,
       });
 
       this.transports.set(accountId, transport);

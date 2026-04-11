@@ -37,6 +37,7 @@ import { preparePromptMessages } from "../core/context.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../core/channel-history.js";
 import { DedupeCache } from "../core/dedupe.js";
 import { InboundDebouncer } from "../core/debounce.js";
+import { SlashCommandHandler } from "../commands/slash-commands.js";
 
 const log = loggers.discord;
 
@@ -171,6 +172,8 @@ export interface DiscordTransportConfig {
   context?: ContextConfigFile;
   /** Usage tracker for per-session/global token accumulation */
   usageTracker?: UsageTracker;
+  /** Discord user IDs allowed to execute slash commands */
+  adminUsers?: string[];
 }
 
 /**
@@ -191,6 +194,7 @@ export class DiscordTransport implements Transport {
   private channelHistory: ChannelHistoryBuffer;
   private dedupe: DedupeCache;
   private debouncer: InboundDebouncer;
+  private commandHandler: SlashCommandHandler;
 
   constructor(config: DiscordTransportConfig) {
     this.config = config;
@@ -202,6 +206,7 @@ export class DiscordTransport implements Transport {
     this.debouncer = new InboundDebouncer({
       windowMs: config.context?.debounceWindowMs ?? 1500,
     });
+    this.commandHandler = new SlashCommandHandler(config.adminUsers);
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -315,6 +320,20 @@ export class DiscordTransport implements Transport {
     // 4. Extract content
     let content = this.extractContent(msg);
     if (!content.trim()) return;
+
+    // 4.5. Slash command interception — handle admin commands before agent dispatch
+    if (this.commandHandler.isCommand(content)) {
+      const agentId = this.resolveAgentId(msg);
+      const result = await this.commandHandler.execute(content, {
+        agentManager: this.config.agentManager,
+        sessionStore: this.getSessionStore(agentId),
+        agentId,
+        userId: msg.author.id,
+        username: msg.author.username,
+      });
+      await (msg.channel as SendableChannel).send(result.response);
+      return;
+    }
 
     // 5. Debounce — combine rapid-fire messages from the same user (opt-in)
     if (this.config.context?.debounce) {

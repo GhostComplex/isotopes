@@ -484,6 +484,7 @@ async function main() {
           allowBots: config.discord.allowBots,
           context: config.discord.context,
           usageTracker,
+          adminUsers: config.discord.adminUsers,
         },
       });
 
