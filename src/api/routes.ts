@@ -177,6 +177,45 @@ addRoute("GET", "/api/sessions/:id", (req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/sessions/:id/messages — get session messages
+// ---------------------------------------------------------------------------
+
+addRoute("GET", "/api/sessions/:id/messages", async (req, res, deps) => {
+  // Try ACP session first
+  const acpSession = deps.sessionManager.getSession(req.params.id);
+  if (acpSession) {
+    sendJson(res, 200, {
+      messages: acpSession.history.map((m) => ({
+        role: m.role,
+        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+        timestamp: m.timestamp.toISOString(),
+      })),
+    });
+    return;
+  }
+
+  // Try chat session store
+  if (deps.chatSessionStore) {
+    const chatSession = await deps.chatSessionStore.get(req.params.id);
+    if (chatSession) {
+      const messages = await deps.chatSessionStore.getMessages(req.params.id);
+      sendJson(res, 200, {
+        messages: messages.map((m) => ({
+          role: m.role,
+          content: Array.isArray(m.content)
+            ? m.content.map((b) => (typeof b === "string" ? b : (b as { text?: string }).text ?? JSON.stringify(b))).join("")
+            : String(m.content),
+          timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+        })),
+      });
+      return;
+    }
+  }
+
+  sendError(res, 404, `Session "${req.params.id}" not found`);
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/sessions/:id/message — send message to session
 // ---------------------------------------------------------------------------
 

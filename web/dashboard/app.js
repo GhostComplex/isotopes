@@ -10,6 +10,7 @@ let logFilter = {
   search: "",
 };
 let rawLogs = "";
+let logAutoScroll = true;
 
 // ---------------------------------------------------------------------------
 // API helpers
@@ -25,6 +26,48 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
+}
+
+// Truncate long content with expand/collapse toggle
+function truncateContent(text, maxLen = 500) {
+  if (!text || text.length <= maxLen) return escapeHtml(text || "");
+  const id = "trunc-" + Math.random().toString(36).slice(2, 9);
+  const short = escapeHtml(text.slice(0, maxLen));
+  const full = escapeHtml(text);
+  return `<span id="${id}-short">${short}<span class="text-muted">…</span> <a href="#" class="expand-link" onclick="event.preventDefault();document.getElementById('${id}-short').style.display='none';document.getElementById('${id}-full').style.display='inline';">[show more]</a></span><span id="${id}-full" style="display:none">${full} <a href="#" class="expand-link" onclick="event.preventDefault();document.getElementById('${id}-full').style.display='none';document.getElementById('${id}-short').style.display='inline';">[show less]</a></span>`;
+}
+
+// Detect if content contains tool_use or tool_result patterns
+function isToolContent(content) {
+  if (!content) return false;
+  return /\btool_use\b|"type"\s*:\s*"tool_use"|"type"\s*:\s*"tool_result"|\btool_result\b/.test(content);
+}
+
+// Render a single message, collapsing tool blocks
+function renderMessage(m) {
+  const isTool = isToolContent(m.content);
+  if (isTool) {
+    const id = "tool-" + Math.random().toString(36).slice(2, 9);
+    const label = m.role === "assistant" ? "Tool Call" : "Tool Result";
+    return `
+      <div class="message message-tool">
+        <div class="message-role ${m.role}">${escapeHtml(m.role)}</div>
+        <div class="tool-collapse">
+          <a href="#" class="tool-toggle" onclick="event.preventDefault();var el=document.getElementById('${id}');var link=this;if(el.style.display==='none'){el.style.display='block';link.textContent='▼ ${label} (collapse)';}else{el.style.display='none';link.textContent='▶ ${label} (expand)';}">▶ ${label} (expand)</a>
+          <div id="${id}" class="tool-content" style="display:none">
+            <pre>${escapeHtml(m.content)}</pre>
+          </div>
+        </div>
+        <div class="message-time">${formatDate(m.timestamp)}</div>
+      </div>`;
+  }
+
+  return `
+    <div class="message">
+      <div class="message-role ${m.role}">${escapeHtml(m.role)}</div>
+      <div class="message-content">${truncateContent(m.content)}</div>
+      <div class="message-time">${formatDate(m.timestamp)}</div>
+    </div>`;
 }
 
 // Format session key for display (e.g., "discord:bot:123:channel:456:main" → "discord #456 (main)")
@@ -98,8 +141,25 @@ function updateLogDisplay() {
   const viewer = document.getElementById("log-viewer");
   if (!viewer) return;
   const filtered = filterLogs(rawLogs);
-  viewer.textContent = filtered || "(no matching logs)";
-  viewer.scrollTop = viewer.scrollHeight;
+
+  // Render lines with level-based color classes
+  if (!filtered || filtered.trim() === "") {
+    viewer.innerHTML = "(no matching logs)";
+  } else {
+    const lines = filtered.split("\n");
+    viewer.innerHTML = lines
+      .map((line) => {
+        const level = getLogLevel(line);
+        const cls = `log-${level.toLowerCase()}`;
+        return `<span class="${cls}">${escapeHtml(line)}</span>`;
+      })
+      .join("\n");
+  }
+
+  // Auto-scroll if enabled
+  if (logAutoScroll) {
+    viewer.scrollTop = viewer.scrollHeight;
+  }
 
   // Update line count
   const countEl = document.getElementById("log-count");
@@ -118,6 +178,19 @@ function onLevelChange(e) {
 function onSearchChange(e) {
   logFilter.search = e.target.value;
   updateLogDisplay();
+}
+
+function onAutoScrollToggle() {
+  logAutoScroll = !logAutoScroll;
+  const btn = document.getElementById("log-autoscroll");
+  if (btn) {
+    btn.textContent = logAutoScroll ? "Auto-scroll: ON" : "Auto-scroll: OFF";
+    btn.classList.toggle("active", logAutoScroll);
+  }
+  if (logAutoScroll) {
+    const viewer = document.getElementById("log-viewer");
+    if (viewer) viewer.scrollTop = viewer.scrollHeight;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +283,19 @@ async function renderSessions() {
 async function renderSessionDetail(id) {
   try {
     const session = await api(`/api/sessions/${encodeURIComponent(id)}`);
+
+    // Use history from session detail if available (ACP sessions),
+    // otherwise fetch from the messages endpoint (chat sessions).
+    let messages = session.history || [];
+    if (messages.length === 0) {
+      try {
+        const data = await api(`/api/sessions/${encodeURIComponent(id)}/messages`);
+        messages = data.messages || [];
+      } catch (_e) {
+        // messages endpoint may not exist for this session type
+      }
+    }
+
     app.innerHTML = `
       <a href="#/sessions" class="back-link">&larr; Back to sessions</a>
       <h1>Session ${escapeHtml(formatSessionKey(session))}</h1>
@@ -227,22 +313,12 @@ async function renderSessionDetail(id) {
           <div class="card-value" style="font-size:14px">${formatDate(session.createdAt)}</div>
         </div>
       </div>
-      <h1>Transcript</h1>
+      <h1>Transcript (${messages.length} messages)</h1>
       <div class="transcript">
         ${
-          session.history.length === 0
+          messages.length === 0
             ? `<div class="loading">No messages</div>`
-            : session.history
-                .map(
-                  (m) => `
-            <div class="message">
-              <div class="message-role ${m.role}">${escapeHtml(m.role)}</div>
-              <div class="message-content">${escapeHtml(m.content)}</div>
-              <div class="message-time">${formatDate(m.timestamp)}</div>
-            </div>
-          `
-                )
-                .join("")
+            : messages.map((m) => renderMessage(m)).join("")
         }
       </div>
     `;
@@ -303,6 +379,7 @@ async function renderLogs() {
   // Reset filter state when entering logs page
   logFilter = { level: "all", search: "" };
   rawLogs = "";
+  logAutoScroll = true;
 
   app.innerHTML = `
     <h1>Logs</h1>
@@ -315,6 +392,7 @@ async function renderLogs() {
         <option value="ERROR">ERROR</option>
       </select>
       <input type="text" id="log-search" class="log-search" placeholder="Search logs...">
+      <button id="log-autoscroll" class="log-autoscroll-btn active" onclick="onAutoScrollToggle()">Auto-scroll: ON</button>
       <span id="log-count" class="log-count"></span>
     </div>
     <div class="log-viewer" id="log-viewer">Loading...</div>

@@ -347,3 +347,87 @@ tr.clickable {
   color: var(--text-muted);
   margin-left: auto;
 }
+
+/* Log level colors */
+
+.log-debug { color: #888; }
+.log-info { color: inherit; }
+.log-warn { color: #f0ad4e; }
+.log-error { color: #d9534f; font-weight: 600; }
+
+/* Auto-scroll toggle */
+
+.log-autoscroll-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.log-autoscroll-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.log-autoscroll-btn.active {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+/* Message content truncation */
+
+.expand-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.expand-link:hover {
+  text-decoration: underline;
+}
+
+/* Tool call/result collapsing */
+
+.message-tool {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+}
+
+.tool-collapse {
+  margin: 4px 0;
+}
+
+.tool-toggle {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+.tool-toggle:hover {
+  color: var(--text);
+}
+
+.tool-content {
+  margin-top: 8px;
+}
+
+.tool-content pre {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
