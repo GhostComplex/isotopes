@@ -68,6 +68,8 @@ export interface FileToolPolicy {
 
 /** Per-agent tool policy (CLI access, file system restrictions). */
 export interface AgentToolSettings {
+  /** Enable web_search and web_fetch tools */
+  web?: boolean;
   cli?: boolean;
   fs?: FileToolPolicy;
 }

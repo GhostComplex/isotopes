@@ -65,3 +65,5 @@ export {
   DEFAULT_SELF_ITERATION_FILES,
 } from "./self-iteration.js";
 export type { SelfIterationConfig } from "./self-iteration.js";
+
+export { createWebFetchTool } from "./web.js";

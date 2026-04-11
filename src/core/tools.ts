@@ -1,29 +1,25 @@
 // src/core/tools.ts — Tool registry and execution
 // Manages tool definitions and their handlers.
-
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolSettings, Tool } from "./types.js";
 import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
+import { createWebFetchTool } from "../tools/web.js";
 import type { AcpxAgent, AcpxEvent, DiscordSinkConfig } from "../subagent/types.js";
 import { DiscordSink } from "../subagent/discord-sink.js";
 import { getSubagentContext } from "./subagent-context.js";
 import { createLogger } from "./logger.js";
-
 const execAsync = promisify(exec);
 const log = createLogger("tools:subagent");
-
 /** Function that executes a tool call and returns a string result. */
 export type ToolHandler = (args: unknown) => Promise<string>;
-
 /** A registered tool entry pairing a schema with its execution handler. */
 export interface ToolEntry {
   tool: Tool;
   handler: ToolHandler;
 }
-
 /**
  * ToolRegistry — manages tool definitions and handlers.
  *
@@ -32,7 +28,6 @@ export interface ToolEntry {
  */
 export class ToolRegistry {
   private tools = new Map<string, ToolEntry>();
-
   /**
    * Register a tool with its handler.
    * @throws if tool name already registered
@@ -43,28 +38,24 @@ export class ToolRegistry {
     }
     this.tools.set(tool.name, { tool, handler });
   }
-
   /**
    * Get a registered tool entry.
    */
   get(name: string): ToolEntry | undefined {
     return this.tools.get(name);
   }
-
   /**
    * List all registered tool schemas (for LLM).
    */
   list(): Tool[] {
     return Array.from(this.tools.values()).map((e) => e.tool);
   }
-
   /**
    * Check if a tool is registered.
    */
   has(name: string): boolean {
     return this.tools.has(name);
   }
-
   /**
    * Execute a tool by name.
    * @returns Tool output as string
@@ -77,14 +68,12 @@ export class ToolRegistry {
     }
     return entry.handler(args);
   }
-
   /**
    * Unregister a tool.
    */
   unregister(name: string): boolean {
     return this.tools.delete(name);
   }
-
   /**
    * Clear all registered tools.
    */
@@ -92,11 +81,9 @@ export class ToolRegistry {
     this.tools.clear();
   }
 }
-
 // ---------------------------------------------------------------------------
 // Built-in tools
 // ---------------------------------------------------------------------------
-
 /**
  * Create a simple echo tool (useful for testing).
  */
@@ -122,7 +109,6 @@ export function createEchoTool(): { tool: Tool; handler: ToolHandler } {
     },
   };
 }
-
 /**
  * Create a current time tool.
  */
@@ -155,11 +141,9 @@ export function createTimeTool(): { tool: Tool; handler: ToolHandler } {
     },
   };
 }
-
 // ---------------------------------------------------------------------------
 // Subagent tool
 // ---------------------------------------------------------------------------
-
 export interface SubagentToolOptions {
   /** Workspace path for the sub-agent */
   workspacePath: string;
@@ -170,7 +154,6 @@ export interface SubagentToolOptions {
   /** Default timeout in seconds (default: 300) */
   timeout?: number;
 }
-
 /**
  * Create a sub-agent spawning tool.
  * Allows the agent to delegate tasks to coding agents like Claude, Codex, Gemini.
@@ -183,10 +166,8 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
   const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout = 300 } = options;
   const supportedAgents = getSupportedAgents();
   const agents = allowedAgents ?? [...supportedAgents];
-  
   // Combine workspace path with additional allowed workspaces
   const allAllowedWorkspaces = [workspacePath, ...allowedWorkspaces];
-
   return {
     tool: {
       name: "spawn_subagent",
@@ -217,20 +198,16 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
         agent?: string;
         working_directory?: string;
       };
-
       // Validate agent
       if (!agents.includes(agent)) {
         return `[error] Unknown agent: ${agent}. Available: ${agents.join(", ")}`;
       }
-
       // Resolve working directory
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
-
       // Check for Discord context
       const discordContext = getSubagentContext();
-
       try {
         if (discordContext) {
           // Run with Discord streaming
@@ -246,7 +223,6 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
     },
   };
 }
-
 /**
  * Run subagent without Discord streaming (original behavior).
  */
@@ -263,14 +239,12 @@ async function runSubagentPlain(
     timeout,
     allowedWorkspaces,
   });
-
   if (result.success) {
     return result.output ?? "[sub-agent completed with no output]";
   } else {
     return `[sub-agent failed] ${result.error ?? "unknown error"}`;
   }
 }
-
 /**
  * Run subagent with Discord streaming.
  * Creates a thread, streams events to it, and posts a summary to the main channel.
@@ -284,27 +258,20 @@ async function runSubagentWithDiscord(
   context: NonNullable<ReturnType<typeof getSubagentContext>>,
 ): Promise<string> {
   const { sendMessage, createThread, channelId, showToolCalls = true, onComplete } = context;
-
   // Create Discord sink with thread enabled
   const sinkConfig: DiscordSinkConfig = {
     showToolCalls,
     showThinking: false,
     useThread: true,
   };
-
   const sink = new DiscordSink(sendMessage, createThread, channelId, sinkConfig);
-
   // Create a task label for the thread name
   const taskLabel = `${agent}: ${task.slice(0, 50)}${task.length > 50 ? "..." : ""}`;
-
   log.info("Starting sub-agent with Discord streaming", { agent, cwd, channelId });
-
   // Start the sink (creates thread)
   await sink.start(taskLabel);
-
   // Collect events for building result
   const events: AcpxEvent[] = [];
-
   try {
     // Run subagent with event streaming
     const result = await spawnSubagent(task, {
@@ -317,7 +284,6 @@ async function runSubagentWithDiscord(
         await sink.sendEvent(event);
       },
     });
-
     // Build AcpxResult for finish message
     const acpxResult = {
       success: result.success,
@@ -326,10 +292,8 @@ async function runSubagentWithDiscord(
       events,
       exitCode: result.exitCode,
     };
-
     // Send summary to main channel
     await sink.finish(acpxResult);
-
     // Call onComplete callback for auto-unbind
     const threadId = sink.getThreadId();
     if (onComplete && threadId) {
@@ -339,12 +303,10 @@ async function runSubagentWithDiscord(
         log.warn("onComplete callback failed", { error: err instanceof Error ? err.message : String(err) });
       }
     }
-
     log.info("Sub-agent with Discord streaming completed", {
       success: result.success,
       threadId,
     });
-
     if (result.success) {
       const threadMention = threadId ? ` (see <#${threadId}>)` : "";
       return `[sub-agent completed]${threadMention}\n${result.output ?? "(no output)"}`;
@@ -354,12 +316,10 @@ async function runSubagentWithDiscord(
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     log.error("Sub-agent with Discord streaming failed", { error });
-
     // Send error to Discord
     const errorEvent: AcpxEvent = { type: "error", error };
     events.push(errorEvent);
     await sink.sendEvent(errorEvent);
-
     // Send failure summary
     await sink.finish({
       success: false,
@@ -367,7 +327,6 @@ async function runSubagentWithDiscord(
       events,
       exitCode: 1,
     });
-
     // Call onComplete callback even on failure (for cleanup)
     const threadId = sink.getThreadId();
     if (onComplete && threadId) {
@@ -377,15 +336,12 @@ async function runSubagentWithDiscord(
         log.warn("onComplete callback failed", { error: callbackErr instanceof Error ? callbackErr.message : String(callbackErr) });
       }
     }
-
     throw err;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Shell tool
 // ---------------------------------------------------------------------------
-
 export interface ShellToolOptions {
   /** Working directory for command execution */
   cwd?: string;
@@ -394,13 +350,11 @@ export interface ShellToolOptions {
   /** Maximum output size in bytes (default: 100KB) */
   maxOutput?: number;
 }
-
 /**
  * Create a shell execution tool.
  */
 export function createShellTool(options: ShellToolOptions = {}): { tool: Tool; handler: ToolHandler } {
   const { cwd, timeout = 30000, maxOutput = 100 * 1024 } = options;
-
   return {
     tool: {
       name: "shell",
@@ -418,14 +372,12 @@ export function createShellTool(options: ShellToolOptions = {}): { tool: Tool; h
     },
     handler: async (args) => {
       const { command } = args as { command: string };
-
       try {
         const { stdout, stderr } = await execAsync(command, {
           cwd,
           timeout,
           maxBuffer: maxOutput,
         });
-
         let output = stdout;
         if (stderr) {
           output += (output ? "\n" : "") + `[stderr] ${stderr}`;
@@ -441,11 +393,9 @@ export function createShellTool(options: ShellToolOptions = {}): { tool: Tool; h
     },
   };
 }
-
 // ---------------------------------------------------------------------------
 // File tools
 // ---------------------------------------------------------------------------
-
 export interface FileToolOptions {
   /** Base directory for file operations (paths are resolved relative to this) */
   basePath?: string;
@@ -464,14 +414,12 @@ export interface FileToolOptions {
    */
   allowedWorkspaces?: string[];
 }
-
 export interface ResolvedToolGuards {
   cli: boolean;
   fs: {
     workspaceOnly: boolean;
   };
 }
-
 export function resolveToolGuards(settings?: AgentToolSettings): ResolvedToolGuards {
   return {
     cli: settings?.cli === true,
@@ -480,12 +428,10 @@ export function resolveToolGuards(settings?: AgentToolSettings): ResolvedToolGua
     },
   };
 }
-
 function isPathInside(parentPath: string, childPath: string): boolean {
   const relative = path.relative(parentPath, childPath);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
-
 async function isPathAllowed(
   targetPath: string,
   workspaceRoot: string,
@@ -498,7 +444,6 @@ async function isPathAllowed(
   }
   return false;
 }
-
 async function resolveWorkspaceConstrainedPath(
   targetPath: string,
   basePath: string | undefined,
@@ -509,12 +454,10 @@ async function resolveWorkspaceConstrainedPath(
   if (!basePath) {
     return path.resolve(targetPath);
   }
-
   const workspaceRoot = await fs.realpath(basePath).catch(() => path.resolve(basePath));
   const resolvedPath = path.isAbsolute(targetPath)
     ? path.resolve(targetPath)
     : path.resolve(workspaceRoot, targetPath);
-
   if (mode === "write") {
     const parentDir = path.dirname(resolvedPath);
     await fs.mkdir(parentDir, { recursive: true });
@@ -525,21 +468,17 @@ async function resolveWorkspaceConstrainedPath(
     }
     return finalPath;
   }
-
   const realTargetPath = await fs.realpath(resolvedPath).catch(() => path.resolve(resolvedPath));
   if (constrainToWorkspace && !(await isPathAllowed(realTargetPath, workspaceRoot, allowedWorkspaces))) {
     throw new Error(`Path escapes workspace: ${targetPath}`);
   }
-
   return realTargetPath;
 }
-
 /**
  * Create a file read tool.
  */
 export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
   const { basePath, maxReadSize = 1024 * 1024, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
-
   return {
     tool: {
       name: "read_file",
@@ -557,15 +496,12 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
     },
     handler: async (args) => {
       const { path: filePath } = args as { path: string };
-
       try {
         const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "read", constrainToWorkspace, allowedWorkspaces);
-
         const stats = await fs.stat(resolvedPath);
         if (stats.size > maxReadSize) {
           return `[error] File too large (${stats.size} bytes, max ${maxReadSize})`;
         }
-
         const content = await fs.readFile(resolvedPath, "utf-8");
         return content;
       } catch (error) {
@@ -578,13 +514,11 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
     },
   };
 }
-
 /**
  * Create a file write tool.
  */
 export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
   const { basePath, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
-
   return {
     tool: {
       name: "write_file",
@@ -606,11 +540,9 @@ export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool
     },
     handler: async (args) => {
       const { path: filePath, content } = args as { path: string; content: string };
-
       try {
         const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace, allowedWorkspaces);
         await fs.writeFile(resolvedPath, content, "utf-8");
-
         return `Successfully wrote ${content.length} bytes to ${filePath}`;
       } catch (error) {
         const err = error as { message?: string };
@@ -619,13 +551,11 @@ export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool
     },
   };
 }
-
 /**
  * Create a directory listing tool.
  */
 export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
   const { basePath, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
-
   return {
     tool: {
       name: "list_dir",
@@ -642,16 +572,13 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
     },
     handler: async (args) => {
       const { path: dirPath = "." } = args as { path?: string };
-
       try {
         const resolvedPath = await resolveWorkspaceConstrainedPath(dirPath, basePath, "list", constrainToWorkspace, allowedWorkspaces);
-
         const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
         const lines = entries.map((entry) => {
           const prefix = entry.isDirectory() ? "[dir] " : "      ";
           return `${prefix}${entry.name}`;
         });
-
         return lines.length > 0 ? lines.join("\n") : "(empty directory)";
       } catch (error) {
         const err = error as { code?: string; message?: string };
@@ -663,7 +590,6 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
     },
   };
 }
-
 export function buildToolGuardPrompt(
   tools: Tool[],
   guards: ResolvedToolGuards,
@@ -677,7 +603,6 @@ export function buildToolGuardPrompt(
     "",
     "# Tool Guards",
   ];
-
   if (guards.fs.workspaceOnly) {
     lines.push(`- File operations are restricted to the workspace: ${workspacePath}`);
     if (allowedWorkspaces.length > 0) {
@@ -688,28 +613,23 @@ export function buildToolGuardPrompt(
   } else {
     lines.push("- File operations may access host paths outside the workspace.");
   }
-
   if (guards.cli) {
     lines.push(`- Shell command execution is enabled and runs with cwd=${workspacePath}.`);
     lines.push("- Use shell only when file tools are insufficient for the task.");
   } else {
     lines.push("- Shell command execution is disabled in this runtime.");
   }
-
   return lines.join("\n");
 }
-
 // ---------------------------------------------------------------------------
 // Tool set helpers
 // ---------------------------------------------------------------------------
-
 /**
  * Create a standard set of tools for an agent workspace.
  */
 export function createWorkspaceTools(workspacePath: string): { tool: Tool; handler: ToolHandler }[] {
   return createWorkspaceToolsWithGuards(workspacePath);
 }
-
 export function createWorkspaceToolsWithGuards(
   workspacePath: string,
   settings?: AgentToolSettings,
@@ -724,21 +644,21 @@ export function createWorkspaceToolsWithGuards(
   // (e.g., another agent's workspace), causing identity contamination (#92).
   const fileBasePath = workspacePath;
   const constrainToWorkspace = guards.fs.workspaceOnly;
-
   const tools = [
     createReadFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createWriteFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createListDirTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createTimeTool(),
   ];
-
   if (guards.cli) {
     tools.unshift(createShellTool({ cwd: workspacePath }));
   }
-
   if (subagentEnabled) {
     tools.push(createSubagentTool({ workspacePath, allowedWorkspaces }));
   }
-
+  // Web fetch tool
+  if (settings?.web) {
+    tools.push(createWebFetchTool());
+  }
   return tools;
 }
