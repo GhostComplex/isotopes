@@ -28,6 +28,7 @@ import {
 } from "./core/tools.js";
 import { createSelfIterationTools } from "./tools/self-iteration.js";
 import { createIterateCodebaseTool } from "./tools/iterate-codebase.js";
+import { createReplyReactTools, LazyTransportContext } from "./tools/reply-react.js";
 import {
   getConfigPath,
   getIsotopesHome,
@@ -286,6 +287,7 @@ async function main() {
 
   // Create agents with workspace tools
   const agentWorkspaces = new Map<string, string>();
+  const transportContexts = new Map<string, LazyTransportContext>();
   const isSingleAgent = config.agents.length === 1;
 
   for (const agentFile of config.agents) {
@@ -354,6 +356,13 @@ async function main() {
         allowedWorkspaces: agentAllowedWorkspaces,
       });
       toolRegistry.register(iterTool, iterHandler);
+    }
+
+    // Register reply/react tools (transport is bound lazily after Discord starts)
+    const transportCtx = new LazyTransportContext();
+    transportContexts.set(agentConfig.id, transportCtx);
+    for (const { tool, handler } of createReplyReactTools(transportCtx)) {
+      toolRegistry.register(tool, handler);
     }
 
     // Build tool guard prompt and store it for hot-reload persistence (M11.4)
@@ -580,6 +589,15 @@ async function main() {
 
       await discordManager.start();
       logger.info(`Discord transport started (${discordManager.size} account(s))`);
+
+      // Bind the first Discord transport to reply/react tools for each agent
+      const firstTransport = discordManager.getAll().values().next().value;
+      if (firstTransport) {
+        for (const [agentId, ctx] of transportContexts) {
+          ctx.setTransport(firstTransport);
+          logger.debug(`Bound Discord transport for reply/react tools (agent: ${agentId})`);
+        }
+      }
     }
   }
 

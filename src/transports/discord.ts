@@ -684,10 +684,24 @@ export class DiscordTransport implements Transport {
   // Reply & reaction
   // ---------------------------------------------------------------------------
 
-  async reply(messageId: string, content: string): Promise<{ messageId: string }> {
+  async reply(messageId: string, content: string, channelId?: string): Promise<{ messageId: string }> {
     if (!this.ready) throw new Error("Discord transport not ready");
 
-    // Search all channels the bot can see for the message
+    // Fast path: fetch the channel directly when channelId is provided
+    if (channelId) {
+      try {
+        const channel = await this.client.channels.fetch(channelId);
+        if (channel && "messages" in channel) {
+          const target = await (channel as SendableChannel).messages.fetch(messageId);
+          const sent = await target.reply(content);
+          return { messageId: sent.id };
+        }
+      } catch {
+        // Fall through to slow path if channel fetch fails
+      }
+    }
+
+    // Slow path: search all cached channels for the message
     const channels = this.client.channels.cache.values();
     for (const ch of channels) {
       if (!("messages" in ch)) continue;
@@ -705,9 +719,24 @@ export class DiscordTransport implements Transport {
     throw new Error(`Message not found: ${messageId}`);
   }
 
-  async react(messageId: string, emoji: string): Promise<void> {
+  async react(messageId: string, emoji: string, channelId?: string): Promise<void> {
     if (!this.ready) throw new Error("Discord transport not ready");
 
+    // Fast path: fetch the channel directly when channelId is provided
+    if (channelId) {
+      try {
+        const channel = await this.client.channels.fetch(channelId);
+        if (channel && "messages" in channel) {
+          const target = await (channel as SendableChannel).messages.fetch(messageId);
+          await target.react(emoji);
+          return;
+        }
+      } catch {
+        // Fall through to slow path if channel fetch fails
+      }
+    }
+
+    // Slow path: search all cached channels for the message
     const channels = this.client.channels.cache.values();
     for (const ch of channels) {
       if (!("messages" in ch)) continue;

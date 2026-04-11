@@ -387,8 +387,8 @@ export type CronActionConfig =
 export interface Transport {
   start(): Promise<void>;
   stop(): Promise<void>;
-  /** Reply to a specific message by ID. */
-  reply?(messageId: string, content: string): Promise<{ messageId: string }>;
-  /** Add a reaction emoji to a specific message by ID. */
-  react?(messageId: string, emoji: string): Promise<void>;
+  /** Reply to a specific message by ID. If channelId is provided, skip O(n) channel scan. */
+  reply?(messageId: string, content: string, channelId?: string): Promise<{ messageId: string }>;
+  /** Add a reaction emoji to a specific message by ID. If channelId is provided, skip O(n) channel scan. */
+  react?(messageId: string, emoji: string, channelId?: string): Promise<void>;
 }
