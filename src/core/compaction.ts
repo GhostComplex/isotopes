@@ -194,8 +194,6 @@ export function createSummaryMessage(summaryText: string): AgentMessage {
 // ---------------------------------------------------------------------------
 
 /**
-
-/**
  * Check if a message is a tool_result message.
  */
 function isToolResult(message: AgentMessage): boolean {
