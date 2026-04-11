@@ -17,7 +17,7 @@ import type {
   ProviderConfig,
   SessionConfig,
 } from "./types.js";
-import type { AcpConfig } from "../acp/types.js";
+import type { AcpConfig, AcpPersistenceConfig } from "../acp/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "../sandbox/config.js";
 import { createLogger } from "./logger.js";
 
@@ -291,6 +291,18 @@ export interface ResolvedSubagentConfig {
   showToolCalls: boolean;
 }
 
+/** ACP session persistence configuration in config file */
+export interface AcpPersistenceConfigFile {
+  /** Whether session persistence is enabled. Default: false */
+  enabled?: boolean;
+  /** Directory to store persisted session data. Default: $ISOTOPES_HOME/acp-sessions */
+  dataDir?: string;
+  /** Session TTL in seconds. Default: 86400 (24h) */
+  ttl?: number;
+  /** Cleanup interval in seconds. Default: 3600 (1h) */
+  cleanupInterval?: number;
+}
+
 /** ACP (Agent Communication Protocol) configuration in config file */
 export interface AcpConfigFile {
   /** Whether ACP is enabled. Default: false */
@@ -303,6 +315,8 @@ export interface AcpConfigFile {
   allowedAgents?: string[];
   /** Sub-agent execution settings (M7/M8) */
   subagent?: SubagentConfigFile;
+  /** Session persistence settings (#195) */
+  persistence?: AcpPersistenceConfigFile;
 }
 
 /** Cron job configuration in config file */
@@ -448,11 +462,30 @@ export function resolveAcpConfig(
     throw new Error("acp.defaultAgent is required when ACP is enabled");
   }
 
+  let persistence: AcpPersistenceConfig | undefined;
+  if (acpConfig.persistence?.enabled) {
+    if (acpConfig.persistence.ttl !== undefined) {
+      assertPositiveNumber(acpConfig.persistence.ttl, "acp.persistence.ttl");
+    }
+    if (acpConfig.persistence.cleanupInterval !== undefined) {
+      assertPositiveNumber(acpConfig.persistence.cleanupInterval, "acp.persistence.cleanupInterval");
+    }
+
+    const home = process.env.ISOTOPES_HOME ?? path.join(process.env.HOME ?? "~", ".isotopes");
+    persistence = {
+      enabled: true,
+      dataDir: acpConfig.persistence.dataDir ?? path.join(home, "acp-sessions"),
+      ttl: acpConfig.persistence.ttl ?? 86_400,
+      cleanupInterval: acpConfig.persistence.cleanupInterval ?? 3_600,
+    };
+  }
+
   return {
     enabled: true,
     backend,
     defaultAgent: acpConfig.defaultAgent,
     allowedAgents: acpConfig.allowedAgents,
+    persistence,
   };
 }
 

@@ -1,9 +1,11 @@
 // src/acp/index.ts — Barrel exports for the ACP module
 
 export { AcpSessionManager } from "./session-manager.js";
+export { AcpSessionPersistence } from "./persistence.js";
 export type {
   AcpConfig,
   AcpBackend,
+  AcpPersistenceConfig,
   AcpSession,
   AcpSessionStatus,
   AcpMessage,

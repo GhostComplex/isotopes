@@ -1,14 +1,20 @@
 // src/acp/session-manager.ts — ACP session lifecycle management
 // In-memory session store for ACP agent sessions with event notification.
+// Supports optional disk persistence for surviving restarts (#195).
 
 import { randomUUID } from "node:crypto";
+import { createLogger } from "../core/logger.js";
+import { AcpSessionPersistence } from "./persistence.js";
 import type {
   AcpConfig,
   AcpMessage,
+  AcpPersistenceConfig,
   AcpSession,
   AcpSessionCallback,
   AcpSessionStatus,
 } from "./types.js";
+
+const log = createLogger("acp-session");
 
 /**
  * AcpSessionManager — manages the lifecycle of ACP agent sessions.
@@ -18,22 +24,58 @@ import type {
  * - Maintain message history per session
  * - Thread ↔ session lookup
  * - Emit lifecycle events for downstream consumers
- *
- * Storage is in-memory for now; persistence can be added later.
+ * - Optionally persist sessions to disk for restart survival (#195)
  */
 export class AcpSessionManager {
   private sessions: Map<string, AcpSession> = new Map();
   private threadIndex: Map<string, string> = new Map(); // threadId → sessionId
   private listeners: AcpSessionCallback[] = [];
+  private persistence: AcpSessionPersistence | null = null;
 
   constructor(private config: AcpConfig) {}
+
+  // -------------------------------------------------------------------------
+  // Initialization (#195)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Initialize the manager with optional persistence.
+   * When persistence is configured, restores sessions from disk.
+   * Call this before using the manager if persistence is desired.
+   */
+  async init(persistenceConfig?: AcpPersistenceConfig): Promise<void> {
+    if (!persistenceConfig?.enabled) return;
+
+    this.persistence = new AcpSessionPersistence(persistenceConfig);
+    await this.persistence.init();
+
+    // Restore sessions from disk
+    const { sessions, threadIndex } = await this.persistence.loadAll();
+    this.sessions = sessions;
+    this.threadIndex = threadIndex;
+
+    // Lazily load message histories for restored sessions
+    for (const session of this.sessions.values()) {
+      if (session.history.length === 0) {
+        session.history = await this.persistence.loadMessages(session.id);
+      }
+    }
+
+    // Start periodic stale session cleanup
+    this.persistence.startCleanupTimer(async () => { await this.cleanupStaleSessions(); });
+
+    log.info(
+      `Initialized with persistence (${this.sessions.size} session(s) restored, ` +
+      `TTL=${persistenceConfig.ttl}s)`,
+    );
+  }
 
   // -------------------------------------------------------------------------
   // Cleanup
   // -------------------------------------------------------------------------
 
   /**
-   * Remove terminated sessions from memory.
+   * Remove terminated sessions from memory (and disk if persistence is enabled).
    * Returns the number of sessions removed.
    */
   purgeTerminated(): number {
@@ -42,10 +84,41 @@ export class AcpSessionManager {
       if (session.status === "terminated") {
         if (session.threadId) this.threadIndex.delete(session.threadId);
         this.sessions.delete(id);
+        if (this.persistence) {
+          void this.persistence.deleteTranscript(id);
+        }
         count++;
       }
     }
+    if (count > 0 && this.persistence) {
+      void this.persistence.persistIndex(this.sessions, this.threadIndex);
+    }
     return count;
+  }
+
+  /**
+   * Remove stale sessions (TTL-expired or terminated).
+   * Returns the IDs of removed sessions.
+   */
+  async cleanupStaleSessions(): Promise<string[]> {
+    if (!this.persistence) return [];
+
+    const staleIds = this.persistence.findStaleSessions(this.sessions);
+    if (staleIds.length === 0) return [];
+
+    for (const id of staleIds) {
+      const session = this.sessions.get(id);
+      if (session?.threadId) this.threadIndex.delete(session.threadId);
+      this.sessions.delete(id);
+    }
+
+    await this.persistence.persistIndex(this.sessions, this.threadIndex);
+    await Promise.allSettled(
+      staleIds.map((id) => this.persistence!.deleteTranscript(id)),
+    );
+
+    log.info(`Cleaned up ${staleIds.length} stale ACP session(s)`);
+    return staleIds;
   }
 
   // -------------------------------------------------------------------------
@@ -91,6 +164,10 @@ export class AcpSessionManager {
     if (threadId) this.threadIndex.set(threadId, session.id);
     this.notify(session, "created");
 
+    if (this.persistence) {
+      void this.persistence.persistIndex(this.sessions, this.threadIndex);
+    }
+
     return session;
   }
 
@@ -127,6 +204,11 @@ export class AcpSessionManager {
     session.lastActivityAt = new Date();
 
     this.notify(session, "updated");
+
+    if (this.persistence) {
+      void this.persistence.persistIndex(this.sessions, this.threadIndex);
+    }
+
     return session;
   }
 
@@ -141,6 +223,10 @@ export class AcpSessionManager {
     session.status = "terminated";
     session.lastActivityAt = new Date();
     this.notify(session, "terminated");
+
+    if (this.persistence) {
+      void this.persistence.persistIndex(this.sessions, this.threadIndex);
+    }
 
     return true;
   }
@@ -174,13 +260,20 @@ export class AcpSessionManager {
     if (!session) return false;
 
     const now = new Date();
-    session.history.push({
+    const fullMessage: AcpMessage = {
       ...message,
       timestamp: now,
-    });
+    };
+    session.history.push(fullMessage);
     session.lastActivityAt = now;
 
     this.notify(session, "updated");
+
+    if (this.persistence) {
+      void this.persistence.appendMessage(sessionId, fullMessage);
+      this.persistence.debouncedPersistIndex(this.sessions, this.threadIndex);
+    }
+
     return true;
   }
 
@@ -198,6 +291,17 @@ export class AcpSessionManager {
       const idx = this.listeners.indexOf(callback);
       if (idx !== -1) this.listeners.splice(idx, 1);
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Teardown
+  // -------------------------------------------------------------------------
+
+  /** Release persistence timers and resources. */
+  destroy(): void {
+    if (this.persistence) {
+      this.persistence.destroy();
+    }
   }
 
   // -------------------------------------------------------------------------

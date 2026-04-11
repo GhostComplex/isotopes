@@ -8,6 +8,18 @@
 /** Supported ACP backend types */
 export type AcpBackend = "acpx" | "claude-code" | "codex";
 
+/** ACP session persistence configuration */
+export interface AcpPersistenceConfig {
+  /** Whether session persistence is enabled. Default: false */
+  enabled: boolean;
+  /** Directory to store persisted session data */
+  dataDir: string;
+  /** Session TTL in seconds. Sessions older than this are considered stale. Default: 86400 (24h) */
+  ttl: number;
+  /** Cleanup interval in seconds. How often to check for stale sessions. Default: 3600 (1h) */
+  cleanupInterval: number;
+}
+
 /** ACP configuration (root-level `acp` section in config) */
 export interface AcpConfig {
   /** Whether ACP is enabled */
@@ -18,6 +30,8 @@ export interface AcpConfig {
   defaultAgent: string;
   /** Agent IDs allowed to participate in ACP sessions */
   allowedAgents?: string[];
+  /** Session persistence configuration */
+  persistence?: AcpPersistenceConfig;
 }
 
 // ---------------------------------------------------------------------------
