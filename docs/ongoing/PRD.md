@@ -272,7 +272,8 @@ Agents can modify their own configuration:
 │           ├── sessions.json    # Session index
 │           └── {sessionId}.jsonl
 └── logs/
-    └── isotopes-YYYY-MM-DD.log
+    ├── isotopes.out.log
+    └── isotopes.err.log
 ```
 
 ---
@@ -292,11 +293,13 @@ Agents can modify their own configuration:
 | **M8** | Subagent Security & Config | 📋 Backlog |
 | **M9** | Skills System | ✅ Done |
 | **M10** | Self-Iteration System | ✅ Done |
+| **M11** | Workspace Standardization & Hatch | ✅ Done |
 
-> **Completed milestones (M0-M7)**: See [archived/PRD-milestones-M0-M7.md](./archived/PRD-milestones-M0-M7.md)  
-> **M9 Skills**: See [archived/PRD-M9-skills.md](./archived/PRD-M9-skills.md)  
-> **M10 Self-Iteration**: See [archived/PRD-M10-self-iteration.md](./archived/PRD-M10-self-iteration.md)  
-> **Backlog items**: See [backlog/](./backlog/)
+> **Completed milestones (M0-M7)**: See [../archive/PRD-milestones-M0-M7.md](../archive/PRD-milestones-M0-M7.md)  
+> **M9 Skills**: See [../archive/PRD-M9-skills.md](../archive/PRD-M9-skills.md)  
+> **M10 Self-Iteration**: See [../archive/PRD-M10-self-iteration.md](../archive/PRD-M10-self-iteration.md)  
+> **M11 Workspace Hatch**: See [../archive/PRD-M11-workspace-hatch.md](../archive/PRD-M11-workspace-hatch.md)  
+> **Backlog items**: See [../archive/backlog/](../archive/backlog/)
 
 ---
 
