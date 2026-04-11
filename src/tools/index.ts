@@ -71,6 +71,12 @@ export { createWebFetchTool } from "./web.js";
 export {
   createSessionsSpawnTool,
   createSessionsAnnounceTool,
+  createSessionsSendTool,
+  createSessionsListTool,
+  createSessionsHistoryTool,
+  createSessionsYieldTool,
+  createSessionsKillTool,
+  createSessionsStatusTool,
   createSessionTools,
 } from "./sessions.js";
 export type { SessionsToolContext } from "./sessions.js";

@@ -8,6 +8,8 @@ import {
   createSessionsListTool,
   createSessionsHistoryTool,
   createSessionsYieldTool,
+  createSessionsKillTool,
+  createSessionsStatusTool,
   createSessionTools,
   type SessionsToolContext,
 } from "./sessions.js";
@@ -206,7 +208,7 @@ describe("sessions_announce", () => {
 });
 
 describe("createSessionTools", () => {
-  it("returns all six tools", () => {
+  it("returns all eight tools", () => {
     const ctx = createTestContext();
     const tools = createSessionTools(ctx);
     const names = tools.map((t) => t.tool.name);
@@ -217,7 +219,9 @@ describe("createSessionTools", () => {
     expect(names).toContain("sessions_list");
     expect(names).toContain("sessions_history");
     expect(names).toContain("sessions_yield");
-    expect(tools).toHaveLength(6);
+    expect(names).toContain("sessions_kill");
+    expect(names).toContain("sessions_status");
+    expect(tools).toHaveLength(8);
   });
 });
 
@@ -867,5 +871,209 @@ describe("sessions_yield", () => {
     expect(result.success).toBe(true);
     expect(result.previous_status).toBe("paused");
     expect(result.new_status).toBe("terminated");
+  });
+});
+
+describe("sessions_kill", () => {
+  let ctx: SessionsToolContext;
+
+  beforeEach(() => {
+    ctx = createTestContext();
+  });
+
+  it("returns tool with correct schema", () => {
+    const { tool } = createSessionsKillTool(ctx);
+    expect(tool.name).toBe("sessions_kill");
+    expect(tool.parameters.required).toContain("session_id");
+    expect(tool.parameters.properties).toHaveProperty("reason");
+  });
+
+  it("terminates an active session", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+
+    const { handler } = createSessionsKillTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.success).toBe(true);
+    expect(result.session_id).toBe(session.id);
+    expect(result.status).toBe("terminated");
+    expect(result.previous_status).toBe("active");
+
+    // Verify session is actually terminated
+    const updated = ctx.sessionManager.getSession(session.id);
+    expect(updated?.status).toBe("terminated");
+  });
+
+  it("terminates a paused session", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.updateSession(session.id, { status: "paused" });
+
+    const { handler } = createSessionsKillTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.success).toBe(true);
+    expect(result.previous_status).toBe("paused");
+    expect(result.status).toBe("terminated");
+  });
+
+  it("returns success with message for already terminated session", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.terminateSession(session.id);
+
+    const { handler } = createSessionsKillTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe("terminated");
+    expect(result.message).toContain("already terminated");
+  });
+
+  it("returns error for non-existent session", async () => {
+    const { handler } = createSessionsKillTool(ctx);
+    const result = JSON.parse(await handler({ session_id: "non-existent" }));
+
+    expect(result.error).toContain("Session not found");
+  });
+
+  it("allows killing allowed agent's session", async () => {
+    // agent-b is in allowedAgents, so agent-a can kill it
+    const session = ctx.sessionManager.createSession("agent-b");
+
+    const { handler } = createSessionsKillTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe("terminated");
+  });
+
+  it("rejects access to non-allowed agent's session", async () => {
+    const mgr = new AcpSessionManager({
+      enabled: true,
+      backend: "acpx",
+      defaultAgent: "agent-a",
+      allowedAgents: [],
+    });
+    const session = mgr.createSession("agent-x");
+
+    const restrictedCtx = createTestContext({
+      sessionManager: mgr,
+      currentAgentId: "agent-a",
+    });
+
+    const { handler } = createSessionsKillTool(restrictedCtx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.error).toContain("Access denied");
+  });
+
+  it("accepts optional reason parameter", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+
+    const { handler } = createSessionsKillTool(ctx);
+    const result = JSON.parse(
+      await handler({ session_id: session.id, reason: "stuck subagent" }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe("terminated");
+  });
+});
+
+describe("sessions_status", () => {
+  let ctx: SessionsToolContext;
+
+  beforeEach(() => {
+    ctx = createTestContext();
+  });
+
+  it("returns tool with correct schema", () => {
+    const { tool } = createSessionsStatusTool(ctx);
+    expect(tool.name).toBe("sessions_status");
+    expect(tool.parameters.required).toContain("session_id");
+  });
+
+  it("returns correct fields for active session", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.addMessage(session.id, { role: "user", content: "hello" });
+    ctx.sessionManager.addMessage(session.id, { role: "assistant", content: "hi" });
+
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.session_id).toBe(session.id);
+    expect(result.agent_id).toBe("agent-a");
+    expect(result.status).toBe("active");
+    expect(result.message_count).toBe(2);
+    expect(result.thread_id).toBeNull();
+    // Verify timestamps are valid ISO strings
+    expect(new Date(result.created_at).toISOString()).toBe(result.created_at);
+    expect(new Date(result.last_activity).toISOString()).toBe(result.last_activity);
+  });
+
+  it("returns thread_id when session is bound to a thread", async () => {
+    const session = ctx.sessionManager.createSession("agent-a", "thread-456");
+
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.thread_id).toBe("thread-456");
+  });
+
+  it("returns status for terminated session", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.terminateSession(session.id);
+
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.status).toBe("terminated");
+  });
+
+  it("returns error for non-existent session", async () => {
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ session_id: "non-existent" }));
+
+    expect(result.error).toContain("Session not found");
+  });
+
+  it("allows status of allowed agent's session", async () => {
+    // agent-b is in allowedAgents
+    const session = ctx.sessionManager.createSession("agent-b");
+
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.session_id).toBe(session.id);
+    expect(result.agent_id).toBe("agent-b");
+    expect(result.status).toBe("active");
+  });
+
+  it("rejects access to non-allowed agent's session", async () => {
+    const mgr = new AcpSessionManager({
+      enabled: true,
+      backend: "acpx",
+      defaultAgent: "agent-a",
+      allowedAgents: [],
+    });
+    const session = mgr.createSession("agent-x");
+
+    const restrictedCtx = createTestContext({
+      sessionManager: mgr,
+      currentAgentId: "agent-a",
+    });
+
+    const { handler } = createSessionsStatusTool(restrictedCtx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.error).toContain("Access denied");
+  });
+
+  it("returns zero message_count for empty session", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+
+    const { handler } = createSessionsStatusTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.message_count).toBe(0);
   });
 });

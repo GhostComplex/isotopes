@@ -451,7 +451,7 @@ export function createSessionsListTool(
           },
           status: {
             type: "string",
-            enum: ["active", "idle", "terminated"],
+            enum: ["active", "idle", "paused", "terminated"],
             description: "Filter by session status",
           },
           limit: {
@@ -759,6 +759,153 @@ export function createSessionsYieldTool(
 }
 
 // ---------------------------------------------------------------------------
+// sessions_kill
+// ---------------------------------------------------------------------------
+
+/**
+ * Create the `sessions_kill` tool.
+ *
+ * Terminates an ACP session. Access control: the calling agent must own the
+ * session OR the session's agent must be in allowedAgents.
+ */
+export function createSessionsKillTool(
+  ctx: SessionsToolContext,
+): { tool: Tool; handler: ToolHandler } {
+  return {
+    tool: {
+      name: "sessions_kill",
+      description:
+        "Terminate an ACP session immediately. " +
+        "Sets the session status to terminated and cleans up resources.",
+      parameters: {
+        type: "object",
+        properties: {
+          session_id: {
+            type: "string",
+            description: "Session ID to terminate",
+          },
+          reason: {
+            type: "string",
+            description: "Optional reason for termination (for audit logging)",
+          },
+        },
+        required: ["session_id"],
+      },
+    },
+    handler: async (args) => {
+      const { session_id, reason } = args as {
+        session_id: string;
+        reason?: string;
+      };
+
+      const session = ctx.sessionManager.getSession(session_id);
+      if (!session) {
+        return JSON.stringify({ error: `Session not found: ${session_id}` });
+      }
+
+      // Access control: agent must own the session OR session's agent is in allowedAgents
+      const allowedAgents = ctx.sessionManager.getConfig().allowedAgents ?? [];
+      const isOwner = session.agentId === ctx.currentAgentId;
+      const isAllowed = allowedAgents.includes(session.agentId);
+
+      if (!isOwner && !isAllowed) {
+        return JSON.stringify({
+          error: `Access denied to session: ${session_id}`,
+        });
+      }
+
+      // Already terminated — no-op success
+      if (session.status === "terminated") {
+        return JSON.stringify({
+          success: true,
+          session_id,
+          status: "terminated",
+          message: "Session already terminated",
+        });
+      }
+
+      const previousStatus = session.status;
+      ctx.sessionManager.terminateSession(session_id);
+
+      log.info("Session killed", {
+        sessionId: session_id,
+        callingAgent: ctx.currentAgentId,
+        previousStatus,
+        reason,
+      });
+
+      return JSON.stringify({
+        success: true,
+        session_id,
+        status: "terminated",
+        previous_status: previousStatus,
+      });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// sessions_status
+// ---------------------------------------------------------------------------
+
+/**
+ * Create the `sessions_status` tool.
+ *
+ * Returns detailed status and metadata for a specific ACP session.
+ * Access control: same as sessions_kill.
+ */
+export function createSessionsStatusTool(
+  ctx: SessionsToolContext,
+): { tool: Tool; handler: ToolHandler } {
+  return {
+    tool: {
+      name: "sessions_status",
+      description:
+        "Get the current status and metadata for a specific ACP session.",
+      parameters: {
+        type: "object",
+        properties: {
+          session_id: {
+            type: "string",
+            description: "Session ID to query",
+          },
+        },
+        required: ["session_id"],
+      },
+    },
+    handler: async (args) => {
+      const { session_id } = args as { session_id: string };
+
+      const session = ctx.sessionManager.getSession(session_id);
+      if (!session) {
+        return JSON.stringify({ error: `Session not found: ${session_id}` });
+      }
+
+      // Access control: agent must own the session OR session's agent is in allowedAgents
+      const allowedAgents = ctx.sessionManager.getConfig().allowedAgents ?? [];
+      const isOwner = session.agentId === ctx.currentAgentId;
+      const isAllowed = allowedAgents.includes(session.agentId);
+
+      if (!isOwner && !isAllowed) {
+        return JSON.stringify({
+          error: `Access denied to session: ${session_id}`,
+        });
+      }
+
+      return JSON.stringify({
+        session_id: session.id,
+        agent_id: session.agentId,
+        status: session.status,
+        created_at: session.createdAt.toISOString(),
+        last_activity: session.lastActivityAt.toISOString(),
+        message_count: session.history.length,
+        thread_id: session.threadId ?? null,
+      });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -776,5 +923,7 @@ export function createSessionTools(
     createSessionsListTool(ctx),
     createSessionsHistoryTool(ctx),
     createSessionsYieldTool(ctx),
+    createSessionsKillTool(ctx),
+    createSessionsStatusTool(ctx),
   ];
 }
