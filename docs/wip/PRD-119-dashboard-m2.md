@@ -1,109 +1,63 @@
-# PRD-119: Dashboard M2
+# PRD-119: Dashboard M2 (Phase 1)
 
-## Overview
-Expand the admin dashboard with agent management, config editing, and basic authentication.
+## Scope
 
-## Goals
-1. **Agent Status & Control** — View running agents, start/stop them
-2. **Config Editing** — Edit agent configs from dashboard
-3. **Basic Auth** — Protect dashboard access
+**Phase 1 只做两个增强，不加新功能模块。**
 
-## Non-Goals
-- Full RBAC / multi-user auth
-- Real-time agent metrics (defer to M3)
+### 1. Session 详情增强
+- Session detail 页面显示消息内容（目前只有 messageCount）
+- 消息列表：role, content preview, timestamp
+- 分页或滚动加载（如果消息多）
 
-## Current State
-- Dashboard shows sessions and logs
-- No agent management UI
-- No config editing
-- No authentication
+### 2. Logs 增强
+- Auto-scroll toggle（默认开启，新日志自动滚到底部）
+- 日志级别颜色高亮（DEBUG=灰, INFO=默认, WARN=黄, ERROR=红）
 
-## Design
+**不做：** Auth, Agent Control, Config Editor
 
-### 1. Agent Status & Control
+---
 
-**API Endpoints:**
+## 文件路径
+
 ```
-GET  /api/agents          — List all agents with status
-POST /api/agents/:id/stop — Stop an agent
-POST /api/agents/:id/start — Start an agent
+src/api/routes.ts          — API 路由（需要加 session messages endpoint）
+web/dashboard/app.js       — Dashboard 前端
+web/dashboard/index.html   — Dashboard HTML
+web/dashboard/styles.css   — Dashboard 样式
 ```
 
-**UI:**
-- New "Agents" tab in dashboard
-- Table: Agent name, status (running/stopped), PID, uptime
-- Actions: Stop/Start buttons
+---
 
-**Implementation:**
-- Read agent configs from `~/.isotopes/agents/`
-- Check running processes via PID files or process list
-- Use `spawn` to start agents, signals to stop
+## 实现细节
 
-### 2. Config Editing
+### Session Messages API
 
-**API Endpoints:**
 ```
-GET  /api/agents/:id/config — Get agent config
-PUT  /api/agents/:id/config — Update agent config
+GET /api/sessions/:id/messages
+Response: { messages: [{ role, content, timestamp }] }
 ```
 
-**UI:**
-- Click agent row → expand config editor
-- JSON editor with validation
-- Save button → PUT to API
+在 `src/api/routes.ts` 加 endpoint，读取 session store。
 
-**Safety:**
-- Validate JSON before save
-- Backup current config before overwrite
-- Require restart for config changes to take effect
+### 前端改动
 
-### 3. Basic Auth
+**app.js:**
+1. `renderSessionDetail()` — 加消息列表渲染
+2. `toggleAutoScroll()` — auto-scroll 控制
+3. Log 级别颜色 class
 
-**Implementation:**
-- Simple username/password in environment or config
-- Session cookie after login
-- Middleware to protect all `/api/*` routes
-
-**UI:**
-- Login page at `/login`
-- Redirect to login if not authenticated
-- Logout button in header
-
-**Config:**
-```yaml
-dashboard:
-  auth:
-    username: admin
-    password: ${DASHBOARD_PASSWORD}
+**styles.css:**
+```css
+.log-debug { color: #888; }
+.log-info { color: inherit; }
+.log-warn { color: #f0ad4e; }
+.log-error { color: #d9534f; }
 ```
 
-## Phases
+---
 
-### Phase 1 (this PR)
-- [ ] Agent list API + UI
-- [ ] Agent start/stop API + UI
-- [ ] Basic auth (env-based password)
+## 工作量
 
-### Phase 2 (follow-up)
-- [ ] Config editing UI
-- [ ] Config validation
-- [ ] Config backup
-
-## Files to Modify
-- `packages/pi-agent-core/src/dashboard/routes.ts` — new API endpoints
-- `packages/pi-agent-core/src/dashboard/public/app.js` — new UI tabs
-- `packages/pi-agent-core/src/dashboard/public/styles.css` — styling
-- `packages/pi-agent-core/src/dashboard/auth.ts` — new auth middleware
-
-## Testing
-- Unit tests for auth middleware
-- Integration tests for agent API endpoints
-- Manual test: login → view agents → stop/start
-
-## Risks
-- Starting/stopping agents could disrupt active sessions
-- Config editing could break agents if validation is insufficient
-
-## Open Questions
-1. Should we require password change on first login?
-2. Should config changes auto-restart the agent?
+- API: ~30 行
+- 前端: ~80 行
+- 估计 1-2 小时
