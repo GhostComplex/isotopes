@@ -48,9 +48,16 @@ export async function serveDashboard(
     return false;
   }
 
+  // Redirect /dashboard to /dashboard/ so relative asset paths resolve correctly
+  if (pathname === "/dashboard") {
+    res.writeHead(301, { Location: "/dashboard/" });
+    res.end();
+    return true;
+  }
+
   // Map pathname to file path
   let filePath: string;
-  if (pathname === "/dashboard" || pathname === "/dashboard/") {
+  if (pathname === "/dashboard/") {
     filePath = path.join(DASHBOARD_ROOT, "index.html");
   } else {
     const relativePath = pathname.slice("/dashboard/".length);
