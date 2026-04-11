@@ -65,6 +65,16 @@ If you modify this file, let your human know. This is your core — changes to i
 _This file evolves with you. Rewrite it as you figure out who you are._
 `;
 
+const HEARTBEAT_MD = `# HEARTBEAT.md — Periodic Tasks
+
+When I wake up on heartbeat, I should:
+
+1. (Add your periodic tasks here)
+2. ...
+
+If nothing needs attention, reply with: NO_REPLY
+`;
+
 const IDENTITY_MD = `# IDENTITY.md — Agent Identity
 
 - **Name**: (fill in during bootstrap — what should they call you?)
@@ -229,6 +239,7 @@ const EXISTING_CONTENT_FILES = [
   "AGENTS.md",
   "MEMORY.md",
   "BOOTSTRAP.md",
+  "HEARTBEAT.md",
 ];
 
 /**
@@ -242,6 +253,7 @@ export function getWorkspaceTemplates(): WorkspaceTemplate[] {
     { filename: "USER.md", content: USER_MD },
     { filename: "TOOLS.md", content: TOOLS_MD },
     { filename: "AGENTS.md", content: AGENTS_MD },
+    { filename: "HEARTBEAT.md", content: HEARTBEAT_MD },
     { filename: "BOOTSTRAP.md", content: BOOTSTRAP_MD, firstRunOnly: true },
   ];
 }

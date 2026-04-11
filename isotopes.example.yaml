@@ -19,6 +19,9 @@ agents:
     # tools: { cli: true }
     # compaction: { mode: aggressive }
     # provider: { type: openai, model: gpt-4o, apiKey: ${OPENAI_API_KEY} }
+    # heartbeat:                   # periodic wake-up (#191)
+    #   enabled: true
+    #   intervalSeconds: 300       # 5 minutes (default: 300)
 
 # =============================================================================
 # COMPACTION — context window management

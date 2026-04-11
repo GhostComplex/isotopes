@@ -49,6 +49,7 @@ import { DaemonProcess } from "./daemon/process.js";
 import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
 import { ApiServer } from "./api/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
+import { HeartbeatManager } from "./automation/heartbeat.js";
 import { UsageTracker } from "./core/usage-tracker.js";
 
 // ---------------------------------------------------------------------------
@@ -378,6 +379,38 @@ async function main() {
   hotReload.start();
   logger.info(`Hot-reload enabled for ${config.agents.length} agent(s)`);
 
+  // Start heartbeat managers for agents with heartbeat config (#191)
+  const heartbeatManagers: HeartbeatManager[] = [];
+
+  for (const agentFile of config.agents) {
+    if (!agentFile.heartbeat?.enabled) continue;
+
+    const workspacePath = agentWorkspaces.get(agentFile.id);
+    if (!workspacePath) continue;
+
+    const hb = new HeartbeatManager({
+      agentId: agentFile.id,
+      workspacePath,
+      config: { ...agentFile.heartbeat, enabled: true },
+      runAgentLoop: async (agentId, prompt, _sessionKey) => {
+        const agent = agentManager.get(agentId);
+        if (!agent) throw new Error(`Agent "${agentId}" not found`);
+
+        let responseText = "";
+        for await (const event of agent.prompt(prompt)) {
+          if (event.type === "text_delta") {
+            responseText += event.text;
+          }
+        }
+        return responseText;
+      },
+    });
+
+    hb.start();
+    heartbeatManagers.push(hb);
+    logger.info(`Heartbeat enabled for "${agentFile.id}" (every ${agentFile.heartbeat.intervalSeconds ?? 300}s)`);
+  }
+
   // Shared instances for Discord transport and API server
   const acpConfig = resolveAcpConfig(config.acp);
   const acpSessionManager = new AcpSessionManager(
@@ -506,6 +539,7 @@ async function main() {
   // Graceful shutdown
   process.on("SIGINT", async () => {
     logger.info("Shutting down...");
+    for (const hb of heartbeatManagers) hb.stop();
     hotReload.stop();
     if (discordManager) await discordManager.stop();
     await apiServer.stop();
@@ -514,6 +548,7 @@ async function main() {
 
   process.on("SIGTERM", async () => {
     logger.info("Shutting down...");
+    for (const hb of heartbeatManagers) hb.stop();
     hotReload.stop();
     if (discordManager) await discordManager.stop();
     await apiServer.stop();

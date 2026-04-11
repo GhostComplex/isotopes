@@ -22,9 +22,9 @@ describe("Workspace Templates", () => {
   });
 
   describe("getWorkspaceTemplates", () => {
-    it("returns 6 templates", () => {
+    it("returns 7 templates", () => {
       const templates = getWorkspaceTemplates();
-      expect(templates).toHaveLength(6);
+      expect(templates).toHaveLength(7);
     });
 
     it("marks BOOTSTRAP.md as firstRunOnly", () => {
@@ -74,12 +74,13 @@ describe("Workspace Templates", () => {
     it("seeds all templates into empty workspace", async () => {
       const created = await seedWorkspaceTemplates(tempDir);
 
-      expect(created).toHaveLength(6);
+      expect(created).toHaveLength(7);
       expect(created).toContain("SOUL.md");
       expect(created).toContain("IDENTITY.md");
       expect(created).toContain("USER.md");
       expect(created).toContain("TOOLS.md");
       expect(created).toContain("AGENTS.md");
+      expect(created).toContain("HEARTBEAT.md");
       expect(created).toContain("BOOTSTRAP.md");
 
       // Verify files exist with content
