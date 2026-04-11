@@ -8,6 +8,9 @@ import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middleware.js";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -310,4 +313,38 @@ addRoute("PUT", "/api/config", (_req, res, deps) => {
   // The watcher will pick up the file change and reload automatically.
   // We return the current config as acknowledgement.
   sendJson(res, 200, { ok: true, config });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/logs — get recent log lines
+// ---------------------------------------------------------------------------
+
+addRoute("GET", "/api/logs", (req, res, _deps) => {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const lines = parseInt(url.searchParams.get("lines") ?? "100", 10);
+  const maxLines = Math.min(Math.max(lines, 1), 500);
+
+  // Try common log locations
+  const logPaths = [
+    path.join(os.homedir(), ".isotopes", "logs", "isotopes.log"),
+    path.join(process.cwd(), "isotopes.log"),
+    "/var/log/isotopes/isotopes.log",
+  ];
+
+  for (const logPath of logPaths) {
+    if (fs.existsSync(logPath)) {
+      try {
+        const content = fs.readFileSync(logPath, "utf-8");
+        const allLines = content.trim().split("\n");
+        const recent = allLines.slice(-maxLines);
+        sendJson(res, 200, recent);
+        return;
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  // No log file found — return empty
+  sendJson(res, 200, []);
 });
