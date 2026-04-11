@@ -19,6 +19,8 @@ import { DefaultSessionStore } from "./core/session-store.js";
 import { DiscordTransport } from "./transports/discord.js";
 import { ThreadBindingManager } from "./core/thread-bindings.js";
 import { AcpSessionManager } from "./acp/index.js";
+import { CronScheduler } from "./automation/cron-job.js";
+import { ApiServer } from "./api/index.js";
 import { logger } from "./core/logger.js";
 import {
   ToolRegistry,
@@ -361,6 +363,15 @@ async function main() {
   hotReload.start();
   logger.info(`Hot-reload enabled for ${config.agents.length} agent(s)`);
 
+  // Start API server (dashboard + REST endpoints)
+  const acpSessionManager = new AcpSessionManager(
+    resolveAcpConfig(config.acp) ?? { enabled: false, backend: "acpx", defaultAgent: config.agents[0]?.id ?? "default", allowedAgents: config.agents.map(a => a.id) },
+  );
+  const cronScheduler = new CronScheduler();
+  const apiServer = new ApiServer({ port: 2712 }, acpSessionManager, cronScheduler);
+  await apiServer.start();
+  logger.info("API server started on http://127.0.0.1:2712");
+
   // Start Discord transport if configured
   if (config.discord) {
     const token = getDiscordToken(config.discord);
@@ -451,12 +462,14 @@ async function main() {
   process.on("SIGINT", async () => {
     logger.info("Shutting down...");
     hotReload.stop();
+    await apiServer.stop();
     process.exit(0);
   });
 
   process.on("SIGTERM", async () => {
     logger.info("Shutting down...");
     hotReload.stop();
+    await apiServer.stop();
     process.exit(0);
   });
 }

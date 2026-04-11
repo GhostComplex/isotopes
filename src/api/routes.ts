@@ -8,6 +8,7 @@ import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middleware.js";
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -319,7 +320,7 @@ addRoute("PUT", "/api/config", (_req, res, deps) => {
 // GET /api/logs — get recent log lines
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/logs", (req, res, _deps) => {
+addRoute("GET", "/api/logs", async (req, res, _deps) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   const lines = parseInt(url.searchParams.get("lines") ?? "100", 10);
   const maxLines = Math.min(Math.max(lines, 1), 500);
@@ -331,20 +332,22 @@ addRoute("GET", "/api/logs", (req, res, _deps) => {
     "/var/log/isotopes/isotopes.log",
   ];
 
-  for (const logPath of logPaths) {
-    if (fs.existsSync(logPath)) {
-      try {
-        const content = fs.readFileSync(logPath, "utf-8");
-        const allLines = content.trim().split("\n");
-        const recent = allLines.slice(-maxLines);
-        sendJson(res, 200, recent);
-        return;
-      } catch {
-        continue;
-      }
-    }
+  const logPath = logPaths.find((p) => fs.existsSync(p));
+  if (!logPath) {
+    sendJson(res, 200, []);
+    return;
   }
 
-  // No log file found — return empty
-  sendJson(res, 200, []);
+  // Use tail to avoid reading the entire file into memory
+  return new Promise<void>((resolve) => {
+    execFile("tail", ["-n", String(maxLines), logPath], (err, stdout) => {
+      if (err) {
+        sendJson(res, 200, []);
+      } else {
+        const recent = stdout.trim().split("\n").filter(Boolean);
+        sendJson(res, 200, recent);
+      }
+      resolve();
+    });
+  });
 });
