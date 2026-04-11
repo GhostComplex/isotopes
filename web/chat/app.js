@@ -6,9 +6,15 @@ const inputEl = document.getElementById("input");
 const sendBtn = document.getElementById("send-btn");
 const agentSelect = document.getElementById("agent-select");
 const newChatBtn = document.getElementById("new-chat-btn");
+const sessionListEl = document.getElementById("session-list");
+const readonlyBanner = document.getElementById("readonly-banner");
+const inputArea = document.getElementById("input-area");
 
 let sessionId = localStorage.getItem("isotopes-chat-session");
 let sending = false;
+let isReadonly = false;
+let sessions = [];
+let sessionPollTimer = null;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,6 +61,142 @@ function autoResize() {
   inputEl.style.height = Math.min(inputEl.scrollHeight, 150) + "px";
 }
 
+function formatTime(isoString) {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return d.toLocaleDateString();
+}
+
+function sessionDisplayName(session) {
+  if (session.key) return session.key;
+  if (session.agentId) return session.agentId;
+  return session.id.slice(0, 8);
+}
+
+// ---------------------------------------------------------------------------
+// Session sidebar
+// ---------------------------------------------------------------------------
+
+async function loadSessions() {
+  try {
+    const res = await fetch(`${API_BASE}/api/sessions`);
+    if (!res.ok) return;
+    sessions = await res.json();
+    renderSessionList();
+  } catch {
+    // ignore
+  }
+}
+
+function renderSessionList() {
+  sessionListEl.innerHTML = "";
+
+  if (sessions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "session-list-empty";
+    empty.textContent = "No sessions yet. Start a new chat!";
+    sessionListEl.appendChild(empty);
+    return;
+  }
+
+  // Sort: most recently active first
+  const sorted = [...sessions].sort(
+    (a, b) => new Date(b.lastActivityAt) - new Date(a.lastActivityAt)
+  );
+
+  for (const session of sorted) {
+    const item = document.createElement("div");
+    item.className = "session-item";
+    if (session.id === sessionId) item.classList.add("active");
+
+    const topRow = document.createElement("div");
+    topRow.className = "session-item-row";
+
+    const name = document.createElement("span");
+    name.className = "session-name";
+    name.textContent = sessionDisplayName(session);
+
+    const badge = document.createElement("span");
+    badge.className = `source-badge source-badge-${session.source}`;
+    badge.textContent = session.source;
+
+    topRow.appendChild(name);
+    topRow.appendChild(badge);
+
+    const meta = document.createElement("div");
+    meta.className = "session-meta";
+    const parts = [];
+    if (session.messageCount > 0) parts.push(`${session.messageCount} msgs`);
+    parts.push(formatTime(session.lastActivityAt));
+    meta.textContent = parts.join(" · ");
+
+    item.appendChild(topRow);
+    item.appendChild(meta);
+
+    item.addEventListener("click", () => switchSession(session));
+    sessionListEl.appendChild(item);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Session switching
+// ---------------------------------------------------------------------------
+
+async function switchSession(session) {
+  sessionId = session.id;
+  localStorage.setItem("isotopes-chat-session", sessionId);
+
+  // Update readonly state
+  const readonly = session.source === "acp";
+  setReadonly(readonly);
+
+  // Update active highlight
+  renderSessionList();
+
+  // Load session history
+  messagesEl.innerHTML = "";
+  try {
+    const res = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(session.id)}/messages`);
+    if (!res.ok) {
+      appendMessage("error", `Failed to load session history (${res.status})`);
+      return;
+    }
+    const data = await res.json();
+    for (const msg of data.messages) {
+      if (msg.role === "tool_result") continue;
+      appendMessage(msg.role, msg.content);
+    }
+    if (data.messages.length === 0) {
+      appendMessage("system", "No messages in this session.");
+    }
+  } catch (err) {
+    appendMessage("error", `Failed to load history: ${err.message}`);
+  }
+}
+
+function setReadonly(readonly) {
+  isReadonly = readonly;
+  readonlyBanner.style.display = readonly ? "" : "none";
+  if (readonly) {
+    inputArea.classList.add("disabled");
+    inputEl.disabled = true;
+    sendBtn.disabled = true;
+  } else {
+    inputArea.classList.remove("disabled");
+    inputEl.disabled = false;
+    sendBtn.disabled = !inputEl.value.trim() || sending;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Load agents
 // ---------------------------------------------------------------------------
@@ -84,7 +226,7 @@ async function loadAgents() {
 }
 
 // ---------------------------------------------------------------------------
-// Load history
+// Load history (for current chat session)
 // ---------------------------------------------------------------------------
 
 async function loadHistory() {
@@ -116,7 +258,7 @@ async function loadHistory() {
 
 async function sendMessage() {
   const message = inputEl.value.trim();
-  if (!message || sending) return;
+  if (!message || sending || isReadonly) return;
 
   const agentId = agentSelect.value;
   if (!agentId) {
@@ -158,6 +300,7 @@ async function sendMessage() {
       if (data.sessionId) {
         sessionId = data.sessionId;
         localStorage.setItem("isotopes-chat-session", sessionId);
+        loadSessions();
       }
       if (data.reply) {
         appendMessage("assistant", data.reply);
@@ -174,6 +317,7 @@ async function sendMessage() {
     if (headerSessionId) {
       sessionId = headerSessionId;
       localStorage.setItem("isotopes-chat-session", sessionId);
+      loadSessions();
     }
 
     // Process SSE stream
@@ -204,6 +348,7 @@ async function sendMessage() {
           if (parsed.sessionId && !parsed.text) {
             sessionId = parsed.sessionId;
             localStorage.setItem("isotopes-chat-session", sessionId);
+            loadSessions();
             continue;
           }
 
@@ -250,8 +395,24 @@ function newChat() {
   sessionId = null;
   localStorage.removeItem("isotopes-chat-session");
   messagesEl.innerHTML = "";
+  setReadonly(false);
   appendMessage("system", "New conversation started.");
+  renderSessionList();
 }
+
+// ---------------------------------------------------------------------------
+// Session polling
+// ---------------------------------------------------------------------------
+
+function startSessionPolling() {
+  if (sessionPollTimer) clearInterval(sessionPollTimer);
+  sessionPollTimer = setInterval(loadSessions, 30000);
+}
+
+// Refresh sessions when window regains focus
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) loadSessions();
+});
 
 // ---------------------------------------------------------------------------
 // Event listeners
@@ -267,7 +428,7 @@ inputEl.addEventListener("keydown", (e) => {
 });
 
 inputEl.addEventListener("input", () => {
-  sendBtn.disabled = !inputEl.value.trim() || sending;
+  sendBtn.disabled = !inputEl.value.trim() || sending || isReadonly;
   autoResize();
 });
 
@@ -277,4 +438,19 @@ newChatBtn.addEventListener("click", newChat);
 // Init
 // ---------------------------------------------------------------------------
 
-loadAgents().then(() => loadHistory());
+async function init() {
+  await loadAgents();
+  await loadSessions();
+  if (sessionId) {
+    // Check if current session exists in loaded sessions
+    const current = sessions.find((s) => s.id === sessionId);
+    if (current) {
+      switchSession(current);
+    } else {
+      await loadHistory();
+    }
+  }
+  startSessionPolling();
+}
+
+init();
