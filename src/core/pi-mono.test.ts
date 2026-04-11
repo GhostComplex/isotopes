@@ -40,7 +40,7 @@ vi.mock("@mariozechner/pi-ai", () => ({
 // Import after mocks
 import { Agent } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
-import { PiMonoCore } from "./pi-mono.js";
+import { PiMonoCore, stripOrphanedToolResults } from "./pi-mono.js";
 import { textContent } from "./types.js";
 import { ToolRegistry } from "./tools.js";
 
@@ -726,5 +726,172 @@ describe("Message conversion", () => {
     );
 
     vi.restoreAllMocks();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stripOrphanedToolResults (#146)
+// ---------------------------------------------------------------------------
+
+describe("stripOrphanedToolResults", () => {
+  it("strips toolResult whose assistant was errored", () => {
+    const messages = [
+      { role: "user", content: "search for X", timestamp: 1000 },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "toolu_ABC", name: "web_search" }],
+        stopReason: "error",
+        timestamp: 2000,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_ABC",
+        content: "search results",
+        timestamp: 3000,
+      },
+      { role: "user", content: "try again", timestamp: 4000 },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    expect(result).toHaveLength(3);
+    expect(result.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+  });
+
+  it("strips toolResult whose assistant was aborted", () => {
+    const messages = [
+      { role: "user", content: "do something", timestamp: 1000 },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "toolu_XYZ", name: "shell" }],
+        stopReason: "aborted",
+        timestamp: 2000,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_XYZ",
+        content: "output",
+        timestamp: 3000,
+      },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("keeps toolResult whose assistant is not errored", () => {
+    const messages = [
+      { role: "user", content: "search for X", timestamp: 1000 },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "toolu_OK", name: "web_search" }],
+        stopReason: "end_turn",
+        timestamp: 2000,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_OK",
+        content: "results",
+        timestamp: 3000,
+      },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    expect(result).toHaveLength(3);
+    expect(result.map((m) => m.role)).toEqual(["user", "assistant", "toolResult"]);
+  });
+
+  it("handles mixed valid and orphaned toolResults", () => {
+    const messages = [
+      { role: "user", content: "first", timestamp: 1000 },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "toolu_GOOD", name: "readFile" }],
+        timestamp: 2000,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_GOOD",
+        content: "file contents",
+        timestamp: 3000,
+      },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "let me search" },
+          { type: "toolCall", id: "toolu_BAD", name: "web_search" },
+        ],
+        stopReason: "error",
+        timestamp: 4000,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_BAD",
+        content: "orphaned result",
+        timestamp: 5000,
+      },
+      { role: "user", content: "continue", timestamp: 6000 },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    expect(result).toHaveLength(5);
+    expect(result.map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "toolResult",
+      "assistant",
+      "user",
+    ]);
+    // The kept toolResult should be the valid one
+    const keptToolResult = result[2] as unknown as { toolCallId: string };
+    expect(keptToolResult.toolCallId).toBe("toolu_GOOD");
+  });
+
+  it("returns empty array for empty input", () => {
+    const result = stripOrphanedToolResults([]);
+    expect(result).toEqual([]);
+  });
+
+  it("passes through messages with no toolResults", () => {
+    const messages = [
+      { role: "user", content: "hello", timestamp: 1000 },
+      { role: "assistant", content: [{ type: "text", text: "hi" }], timestamp: 2000 },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    expect(result).toHaveLength(2);
+  });
+});
+
+describe("transformContext hook (#146)", () => {
+  beforeEach(resetMocks);
+
+  it("always passes transformContext to the Agent constructor", () => {
+    const core = new PiMonoCore();
+    core.createAgent(makeConfig()); // no compaction config
+
+    expect(vi.mocked(Agent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transformContext: expect.any(Function),
+      }),
+    );
+  });
+
+  it("passes transformContext even with compaction enabled", () => {
+    const core = new PiMonoCore();
+    core.createAgent(makeConfig({
+      compaction: { mode: "safeguard" },
+    }));
+
+    expect(vi.mocked(Agent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transformContext: expect.any(Function),
+      }),
+    );
   });
 });

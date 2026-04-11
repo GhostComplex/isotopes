@@ -235,6 +235,45 @@ function getAgentEndMetadata(messages: Message[]): {
 }
 
 // ---------------------------------------------------------------------------
+// Orphaned toolResult stripping (#146)
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip `toolResult` messages whose corresponding assistant `toolCall` is
+ * missing from the context.  This happens when the SDK's `transformMessages`
+ * drops errored/aborted assistant messages but keeps their tool results,
+ * which the Anthropic API then rejects as orphaned `tool_result` blocks.
+ *
+ * Operates on `AgentMessage[]` (pi-agent-core format).
+ */
+export function stripOrphanedToolResults(messages: AgentMessage[]): AgentMessage[] {
+  // Collect all toolCall IDs present in non-errored/non-aborted assistants
+  const validToolCallIds = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role !== "assistant") continue;
+    const m = msg as { role: string; stopReason?: string; content?: unknown };
+    if (m.stopReason === "error" || m.stopReason === "aborted") continue;
+    if (!Array.isArray(m.content)) continue;
+    for (const block of m.content) {
+      if (block && typeof block === "object" && "type" in block && block.type === "toolCall" && "id" in block) {
+        validToolCallIds.add(block.id as string);
+      }
+    }
+  }
+
+  return messages.filter((msg) => {
+    if (msg.role !== "toolResult") return true;
+    const m = msg as { role: string; toolCallId?: string };
+    // Keep if toolCallId matches a valid (non-errored) assistant toolCall
+    if (m.toolCallId && !validToolCallIds.has(m.toolCallId)) {
+      log.debug(`Stripping orphaned toolResult (toolCallId: ${m.toolCallId})`);
+      return false;
+    }
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Tool conversion
 // ---------------------------------------------------------------------------
 
@@ -299,8 +338,9 @@ export class PiMonoCore implements AgentCore {
       }
     }
 
-    // Build transformContext hook for context compaction
-    let transformContext: ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>) | undefined;
+    // Build transformContext hook — always includes orphaned toolResult
+    // stripping (#146), with compaction layered on top if enabled.
+    let compactionTransform: ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>) | undefined;
     let compactionContext: CompactionContext | undefined;
 
     if (config.compaction && config.compaction.mode !== "off") {
@@ -323,7 +363,7 @@ export class PiMonoCore implements AgentCore {
         return String(result.content);
       };
 
-      transformContext = createTransformContext({
+      compactionTransform = createTransformContext({
         config: compactionConfig,
         summarize,
       });
@@ -332,6 +372,17 @@ export class PiMonoCore implements AgentCore {
       compactionContext = { config: compactionConfig, summarize };
     }
 
+    const transformContext = async (messages: AgentMessage[], signal?: AbortSignal): Promise<AgentMessage[]> => {
+      // Strip orphaned toolResult messages whose assistant (with the
+      // matching toolCall) was dropped by the SDK due to error/abort (#146).
+      const sanitized = stripOrphanedToolResults(messages);
+      // Then apply compaction if configured
+      if (compactionTransform) {
+        return compactionTransform(sanitized, signal);
+      }
+      return sanitized;
+    };
+
     const agent = new Agent({
       initialState: {
         systemPrompt: config.systemPrompt,
@@ -339,7 +390,7 @@ export class PiMonoCore implements AgentCore {
         tools,
         messages: [],
       },
-      ...(transformContext ? { transformContext } : {}),
+      transformContext,
       ...(config.provider?.apiKey
         ? { getApiKey: () => config.provider!.apiKey }
         : {}),
