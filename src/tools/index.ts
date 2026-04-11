@@ -89,3 +89,10 @@ export {
   createExecTools,
 } from "./exec.js";
 export type { ExecToolOptions, ProcessInfo } from "./exec.js";
+
+export {
+  createMessageReplyTool,
+  createMessageReactTool,
+  createReplyReactTools,
+} from "./reply-react.js";
+export type { ReplyReactToolContext } from "./reply-react.js";

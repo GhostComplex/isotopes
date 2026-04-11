@@ -680,6 +680,51 @@ export class DiscordTransport implements Transport {
       .trim();
   }
 
+  // ---------------------------------------------------------------------------
+  // Reply & reaction
+  // ---------------------------------------------------------------------------
+
+  async reply(messageId: string, content: string): Promise<{ messageId: string }> {
+    if (!this.ready) throw new Error("Discord transport not ready");
+
+    // Search all channels the bot can see for the message
+    const channels = this.client.channels.cache.values();
+    for (const ch of channels) {
+      if (!("messages" in ch)) continue;
+      try {
+        const target = await (ch as SendableChannel).messages.fetch(messageId);
+        if (target) {
+          const sent = await target.reply(content);
+          return { messageId: sent.id };
+        }
+      } catch {
+        // Message not in this channel, continue searching
+      }
+    }
+
+    throw new Error(`Message not found: ${messageId}`);
+  }
+
+  async react(messageId: string, emoji: string): Promise<void> {
+    if (!this.ready) throw new Error("Discord transport not ready");
+
+    const channels = this.client.channels.cache.values();
+    for (const ch of channels) {
+      if (!("messages" in ch)) continue;
+      try {
+        const target = await (ch as SendableChannel).messages.fetch(messageId);
+        if (target) {
+          await target.react(emoji);
+          return;
+        }
+      } catch {
+        // Message not in this channel, continue searching
+      }
+    }
+
+    throw new Error(`Message not found: ${messageId}`);
+  }
+
   private startTyping(channel: SendableChannel): { stop: () => void } {
     let active = true;
 
