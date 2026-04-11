@@ -190,6 +190,52 @@ export function createSummaryMessage(summaryText: string): AgentMessage {
 }
 
 // ---------------------------------------------------------------------------
+// Tool use/result pairing helpers
+// ---------------------------------------------------------------------------
+
+/**
+
+/**
+ * Check if a message is a tool_result message.
+ */
+function isToolResult(message: AgentMessage): boolean {
+  const msg = message as unknown as Record<string, unknown>;
+  return msg.role === "tool_result";
+}
+
+/**
+ * Find a safe split index that doesn't break tool_use/tool_result pairing.
+ * 
+ * The problem: if we split between an assistant message with tool_use and
+ * its corresponding tool_result, the API will reject the orphaned tool_result.
+ * 
+ * Solution: if recentMessages starts with tool_result(s), move the split
+ * backward to include the preceding assistant message with tool_use.
+ */
+function findSafeSplitIndex(messages: AgentMessage[], initialSplitIndex: number): number {
+  let splitIndex = initialSplitIndex;
+  
+  // Move split backward while recentMessages[0] is a tool_result
+  while (splitIndex > 0 && isToolResult(messages[splitIndex])) {
+    splitIndex--;
+  }
+  
+  // Now splitIndex points to the first non-tool_result message.
+  // But we need to check: if the message just before this is an assistant
+  // with tool_use, we need to include it too (keep the pair together).
+  // Actually, the above loop already handles this: we keep moving back
+  // past all tool_results until we hit the assistant that spawned them.
+  
+  // Edge case: if we moved all the way to 0, there's nothing to summarize
+  if (splitIndex <= 0) {
+    log.warn("Cannot find safe split point — all messages are tool results");
+    return initialSplitIndex; // fallback to original, will likely fail
+  }
+  
+  return splitIndex;
+}
+
+// ---------------------------------------------------------------------------
 // Core compaction logic
 // ---------------------------------------------------------------------------
 
@@ -215,7 +261,10 @@ export async function compactMessages(
   }
 
   const preserveRecent = config.preserveRecent ?? DEFAULT_PRESERVE_RECENT;
-  const splitIndex = messages.length - preserveRecent;
+  const initialSplitIndex = messages.length - preserveRecent;
+  
+  // Find a safe split point that doesn't break tool_use/tool_result pairing
+  const splitIndex = findSafeSplitIndex(messages, initialSplitIndex);
 
   // Messages to summarize vs. keep
   const oldMessages = messages.slice(0, splitIndex);
@@ -358,7 +407,11 @@ export async function forceCompact(
     return messages;
   }
 
-  const splitIndex = messages.length - preserveRecent;
+  const initialSplitIndex = messages.length - preserveRecent;
+  
+  // Find a safe split point that doesn't break tool_use/tool_result pairing
+  const splitIndex = findSafeSplitIndex(messages, initialSplitIndex);
+  
   const oldMessages = messages.slice(0, splitIndex);
   const recentMessages = messages.slice(splitIndex);
 

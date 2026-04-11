@@ -599,3 +599,117 @@ describe("estimateMessageTokens with JSON content", () => {
     expect(estimateMessageTokens(toolResultMsg)).toBeGreaterThan(estimateMessageTokens(plainMsg));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tool use/result pairing protection (Issue #131)
+// ---------------------------------------------------------------------------
+
+describe("compaction tool_use/tool_result pairing", () => {
+  function makeToolUseMessage(id: string): AgentMessage {
+    return {
+      role: "assistant",
+      content: [
+        { type: "text", text: "Let me check that." },
+        { type: "tool_use", id, name: "read_file", input: { path: "test.txt" } },
+      ],
+      timestamp: Date.now(),
+    } as unknown as AgentMessage;
+  }
+
+  function makeToolResultMessage(id: string): AgentMessage {
+    return {
+      role: "tool_result",
+      content: [
+        { type: "tool_result", output: "file contents here", toolCallId: id },
+      ],
+      timestamp: Date.now(),
+    } as unknown as AgentMessage;
+  }
+
+  it("does not split between tool_use and tool_result (forceCompact)", async () => {
+    // Index:  0     1         2       3        4       5              6            7     8         9
+    // Msgs:  [user, assistant, user, assistant, user, assistant+tool, tool_result, user, assistant, user]
+    // With preserveRecent=4, naive split at index 6 puts tool_result at front — orphaned!
+    const messages: AgentMessage[] = [
+      makeMessage("user", "x".repeat(10000)),
+      makeMessage("assistant", "x".repeat(10000)),
+      makeMessage("user", "x".repeat(10000)),
+      makeMessage("assistant", "x".repeat(10000)),
+      makeMessage("user", "x".repeat(10000)),
+      makeToolUseMessage("tool-1"),
+      makeToolResultMessage("tool-1"),
+      makeMessage("user", "short"),
+      makeMessage("assistant", "short"),
+      makeMessage("user", "short"),
+    ];
+
+    const summarize = vi.fn().mockResolvedValue("summary");
+
+    const result = await forceCompact({
+      messages,
+      config: makeConfig({ preserveRecent: 4 }),
+      summarize,
+    });
+
+    // The result should NOT start with a tool_result (after summary)
+    const firstRecent = result[1] as unknown as Record<string, unknown>;
+    expect(firstRecent.role).not.toBe("tool_result");
+    expect(summarize).toHaveBeenCalledOnce();
+  });
+
+  it("keeps tool_use and tool_result together when split would occur between them", async () => {
+    // [user, assistant+tool_use, tool_result, user, assistant]
+    // preserveRecent=2 would try to split at index 3, putting tool_result at front
+    const messages: AgentMessage[] = [
+      makeMessage("user", "x".repeat(20000)),
+      makeToolUseMessage("tool-1"),
+      makeToolResultMessage("tool-1"),
+      makeMessage("user", "x".repeat(100)),
+      makeMessage("assistant", "x".repeat(100)),
+    ];
+
+    const summarize = vi.fn().mockResolvedValue("summary");
+
+    const result = await forceCompact({
+      messages,
+      config: makeConfig({ preserveRecent: 2 }),
+      summarize,
+    });
+
+    // First message after summary should not be tool_result
+    const firstRecent = result[1] as unknown as Record<string, unknown>;
+    expect(firstRecent.role).not.toBe("tool_result");
+  });
+
+  it("handles multiple consecutive tool_results", async () => {
+    // [user, assistant+tool_use+tool_use, tool_result, tool_result, user]
+    const toolUseMsg: AgentMessage = {
+      role: "assistant",
+      content: [
+        { type: "tool_use", id: "t1", name: "tool_a", input: {} },
+        { type: "tool_use", id: "t2", name: "tool_b", input: {} },
+      ],
+      timestamp: Date.now(),
+    } as unknown as AgentMessage;
+
+    const messages: AgentMessage[] = [
+      makeMessage("user", "x".repeat(20000)),
+      toolUseMsg,
+      makeToolResultMessage("t1"),
+      makeToolResultMessage("t2"),
+      makeMessage("user", "x".repeat(100)),
+    ];
+
+    const summarize = vi.fn().mockResolvedValue("summary");
+
+    const result = await forceCompact({
+      messages,
+      config: makeConfig({ preserveRecent: 2 }),
+      summarize,
+    });
+
+    // First message after summary should not be tool_result
+    const firstRecent = result[1] as unknown as Record<string, unknown>;
+    expect(firstRecent.role).not.toBe("tool_result");
+  });
+});
