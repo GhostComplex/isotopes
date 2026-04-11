@@ -2,7 +2,7 @@
 
 **日期:** 2026-04-10
 **对比对象:** OpenClaw (`.ref/openclaw/`)
-**相关文档:** `.ref/history-limit-refactor.md`（historyLimit 重构细节）、`docs/rca/2026-04-09-context-window-overflow.md`
+**相关文档:** `.ref/history-limit-refactor.md`（historyLimit 重构细节）、`docs/rca/RCA-2026-04-09-context-window-overflow.md`
 
 ---
 
