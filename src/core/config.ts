@@ -61,6 +61,10 @@ export interface AgentConfigFile {
   selfIteration?: SelfIterationConfigFile;
   /** Additional workspace paths allowed for subagent cwd */
   allowedWorkspaces?: string[];
+  /** Heartbeat interval in milliseconds (0 = disabled). */
+  heartbeatInterval?: number;
+  /** Custom heartbeat prompt (overrides the default). */
+  heartbeatPrompt?: string;
 }
 
 /** Self-iteration configuration in config file */
@@ -680,6 +684,8 @@ export function toAgentConfig(
     provider: provider as ProviderConfig | undefined,
     compaction,
     sandbox,
+    heartbeatInterval: agent.heartbeatInterval,
+    heartbeatPrompt: agent.heartbeatPrompt,
   };
 }
 

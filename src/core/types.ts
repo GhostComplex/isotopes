@@ -146,6 +146,10 @@ export interface AgentConfig {
   compaction?: CompactionConfig;
   /** Sandbox execution configuration */
   sandbox?: SandboxConfig;
+  /** Heartbeat interval in milliseconds (0 or undefined = disabled) */
+  heartbeatInterval?: number;
+  /** Custom heartbeat prompt (overrides the default) */
+  heartbeatPrompt?: string;
 }
 
 /**
