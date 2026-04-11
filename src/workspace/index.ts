@@ -35,3 +35,15 @@ export {
   reconcileWorkspaceState,
 } from "./state.js";
 export type { WorkspaceState } from "./state.js";
+
+export {
+  WorkspaceContextLoader,
+  CONTEXT_FILES,
+} from "./context-loader.js";
+export type { LoadedContext } from "./context-loader.js";
+
+export { MemoryManager } from "./memory-manager.js";
+export type {
+  MemoryManagerOptions,
+  MemoryWriteResult,
+} from "./memory-manager.js";

@@ -296,6 +296,9 @@ export {
   writeWorkspaceState,
   isSetupComplete,
   reconcileWorkspaceState,
+  WorkspaceContextLoader,
+  CONTEXT_FILES,
+  MemoryManager,
 } from "./workspace/index.js";
 export type {
   WatcherConfig,
@@ -307,6 +310,9 @@ export type {
   ReloadEventHandler,
   WorkspaceTemplate,
   WorkspaceState,
+  LoadedContext,
+  MemoryManagerOptions,
+  MemoryWriteResult,
 } from "./workspace/index.js";
 
 // ---------------------------------------------------------------------------
