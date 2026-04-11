@@ -5,6 +5,8 @@ import {
   createSessionsSpawnTool,
   createSessionsAnnounceTool,
   createSessionsSendTool,
+  createSessionsListTool,
+  createSessionsHistoryTool,
   createSessionTools,
   type SessionsToolContext,
 } from "./sessions.js";
@@ -203,7 +205,7 @@ describe("sessions_announce", () => {
 });
 
 describe("createSessionTools", () => {
-  it("returns all three tools", () => {
+  it("returns all five tools", () => {
     const ctx = createTestContext();
     const tools = createSessionTools(ctx);
     const names = tools.map((t) => t.tool.name);
@@ -211,7 +213,9 @@ describe("createSessionTools", () => {
     expect(names).toContain("sessions_spawn");
     expect(names).toContain("sessions_announce");
     expect(names).toContain("sessions_send");
-    expect(tools).toHaveLength(3);
+    expect(names).toContain("sessions_list");
+    expect(names).toContain("sessions_history");
+    expect(tools).toHaveLength(5);
   });
 });
 
@@ -376,5 +380,303 @@ describe("sessions_send", () => {
     const pending = ctx.messageBus.getPending("agent-b");
     expect(pending).toHaveLength(1);
     expect(pending[0].content).toBe("hello offline");
+  });
+});
+
+describe("sessions_list", () => {
+  let ctx: SessionsToolContext;
+
+  beforeEach(() => {
+    ctx = createTestContext();
+  });
+
+  it("returns tool with correct schema", () => {
+    const { tool } = createSessionsListTool(ctx);
+    expect(tool.name).toBe("sessions_list");
+    expect(tool.parameters.properties).toHaveProperty("agent_id");
+    expect(tool.parameters.properties).toHaveProperty("status");
+    expect(tool.parameters.properties).toHaveProperty("limit");
+  });
+
+  it("lists all sessions with no filter", async () => {
+    ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.createSession("agent-b");
+    ctx.sessionManager.createSession("agent-c");
+
+    const { handler } = createSessionsListTool(ctx);
+    const result = JSON.parse(await handler({}));
+
+    expect(result.sessions).toHaveLength(3);
+    expect(result.total).toBe(3);
+    expect(result.sessions[0]).toHaveProperty("session_id");
+    expect(result.sessions[0]).toHaveProperty("agent_id");
+    expect(result.sessions[0]).toHaveProperty("status");
+    expect(result.sessions[0]).toHaveProperty("created_at");
+    expect(result.sessions[0]).toHaveProperty("last_activity");
+  });
+
+  it("filters by agent_id (allowed)", async () => {
+    ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.createSession("agent-b");
+    ctx.sessionManager.createSession("agent-b");
+
+    const { handler } = createSessionsListTool(ctx);
+    const result = JSON.parse(await handler({ agent_id: "agent-b" }));
+
+    expect(result.sessions).toHaveLength(2);
+    expect(result.total).toBe(2);
+    expect(result.sessions.every((s: { agent_id: string }) => s.agent_id === "agent-b")).toBe(true);
+  });
+
+  it("rejects agent_id not in allowedAgents", async () => {
+    const { handler } = createSessionsListTool(ctx);
+    const result = JSON.parse(await handler({ agent_id: "agent-unknown" }));
+
+    expect(result.error).toContain("Cannot query sessions for agent");
+  });
+
+  it("filters by status", async () => {
+    const s1 = ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.createSession("agent-b");
+    ctx.sessionManager.terminateSession(s1.id);
+
+    const { handler } = createSessionsListTool(ctx);
+    const result = JSON.parse(await handler({ status: "terminated" }));
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0].status).toBe("terminated");
+  });
+
+  it("filters by both agent_id and status", async () => {
+    const s1 = ctx.sessionManager.createSession("agent-b");
+    ctx.sessionManager.createSession("agent-b");
+    ctx.sessionManager.terminateSession(s1.id);
+
+    const { handler } = createSessionsListTool(ctx);
+    const result = JSON.parse(
+      await handler({ agent_id: "agent-b", status: "active" }),
+    );
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0].status).toBe("active");
+    expect(result.sessions[0].agent_id).toBe("agent-b");
+  });
+
+  it("enforces limit (default 20)", async () => {
+    for (let i = 0; i < 25; i++) {
+      ctx.sessionManager.createSession("agent-a");
+    }
+
+    const { handler } = createSessionsListTool(ctx);
+    const result = JSON.parse(await handler({}));
+
+    expect(result.sessions).toHaveLength(20);
+    expect(result.total).toBe(25);
+  });
+
+  it("enforces max limit of 100", async () => {
+    const { handler } = createSessionsListTool(ctx);
+    const result = JSON.parse(await handler({ limit: 999 }));
+
+    // Should be clamped to 100 (no sessions exist, but limit is enforced)
+    expect(result.sessions).toHaveLength(0);
+    expect(result.total).toBe(0);
+  });
+
+  it("respects custom limit", async () => {
+    for (let i = 0; i < 10; i++) {
+      ctx.sessionManager.createSession("agent-a");
+    }
+
+    const { handler } = createSessionsListTool(ctx);
+    const result = JSON.parse(await handler({ limit: 3 }));
+
+    expect(result.sessions).toHaveLength(3);
+    expect(result.total).toBe(10);
+  });
+
+  it("returns ISO timestamps", async () => {
+    ctx.sessionManager.createSession("agent-a");
+
+    const { handler } = createSessionsListTool(ctx);
+    const result = JSON.parse(await handler({}));
+
+    // Verify timestamps are valid ISO strings
+    const createdAt = new Date(result.sessions[0].created_at);
+    const lastActivity = new Date(result.sessions[0].last_activity);
+    expect(createdAt.toISOString()).toBe(result.sessions[0].created_at);
+    expect(lastActivity.toISOString()).toBe(result.sessions[0].last_activity);
+  });
+});
+
+describe("sessions_history", () => {
+  let ctx: SessionsToolContext;
+
+  beforeEach(() => {
+    ctx = createTestContext();
+  });
+
+  it("returns tool with correct schema", () => {
+    const { tool } = createSessionsHistoryTool(ctx);
+    expect(tool.name).toBe("sessions_history");
+    expect(tool.parameters.required).toContain("session_id");
+    expect(tool.parameters.properties).toHaveProperty("limit");
+    expect(tool.parameters.properties).toHaveProperty("before");
+  });
+
+  it("reads history from own session", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.addMessage(session.id, { role: "user", content: "hello" });
+    ctx.sessionManager.addMessage(session.id, { role: "assistant", content: "hi there" });
+
+    const { handler } = createSessionsHistoryTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].role).toBe("user");
+    expect(result.messages[0].content).toBe("hello");
+    expect(result.messages[1].role).toBe("assistant");
+    expect(result.messages[1].content).toBe("hi there");
+    expect(result.has_more).toBe(false);
+    expect(result.next_cursor).toBeUndefined();
+  });
+
+  it("reads history from allowed agent's session", async () => {
+    const session = ctx.sessionManager.createSession("agent-b");
+    ctx.sessionManager.addMessage(session.id, { role: "user", content: "test" });
+
+    const { handler } = createSessionsHistoryTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    // agent-b is in allowedAgents, so agent-a can read it
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].content).toBe("test");
+  });
+
+  it("denies access to non-allowed agent's session", async () => {
+    // Use a manager with empty allowedAgents so no agent is "allowed"
+    const mgr = new AcpSessionManager({
+      enabled: true,
+      backend: "acpx",
+      defaultAgent: "agent-a",
+      allowedAgents: [],
+    });
+    const sess = mgr.createSession("agent-x");
+    mgr.addMessage(sess.id, { role: "user", content: "secret" });
+
+    // agent-a is not the owner (agent-x is), and agent-x is not in allowedAgents
+    const restrictedCtx = createTestContext({
+      sessionManager: mgr,
+      currentAgentId: "agent-a",
+    });
+
+    const { handler } = createSessionsHistoryTool(restrictedCtx);
+    const result = JSON.parse(await handler({ session_id: sess.id }));
+
+    expect(result.error).toContain("Access denied");
+  });
+
+  it("returns error for non-existent session", async () => {
+    const { handler } = createSessionsHistoryTool(ctx);
+    const result = JSON.parse(await handler({ session_id: "non-existent" }));
+
+    expect(result.error).toContain("Session not found");
+  });
+
+  it("paginates with before cursor", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+
+    // Add messages with small delays to ensure distinct timestamps
+    ctx.sessionManager.addMessage(session.id, { role: "user", content: "msg-1" });
+    ctx.sessionManager.addMessage(session.id, { role: "assistant", content: "msg-2" });
+    ctx.sessionManager.addMessage(session.id, { role: "user", content: "msg-3" });
+
+    const { handler } = createSessionsHistoryTool(ctx);
+
+    // First, get all messages to grab a cursor
+    const allResult = JSON.parse(await handler({ session_id: session.id }));
+    expect(allResult.messages).toHaveLength(3);
+
+    // Use the last message's timestamp as a before cursor
+    const cursor = allResult.messages[2].timestamp;
+    const pagedResult = JSON.parse(
+      await handler({ session_id: session.id, before: cursor }),
+    );
+
+    // Should only return messages before the cursor
+    expect(pagedResult.messages.length).toBeLessThan(3);
+    for (const msg of pagedResult.messages) {
+      expect(new Date(msg.timestamp).getTime()).toBeLessThan(new Date(cursor).getTime());
+    }
+  });
+
+  it("enforces default limit of 50", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    for (let i = 0; i < 60; i++) {
+      ctx.sessionManager.addMessage(session.id, { role: "user", content: `msg-${i}` });
+    }
+
+    const { handler } = createSessionsHistoryTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    expect(result.messages).toHaveLength(50);
+    expect(result.has_more).toBe(true);
+    expect(result.next_cursor).toBeDefined();
+  });
+
+  it("enforces max limit of 200", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+
+    const { handler } = createSessionsHistoryTool(ctx);
+    const result = JSON.parse(
+      await handler({ session_id: session.id, limit: 999 }),
+    );
+
+    // No error — limit is clamped, just returns what's available
+    expect(result.messages).toHaveLength(0);
+    expect(result.has_more).toBe(false);
+  });
+
+  it("respects custom limit", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    for (let i = 0; i < 10; i++) {
+      ctx.sessionManager.addMessage(session.id, { role: "user", content: `msg-${i}` });
+    }
+
+    const { handler } = createSessionsHistoryTool(ctx);
+    const result = JSON.parse(
+      await handler({ session_id: session.id, limit: 3 }),
+    );
+
+    expect(result.messages).toHaveLength(3);
+    expect(result.has_more).toBe(true);
+    // Should return the most recent 3 messages
+    expect(result.messages[2].content).toBe("msg-9");
+  });
+
+  it("returns ISO timestamps in messages", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    ctx.sessionManager.addMessage(session.id, { role: "user", content: "test" });
+
+    const { handler } = createSessionsHistoryTool(ctx);
+    const result = JSON.parse(await handler({ session_id: session.id }));
+
+    const ts = new Date(result.messages[0].timestamp);
+    expect(ts.toISOString()).toBe(result.messages[0].timestamp);
+  });
+
+  it("sets next_cursor to first message timestamp when has_more", async () => {
+    const session = ctx.sessionManager.createSession("agent-a");
+    for (let i = 0; i < 5; i++) {
+      ctx.sessionManager.addMessage(session.id, { role: "user", content: `msg-${i}` });
+    }
+
+    const { handler } = createSessionsHistoryTool(ctx);
+    const result = JSON.parse(
+      await handler({ session_id: session.id, limit: 3 }),
+    );
+
+    expect(result.has_more).toBe(true);
+    expect(result.next_cursor).toBe(result.messages[0].timestamp);
   });
 });

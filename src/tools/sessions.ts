@@ -422,11 +422,204 @@ function prepareReplyListener(
 }
 
 // ---------------------------------------------------------------------------
+// sessions_list
+// ---------------------------------------------------------------------------
+
+/**
+ * Create the `sessions_list` tool.
+ *
+ * Queries AcpSessionManager.listSessions() with optional filtering by
+ * agent_id and status. Access control: can only filter by agents in the
+ * allowedAgents configuration.
+ */
+export function createSessionsListTool(
+  ctx: SessionsToolContext,
+): { tool: Tool; handler: ToolHandler } {
+  return {
+    tool: {
+      name: "sessions_list",
+      description:
+        "List ACP sessions, optionally filtered by agent or status. " +
+        "Returns session metadata including ID, agent, status, and timestamps.",
+      parameters: {
+        type: "object",
+        properties: {
+          agent_id: {
+            type: "string",
+            description: "Filter by agent ID (must be in allowedAgents)",
+          },
+          status: {
+            type: "string",
+            enum: ["active", "idle", "terminated"],
+            description: "Filter by session status",
+          },
+          limit: {
+            type: "number",
+            description: "Max sessions to return (default 20, max 100)",
+          },
+        },
+      },
+    },
+    handler: async (args) => {
+      const { agent_id, status, limit: rawLimit } = args as {
+        agent_id?: string;
+        status?: string;
+        limit?: number;
+      };
+
+      // Access control: if filtering by agent_id, it must be in allowedAgents
+      const allowedAgents = ctx.sessionManager.getConfig().allowedAgents ?? [];
+      if (agent_id && allowedAgents.length > 0 && !allowedAgents.includes(agent_id)) {
+        return JSON.stringify({
+          error: `Cannot query sessions for agent: ${agent_id}`,
+        });
+      }
+
+      try {
+        const filter: { agentId?: string; status?: "active" | "idle" | "terminated" } = {};
+        if (agent_id) filter.agentId = agent_id;
+        if (status) filter.status = status as "active" | "idle" | "terminated";
+
+        const allSessions = ctx.sessionManager.listSessions(
+          Object.keys(filter).length > 0 ? filter : undefined,
+        );
+
+        const limit = Math.min(Math.max(rawLimit ?? 20, 1), 100);
+        const total = allSessions.length;
+        const sessions = allSessions.slice(0, limit);
+
+        log.info("Sessions listed", {
+          callingAgent: ctx.currentAgentId,
+          filterAgent: agent_id,
+          filterStatus: status,
+          total,
+          returned: sessions.length,
+        });
+
+        return JSON.stringify({
+          sessions: sessions.map((s) => ({
+            session_id: s.id,
+            agent_id: s.agentId,
+            status: s.status,
+            created_at: s.createdAt.toISOString(),
+            last_activity: s.lastActivityAt.toISOString(),
+          })),
+          total,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.warn("sessions_list failed", { error: message });
+        return JSON.stringify({ error: message });
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// sessions_history
+// ---------------------------------------------------------------------------
+
+/**
+ * Create the `sessions_history` tool.
+ *
+ * Reads message history from a specific ACP session. Access control: the
+ * calling agent must own the session, OR the session's agent must be in
+ * allowedAgents.
+ */
+export function createSessionsHistoryTool(
+  ctx: SessionsToolContext,
+): { tool: Tool; handler: ToolHandler } {
+  return {
+    tool: {
+      name: "sessions_history",
+      description:
+        "Read message history from a specific ACP session. " +
+        "Supports pagination via `before` cursor (ISO timestamp).",
+      parameters: {
+        type: "object",
+        properties: {
+          session_id: {
+            type: "string",
+            description: "Session ID to read history from",
+          },
+          limit: {
+            type: "number",
+            description: "Max messages to return (default 50, max 200)",
+          },
+          before: {
+            type: "string",
+            description: "Pagination cursor — ISO timestamp; only messages before this time are returned",
+          },
+        },
+        required: ["session_id"],
+      },
+    },
+    handler: async (args) => {
+      const { session_id, limit: rawLimit, before } = args as {
+        session_id: string;
+        limit?: number;
+        before?: string;
+      };
+
+      const session = ctx.sessionManager.getSession(session_id);
+      if (!session) {
+        return JSON.stringify({ error: `Session not found: ${session_id}` });
+      }
+
+      // Access control: current agent owns the session OR the session agent is allowed
+      const allowedAgents = ctx.sessionManager.getConfig().allowedAgents ?? [];
+      const isOwner = session.agentId === ctx.currentAgentId;
+      const agentAllowed = allowedAgents.includes(session.agentId);
+
+      if (!isOwner && !agentAllowed) {
+        return JSON.stringify({ error: `Access denied to session: ${session_id}` });
+      }
+
+      try {
+        let messages = session.history;
+
+        // Apply before cursor
+        if (before) {
+          const beforeTime = new Date(before).getTime();
+          messages = messages.filter((m) => m.timestamp.getTime() < beforeTime);
+        }
+
+        const limit = Math.min(Math.max(rawLimit ?? 50, 1), 200);
+        const hasMore = messages.length > limit;
+        // Take the most recent `limit` messages
+        messages = messages.slice(-limit);
+
+        log.info("Session history read", {
+          callingAgent: ctx.currentAgentId,
+          sessionId: session_id,
+          messageCount: messages.length,
+          hasMore,
+        });
+
+        return JSON.stringify({
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp.toISOString(),
+          })),
+          has_more: hasMore,
+          next_cursor: hasMore ? messages[0]?.timestamp.toISOString() : undefined,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.warn("sessions_history failed", { error: message });
+        return JSON.stringify({ error: message });
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
 /**
- * Create both session tools with shared context.
+ * Create all session tools with shared context.
  * Returns an array of tool+handler pairs ready for registration.
  */
 export function createSessionTools(
@@ -436,5 +629,7 @@ export function createSessionTools(
     createSessionsSpawnTool(ctx),
     createSessionsAnnounceTool(ctx),
     createSessionsSendTool(ctx),
+    createSessionsListTool(ctx),
+    createSessionsHistoryTool(ctx),
   ];
 }
