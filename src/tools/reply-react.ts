@@ -12,7 +12,24 @@ const log = createLogger("tools:reply-react");
 
 /** Runtime context required by reply/react tools. */
 export interface ReplyReactToolContext {
-  transport: Transport;
+  getTransport: () => Transport | undefined;
+}
+
+/**
+ * Lazy transport context — holds a mutable reference to a Transport that can
+ * be set after tool registration.  This allows cli.ts to register reply/react
+ * tools eagerly and bind the real transport once Discord starts.
+ */
+export class LazyTransportContext implements ReplyReactToolContext {
+  private _transport: Transport | undefined;
+
+  setTransport(transport: Transport): void {
+    this._transport = transport;
+  }
+
+  getTransport(): Transport | undefined {
+    return this._transport;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -32,13 +49,20 @@ export function createMessageReplyTool(
       name: "message_reply",
       description:
         "Reply to a specific message by its ID. The reply is threaded / linked " +
-        "to the original message in the transport (e.g. Discord reply).",
+        "to the original message in the transport (e.g. Discord reply). " +
+        "Pass channel_id when known to avoid an expensive channel scan.",
       parameters: {
         type: "object",
         properties: {
           message_id: {
             type: "string",
             description: "ID of the message to reply to",
+          },
+          channel_id: {
+            type: "string",
+            description:
+              "ID of the channel containing the message. " +
+              "Optional but recommended — avoids O(n) channel scan.",
           },
           content: {
             type: "string",
@@ -49,8 +73,9 @@ export function createMessageReplyTool(
       },
     },
     handler: async (args) => {
-      const { message_id, content } = args as {
+      const { message_id, channel_id, content } = args as {
         message_id: string;
+        channel_id?: string;
         content: string;
       };
 
@@ -60,12 +85,17 @@ export function createMessageReplyTool(
       if (!content || !content.trim()) {
         return JSON.stringify({ error: "content must not be empty" });
       }
-      if (!ctx.transport.reply) {
+
+      const transport = ctx.getTransport();
+      if (!transport) {
+        return JSON.stringify({ error: "Transport not available" });
+      }
+      if (!transport.reply) {
         return JSON.stringify({ error: "Transport does not support replies" });
       }
 
       try {
-        const result = await ctx.transport.reply(message_id, content);
+        const result = await transport.reply(message_id, content, channel_id);
 
         log.info("Message reply sent", {
           targetMessageId: message_id,
@@ -102,13 +132,20 @@ export function createMessageReactTool(
       name: "message_react",
       description:
         "Add an emoji reaction to a specific message by its ID. " +
-        "Use standard Unicode emoji (e.g. \"\u{1F44D}\") or platform-specific emoji identifiers.",
+        "Use standard Unicode emoji (e.g. \"\u{1F44D}\") or platform-specific emoji identifiers. " +
+        "Pass channel_id when known to avoid an expensive channel scan.",
       parameters: {
         type: "object",
         properties: {
           message_id: {
             type: "string",
             description: "ID of the message to react to",
+          },
+          channel_id: {
+            type: "string",
+            description:
+              "ID of the channel containing the message. " +
+              "Optional but recommended — avoids O(n) channel scan.",
           },
           emoji: {
             type: "string",
@@ -119,8 +156,9 @@ export function createMessageReactTool(
       },
     },
     handler: async (args) => {
-      const { message_id, emoji } = args as {
+      const { message_id, channel_id, emoji } = args as {
         message_id: string;
+        channel_id?: string;
         emoji: string;
       };
 
@@ -130,12 +168,17 @@ export function createMessageReactTool(
       if (!emoji || !emoji.trim()) {
         return JSON.stringify({ error: "emoji must not be empty" });
       }
-      if (!ctx.transport.react) {
+
+      const transport = ctx.getTransport();
+      if (!transport) {
+        return JSON.stringify({ error: "Transport not available" });
+      }
+      if (!transport.react) {
         return JSON.stringify({ error: "Transport does not support reactions" });
       }
 
       try {
-        await ctx.transport.react(message_id, emoji);
+        await transport.react(message_id, emoji, channel_id);
 
         log.info("Reaction added", {
           messageId: message_id,
