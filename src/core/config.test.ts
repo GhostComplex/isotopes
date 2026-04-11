@@ -405,6 +405,8 @@ agents:
       expect(resolveToolSettings()).toEqual({
         cli: false,
         fs: { workspaceOnly: true },
+        allow: undefined,
+        deny: undefined,
       });
     });
 
@@ -417,7 +419,51 @@ agents:
       ).toEqual({
         cli: true,
         fs: { workspaceOnly: false },
+        allow: undefined,
+        deny: undefined,
       });
+    });
+
+    it("passes through allow list from agent config", () => {
+      const result = resolveToolSettings({ allow: ["read_file", "list_dir"] });
+      expect(result.allow).toEqual(["read_file", "list_dir"]);
+    });
+
+    it("passes through deny list from agent config", () => {
+      const result = resolveToolSettings({ deny: ["shell", "write_file"] });
+      expect(result.deny).toEqual(["shell", "write_file"]);
+    });
+
+    it("agent allow overrides default allow", () => {
+      const result = resolveToolSettings(
+        { allow: ["read_file"] },
+        { allow: ["read_file", "shell"] },
+      );
+      expect(result.allow).toEqual(["read_file"]);
+    });
+
+    it("agent deny overrides default deny", () => {
+      const result = resolveToolSettings(
+        { deny: ["shell"] },
+        { deny: ["shell", "write_file"] },
+      );
+      expect(result.deny).toEqual(["shell"]);
+    });
+
+    it("falls back to default allow when agent has none", () => {
+      const result = resolveToolSettings(
+        {},
+        { allow: ["read_file"] },
+      );
+      expect(result.allow).toEqual(["read_file"]);
+    });
+
+    it("falls back to default deny when agent has none", () => {
+      const result = resolveToolSettings(
+        {},
+        { deny: ["shell"] },
+      );
+      expect(result.deny).toEqual(["shell"]);
     });
   });
 

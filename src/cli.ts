@@ -24,6 +24,7 @@ import {
   buildToolGuardPrompt,
   createWorkspaceToolsWithGuards,
   resolveToolGuards,
+  applyToolPolicy,
 } from "./core/tools.js";
 import { createSelfIterationTools } from "./tools/self-iteration.js";
 import { createIterateCodebaseTool } from "./tools/iterate-codebase.js";
@@ -325,7 +326,10 @@ async function main() {
       subagentEnabled,
       agentAllowedWorkspaces,
     );
-    for (const { tool, handler } of workspaceTools) {
+
+    // Apply tool policy (allow/deny) before registration
+    const filteredTools = applyToolPolicy(workspaceTools, agentConfig.toolSettings);
+    for (const { tool, handler } of filteredTools) {
       toolRegistry.register(tool, handler);
     }
 

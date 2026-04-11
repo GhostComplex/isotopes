@@ -16,6 +16,7 @@ import {
   createWorkspaceTools,
   createWorkspaceToolsWithGuards,
   resolveToolGuards,
+  applyToolPolicy,
   type ToolHandler,
 } from "./tools.js";
 import type { Tool } from "./types.js";
@@ -429,5 +430,71 @@ describe("Built-in tools", () => {
       expect(prompt).toContain("restricted to the workspace: /tmp/workspace");
       expect(prompt).toContain("Shell command execution is enabled");
     });
+  });
+});
+
+describe("applyToolPolicy", () => {
+  function makeTools(...names: string[]) {
+    return names.map((name) => ({
+      tool: { name, description: `${name} tool`, parameters: {} } as Tool,
+      handler: (async () => "") as ToolHandler,
+    }));
+  }
+
+  it("returns all tools when no policy is provided", () => {
+    const tools = makeTools("a", "b", "c");
+    const result = applyToolPolicy(tools, undefined);
+    expect(result.map((t) => t.tool.name)).toEqual(["a", "b", "c"]);
+  });
+
+  it("returns all tools when policy has neither allow nor deny", () => {
+    const tools = makeTools("a", "b", "c");
+    const result = applyToolPolicy(tools, {});
+    expect(result.map((t) => t.tool.name)).toEqual(["a", "b", "c"]);
+  });
+
+  it("filters to only allowed tools when allow is set", () => {
+    const tools = makeTools("read_file", "write_file", "shell", "get_current_time");
+    const result = applyToolPolicy(tools, { allow: ["read_file", "get_current_time"] });
+    expect(result.map((t) => t.tool.name)).toEqual(["read_file", "get_current_time"]);
+  });
+
+  it("removes denied tools when deny is set", () => {
+    const tools = makeTools("read_file", "write_file", "shell", "get_current_time");
+    const result = applyToolPolicy(tools, { deny: ["shell", "write_file"] });
+    expect(result.map((t) => t.tool.name)).toEqual(["read_file", "get_current_time"]);
+  });
+
+  it("deny takes precedence over allow", () => {
+    const tools = makeTools("read_file", "write_file", "shell");
+    const result = applyToolPolicy(tools, {
+      allow: ["read_file", "write_file", "shell"],
+      deny: ["shell"],
+    });
+    expect(result.map((t) => t.tool.name)).toEqual(["read_file", "write_file"]);
+  });
+
+  it("returns empty array when all tools are denied", () => {
+    const tools = makeTools("a", "b");
+    const result = applyToolPolicy(tools, { deny: ["a", "b"] });
+    expect(result).toEqual([]);
+  });
+
+  it("returns empty array when allow is empty", () => {
+    const tools = makeTools("a", "b");
+    const result = applyToolPolicy(tools, { allow: [] });
+    expect(result).toEqual([]);
+  });
+
+  it("ignores deny entries that do not match any tool", () => {
+    const tools = makeTools("a", "b");
+    const result = applyToolPolicy(tools, { deny: ["nonexistent"] });
+    expect(result.map((t) => t.tool.name)).toEqual(["a", "b"]);
+  });
+
+  it("ignores allow entries that do not match any tool", () => {
+    const tools = makeTools("a", "b");
+    const result = applyToolPolicy(tools, { allow: ["a", "nonexistent"] });
+    expect(result.map((t) => t.tool.name)).toEqual(["a"]);
   });
 });

@@ -66,12 +66,16 @@ export interface FileToolPolicy {
   workspaceOnly?: boolean;
 }
 
-/** Per-agent tool policy (CLI access, file system restrictions). */
+/** Per-agent tool policy (CLI access, file system restrictions, per-tool allow/deny). */
 export interface AgentToolSettings {
   /** Enable web_search and web_fetch tools */
   web?: boolean;
   cli?: boolean;
   fs?: FileToolPolicy;
+  /** Tool names to explicitly allow (if set, only these are available) */
+  allow?: string[];
+  /** Tool names to explicitly deny (takes precedence over allow) */
+  deny?: string[];
 }
 
 // ---------------------------------------------------------------------------

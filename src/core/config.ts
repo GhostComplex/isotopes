@@ -78,6 +78,10 @@ export interface AgentToolsConfigFile {
   fs?: {
     workspaceOnly?: boolean;
   };
+  /** Tool names to explicitly allow (if set, only these are available) */
+  allow?: string[];
+  /** Tool names to explicitly deny (takes precedence over allow) */
+  deny?: string[];
 }
 
 /** Compaction configuration in config file */
@@ -333,6 +337,9 @@ export function resolveToolSettings(
     fs: {
       workspaceOnly: agentTools?.fs?.workspaceOnly ?? defaultTools?.fs?.workspaceOnly ?? true,
     },
+    // allow/deny: agent-level overrides defaults entirely (not merged)
+    allow: agentTools?.allow ?? defaultTools?.allow,
+    deny: agentTools?.deny ?? defaultTools?.deny,
   };
 }
 

@@ -622,6 +622,37 @@ export function buildToolGuardPrompt(
   return lines.join("\n");
 }
 // ---------------------------------------------------------------------------
+// Tool policy — per-agent allow/deny filtering
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply tool policy (allow/deny lists) to a set of tool entries.
+ *
+ * - If `allow` is set, only tools in the allow list pass through.
+ * - If `deny` is set, those tools are removed.
+ * - `deny` takes precedence over `allow` (a tool in both lists is denied).
+ */
+export function applyToolPolicy(
+  tools: { tool: Tool; handler: ToolHandler }[],
+  policy?: { allow?: string[]; deny?: string[] },
+): { tool: Tool; handler: ToolHandler }[] {
+  if (!policy) return tools;
+  const { allow, deny } = policy;
+  if (!allow && !deny) return tools;
+
+  const denySet = deny ? new Set(deny) : undefined;
+  const allowSet = allow ? new Set(allow) : undefined;
+
+  return tools.filter(({ tool }) => {
+    // deny takes precedence
+    if (denySet?.has(tool.name)) return false;
+    // if allow is set, tool must be in the allow list
+    if (allowSet && !allowSet.has(tool.name)) return false;
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Tool set helpers
 // ---------------------------------------------------------------------------
 /**
