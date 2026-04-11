@@ -5,6 +5,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createLogger } from "../core/logger.js";
+import type { AcpxBackend } from "../subagent/acpx-backend.js";
+import { CodeExecutor } from "./code-executor.js";
 import type { IterationPlan, IterationStep } from "./types.js";
 
 const log = createLogger("executor");
@@ -19,6 +21,12 @@ export interface ExecutorOptions {
   workspacePath: string;
   /** If true, simulates execution without making changes */
   dryRun?: boolean;
+  /** Subagent backend for real code execution (optional) */
+  subagent?: AcpxBackend;
+  /** Whether to run verification (tsc + vitest) after each step. Default: true */
+  verifySteps?: boolean;
+  /** Subagent model override */
+  subagentModel?: string;
   /** Callback when a step starts */
   onStepStart?: (_step: IterationStep) => void;
   /** Callback when a step completes */
@@ -65,15 +73,29 @@ export interface ExecutionResult {
 export class IterationExecutor {
   private readonly options: Required<Pick<ExecutorOptions, "workspacePath">> &
     Omit<ExecutorOptions, "workspacePath">;
+  private readonly codeExecutor?: CodeExecutor;
 
   constructor(options: ExecutorOptions) {
     this.options = {
       workspacePath: options.workspacePath,
       dryRun: options.dryRun ?? false,
+      subagent: options.subagent,
+      verifySteps: options.verifySteps ?? true,
+      subagentModel: options.subagentModel,
       onStepStart: options.onStepStart,
       onStepComplete: options.onStepComplete,
       onStepError: options.onStepError,
     };
+
+    // Initialize CodeExecutor if subagent is provided
+    if (options.subagent) {
+      this.codeExecutor = new CodeExecutor({
+        projectRoot: options.workspacePath,
+        subagent: options.subagent,
+        verify: options.verifySteps ?? true,
+        model: options.subagentModel,
+      });
+    }
   }
 
   /**
@@ -250,6 +272,17 @@ export class IterationExecutor {
   private async executeCreate(
     step: IterationStep,
   ): Promise<{ success: boolean; output?: string; error?: Error }> {
+    // Use CodeExecutor if available
+    if (this.codeExecutor) {
+      const result = await this.codeExecutor.executeCreate(step);
+      return {
+        success: result.success,
+        output: result.stepResult.output,
+        error: result.stepResult.error ? new Error(result.stepResult.error) : undefined,
+      };
+    }
+
+    // Fallback: stub implementation for dry-run or no subagent
     const targetPath = this.resolvePath(step.target);
 
     try {
@@ -269,7 +302,6 @@ export class IterationExecutor {
       await fs.mkdir(parentDir, { recursive: true });
 
       // Create file with placeholder content
-      // In a real implementation, content would come from the step or an AI agent
       const content = `// ${step.name}\n// ${step.description}\n`;
       await fs.writeFile(targetPath, content, "utf-8");
 
@@ -292,15 +324,24 @@ export class IterationExecutor {
   private async executeModify(
     step: IterationStep,
   ): Promise<{ success: boolean; output?: string; error?: Error }> {
+    // Use CodeExecutor if available
+    if (this.codeExecutor) {
+      const result = await this.codeExecutor.executeModify(step);
+      return {
+        success: result.success,
+        output: result.stepResult.output,
+        error: result.stepResult.error ? new Error(result.stepResult.error) : undefined,
+      };
+    }
+
+    // Fallback: stub implementation for no subagent
     const targetPath = this.resolvePath(step.target);
 
     try {
       // Check if file exists
       await fs.stat(targetPath);
 
-      // In a real implementation, modification would be done by an AI agent
-      // For now, we just verify the file exists and is writable
-      log.info(`Modify step registered for: ${step.target}`);
+      log.info(`Modify step registered for: ${step.target} (no subagent configured)`);
       return {
         success: true,
         output: `Ready to modify ${step.target}`,
@@ -326,6 +367,17 @@ export class IterationExecutor {
   private async executeDelete(
     step: IterationStep,
   ): Promise<{ success: boolean; output?: string; error?: Error }> {
+    // Use CodeExecutor if available
+    if (this.codeExecutor) {
+      const result = await this.codeExecutor.executeDelete(step);
+      return {
+        success: result.success,
+        output: result.stepResult.output,
+        error: result.stepResult.error ? new Error(result.stepResult.error) : undefined,
+      };
+    }
+
+    // Fallback: stub implementation for no subagent
     const targetPath = this.resolvePath(step.target);
 
     try {
