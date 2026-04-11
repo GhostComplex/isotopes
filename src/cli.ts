@@ -467,7 +467,7 @@ async function main() {
   const defaultChatAgentId = config.agents[0]?.id ?? "default";
   const chatWorkspacePath = agentWorkspaces.get(defaultChatAgentId);
   const chatSessionsDir = chatWorkspacePath
-    ? path.join(chatWorkspacePath, "sessions")
+    ? path.join(chatWorkspacePath, "chat-sessions")
     : getSessionsDir(defaultChatAgentId);
   const chatSessionStore = new DefaultSessionStore({ dataDir: chatSessionsDir });
   await chatSessionStore.init();

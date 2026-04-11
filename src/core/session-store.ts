@@ -401,12 +401,48 @@ export class DefaultSessionStore implements SessionStore {
 
   /**
    * Load all sessions from disk on startup.
+   * Also recovers orphan transcripts (JSONL files not tracked in the index),
+   * which can occur when two stores share the same directory and one overwrites
+   * the other's sessions.json.
    */
   private async loadAllSessions(): Promise<void> {
     this.sessions.clear();
     this.keyIndex.clear();
 
     await this.loadIndexFile();
+
+    // Recover orphan transcripts (jsonl files not in index)
+    const countBefore = this.sessions.size;
+    try {
+      const files = await fs.readdir(this.config.dataDir);
+      const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
+
+      for (const file of jsonlFiles) {
+        const id = file.replace(".jsonl", "");
+        if (this.sessions.has(id)) continue;
+
+        const messages = await this.loadMessages(id);
+        if (messages.length === 0) continue;
+
+        const firstMsg = messages[0];
+        const lastMsg = messages[messages.length - 1];
+        const session: StoredSession = {
+          id,
+          agentId: (firstMsg.metadata?.agentId as string) ?? "unknown",
+          metadata: (firstMsg.metadata?.sessionMetadata as SessionMetadata) ?? {},
+          lastActiveAt: new Date(lastMsg.timestamp ?? Date.now()),
+          messagesLoaded: false, // will lazy-load on access
+        };
+        this.sessions.set(id, session);
+        log.info(`Recovered orphan session: ${id} (${messages.length} messages)`);
+      }
+    } catch {
+      log.debug("Could not scan for orphan transcripts");
+    }
+
+    if (this.sessions.size > countBefore) {
+      await this.persistIndex();
+    }
   }
 
   private toSession(stored: StoredSession): Session {
