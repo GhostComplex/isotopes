@@ -292,6 +292,20 @@ export interface IsotopesConfigFile {
    * Thread binding configuration for auto-binding threads to agent sessions.
    */
   threadBindings?: ThreadBindingConfigFile;
+  /** API server configuration (WebChat + REST) */
+  api?: ApiConfigFile;
+}
+
+/** API server (WebChat) configuration */
+export interface ApiConfigFile {
+  /** Enable the API server (default: true when api section present) */
+  enabled?: boolean;
+  /** Port to listen on (default: 3001) */
+  port?: number;
+  /** Host to bind to (default: "127.0.0.1") */
+  host?: string;
+  /** Directory to serve static files from (SPA mode) */
+  staticDir?: string;
 }
 
 export function resolveToolSettings(

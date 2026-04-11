@@ -2,10 +2,13 @@
 // Minimal server built on Node.js built-in http module (no Express).
 
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
 import { createLogger } from "../core/logger.js";
 import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
+import type { AgentManager, SessionStore } from "../core/types.js";
 import {
   applyCors,
   parseJsonBody,
@@ -30,6 +33,8 @@ export interface ApiServerConfig {
   host?: string;
   /** Allowed CORS origins (default: ["*"]) */
   corsOrigins?: string[];
+  /** Directory to serve static files from (SPA mode with index.html fallback) */
+  staticDir?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,14 +50,28 @@ export interface ApiServerConfig {
 export class ApiServer {
   private server: http.Server | null = null;
   private deps: RouteDeps;
+  private staticDir: string | undefined;
 
   constructor(
     private config: ApiServerConfig,
     sessionManager: AcpSessionManager,
     cronScheduler: CronScheduler,
     configReloader?: ConfigReloader,
+    opts?: {
+      agentManager?: AgentManager;
+      sessionStore?: SessionStore;
+      sessionStoreForAgent?: (agentId: string) => SessionStore;
+    },
   ) {
-    this.deps = { sessionManager, cronScheduler, configReloader };
+    this.deps = {
+      sessionManager,
+      cronScheduler,
+      configReloader,
+      agentManager: opts?.agentManager,
+      sessionStore: opts?.sessionStore,
+      sessionStoreForAgent: opts?.sessionStoreForAgent,
+    };
+    this.staticDir = config.staticDir;
   }
 
   /**
@@ -93,19 +112,29 @@ export class ApiServer {
       const method = req.method ?? "GET";
       const matched = matchRoute(method, req.pathname);
 
-      if (!matched) {
-        sendError(res, 404, `No route for ${method} ${req.pathname}`);
+      if (matched) {
+        req.params = matched.params;
+
+        // Execute handler
+        try {
+          await matched.handler(req, res, this.deps);
+        } catch (err) {
+          handleRouteError(res, err);
+        }
         return;
       }
 
-      req.params = matched.params;
+      // Static file serving (SPA fallback)
+      if (this.staticDir && method === "GET" && !req.pathname.startsWith("/api/")) {
+        const served = this.serveStatic(req.pathname, res);
+        if (served) return;
 
-      // Execute handler
-      try {
-        await matched.handler(req, res, this.deps);
-      } catch (err) {
-        handleRouteError(res, err);
+        // SPA fallback: serve index.html for non-API, non-file paths
+        const indexServed = this.serveStatic("/index.html", res);
+        if (indexServed) return;
       }
+
+      sendError(res, 404, `No route for ${method} ${req.pathname}`);
     });
 
     return new Promise<void>((resolve, reject) => {
@@ -120,6 +149,59 @@ export class ApiServer {
         resolve();
       });
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Static file serving
+  // -------------------------------------------------------------------------
+
+  private static MIME_TYPES: Record<string, string> = {
+    ".html": "text/html",
+    ".js": "application/javascript",
+    ".css": "text/css",
+    ".json": "application/json",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".map": "application/json",
+  };
+
+  /**
+   * Try to serve a static file from the configured staticDir.
+   * Returns true if a file was served, false otherwise.
+   */
+  private serveStatic(pathname: string, res: http.ServerResponse): boolean {
+    if (!this.staticDir) return false;
+
+    // Prevent path traversal
+    const safePath = path.normalize(pathname).replace(/^(\.\.[/\\])+/, "");
+    const filePath = path.join(this.staticDir, safePath);
+
+    // Ensure resolved path is within staticDir
+    if (!filePath.startsWith(path.resolve(this.staticDir))) return false;
+
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) return false;
+
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = ApiServer.MIME_TYPES[ext] ?? "application/octet-stream";
+
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Content-Length": stat.size,
+      });
+      fs.createReadStream(filePath).pipe(res);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**

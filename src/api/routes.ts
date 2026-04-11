@@ -7,7 +7,15 @@ import { VERSION } from "../index.js";
 import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
+import type { AgentManager, SessionStore } from "../core/types.js";
+import { textContent } from "../core/types.js";
+import { runAgentLoop } from "../core/agent-runner.js";
+import { buildSessionKey } from "../core/session-keys.js";
+import { preparePromptMessages } from "../core/context.js";
+import { createLogger } from "../core/logger.js";
 import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middleware.js";
+
+const chatLog = createLogger("api:chat");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,6 +26,9 @@ export interface RouteDeps {
   sessionManager: AcpSessionManager;
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
+  agentManager?: AgentManager;
+  sessionStore?: SessionStore;
+  sessionStoreForAgent?: (agentId: string) => SessionStore;
 }
 
 /** Handler function for a matched API route. */
@@ -310,4 +321,137 @@ addRoute("PUT", "/api/config", (_req, res, deps) => {
   // The watcher will pick up the file change and reload automatically.
   // We return the current config as acknowledgement.
   sendJson(res, 200, { ok: true, config });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/agents — list configured agents
+// ---------------------------------------------------------------------------
+
+addRoute("GET", "/api/agents", (_req, res, deps) => {
+  if (!deps.agentManager) {
+    sendError(res, 501, "Agent manager not available");
+    return;
+  }
+
+  const agents = deps.agentManager.list();
+  sendJson(
+    res,
+    200,
+    agents.map((a) => ({ id: a.id, name: a.id })),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/chat — SSE streaming chat endpoint
+// ---------------------------------------------------------------------------
+
+/** Write a single SSE event to the response stream. */
+function sseWrite(res: ServerResponse, event: string, data: unknown): void {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+addRoute("POST", "/api/chat", async (req, res, deps) => {
+  if (!deps.agentManager) {
+    sendError(res, 501, "Agent manager not available");
+    return;
+  }
+
+  const body = req.body as { agentId?: string; sessionId?: string; message?: string } | undefined;
+  if (!body || typeof body.agentId !== "string" || typeof body.message !== "string" || !body.message) {
+    sendError(res, 400, "Request body must include 'agentId' (string) and 'message' (non-empty string)");
+    return;
+  }
+
+  const { agentId, message } = body;
+
+  // Resolve agent
+  const agent = deps.agentManager.get(agentId);
+  if (!agent) {
+    sendError(res, 404, `Agent "${agentId}" not found`);
+    return;
+  }
+
+  // Resolve session store for this agent
+  const sessionStore = deps.sessionStoreForAgent?.(agentId) ?? deps.sessionStore;
+  if (!sessionStore) {
+    sendError(res, 501, "Session store not available");
+    return;
+  }
+
+  // Find or create session
+  let sessionId = body.sessionId;
+  if (sessionId) {
+    const existing = await sessionStore.get(sessionId);
+    if (!existing) {
+      sendError(res, 404, `Session "${sessionId}" not found`);
+      return;
+    }
+  } else {
+    const sessionKey = buildSessionKey("web", "local", "dm", `web-${Date.now()}`, agentId);
+    const session = await sessionStore.create(agentId, {
+      key: sessionKey,
+      transport: "web",
+    });
+    sessionId = session.id;
+  }
+
+  // Start SSE stream
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+
+  // Send session ID to client
+  sseWrite(res, "session", { sessionId });
+
+  // Store user message
+  await sessionStore.addMessage(sessionId, {
+    role: "user",
+    content: textContent(message),
+    timestamp: Date.now(),
+  });
+
+  // Prepare prompt messages (history + context windowing)
+  const history = await sessionStore.getMessages(sessionId);
+  const promptMessages = preparePromptMessages(history);
+
+  // Clear agent internal state for fresh prompt
+  agent.clearMessages?.();
+
+  try {
+    const result = await runAgentLoop({
+      agent,
+      input: promptMessages,
+      sessionId,
+      sessionStore,
+      log: chatLog,
+      onEvent: (event) => {
+        switch (event.type) {
+          case "text_delta":
+            sseWrite(res, "text_delta", { text: event.text });
+            break;
+          case "tool_call":
+            sseWrite(res, "tool_call", { id: event.id, name: event.name, args: event.args });
+            break;
+          case "tool_result":
+            sseWrite(res, "tool_result", { id: event.id, output: event.output, isError: event.isError });
+            break;
+        }
+      },
+    });
+
+    if (result.errorMessage) {
+      sseWrite(res, "error", { error: result.errorMessage });
+    }
+
+    sseWrite(res, "done", { sessionId });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Internal server error";
+    chatLog.error("Chat SSE error:", err);
+    sseWrite(res, "error", { error: errorMsg });
+  }
+
+  res.end();
 });

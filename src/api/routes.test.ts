@@ -1,10 +1,16 @@
 // src/api/routes.test.ts — Unit tests for REST route handlers
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
 import { AcpSessionManager } from "../acp/session-manager.js";
 import { CronScheduler } from "../automation/cron-job.js";
+import {
+  createMockAgentManager,
+  createMockAgentInstance,
+  createMockSessionStore,
+} from "../core/test-helpers.js";
+import type { AgentManager, SessionStore } from "../core/types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -381,6 +387,227 @@ describe("API routes", () => {
       const body = data as { sessions: number; cronJobs: number };
       expect(body.sessions).toBe(2);
       expect(body.cronJobs).toBe(1);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WebChat API routes (agents, chat SSE)
+// ---------------------------------------------------------------------------
+
+/** Parse SSE stream response into individual events */
+function requestSSE(
+  port: number,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ status: number; events: Array<{ event: string; data: unknown }> }> {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : undefined;
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path,
+        method,
+        headers: {
+          ...(payload
+            ? {
+                "Content-Type": "application/json",
+                "Content-Length": Buffer.byteLength(payload),
+              }
+            : {}),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf-8");
+          const events: Array<{ event: string; data: unknown }> = [];
+          const blocks = raw.split("\n\n").filter(Boolean);
+          for (const block of blocks) {
+            const lines = block.split("\n");
+            let event = "";
+            let data = "";
+            for (const line of lines) {
+              if (line.startsWith("event: ")) event = line.slice(7);
+              if (line.startsWith("data: ")) data = line.slice(6);
+            }
+            if (event && data) {
+              try {
+                events.push({ event, data: JSON.parse(data) });
+              } catch {
+                events.push({ event, data });
+              }
+            }
+          }
+          resolve({ status: res.statusCode ?? 0, events });
+        });
+      },
+    );
+    req.on("error", reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+describe("WebChat API routes", () => {
+  let server: ApiServer;
+  let sessionManager: AcpSessionManager;
+  let cronScheduler: CronScheduler;
+  let agentManager: AgentManager;
+  let sessionStore: SessionStore;
+
+  beforeEach(async () => {
+    sessionManager = makeSessionManager();
+    cronScheduler = new CronScheduler();
+    agentManager = createMockAgentManager();
+    sessionStore = createMockSessionStore();
+
+    // Make list() return a mock agent list
+    vi.mocked(agentManager.list).mockReturnValue([
+      { id: "major", systemPrompt: "You are Major." },
+      { id: "minor", systemPrompt: "You are Minor." },
+    ]);
+
+    server = new ApiServer(
+      { port: 0 },
+      sessionManager,
+      cronScheduler,
+      undefined,
+      {
+        agentManager,
+        sessionStore,
+        sessionStoreForAgent: () => sessionStore,
+      },
+    );
+    await server.start();
+  });
+
+  afterEach(async () => {
+    await server.stop();
+  });
+
+  function getPort(): number {
+    const addr = server.address();
+    if (!addr) throw new Error("Server not listening");
+    return addr.port;
+  }
+
+  // -----------------------------------------------------------------------
+  // GET /api/agents
+  // -----------------------------------------------------------------------
+
+  describe("GET /api/agents", () => {
+    it("returns list of configured agents", async () => {
+      const { status, data } = await request(getPort(), "GET", "/api/agents");
+      expect(status).toBe(200);
+      const agents = data as Array<{ id: string; name: string }>;
+      expect(agents).toHaveLength(2);
+      expect(agents[0]).toEqual({ id: "major", name: "major" });
+      expect(agents[1]).toEqual({ id: "minor", name: "minor" });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // POST /api/chat
+  // -----------------------------------------------------------------------
+
+  describe("POST /api/chat", () => {
+    it("returns 400 when agentId is missing", async () => {
+      const { status, data } = await request(getPort(), "POST", "/api/chat", {
+        message: "hello",
+      });
+      expect(status).toBe(400);
+      expect((data as { error: string }).error).toContain("agentId");
+    });
+
+    it("returns 400 when message is missing", async () => {
+      const { status, data } = await request(getPort(), "POST", "/api/chat", {
+        agentId: "major",
+      });
+      expect(status).toBe(400);
+      expect((data as { error: string }).error).toContain("message");
+    });
+
+    it("returns 404 for unknown agent", async () => {
+      vi.mocked(agentManager.get).mockReturnValue(undefined);
+
+      const { status, data } = await request(getPort(), "POST", "/api/chat", {
+        agentId: "nonexistent",
+        message: "hello",
+      });
+      expect(status).toBe(404);
+      expect((data as { error: string }).error).toContain("nonexistent");
+    });
+
+    it("streams SSE events for a successful chat", async () => {
+      const mockAgent = createMockAgentInstance([
+        { type: "text_delta", text: "Hello " },
+        { type: "text_delta", text: "world!" },
+        { type: "agent_end", messages: [] },
+      ]);
+      mockAgent.clearMessages = vi.fn();
+      vi.mocked(agentManager.get).mockReturnValue(mockAgent);
+
+      const { status, events } = await requestSSE(getPort(), "POST", "/api/chat", {
+        agentId: "major",
+        message: "hi there",
+      });
+
+      expect(status).toBe(200);
+
+      // First event should be session
+      const sessionEvent = events.find((e) => e.event === "session");
+      expect(sessionEvent).toBeDefined();
+      expect((sessionEvent!.data as { sessionId: string }).sessionId).toBeTruthy();
+
+      // Should have text_delta events
+      const textDeltas = events.filter((e) => e.event === "text_delta");
+      expect(textDeltas).toHaveLength(2);
+      expect((textDeltas[0].data as { text: string }).text).toBe("Hello ");
+      expect((textDeltas[1].data as { text: string }).text).toBe("world!");
+
+      // Should have done event
+      const doneEvent = events.find((e) => e.event === "done");
+      expect(doneEvent).toBeDefined();
+    });
+
+    it("streams tool_call and tool_result events", async () => {
+      const mockAgent = createMockAgentInstance([
+        { type: "tool_call", id: "tc1", name: "echo", args: { text: "hi" } },
+        { type: "tool_result", id: "tc1", output: "hi" },
+        { type: "text_delta", text: "Done." },
+        { type: "agent_end", messages: [] },
+      ]);
+      mockAgent.clearMessages = vi.fn();
+      vi.mocked(agentManager.get).mockReturnValue(mockAgent);
+
+      const { events } = await requestSSE(getPort(), "POST", "/api/chat", {
+        agentId: "major",
+        message: "use echo",
+      });
+
+      const toolCall = events.find((e) => e.event === "tool_call");
+      expect(toolCall).toBeDefined();
+      expect((toolCall!.data as { name: string }).name).toBe("echo");
+
+      const toolResult = events.find((e) => e.event === "tool_result");
+      expect(toolResult).toBeDefined();
+      expect((toolResult!.data as { output: string }).output).toBe("hi");
+    });
+
+    it("returns 404 for unknown sessionId", async () => {
+      vi.mocked(sessionStore.get).mockResolvedValue(undefined);
+
+      const { status, data } = await request(getPort(), "POST", "/api/chat", {
+        agentId: "major",
+        sessionId: "nonexistent",
+        message: "hello",
+      });
+      expect(status).toBe(404);
+      expect((data as { error: string }).error).toContain("nonexistent");
     });
   });
 });

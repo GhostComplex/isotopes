@@ -46,6 +46,8 @@ import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
 import { DaemonProcess } from "./daemon/process.js";
 import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
+import { ApiServer } from "./api/server.js";
+import { CronScheduler } from "./automation/cron-job.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -442,6 +444,49 @@ async function main() {
 
     await discord.start();
     logger.info("Discord transport started");
+  }
+
+  // Start API server for WebChat (and future REST clients)
+  if (config.api && config.api.enabled !== false) {
+    // Reuse Discord session stores if available, otherwise create new ones
+    const apiSessionStores = new Map<string, DefaultSessionStore>();
+    for (const agentFile of config.agents) {
+      const workspacePath = agentWorkspaces.get(agentFile.id);
+      const sessionsDir = workspacePath ? path.join(workspacePath, "sessions") : getSessionsDir(agentFile.id);
+      apiSessionStores.set(agentFile.id, new DefaultSessionStore({ dataDir: sessionsDir }));
+    }
+    await Promise.all([...apiSessionStores.values()].map((store) => store.init()));
+
+    const defaultAgentId = config.agents[0]?.id ?? "default";
+    const defaultApiSessionStore = apiSessionStores.get(defaultAgentId);
+
+    const acpConfig = resolveAcpConfig(config.acp);
+    const acpSessionManager = acpConfig ? new AcpSessionManager(acpConfig) : new AcpSessionManager({
+      enabled: false,
+      backend: "acpx",
+      defaultAgent: defaultAgentId,
+      allowedAgents: config.agents.map((a) => a.id),
+    });
+    const cronScheduler = new CronScheduler();
+
+    const apiPort = config.api?.port ?? 3001;
+    const apiHost = config.api?.host ?? "127.0.0.1";
+    const staticDir = config.api?.staticDir;
+
+    const apiServer = new ApiServer(
+      { port: apiPort, host: apiHost, staticDir },
+      acpSessionManager,
+      cronScheduler,
+      undefined,
+      {
+        agentManager,
+        sessionStore: defaultApiSessionStore,
+        sessionStoreForAgent: (agentId) => apiSessionStores.get(agentId) ?? defaultApiSessionStore!,
+      },
+    );
+
+    await apiServer.start();
+    logger.info(`API server started on http://${apiHost}:${apiPort}`);
   }
 
   // Keep process alive

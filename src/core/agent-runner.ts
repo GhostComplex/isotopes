@@ -1,7 +1,7 @@
 // src/core/agent-runner.ts — Shared agent event loop
 // Iterates over agent.prompt() and collects the response, handling errors uniformly.
 
-import { textContent, type AgentInstance, type Message, type SessionStore } from "./types.js";
+import { textContent, type AgentEvent, type AgentInstance, type Message, type SessionStore } from "./types.js";
 import type { Logger } from "./logger.js";
 
 /** Result of running an agent prompt to completion */
@@ -20,6 +20,14 @@ export interface AgentRunResult {
  */
 export type OnTextDelta = (currentText: string) => void | Promise<void>;
 
+/**
+ * Callback invoked for every AgentEvent (text_delta, tool_call, tool_result, etc.).
+ *
+ * Transports that need visibility into events beyond text deltas (e.g. WebChat
+ * SSE streaming) can use this to forward all events to the client.
+ */
+export type OnEvent = (event: AgentEvent) => void | Promise<void>;
+
 export interface RunAgentOptions {
   agent: AgentInstance;
   input: string | Message[];
@@ -28,6 +36,8 @@ export interface RunAgentOptions {
   log: Logger;
   /** Optional callback fired after each text_delta */
   onTextDelta?: OnTextDelta;
+  /** Optional callback fired for every agent event */
+  onEvent?: OnEvent;
 }
 
 /**
@@ -44,12 +54,16 @@ export interface RunAgentOptions {
  * stay in the transport layer via the onTextDelta callback.
  */
 export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
-  const { agent, input, sessionId, sessionStore, log, onTextDelta } = opts;
+  const { agent, input, sessionId, sessionStore, log, onTextDelta, onEvent } = opts;
 
   let responseText = "";
   let errorMessage: string | null = null;
 
   for await (const event of agent.prompt(input)) {
+    if (onEvent) {
+      await onEvent(event);
+    }
+
     if (event.type === "text_delta") {
       responseText += event.text;
       if (onTextDelta) {
