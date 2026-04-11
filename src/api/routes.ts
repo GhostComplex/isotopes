@@ -10,6 +10,7 @@ import { VERSION } from "../index.js";
 import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
+import type { AgentManager, SessionStore } from "../core/types.js";
 import { getIsotopesHome, getLogsDir } from "../core/paths.js";
 import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middleware.js";
 
@@ -22,6 +23,10 @@ export interface RouteDeps {
   sessionManager: AcpSessionManager;
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
+  /** Agent manager for WebChat routes */
+  agentManager?: AgentManager;
+  /** Session store for WebChat routes */
+  chatSessionStore?: SessionStore;
 }
 
 /** Handler function for a matched API route. */
@@ -44,7 +49,7 @@ interface Route {
 
 const routes: Route[] = [];
 
-function addRoute(method: string, path: string, handler: RouteHandler): void {
+export function addRoute(method: string, path: string, handler: RouteHandler): void {
   // Convert "/api/sessions/:id" → regex with named capture groups
   const paramNames: string[] = [];
   const regexStr = path.replace(/:([a-zA-Z_]+)/g, (_match, name: string) => {

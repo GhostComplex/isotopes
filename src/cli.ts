@@ -462,14 +462,27 @@ async function main() {
     logger.info("Discord transport started");
   }
 
-  // Start API server (dashboard + REST API)
+  // Start API server (dashboard + REST API + WebChat)
+  // Create a session store for web chat (uses first agent's workspace)
+  const defaultChatAgentId = config.agents[0]?.id ?? "default";
+  const chatWorkspacePath = agentWorkspaces.get(defaultChatAgentId);
+  const chatSessionsDir = chatWorkspacePath
+    ? path.join(chatWorkspacePath, "sessions")
+    : getSessionsDir(defaultChatAgentId);
+  const chatSessionStore = new DefaultSessionStore({ dataDir: chatSessionsDir });
+  await chatSessionStore.init();
+
   const apiServer = new ApiServer(
     { port: 2712 },
     acpSessionManager,
     cronScheduler,
+    undefined,       // configReloader
+    agentManager,
+    chatSessionStore,
   );
   await apiServer.start();
   logger.info("Dashboard available at http://127.0.0.1:2712/dashboard");
+  logger.info("WebChat available at http://127.0.0.1:2712/chat");
 
   // Keep process alive
   logger.info("Running... Press Ctrl+C to stop");

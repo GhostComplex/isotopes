@@ -28,6 +28,7 @@ const MIME_TYPES: Record<string, string> = {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DASHBOARD_ROOT = path.join(__dirname, "../../web/dashboard");
+const CHAT_ROOT = path.join(__dirname, "../../web/chat");
 
 // ---------------------------------------------------------------------------
 // Static handler
@@ -67,6 +68,66 @@ export async function serveDashboard(
   // Prevent directory traversal
   const resolved = path.resolve(filePath);
   if (!resolved.startsWith(path.resolve(DASHBOARD_ROOT))) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return true;
+  }
+
+  try {
+    const content = await readFile(resolved);
+    const ext = path.extname(resolved);
+    const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
+
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Content-Length": content.length,
+    });
+    res.end(content);
+    return true;
+  } catch {
+    // File not found — don't handle, let it fall through to 404
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Chat static handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Try to serve a static file for /chat* requests.
+ * Returns true if the request was handled, false otherwise.
+ */
+export async function serveChat(
+  req: ApiRequest,
+  res: ServerResponse,
+): Promise<boolean> {
+  const { pathname } = req;
+
+  // Only handle /chat routes
+  if (pathname !== "/chat" && !pathname.startsWith("/chat/")) {
+    return false;
+  }
+
+  // Redirect /chat to /chat/ so relative asset paths resolve correctly
+  if (pathname === "/chat") {
+    res.writeHead(301, { Location: "/chat/" });
+    res.end();
+    return true;
+  }
+
+  // Map pathname to file path
+  let filePath: string;
+  if (pathname === "/chat/") {
+    filePath = path.join(CHAT_ROOT, "index.html");
+  } else {
+    const relativePath = pathname.slice("/chat/".length);
+    filePath = path.join(CHAT_ROOT, relativePath);
+  }
+
+  // Prevent directory traversal
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(CHAT_ROOT))) {
     res.writeHead(403);
     res.end("Forbidden");
     return true;

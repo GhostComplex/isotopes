@@ -6,6 +6,7 @@ import { createLogger } from "../core/logger.js";
 import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
+import type { AgentManager, SessionStore } from "../core/types.js";
 import {
   applyCors,
   parseJsonBody,
@@ -15,7 +16,10 @@ import {
   type ApiRequest,
 } from "./middleware.js";
 import { matchRoute, type RouteDeps } from "./routes.js";
-import { serveDashboard } from "./static.js";
+import { serveDashboard, serveChat } from "./static.js";
+
+// Register chat routes (side-effect import)
+import "./chat.js";
 
 const log = createLogger("api:server");
 
@@ -52,8 +56,10 @@ export class ApiServer {
     sessionManager: AcpSessionManager,
     cronScheduler: CronScheduler,
     configReloader?: ConfigReloader,
+    agentManager?: AgentManager,
+    chatSessionStore?: SessionStore,
   ) {
-    this.deps = { sessionManager, cronScheduler, configReloader };
+    this.deps = { sessionManager, cronScheduler, configReloader, agentManager, chatSessionStore };
   }
 
   /**
@@ -92,6 +98,11 @@ export class ApiServer {
 
       // Static dashboard files (before API route matching)
       if (await serveDashboard(req, res)) {
+        return;
+      }
+
+      // Static chat files (before API route matching)
+      if (await serveChat(req, res)) {
         return;
       }
 

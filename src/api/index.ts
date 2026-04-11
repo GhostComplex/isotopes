@@ -3,7 +3,7 @@
 export { ApiServer } from "./server.js";
 export type { ApiServerConfig } from "./server.js";
 
-export { matchRoute } from "./routes.js";
+export { matchRoute, addRoute } from "./routes.js";
 export type { RouteDeps, RouteHandler } from "./routes.js";
 
 export {
@@ -16,4 +16,4 @@ export {
 } from "./middleware.js";
 export type { ApiRequest, ApiError } from "./middleware.js";
 
-export { serveDashboard } from "./static.js";
+export { serveDashboard, serveChat } from "./static.js";
