@@ -419,6 +419,78 @@ async function main() {
   const cronScheduler = new CronScheduler();
   const usageTracker = new UsageTracker();
 
+  // Register cron jobs from config (#193)
+  // Per-agent cron tasks
+  for (const agentFile of config.agents) {
+    if (!agentFile.cron?.tasks?.length) continue;
+
+    for (const task of agentFile.cron.tasks) {
+      cronScheduler.register({
+        name: task.name,
+        expression: task.schedule,
+        agentId: agentFile.id,
+        channelId: task.channel,
+        action: { type: "prompt", prompt: task.prompt },
+        enabled: task.enabled ?? true,
+      });
+    }
+    logger.info(`Registered ${agentFile.cron.tasks.length} cron task(s) for "${agentFile.id}"`);
+  }
+
+  // Top-level cron tasks (from config.cron)
+  if (config.cron?.length) {
+    for (const task of config.cron) {
+      cronScheduler.register({
+        name: task.name,
+        expression: task.expression,
+        agentId: task.agentId,
+        action: task.action,
+        enabled: task.enabled ?? true,
+      });
+    }
+    logger.info(`Registered ${config.cron.length} top-level cron task(s)`);
+  }
+
+  // Wire up cron trigger to prompt agents
+  cronScheduler.onTrigger(async (job) => {
+    const agent = agentManager.get(job.agentId);
+    if (!agent) {
+      logger.error(`Cron job "${job.name}" references unknown agent "${job.agentId}"`);
+      return;
+    }
+
+    let prompt: string;
+    if (job.action.type === "prompt") {
+      prompt = job.action.prompt;
+    } else if (job.action.type === "message") {
+      prompt = job.action.content;
+    } else {
+      logger.warn(`Cron job "${job.name}" has unsupported action type "${job.action.type}" — skipping`);
+      return;
+    }
+
+    const sessionKey = `cron:${job.agentId}:${job.name}`;
+    logger.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
+
+    try {
+      let responseText = "";
+      for await (const event of agent.prompt(prompt)) {
+        if (event.type === "text_delta") {
+          responseText += event.text;
+        }
+      }
+      logger.info(`Cron "${job.name}" completed (${responseText.length} chars)`);
+    } catch (err) {
+      logger.error(`Cron "${job.name}" failed:`, err);
+    }
+  });
+
+  // Start the scheduler
+  cronScheduler.start();
+  if (cronScheduler.listJobs().length > 0) {
+    logger.info(`Cron scheduler started with ${cronScheduler.listJobs().length} job(s)`);
+  }
+
   // Start Discord transport if configured
   let discordManager: DiscordTransportManager | undefined;
 
@@ -540,6 +612,7 @@ async function main() {
   // Graceful shutdown
   process.on("SIGINT", async () => {
     logger.info("Shutting down...");
+    cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
     hotReload.stop();
     if (discordManager) await discordManager.stop();
@@ -549,6 +622,7 @@ async function main() {
 
   process.on("SIGTERM", async () => {
     logger.info("Shutting down...");
+    cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
     hotReload.stop();
     if (discordManager) await discordManager.stop();

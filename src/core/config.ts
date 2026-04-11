@@ -58,6 +58,19 @@ export interface HeartbeatConfigFile {
   intervalSeconds?: number;
 }
 
+/** Per-agent cron task configuration (#193) */
+export interface CronTaskConfigFile {
+  name: string;
+  /** Cron expression (e.g., "0 * * * *" = every hour) */
+  schedule: string;
+  /** Channel/session key to send prompt to */
+  channel: string;
+  /** Message to trigger agent with */
+  prompt: string;
+  /** Whether this task is enabled. Default: true */
+  enabled?: boolean;
+}
+
 /** Agent configuration in config file */
 export interface AgentConfigFile {
   id: string;
@@ -69,6 +82,8 @@ export interface AgentConfigFile {
   selfIteration?: SelfIterationConfigFile;
   /** Heartbeat configuration (#191) */
   heartbeat?: HeartbeatConfigFile;
+  /** Cron scheduled tasks (#193) */
+  cron?: { tasks: CronTaskConfigFile[] };
   /** Additional workspace paths allowed for subagent cwd */
   allowedWorkspaces?: string[];
   /** Heartbeat interval in milliseconds (0 = disabled). */
