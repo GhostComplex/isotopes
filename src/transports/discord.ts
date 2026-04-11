@@ -27,6 +27,7 @@ import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
 import { runAgentLoop } from "../core/agent-runner.js";
 import { isSilentReply } from "./silent-reply.js";
+import { extractDiscordMetadata } from "./message-metadata.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey } from "../core/session-keys.js";
 import {
@@ -367,6 +368,7 @@ export class DiscordTransport implements Transport {
     const enrichedContent = buildHistoryContext(historyEntries, content);
 
     // 8. Add user message to session
+    const messageMetadata = extractDiscordMetadata(msg);
     const userMessage: Message = {
       role: "user",
       content: textContent(enrichedContent),
@@ -374,6 +376,7 @@ export class DiscordTransport implements Transport {
       metadata: {
         userId: msg.author.id,
         username: msg.author.username,
+        ...messageMetadata,
       },
     };
     await sessionStore.addMessage(session.id, userMessage);
