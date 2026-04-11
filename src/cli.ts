@@ -317,11 +317,12 @@ async function main() {
     const resolvedToolGuards = resolveToolGuards(agentConfig.toolSettings);
     const toolRegistry = new ToolRegistry();
     const subagentEnabled = config.acp?.enabled === true;
+    const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];
     const workspaceTools = createWorkspaceToolsWithGuards(
       workspacePath,
       agentConfig.toolSettings,
       subagentEnabled,
-      agentFile.allowedWorkspaces ?? [],
+      agentAllowedWorkspaces,
     );
     for (const { tool, handler } of workspaceTools) {
       toolRegistry.register(tool, handler);
@@ -341,7 +342,7 @@ async function main() {
     }
 
     // Build tool guard prompt and store it for hot-reload persistence (M11.4)
-    const toolGuardPrompt = buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, workspacePath);
+    const toolGuardPrompt = buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, workspacePath, agentAllowedWorkspaces);
     agentConfig.systemPrompt = [
       agentConfig.systemPrompt,
       toolGuardPrompt,

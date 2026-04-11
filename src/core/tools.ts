@@ -458,6 +458,11 @@ export interface FileToolOptions {
    * but relative paths still resolve against basePath.
    */
   constrainToWorkspace?: boolean;
+  /**
+   * Additional directories (beyond basePath) that file operations may access
+   * when constrainToWorkspace is true.
+   */
+  allowedWorkspaces?: string[];
 }
 
 export interface ResolvedToolGuards {
@@ -481,11 +486,25 @@ function isPathInside(parentPath: string, childPath: string): boolean {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+async function isPathAllowed(
+  targetPath: string,
+  workspaceRoot: string,
+  allowedWorkspaces: string[],
+): Promise<boolean> {
+  if (isPathInside(workspaceRoot, targetPath)) return true;
+  for (const ws of allowedWorkspaces) {
+    const realWs = await fs.realpath(ws).catch(() => path.resolve(ws));
+    if (isPathInside(realWs, targetPath)) return true;
+  }
+  return false;
+}
+
 async function resolveWorkspaceConstrainedPath(
   targetPath: string,
   basePath: string | undefined,
   mode: "read" | "write" | "list",
   constrainToWorkspace = true,
+  allowedWorkspaces: string[] = [],
 ): Promise<string> {
   if (!basePath) {
     return path.resolve(targetPath);
@@ -501,14 +520,14 @@ async function resolveWorkspaceConstrainedPath(
     await fs.mkdir(parentDir, { recursive: true });
     const realParentDir = await fs.realpath(parentDir).catch(() => path.resolve(parentDir));
     const finalPath = path.join(realParentDir, path.basename(resolvedPath));
-    if (constrainToWorkspace && !isPathInside(workspaceRoot, finalPath)) {
+    if (constrainToWorkspace && !(await isPathAllowed(finalPath, workspaceRoot, allowedWorkspaces))) {
       throw new Error(`Path escapes workspace: ${targetPath}`);
     }
     return finalPath;
   }
 
   const realTargetPath = await fs.realpath(resolvedPath).catch(() => path.resolve(resolvedPath));
-  if (constrainToWorkspace && !isPathInside(workspaceRoot, realTargetPath)) {
+  if (constrainToWorkspace && !(await isPathAllowed(realTargetPath, workspaceRoot, allowedWorkspaces))) {
     throw new Error(`Path escapes workspace: ${targetPath}`);
   }
 
@@ -519,7 +538,7 @@ async function resolveWorkspaceConstrainedPath(
  * Create a file read tool.
  */
 export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, maxReadSize = 1024 * 1024, constrainToWorkspace = true } = options;
+  const { basePath, maxReadSize = 1024 * 1024, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
 
   return {
     tool: {
@@ -540,7 +559,7 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
       const { path: filePath } = args as { path: string };
 
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "read", constrainToWorkspace);
+        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "read", constrainToWorkspace, allowedWorkspaces);
 
         const stats = await fs.stat(resolvedPath);
         if (stats.size > maxReadSize) {
@@ -564,7 +583,7 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
  * Create a file write tool.
  */
 export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, constrainToWorkspace = true } = options;
+  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
 
   return {
     tool: {
@@ -589,7 +608,7 @@ export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool
       const { path: filePath, content } = args as { path: string; content: string };
 
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace);
+        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace, allowedWorkspaces);
         await fs.writeFile(resolvedPath, content, "utf-8");
 
         return `Successfully wrote ${content.length} bytes to ${filePath}`;
@@ -605,7 +624,7 @@ export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool
  * Create a directory listing tool.
  */
 export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, constrainToWorkspace = true } = options;
+  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
 
   return {
     tool: {
@@ -625,7 +644,7 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
       const { path: dirPath = "." } = args as { path?: string };
 
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(dirPath, basePath, "list", constrainToWorkspace);
+        const resolvedPath = await resolveWorkspaceConstrainedPath(dirPath, basePath, "list", constrainToWorkspace, allowedWorkspaces);
 
         const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
         const lines = entries.map((entry) => {
@@ -649,6 +668,7 @@ export function buildToolGuardPrompt(
   tools: Tool[],
   guards: ResolvedToolGuards,
   workspacePath: string,
+  allowedWorkspaces: string[] = [],
 ): string {
   const lines = [
     "# Tooling",
@@ -660,7 +680,11 @@ export function buildToolGuardPrompt(
 
   if (guards.fs.workspaceOnly) {
     lines.push(`- File operations are restricted to the workspace: ${workspacePath}`);
-    lines.push("- Do not attempt to access files outside the workspace.");
+    if (allowedWorkspaces.length > 0) {
+      lines.push(`- Additional allowed directories: ${allowedWorkspaces.join(", ")}`);
+    } else {
+      lines.push("- Do not attempt to access files outside the workspace.");
+    }
   } else {
     lines.push("- File operations may access host paths outside the workspace.");
   }
@@ -702,9 +726,9 @@ export function createWorkspaceToolsWithGuards(
   const constrainToWorkspace = guards.fs.workspaceOnly;
 
   const tools = [
-    createReadFileTool({ basePath: fileBasePath, constrainToWorkspace }),
-    createWriteFileTool({ basePath: fileBasePath, constrainToWorkspace }),
-    createListDirTool({ basePath: fileBasePath, constrainToWorkspace }),
+    createReadFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
+    createWriteFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
+    createListDirTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createTimeTool(),
   ];
 
