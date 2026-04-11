@@ -12,6 +12,7 @@ import {
   createShellTool,
   createReadFileTool,
   createWriteFileTool,
+  createEditFileTool,
   createListDirTool,
   createWorkspaceTools,
   createWorkspaceToolsWithGuards,
@@ -342,6 +343,124 @@ describe("Built-in tools", () => {
     });
   });
 
+  describe("createEditFileTool", () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "edit-test-"));
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it("replaces matching text", async () => {
+      const testFile = path.join(tempDir, "test.txt");
+      await fs.writeFile(testFile, "hello world");
+
+      const { handler } = createEditFileTool({ basePath: tempDir });
+      const result = await handler({ path: "test.txt", old_text: "hello", new_text: "goodbye" });
+
+      const parsed = JSON.parse(result);
+      expect(parsed).toEqual({ success: true, matches: 1 });
+      const content = await fs.readFile(testFile, "utf-8");
+      expect(content).toBe("goodbye world");
+    });
+
+    it("returns error for missing file", async () => {
+      const { handler } = createEditFileTool({ basePath: tempDir });
+      const result = await handler({ path: "nonexistent.txt", old_text: "hello", new_text: "goodbye" });
+
+      expect(result).toContain("[error]");
+      expect(result).toContain("not found");
+    });
+
+    it("returns error when old_text is not found", async () => {
+      const testFile = path.join(tempDir, "test.txt");
+      await fs.writeFile(testFile, "hello world");
+
+      const { handler } = createEditFileTool({ basePath: tempDir });
+      const result = await handler({ path: "test.txt", old_text: "missing", new_text: "replaced" });
+
+      expect(result).toContain("[error]");
+      expect(result).toContain("old_text not found");
+    });
+
+    it("returns error when old_text is found multiple times without expected_count", async () => {
+      const testFile = path.join(tempDir, "test.txt");
+      await fs.writeFile(testFile, "aaa bbb aaa");
+
+      const { handler } = createEditFileTool({ basePath: tempDir });
+      const result = await handler({ path: "test.txt", old_text: "aaa", new_text: "ccc" });
+
+      expect(result).toContain("[error]");
+      expect(result).toContain("2 times");
+    });
+
+    it("replaces multiple matches when expected_count matches", async () => {
+      const testFile = path.join(tempDir, "test.txt");
+      await fs.writeFile(testFile, "aaa bbb aaa");
+
+      const { handler } = createEditFileTool({ basePath: tempDir });
+      const result = await handler({ path: "test.txt", old_text: "aaa", new_text: "ccc", expected_count: 2 });
+
+      const parsed = JSON.parse(result);
+      expect(parsed).toEqual({ success: true, matches: 2 });
+      const content = await fs.readFile(testFile, "utf-8");
+      expect(content).toBe("ccc bbb ccc");
+    });
+
+    it("returns error when expected_count does not match actual count", async () => {
+      const testFile = path.join(tempDir, "test.txt");
+      await fs.writeFile(testFile, "aaa bbb aaa");
+
+      const { handler } = createEditFileTool({ basePath: tempDir });
+      const result = await handler({ path: "test.txt", old_text: "aaa", new_text: "ccc", expected_count: 3 });
+
+      expect(result).toContain("[error]");
+      expect(result).toContain("Expected 3 matches but found 2");
+    });
+
+    it("returns error when old_text is empty", async () => {
+      const testFile = path.join(tempDir, "test.txt");
+      await fs.writeFile(testFile, "hello world");
+
+      const { handler } = createEditFileTool({ basePath: tempDir });
+      const result = await handler({ path: "test.txt", old_text: "", new_text: "replaced" });
+
+      expect(result).toContain("[error]");
+      expect(result).toContain("must not be empty");
+    });
+
+    it("returns success when old_text equals new_text", async () => {
+      const testFile = path.join(tempDir, "test.txt");
+      await fs.writeFile(testFile, "hello world");
+
+      const { handler } = createEditFileTool({ basePath: tempDir });
+      const result = await handler({ path: "test.txt", old_text: "hello", new_text: "hello" });
+
+      const parsed = JSON.parse(result);
+      expect(parsed).toEqual({ success: true, matches: 1 });
+      const content = await fs.readFile(testFile, "utf-8");
+      expect(content).toBe("hello world");
+    });
+
+    it("rejects edits that escape the workspace", async () => {
+      const outsideFile = path.join(os.tmpdir(), `outside-edit-${Date.now()}.txt`);
+      await fs.writeFile(outsideFile, "secret data");
+
+      try {
+        const { handler } = createEditFileTool({ basePath: tempDir });
+        const result = await handler({ path: outsideFile, old_text: "secret", new_text: "public" });
+
+        expect(result).toContain("[error]");
+        expect(result).toContain("Path escapes workspace");
+      } finally {
+        await fs.rm(outsideFile, { force: true });
+      }
+    });
+  });
+
   describe("createListDirTool", () => {
     let tempDir: string;
 
@@ -389,6 +508,7 @@ describe("Built-in tools", () => {
       const names = tools.map((t) => t.tool.name);
       expect(names).toContain("read_file");
       expect(names).toContain("write_file");
+      expect(names).toContain("edit");
       expect(names).toContain("list_dir");
       expect(names).toContain("get_current_time");
       expect(names).not.toContain("shell");

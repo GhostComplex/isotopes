@@ -590,6 +590,87 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
     },
   };
 }
+/**
+ * Create a file edit tool (search & replace).
+ */
+export function createEditFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
+  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
+  return {
+    tool: {
+      name: "edit",
+      description:
+        "Edit a file by replacing exact text matches. Safer than rewriting the entire file — only the matched portions are modified. By default old_text must appear exactly once; use expected_count to allow replacing a specific number of occurrences.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path to the file to edit (relative to workspace or absolute)",
+          },
+          old_text: {
+            type: "string",
+            description: "Exact text to search for in the file",
+          },
+          new_text: {
+            type: "string",
+            description: "Replacement text",
+          },
+          expected_count: {
+            type: "number",
+            description: "Expected number of matches. If provided, the actual match count must equal this value or the edit is rejected. If omitted, old_text must appear exactly once.",
+          },
+        },
+        required: ["path", "old_text", "new_text"],
+      },
+    },
+    handler: async (args) => {
+      const { path: filePath, old_text, new_text, expected_count } = args as {
+        path: string;
+        old_text: string;
+        new_text: string;
+        expected_count?: number;
+      };
+      try {
+        if (!old_text) {
+          return "[error] old_text must not be empty";
+        }
+        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace, allowedWorkspaces);
+        const content = await fs.readFile(resolvedPath, "utf-8");
+        // Count occurrences
+        let matches = 0;
+        let searchFrom = 0;
+        while (true) {
+          const idx = content.indexOf(old_text, searchFrom);
+          if (idx === -1) break;
+          matches++;
+          searchFrom = idx + old_text.length;
+        }
+        if (matches === 0) {
+          return `[error] old_text not found in ${filePath}`;
+        }
+        if (expected_count !== undefined) {
+          if (matches !== expected_count) {
+            return `[error] Expected ${expected_count} matches but found ${matches} in ${filePath}`;
+          }
+        } else if (matches > 1) {
+          return `[error] old_text found ${matches} times in ${filePath} — provide expected_count to replace multiple occurrences, or be more specific`;
+        }
+        if (old_text === new_text) {
+          return JSON.stringify({ success: true, matches });
+        }
+        const updated = content.split(old_text).join(new_text);
+        await fs.writeFile(resolvedPath, updated, "utf-8");
+        return JSON.stringify({ success: true, matches });
+      } catch (error) {
+        const err = error as { code?: string; message?: string };
+        if (err.code === "ENOENT") {
+          return `[error] File not found: ${filePath}`;
+        }
+        return `[error] ${err.message || String(error)}`;
+      }
+    },
+  };
+}
 export function buildToolGuardPrompt(
   tools: Tool[],
   guards: ResolvedToolGuards,
@@ -678,6 +759,7 @@ export function createWorkspaceToolsWithGuards(
   const tools = [
     createReadFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createWriteFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
+    createEditFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createListDirTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createTimeTool(),
   ];
