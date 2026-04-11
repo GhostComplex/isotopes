@@ -46,6 +46,8 @@ import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
 import { DaemonProcess } from "./daemon/process.js";
 import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
+import { ApiServer } from "./api/server.js";
+import { CronScheduler } from "./automation/cron-job.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -444,6 +446,20 @@ async function main() {
     logger.info("Discord transport started");
   }
 
+  // Start API server (dashboard + REST API)
+  const acpConfigResolved = resolveAcpConfig(config.acp);
+  const sessionManager = new AcpSessionManager(
+    acpConfigResolved ?? { enabled: false, backend: "acpx", defaultAgent: config.agents[0]?.id ?? "default" },
+  );
+  const cronScheduler = new CronScheduler();
+  const apiServer = new ApiServer(
+    { port: 2712 },
+    sessionManager,
+    cronScheduler,
+  );
+  await apiServer.start();
+  logger.info("Dashboard available at http://127.0.0.1:2712/dashboard");
+
   // Keep process alive
   logger.info("Running... Press Ctrl+C to stop");
 
@@ -451,12 +467,14 @@ async function main() {
   process.on("SIGINT", async () => {
     logger.info("Shutting down...");
     hotReload.stop();
+    await apiServer.stop();
     process.exit(0);
   });
 
   process.on("SIGTERM", async () => {
     logger.info("Shutting down...");
     hotReload.stop();
+    await apiServer.stop();
     process.exit(0);
   });
 }

@@ -15,6 +15,7 @@ import {
   type ApiRequest,
 } from "./middleware.js";
 import { matchRoute, type RouteDeps } from "./routes.js";
+import { serveDashboard } from "./static.js";
 
 const log = createLogger("api:server");
 
@@ -86,6 +87,11 @@ export class ApiServer {
       const bodyError = await parseJsonBody(req);
       if (bodyError) {
         sendError(res, 400, bodyError);
+        return;
+      }
+
+      // Static dashboard files (before API route matching)
+      if (await serveDashboard(req, res)) {
         return;
       }
 
