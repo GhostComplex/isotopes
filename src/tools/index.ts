@@ -80,3 +80,12 @@ export {
   createSessionTools,
 } from "./sessions.js";
 export type { SessionsToolContext } from "./sessions.js";
+
+export {
+  ProcessRegistry,
+  createExecTool,
+  createProcessListTool,
+  createProcessKillTool,
+  createExecTools,
+} from "./exec.js";
+export type { ExecToolOptions, ProcessInfo } from "./exec.js";
