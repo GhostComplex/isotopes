@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   createSessionsSpawnTool,
   createSessionsAnnounceTool,
+  createSessionsSendTool,
   createSessionTools,
   type SessionsToolContext,
 } from "./sessions.js";
@@ -202,13 +203,178 @@ describe("sessions_announce", () => {
 });
 
 describe("createSessionTools", () => {
-  it("returns both tools", () => {
+  it("returns all three tools", () => {
     const ctx = createTestContext();
     const tools = createSessionTools(ctx);
     const names = tools.map((t) => t.tool.name);
 
     expect(names).toContain("sessions_spawn");
     expect(names).toContain("sessions_announce");
-    expect(tools).toHaveLength(2);
+    expect(names).toContain("sessions_send");
+    expect(tools).toHaveLength(3);
+  });
+});
+
+describe("sessions_send", () => {
+  let ctx: SessionsToolContext;
+
+  beforeEach(() => {
+    ctx = createTestContext();
+  });
+
+  it("returns tool with correct schema", () => {
+    const { tool } = createSessionsSendTool(ctx);
+    expect(tool.name).toBe("sessions_send");
+    expect(tool.parameters.required).toContain("to_agent_id");
+    expect(tool.parameters.required).toContain("content");
+  });
+
+  it("sends message to agent successfully", async () => {
+    const received: unknown[] = [];
+    ctx.messageBus.subscribe("agent-b", (msg) => {
+      received.push(msg);
+    });
+
+    const { handler } = createSessionsSendTool(ctx);
+    const result = JSON.parse(
+      await handler({ to_agent_id: "agent-b", content: "hello direct" }),
+    );
+
+    expect(result.message_id).toBeDefined();
+    expect(result.delivered).toBe(true);
+    expect(received).toHaveLength(1);
+  });
+
+  it("sends message to specific session", async () => {
+    const session = ctx.sessionManager.createSession("agent-b");
+    const received: unknown[] = [];
+    ctx.messageBus.subscribeSession(session.id, (msg) => {
+      received.push(msg);
+    });
+
+    const { handler } = createSessionsSendTool(ctx);
+    const result = JSON.parse(
+      await handler({
+        to_agent_id: "agent-b",
+        to_session_id: session.id,
+        content: "hello session",
+      }),
+    );
+
+    expect(result.delivered).toBe(true);
+    expect(received).toHaveLength(1);
+  });
+
+  it("returns reply when expect_reply receives correlated response", async () => {
+    // Subscribe to agent-b and auto-reply with correlation_id
+    ctx.messageBus.subscribe("agent-b", (msg) => {
+      ctx.messageBus.send({
+        fromAgentId: "agent-b",
+        toAgentId: msg.fromAgentId,
+        content: "reply content",
+        metadata: { correlation_id: msg.id },
+      });
+    });
+
+    const { handler } = createSessionsSendTool(ctx);
+    const result = JSON.parse(
+      await handler({
+        to_agent_id: "agent-b",
+        content: "need a reply",
+        expect_reply: true,
+      }),
+    );
+
+    expect(result.message_id).toBeDefined();
+    expect(result.delivered).toBe(true);
+    expect(result.reply).toBe("reply content");
+    expect(result.reply_metadata).toBeDefined();
+    expect(result.reply_metadata.correlation_id).toBe(result.message_id);
+  });
+
+  it("returns null reply on expect_reply timeout", async () => {
+    // Subscribe to agent-b but do NOT reply — will timeout
+    ctx.messageBus.subscribe("agent-b", () => {
+      // intentionally no reply
+    });
+
+    const { handler } = createSessionsSendTool(ctx);
+
+    const start = Date.now();
+    const result = JSON.parse(
+      await handler({
+        to_agent_id: "agent-b",
+        content: "waiting for reply",
+        expect_reply: true,
+      }),
+    );
+    const elapsed = Date.now() - start;
+
+    expect(result.delivered).toBe(true);
+    expect(result.reply).toBeNull();
+    expect(result.reply_metadata).toBeNull();
+    // Should have waited for the timeout (30s)
+    expect(elapsed).toBeGreaterThanOrEqual(29_000);
+  }, 35_000);
+
+  it("returns error on self-send with expect_reply", async () => {
+    const { handler } = createSessionsSendTool(ctx);
+    const result = JSON.parse(
+      await handler({
+        to_agent_id: "agent-a",
+        content: "talking to myself",
+        expect_reply: true,
+      }),
+    );
+
+    expect(result.error).toContain("deadlock");
+  });
+
+  it("allows self-send without expect_reply", async () => {
+    const received: unknown[] = [];
+    ctx.messageBus.subscribe("agent-a", (msg) => {
+      received.push(msg);
+    });
+
+    const { handler } = createSessionsSendTool(ctx);
+    const result = JSON.parse(
+      await handler({ to_agent_id: "agent-a", content: "self note" }),
+    );
+
+    expect(result.message_id).toBeDefined();
+    expect(result.delivered).toBe(true);
+    expect(received).toHaveLength(1);
+  });
+
+  it("rejects empty content", async () => {
+    const { handler } = createSessionsSendTool(ctx);
+    const result = JSON.parse(
+      await handler({ to_agent_id: "agent-b", content: "" }),
+    );
+
+    expect(result.error).toContain("must not be empty");
+  });
+
+  it("rejects whitespace-only content", async () => {
+    const { handler } = createSessionsSendTool(ctx);
+    const result = JSON.parse(
+      await handler({ to_agent_id: "agent-b", content: "   " }),
+    );
+
+    expect(result.error).toContain("must not be empty");
+  });
+
+  it("queues message when no handler is subscribed", async () => {
+    const { handler } = createSessionsSendTool(ctx);
+    const result = JSON.parse(
+      await handler({ to_agent_id: "agent-b", content: "hello offline" }),
+    );
+
+    expect(result.message_id).toBeDefined();
+    expect(result.delivered).toBe(false);
+
+    const pending = ctx.messageBus.getPending("agent-b");
+    expect(pending).toHaveLength(1);
+    expect(pending[0].content).toBe("hello offline");
   });
 });
