@@ -30,6 +30,7 @@ import { createSelfIterationTools } from "./tools/self-iteration.js";
 import { createIterateCodebaseTool } from "./tools/iterate-codebase.js";
 import { createReplyReactTools, LazyTransportContext } from "./tools/reply-react.js";
 import { createSessionTools } from "./tools/sessions.js";
+import { createExecTools, ProcessRegistry } from "./tools/exec.js";
 import {
   getConfigPath,
   getIsotopesHome,
@@ -296,6 +297,7 @@ async function main() {
   const agentMessageBus = new AgentMessageBus(acpSessionManager);
   const startedAt = new Date();
   const modelOverrides = new Map<string, string>();
+  const processRegistry = new ProcessRegistry();
 
   // Create agents with workspace tools
   const agentWorkspaces = new Map<string, string>();
@@ -395,6 +397,13 @@ async function main() {
       modelOverrides,
     });
     for (const { tool, handler } of sessionTools) {
+      toolRegistry.register(tool, handler);
+    }
+
+    // Register exec/process tools (shared registry across agents)
+    const execTools = createExecTools({ cwd: workspacePath, registry: processRegistry });
+    const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
+    for (const { tool, handler } of filteredExecTools) {
       toolRegistry.register(tool, handler);
     }
 
