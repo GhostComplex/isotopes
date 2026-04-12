@@ -5,6 +5,7 @@
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { VERSION } from "./index.js";
+import type { Message } from "./core/types.js";
 import {
   loadConfig,
   toAgentConfig,
@@ -99,12 +100,14 @@ const args = process.argv.slice(2);
 const subcommand = args[0] && !args[0].startsWith("-") ? args[0] : undefined;
 const subArgs = subcommand ? args.slice(1) : args;
 
-const { values } = parseArgs({
+const { values, positionals } = parseArgs({
   args: subArgs,
   options: {
     help: { type: "boolean", short: "h" },
     version: { type: "boolean", short: "v" },
     config: { type: "string", short: "c" },
+    agent: { type: "string" },
+    json: { type: "boolean" },
   },
   allowPositionals: true,
 });
@@ -124,6 +127,9 @@ Usage:
   isotopes restart [--config path]   Restart the daemon
   isotopes reload [agentId]          Reload workspace (hot-reload)
 
+  isotopes chat "prompt" [--agent id] [--json]
+                                     One-shot chat with an agent
+
   isotopes service install           Install as system service
   isotopes service uninstall         Remove system service
   isotopes service enable            Enable service (auto-start)
@@ -133,6 +139,8 @@ Options:
   -h, --help       Show this help
   -v, --version    Show version
   -c, --config     Path to config file
+  --agent          Agent ID for chat command
+  --json           Output chat response as JSON
 
 Config: ~/.isotopes/isotopes.yaml
 
@@ -240,6 +248,91 @@ async function handleServiceCommand(): Promise<void> {
           `Usage: isotopes service install|uninstall|enable|disable`,
       );
       process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Chat command — one-shot chat with an agent
+// ---------------------------------------------------------------------------
+
+async function handleChatCommand(): Promise<void> {
+  const prompt = positionals[0];
+
+  if (!prompt) {
+    console.error("Usage: isotopes chat \"your prompt here\" [--agent id] [--json]");
+    process.exit(1);
+  }
+
+  // Load config
+  const configPath = values.config ?? getConfigPath();
+  const config = await loadConfig(configPath);
+
+  if (config.agents.length === 0) {
+    console.error("No agents configured");
+    process.exit(1);
+  }
+
+  // Determine which agent to use
+  const agentId = values.agent ?? config.agents[0]?.id;
+  const agentFile = config.agents.find((a) => a.id === agentId);
+
+  if (!agentFile) {
+    console.error(`Agent not found: ${agentId}`);
+    console.error(`Available agents: ${config.agents.map((a) => a.id).join(", ")}`);
+    process.exit(1);
+  }
+
+  // Convert to agent config and load workspace
+  const agentConfig = toAgentConfig(agentFile, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
+
+  // Resolve workspace path
+  let workspacePath: string;
+  if (agentFile.workspace) {
+    const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
+    workspacePath = await ensureExplicitWorkspaceDir(resolved);
+  } else {
+    workspacePath = await ensureWorkspaceDir(agentFile.id);
+  }
+
+  await ensureWorkspaceStructure(workspacePath);
+  const workspaceContext = await loadWorkspaceContext(workspacePath);
+
+  // Build system prompt (no extra options needed for CLI chat)
+  const agentSystemPrompt = buildSystemPrompt(agentConfig.systemPrompt, workspaceContext);
+
+  // Create agent via PiMonoCore
+  const core = new PiMonoCore();
+  const agentManager = new DefaultAgentManager(core);
+
+  const agent = await agentManager.create({
+    ...agentConfig,
+    systemPrompt: agentSystemPrompt,
+  });
+
+  // Stream the response
+  let responseText = "";
+  const userMessage: Message = {
+    role: "user",
+    content: [{ type: "text", text: prompt }],
+  };
+  const events = agent.prompt([userMessage]);
+
+  for await (const event of events) {
+    if (event.type === "text_delta") {
+      if (!values.json) {
+        process.stdout.write(event.text);
+      }
+      responseText += event.text;
+    }
+  }
+
+  if (values.json) {
+    console.log(JSON.stringify({ agent: agentId, prompt, response: responseText }));
+  } else {
+    // Ensure newline at end
+    if (!responseText.endsWith("\n")) {
+      console.log();
+    }
   }
 }
 
@@ -705,6 +798,10 @@ async function run(): Promise<void> {
 
     case "service":
       await handleServiceCommand();
+      break;
+
+    case "chat":
+      await handleChatCommand();
       break;
 
     case undefined:
