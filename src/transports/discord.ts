@@ -175,6 +175,13 @@ export interface DiscordTransportConfig {
   usageTracker?: UsageTracker;
   /** Discord user IDs allowed to execute slash commands */
   adminUsers?: string[];
+  /** Thread control configuration — whether to respond/observe in threads */
+  threads?: {
+    /** Whether to respond to messages in threads. Default: true */
+    respond?: boolean;
+    /** Whether to include thread messages in channel history context. Default: true */
+    observe?: boolean;
+  };
 }
 
 /**
@@ -299,10 +306,44 @@ export class DiscordTransport implements Transport {
       return;
     }
 
+    // 2.5. Thread control — skip thread messages based on threads.respond/observe config
+    const isThread = msg.channel.isThread();
+    const threadsRespond = this.config.threads?.respond ?? true;
+    const threadsObserve = this.config.threads?.observe ?? true;
+
+    if (isThread && !threadsRespond && !threadsObserve) {
+      // Both disabled — completely ignore thread messages
+      log.debug(`Thread message ignored (threads.respond=false, threads.observe=false)`);
+      return;
+    }
+
     // 3. Should-respond check — record to channel history if not responding
     const respond = this.shouldRespond(msg);
+
+    // Thread-specific control: if threads.respond=false, don't respond in threads
+    // but still may observe (record to history) if threads.observe=true
+    if (isThread && !threadsRespond) {
+      // threads.respond=false — don't respond, but may observe
+      if (threadsObserve && msg.guild && this.config.context?.channelHistory !== false) {
+        const content = this.extractContent(msg);
+        if (content.trim()) {
+          this.channelHistory.append(msg.channelId, {
+            sender: msg.author.username,
+            body: content,
+            timestamp: msg.createdTimestamp,
+            messageId: msg.id,
+          });
+        }
+      }
+      log.debug(`Thread message not responded (threads.respond=false, observe=${threadsObserve})`);
+      return;
+    }
+
     if (!respond) {
-      if (msg.guild && this.config.context?.channelHistory !== false) {
+      // Not a thread case, or threads.respond=true but shouldRespond=false
+      // Only observe if threads.observe allows (for threads) or standard observe for non-threads
+      const shouldObserve = isThread ? threadsObserve : true;
+      if (shouldObserve && msg.guild && this.config.context?.channelHistory !== false) {
         const content = this.extractContent(msg);
         if (content.trim()) {
           this.channelHistory.append(msg.channelId, {

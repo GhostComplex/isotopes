@@ -12,6 +12,7 @@ const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 type MockChannel = {
   sendTyping: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
+  isThread: ReturnType<typeof vi.fn>;
 };
 
 type MockIncomingMessage = {
@@ -140,6 +141,7 @@ describe("DiscordTransport", () => {
       const channel: MockChannel = {
         sendTyping: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue({}),
+        isThread: vi.fn().mockReturnValue(false),
       };
 
       await (
@@ -189,6 +191,7 @@ describe("DiscordTransport", () => {
       const channel: MockChannel = {
         sendTyping: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+        isThread: vi.fn().mockReturnValue(false),
       };
 
       const msg: MockIncomingMessage = {
@@ -226,6 +229,7 @@ describe("DiscordTransport", () => {
       return {
         sendTyping: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+        isThread: vi.fn().mockReturnValue(false),
       };
     }
 
@@ -573,6 +577,7 @@ describe("DiscordTransport", () => {
       return {
         sendTyping: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+        isThread: vi.fn().mockReturnValue(false),
       };
     }
 
@@ -748,6 +753,7 @@ describe("DiscordTransport", () => {
       return {
         sendTyping: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+        isThread: vi.fn().mockReturnValue(false),
       };
     }
 
@@ -895,6 +901,114 @@ describe("DiscordTransport", () => {
       // With historyTurns=2, only the last 2 user turns should be kept
       const userMessages = promptInput.filter(m => m.role === "user");
       expect(userMessages.length).toBeLessThanOrEqual(2);
+    });
+  });
+
+  describe("thread control", () => {
+    function makeChannel(isThread = false): MockChannel {
+      return {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+        isThread: vi.fn().mockReturnValue(isThread),
+      };
+    }
+
+    function makeMsg(overrides: Partial<MockIncomingMessage & { channel: MockChannel }> = {}): MockIncomingMessage {
+      return {
+        author: { bot: false, username: "tester", id: "user-1" },
+        content: "<@bot-123> hello",
+        createdTimestamp: Date.now(),
+        guild: { id: "guild-1" },
+        channelId: "channel-1",
+        channel: makeChannel(false),
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        id: `msg-${Date.now()}`,
+        ...overrides,
+      };
+    }
+
+    it("responds to thread messages by default (threads.respond undefined)", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = createMockSessionStore();
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+
+      await localTransport.start();
+      const channel = makeChannel(true); // is a thread
+      const msg = makeMsg({ channel });
+
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Should respond (send was called)
+      expect(channel.send).toHaveBeenCalled();
+    });
+
+    it("does NOT respond in threads when threads.respond=false", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = createMockSessionStore();
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+        threads: { respond: false },
+      });
+
+      await localTransport.start();
+      const channel = makeChannel(true); // is a thread
+      const msg = makeMsg({ channel });
+
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Should NOT respond
+      expect(channel.send).not.toHaveBeenCalled();
+    });
+
+    it("still responds in regular channels when threads.respond=false", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = createMockSessionStore();
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+        threads: { respond: false },
+      });
+
+      await localTransport.start();
+      const channel = makeChannel(false); // NOT a thread
+      const msg = makeMsg({ channel });
+
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Should respond in regular channel
+      expect(channel.send).toHaveBeenCalled();
+    });
+
+    it("ignores thread messages completely when both respond=false and observe=false", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = createMockSessionStore();
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+        threads: { respond: false, observe: false },
+      });
+
+      await localTransport.start();
+      const channel = makeChannel(true); // is a thread
+      const msg = makeMsg({ channel });
+
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Should NOT respond and NOT add to session store
+      expect(channel.send).not.toHaveBeenCalled();
+      expect(localSessionStore.addMessage).not.toHaveBeenCalled();
     });
   });
 });
