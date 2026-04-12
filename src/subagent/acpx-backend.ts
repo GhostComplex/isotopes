@@ -390,14 +390,20 @@ export class AcpxBackend {
         break;
     }
 
-    const postAgentArgs: string[] = ["exec", "--file", "-"];
-
+    // --model, --max-turns, --timeout are global flags — must go BEFORE agent subcommand
     if (options.model) {
-      postAgentArgs.push("--model", options.model);
+      preAgentArgs.push("--model", options.model);
     }
 
-    // Note: acpx exec does not support --max-turns (unlike claude -p)
-    // maxTurns is only used in buildLegacyArgs() for fallback
+    if (options.maxTurns !== undefined) {
+      preAgentArgs.push("--max-turns", String(options.maxTurns));
+    }
+
+    if (options.timeout !== undefined) {
+      preAgentArgs.push("--timeout", String(options.timeout));
+    }
+
+    const postAgentArgs: string[] = ["exec", "--file", "-"];
 
     return { preAgentArgs, postAgentArgs };
   }

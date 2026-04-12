@@ -469,15 +469,24 @@ describe("buildAcpxArgs", () => {
   it("includes model flag when specified", () => {
     const backend = new AcpxBackend({ permissionMode: "skip" });
     const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp", model: "claude-opus" });
-    expect(result.postAgentArgs).toContain("--model");
-    expect(result.postAgentArgs).toContain("claude-opus");
+    expect(result.preAgentArgs).toContain("--model");
+    expect(result.preAgentArgs).toContain("claude-opus");
+    expect(result.postAgentArgs).toEqual(["exec", "--file", "-"]);
   });
 
   it("includes max-turns flag when specified", () => {
     const backend = new AcpxBackend({ permissionMode: "skip" });
     const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp", maxTurns: 10 });
-    expect(result.postAgentArgs).toContain("--max-turns");
-    expect(result.postAgentArgs).toContain("10");
+    expect(result.preAgentArgs).toContain("--max-turns");
+    expect(result.preAgentArgs).toContain("10");
+    expect(result.postAgentArgs).toEqual(["exec", "--file", "-"]);
+  });
+
+  it("includes timeout flag when specified", () => {
+    const backend = new AcpxBackend({ permissionMode: "skip" });
+    const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp", timeout: 300 });
+    expect(result.preAgentArgs).toContain("--timeout");
+    expect(result.preAgentArgs).toContain("300");
   });
 
   it("skips --approve-all for non-skip permission modes", () => {
