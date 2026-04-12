@@ -77,7 +77,17 @@ function formatTime(isoString) {
 }
 
 function sessionDisplayName(session) {
-  if (session.key) return session.key;
+  if (session.key) {
+    // Discord keys: "discord:{botId}:channel:{channelId}:{agentId}"
+    const discordMatch = session.key.match(/^discord:\d+:channel:(\d+):(.+)$/);
+    if (discordMatch) {
+      const channelId = discordMatch[1];
+      return `#${channelId.slice(-6)} (${discordMatch[2]})`;
+    }
+    // Truncate long keys
+    if (session.key.length > 30) return session.key.slice(0, 27) + "…";
+    return session.key;
+  }
   if (session.agentId) return session.agentId;
   return session.id.slice(0, 8);
 }
@@ -124,6 +134,7 @@ function renderSessionList() {
     const name = document.createElement("span");
     name.className = "session-name";
     name.textContent = sessionDisplayName(session);
+    if (session.key) name.title = session.key;
 
     const badge = document.createElement("span");
     badge.className = `source-badge source-badge-${session.source}`;
