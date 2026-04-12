@@ -8,6 +8,12 @@
   "bin": {
     "isotopes": "dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "web/dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

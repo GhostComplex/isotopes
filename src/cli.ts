@@ -3,6 +3,8 @@
 // Start agents from configuration file, with daemon lifecycle commands.
 
 import { parseArgs } from "node:util";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { VERSION } from "./index.js";
 import {
@@ -118,6 +120,7 @@ Isotopes v${VERSION}
 
 Usage:
   isotopes                           Run in foreground (default)
+  isotopes init                      Initialize config and workspace
   isotopes start [--config path]     Start as background daemon
   isotopes stop                      Stop the running daemon
   isotopes status                    Show daemon status
@@ -241,6 +244,117 @@ async function handleServiceCommand(): Promise<void> {
       );
       process.exit(1);
   }
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Init command — create initial config and workspace
+// ---------------------------------------------------------------------------
+
+async function handleInitCommand(): Promise<void> {
+  const home = process.env.ISOTOPES_HOME || path.join(os.homedir(), ".isotopes");
+  const configPath = path.join(home, "isotopes.yaml");
+  const workspacePath = path.join(home, "workspace");
+
+  // Check if config already exists
+  if (fs.existsSync(configPath)) {
+    console.log(`Config already exists at ${configPath}`);
+    console.log("To reinitialize, remove the existing config first.");
+    return;
+  }
+
+  // Create home directory
+  await fs.promises.mkdir(home, { recursive: true });
+
+  // Create workspace directory
+  await fs.promises.mkdir(workspacePath, { recursive: true });
+
+  // Create initial config
+  const configTemplate = `# Isotopes Configuration
+# https://github.com/GhostComplex/isotopes
+
+# Provider configuration (choose one)
+provider: anthropic  # or openai, google
+
+# API key (or set via environment variable)
+# ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY
+# apiKey: sk-...
+
+# Model to use
+model: claude-sonnet-4-20250514  # or gpt-4o, gemini-2.0-flash
+
+# Agent definitions
+agents:
+  - id: default
+    name: Assistant
+    # System prompt for the agent
+    # prompt: You are a helpful assistant.
+
+# Discord configuration (optional)
+# discord:
+#   token: your-bot-token
+#   clientId: your-client-id
+#   admins:
+#     - your-discord-user-id
+
+# Dashboard configuration (optional)
+# dashboard:
+#   enabled: true
+#   port: 3000
+
+# WebChat configuration (optional)
+# webchat:
+#   enabled: true
+#   port: 3001
+
+# Logging
+# logLevel: info  # debug, info, warn, error
+`;
+
+  await fs.promises.writeFile(configPath, configTemplate, "utf-8");
+
+  // Create workspace files
+  const soulMd = `# SOUL.md — Your Core
+
+You are an Isotopes agent — a lightweight, self-evolving AI.
+
+## Principles
+
+- Do the work, skip the theater
+- Develop a point of view
+- Prove yourself through results
+
+## Tone
+
+Be direct when efficiency matters, thorough when depth matters.
+`;
+
+  const identityMd = `# IDENTITY.md — Agent Identity
+
+- **Name**: (your name)
+- **Vibe**: (your personality)
+`;
+
+  const memoryMd = `# MEMORY.md — Accumulated Knowledge
+
+(Your memories will be recorded here)
+`;
+
+  await fs.promises.writeFile(path.join(workspacePath, "SOUL.md"), soulMd, "utf-8");
+  await fs.promises.writeFile(path.join(workspacePath, "IDENTITY.md"), identityMd, "utf-8");
+  await fs.promises.writeFile(path.join(workspacePath, "MEMORY.md"), memoryMd, "utf-8");
+
+  console.log(`Isotopes initialized at ${home}`);
+  console.log("");
+  console.log("Created:");
+  console.log(`  ${configPath}`);
+  console.log(`  ${workspacePath}/SOUL.md`);
+  console.log(`  ${workspacePath}/IDENTITY.md`);
+  console.log(`  ${workspacePath}/MEMORY.md`);
+  console.log("");
+  console.log("Next steps:");
+  console.log("  1. Edit the config file to add your API key");
+  console.log("  2. Run 'isotopes start' to begin");
 }
 
 // ---------------------------------------------------------------------------
@@ -705,6 +819,10 @@ async function run(): Promise<void> {
 
     case "service":
       await handleServiceCommand();
+      break;
+
+    case "init":
+      await handleInitCommand();
       break;
 
     case undefined:
