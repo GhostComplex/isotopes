@@ -217,6 +217,38 @@ export function parseCronExpression(expr: string): CronSchedule {
 // Matching
 // ---------------------------------------------------------------------------
 
+/** Check if a field array represents a wildcard (all values in range). */
+function isWildcard(values: number[], spec: FieldSpec): boolean {
+  if (values.length !== spec.max - spec.min + 1) return false;
+  for (let i = spec.min; i <= spec.max; i++) {
+    if (!values.includes(i)) return false;
+  }
+  return true;
+}
+
+/**
+ * Check whether a given Date matches the day fields of a CronSchedule.
+ * Per POSIX cron standard:
+ * - If either day-of-month or day-of-week is *, use AND logic
+ * - If both are non-wildcard, use OR logic (fire on either match)
+ */
+function matchesDayFields(schedule: CronSchedule, date: Date): boolean {
+  const domSpec = FIELD_SPECS[2]; // day of month: 1-31
+  const dowSpec = FIELD_SPECS[4]; // day of week: 0-6
+
+  const domWildcard = isWildcard(schedule.dayOfMonth, domSpec);
+  const dowWildcard = isWildcard(schedule.dayOfWeek, dowSpec);
+
+  const domMatches = schedule.dayOfMonth.includes(date.getDate());
+  const dowMatches = schedule.dayOfWeek.includes(date.getDay());
+
+  // Per POSIX: if either field is *, use AND; if both are restricted, use OR
+  if (domWildcard || dowWildcard) {
+    return domMatches && dowMatches;
+  }
+  return domMatches || dowMatches;
+}
+
 /**
  * Check whether a given Date matches a CronSchedule.
  */
@@ -224,9 +256,8 @@ export function matchesCron(schedule: CronSchedule, date: Date): boolean {
   return (
     schedule.minute.includes(date.getMinutes()) &&
     schedule.hour.includes(date.getHours()) &&
-    schedule.dayOfMonth.includes(date.getDate()) &&
-    schedule.month.includes(date.getMonth() + 1) && // JS months are 0-based
-    schedule.dayOfWeek.includes(date.getDay())
+    matchesDayFields(schedule, date) &&
+    schedule.month.includes(date.getMonth() + 1) // JS months are 0-based
   );
 }
 
@@ -263,11 +294,8 @@ export function getNextRun(schedule: CronSchedule, from?: Date): Date {
       continue;
     }
 
-    // Check day of month AND day of week
-    if (
-      !schedule.dayOfMonth.includes(candidate.getDate()) ||
-      !schedule.dayOfWeek.includes(candidate.getDay())
-    ) {
+    // Check day fields using POSIX OR logic when both are non-wildcard
+    if (!matchesDayFields(schedule, candidate)) {
       // Advance to next day
       candidate.setDate(candidate.getDate() + 1);
       candidate.setHours(0, 0, 0, 0);

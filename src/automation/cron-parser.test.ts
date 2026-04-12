@@ -331,5 +331,60 @@ describe("cron-parser", () => {
       expect(next.getSeconds()).toBe(0);
       expect(next.getMilliseconds()).toBe(0);
     });
+
+    // POSIX OR logic tests
+    it("uses OR logic when both day-of-month and day-of-week are specified", () => {
+      // 15th of month OR Monday at 9 AM
+      const schedule = parseCronExpression("0 9 15 * 1");
+
+      // April 14, 2025 is a Monday (not 15th) — should match via day-of-week
+      const monday = new Date(2025, 3, 14, 9, 0, 0);
+      expect(matchesCron(schedule, monday)).toBe(true);
+
+      // April 15, 2025 is a Tuesday (not Monday) — should match via day-of-month
+      const fifteenth = new Date(2025, 3, 15, 9, 0, 0);
+      expect(matchesCron(schedule, fifteenth)).toBe(true);
+
+      // April 16, 2025 is a Wednesday (neither Monday nor 15th) — should NOT match
+      const wednesday = new Date(2025, 3, 16, 9, 0, 0);
+      expect(matchesCron(schedule, wednesday)).toBe(false);
+    });
+
+    it("uses AND logic when only day-of-month is specified (day-of-week is *)", () => {
+      // 15th of month, any day of week
+      const schedule = parseCronExpression("0 9 15 * *");
+
+      const fifteenth = new Date(2025, 3, 15, 9, 0, 0);
+      expect(matchesCron(schedule, fifteenth)).toBe(true);
+
+      const fourteenth = new Date(2025, 3, 14, 9, 0, 0);
+      expect(matchesCron(schedule, fourteenth)).toBe(false);
+    });
+
+    it("uses AND logic when only day-of-week is specified (day-of-month is *)", () => {
+      // Mondays only
+      const schedule = parseCronExpression("0 9 * * 1");
+
+      // April 14, 2025 is a Monday
+      const monday = new Date(2025, 3, 14, 9, 0, 0);
+      expect(matchesCron(schedule, monday)).toBe(true);
+
+      // April 15, 2025 is a Tuesday
+      const tuesday = new Date(2025, 3, 15, 9, 0, 0);
+      expect(matchesCron(schedule, tuesday)).toBe(false);
+    });
+
+    it("getNextRun respects OR logic for non-wildcard day fields", () => {
+      // 15th of month OR Monday at 9 AM
+      const schedule = parseCronExpression("0 9 15 * 1");
+      // Start from April 12, 2025 (Saturday)
+      const from = new Date(2025, 3, 12, 10, 0, 0);
+
+      const next = getNextRun(schedule, from);
+
+      // Next match should be April 14 (Monday), not April 15 (Tuesday)
+      expect(next.getDate()).toBe(14);
+      expect(next.getDay()).toBe(1); // Monday
+    });
   });
 });
