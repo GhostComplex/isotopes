@@ -565,6 +565,181 @@ describe("DiscordTransport", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Slash command routing
+  // ---------------------------------------------------------------------------
+
+  describe("slash command routing", () => {
+    function makeChannel(): MockChannel {
+      return {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+      };
+    }
+
+    function makeMsg(overrides: Partial<MockIncomingMessage> = {}): MockIncomingMessage {
+      return {
+        author: { bot: false, username: "tester", id: "user-1" },
+        content: "<@bot-123> hello bot",
+        createdTimestamp: Date.now(),
+        guild: { id: "guild-1" },
+        channelId: "channel-1",
+        channel: makeChannel(),
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        thread: undefined,
+        id: `msg-${Date.now()}`,
+        ...overrides,
+      };
+    }
+
+    it("routes /status to command handler and sends response", async () => {
+      const transportWithAdmin = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        adminUsers: ["111111"],
+      });
+
+      const channel = makeChannel();
+      const msg = makeMsg({
+        content: "<@999999> /status",
+        author: { bot: false, username: "admin", id: "111111" },
+        channel,
+      });
+
+      await (transportWithAdmin as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Command response should be sent to the channel
+      expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("Agent Status"));
+
+      // Agent should NOT have been called — command was intercepted
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).not.toHaveBeenCalled();
+    });
+
+    it("routes /reload to command handler", async () => {
+      (agentManager.reloadWorkspace as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      const transportWithAdmin = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        adminUsers: ["111111"],
+      });
+
+      const channel = makeChannel();
+      const msg = makeMsg({
+        content: "<@999999> /reload",
+        author: { bot: false, username: "admin", id: "111111" },
+        channel,
+      });
+
+      await (transportWithAdmin as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      expect(agentManager.reloadWorkspace).toHaveBeenCalledWith("default");
+      expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("Workspace reloaded"));
+      expect(agentManager.get("default")!.prompt).not.toHaveBeenCalled();
+    });
+
+    it("routes /model to command handler", async () => {
+      (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
+        { id: "default", systemPrompt: "", provider: { type: "anthropic", model: "claude-sonnet-4" } },
+      ]);
+
+      const transportWithAdmin = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        adminUsers: ["111111"],
+      });
+
+      const channel = makeChannel();
+      const msg = makeMsg({
+        content: "<@999999> /model",
+        author: { bot: false, username: "admin", id: "111111" },
+        channel,
+      });
+
+      await (transportWithAdmin as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("Current model"));
+      expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("claude-sonnet-4"));
+      expect(agentManager.get("default")!.prompt).not.toHaveBeenCalled();
+    });
+
+    it("rejects non-admin users with authorization error", async () => {
+      const transportWithAdmin = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        adminUsers: ["111111"],
+      });
+
+      const channel = makeChannel();
+      const msg = makeMsg({
+        content: "<@999999> /status",
+        author: { bot: false, username: "normie", id: "222222" },
+        channel,
+      });
+
+      await (transportWithAdmin as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Should still send a response (the rejection message), not route to agent
+      expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("not authorized"));
+      expect(agentManager.get("default")!.prompt).not.toHaveBeenCalled();
+    });
+
+    it("passes non-command messages through to agent", async () => {
+      const transportWithAdmin = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        adminUsers: ["111111"],
+      });
+
+      const channel = makeChannel();
+      const msg = makeMsg({
+        content: "<@999999> hello world",
+        author: { bot: false, username: "admin", id: "111111" },
+        channel,
+      });
+
+      await (transportWithAdmin as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Non-command message should reach the agent
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).toHaveBeenCalled();
+    });
+
+    it("ignores unknown slash commands and passes them to agent", async () => {
+      const transportWithAdmin = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        adminUsers: ["111111"],
+      });
+
+      const channel = makeChannel();
+      const msg = makeMsg({
+        content: "<@999999> /unknown",
+        author: { bot: false, username: "admin", id: "111111" },
+        channel,
+      });
+
+      await (transportWithAdmin as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Unknown commands are not intercepted — isCommand returns false
+      const agent = agentManager.get("default")!;
+      expect(agent.prompt).toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Context management
   // ---------------------------------------------------------------------------
 
