@@ -68,6 +68,9 @@ export interface SpawnSubagentResult {
 /** Shared backend instance (lazy initialized) */
 let sharedBackend: AcpxBackend | undefined;
 
+/** Cache key for the shared backend (workspace roots joined by `:`) */
+let sharedBackendKey: string | undefined;
+
 /** Cached backend config */
 let backendConfig: SubagentBackendConfig = {};
 
@@ -81,6 +84,7 @@ export function initSubagentBackend(config: SubagentBackendConfig): void {
   backendConfig = config;
   // Clear existing backend so it gets recreated with new config
   sharedBackend = undefined;
+  sharedBackendKey = undefined;
   log.info("Subagent backend initialized", { 
     permissionMode: config.permissionMode ?? "allowlist",
     allowedTools: config.allowedTools,
@@ -90,12 +94,13 @@ export function initSubagentBackend(config: SubagentBackendConfig): void {
 function getBackend(allowedWorkspaces?: string[]): AcpxBackend {
   // Create new backend if workspaces changed or not initialized
   const key = allowedWorkspaces?.sort().join(":") ?? "";
-  if (!sharedBackend || sharedBackend.workspacesKey !== key) {
+  if (!sharedBackend || sharedBackendKey !== key) {
     sharedBackend = new AcpxBackend({
       allowedWorkspaceRoots: allowedWorkspaces,
       permissionMode: backendConfig.permissionMode,
       allowedTools: backendConfig.allowedTools,
     });
+    sharedBackendKey = key;
   }
   return sharedBackend;
 }
