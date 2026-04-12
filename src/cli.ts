@@ -844,6 +844,7 @@ async function main() {
       agentConfig.toolSettings,
       subagentEnabled,
       agentAllowedWorkspaces,
+      agentConfig.codingMode,
     );
 
     // Apply tool policy (allow/deny) before registration

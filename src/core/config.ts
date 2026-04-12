@@ -96,6 +96,13 @@ export interface AgentConfigFile {
   heartbeatInterval?: number;
   /** Custom heartbeat prompt (overrides the default). */
   heartbeatPrompt?: string;
+  /**
+   * Coding mode controls how the agent handles code modifications:
+   * - 'subagent': Force all code through spawn_subagent (removes write_file, edit)
+   * - 'direct': Agent can modify files directly
+   * - 'auto': Agent chooses (default)
+   */
+  codingMode?: "subagent" | "direct" | "auto";
 }
 
 /** Self-iteration configuration in config file */
@@ -752,6 +759,7 @@ export function toAgentConfig(
     sandbox,
     heartbeatInterval: agent.heartbeatInterval,
     heartbeatPrompt: agent.heartbeatPrompt,
+    codingMode: agent.codingMode,
   };
 }
 

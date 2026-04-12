@@ -846,11 +846,15 @@ export function applyToolPolicy(
 export function createWorkspaceTools(workspacePath: string): { tool: Tool; handler: ToolHandler }[] {
   return createWorkspaceToolsWithGuards(workspacePath);
 }
+/** Tools that modify files - excluded when codingMode is 'subagent' */
+export const FILE_WRITING_TOOLS = ["write_file", "edit"];
+
 export function createWorkspaceToolsWithGuards(
   workspacePath: string,
   settings?: AgentToolSettings,
   subagentEnabled = false,
   allowedWorkspaces: string[] = [],
+  codingMode: "subagent" | "direct" | "auto" = "auto",
 ): { tool: Tool; handler: ToolHandler }[] {
   const guards = resolveToolGuards(settings);
   // Always use workspacePath as base for relative path resolution.
@@ -860,7 +864,7 @@ export function createWorkspaceToolsWithGuards(
   // (e.g., another agent's workspace), causing identity contamination (#92).
   const fileBasePath = workspacePath;
   const constrainToWorkspace = guards.fs.workspaceOnly;
-  const tools = [
+  let tools = [
     createReadFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createWriteFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createEditFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
@@ -878,5 +882,11 @@ export function createWorkspaceToolsWithGuards(
     tools.push(createWebFetchTool());
     tools.push(createWebSearchTool());
   }
+
+  // Filter out file writing tools when codingMode is 'subagent'
+  if (codingMode === "subagent") {
+    tools = tools.filter((t) => !FILE_WRITING_TOOLS.includes(t.tool.name));
+  }
+
   return tools;
 }

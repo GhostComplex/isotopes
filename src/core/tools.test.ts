@@ -636,6 +636,48 @@ describe("Built-in tools", () => {
 
       expect(tools.map((entry) => entry.tool.name)).toContain("shell");
     });
+
+    it("excludes file writing tools when codingMode is 'subagent'", () => {
+      const tools = createWorkspaceToolsWithGuards(
+        "/tmp/workspace",
+        { cli: true },
+        true, // subagentEnabled
+        [], // allowedWorkspaces
+        "subagent",
+      );
+      const names = tools.map((entry) => entry.tool.name);
+
+      // Should exclude write_file and edit
+      expect(names).not.toContain("write_file");
+      expect(names).not.toContain("edit");
+
+      // Should still have spawn_subagent, shell, read_file
+      expect(names).toContain("spawn_subagent");
+      expect(names).toContain("shell");
+      expect(names).toContain("read_file");
+    });
+
+    it("includes file writing tools when codingMode is 'direct' or 'auto'", () => {
+      const directTools = createWorkspaceToolsWithGuards(
+        "/tmp/workspace",
+        { cli: true },
+        false,
+        [],
+        "direct",
+      );
+      const autoTools = createWorkspaceToolsWithGuards(
+        "/tmp/workspace",
+        { cli: true },
+        false,
+        [],
+        "auto",
+      );
+
+      expect(directTools.map((e) => e.tool.name)).toContain("write_file");
+      expect(directTools.map((e) => e.tool.name)).toContain("edit");
+      expect(autoTools.map((e) => e.tool.name)).toContain("write_file");
+      expect(autoTools.map((e) => e.tool.name)).toContain("edit");
+    });
   });
 
   describe("resolveToolGuards", () => {

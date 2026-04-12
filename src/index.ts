@@ -54,7 +54,7 @@ export { PiMonoCore } from "./core/pi-mono.js";
 export { DefaultAgentManager } from "./core/agent-manager.js";
 export type { AgentCreateOptions } from "./core/agent-manager.js";
 export { DefaultSessionStore } from "./core/session-store.js";
-export { ToolRegistry, createEchoTool, createTimeTool, createSubagentTool, createWorkspaceToolsWithGuards } from "./core/tools.js";
+export { ToolRegistry, createEchoTool, createTimeTool, createSubagentTool, createWorkspaceToolsWithGuards, FILE_WRITING_TOOLS } from "./core/tools.js";
 export type { ToolHandler, ToolEntry, SubagentToolOptions } from "./core/tools.js";
 
 // ---------------------------------------------------------------------------
