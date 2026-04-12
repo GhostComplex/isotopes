@@ -66,6 +66,10 @@ const INDEX_DEBOUNCE_MS = 1_000;
 export class AcpSessionPersistence {
   private indexDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private pendingIndexArgs: {
+    sessions: Map<string, AcpSession>;
+    threadIndex: Map<string, string>;
+  } | null = null;
 
   constructor(private config: AcpPersistenceConfig) {}
 
@@ -117,8 +121,10 @@ export class AcpSessionPersistence {
     if (this.indexDebounceTimer) {
       clearTimeout(this.indexDebounceTimer);
     }
+    this.pendingIndexArgs = { sessions, threadIndex };
     this.indexDebounceTimer = setTimeout(() => {
       this.indexDebounceTimer = null;
+      this.pendingIndexArgs = null;
       void this.persistIndex(sessions, threadIndex);
     }, INDEX_DEBOUNCE_MS);
   }
@@ -283,12 +289,18 @@ export class AcpSessionPersistence {
   // Teardown
   // -------------------------------------------------------------------------
 
-  /** Release all timers. */
+  /** Release all timers, flushing any pending index write. */
   destroy(): void {
     this.stopCleanupTimer();
     if (this.indexDebounceTimer) {
       clearTimeout(this.indexDebounceTimer);
       this.indexDebounceTimer = null;
+      // Flush pending index write synchronously before teardown
+      if (this.pendingIndexArgs) {
+        const { sessions, threadIndex } = this.pendingIndexArgs;
+        this.pendingIndexArgs = null;
+        void this.persistIndex(sessions, threadIndex);
+      }
     }
   }
 

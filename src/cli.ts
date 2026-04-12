@@ -182,14 +182,73 @@ async function handleDaemonCommand(): Promise<void> {
 
     case "status": {
       const s = await daemon.status();
-      if (s.running) {
+      const useJson = subArgs.includes("--json");
+
+      if (!s.running) {
+        if (useJson) {
+          console.log(JSON.stringify({ running: false }));
+        } else {
+          console.log("Isotopes daemon is not running");
+        }
+        break;
+      }
+
+      // Fetch extended status from REST API
+      let apiStatus: {
+        version?: string;
+        uptime?: number;
+        sessions?: number;
+        cronJobs?: number;
+        agents?: string[];
+      } = {};
+
+      try {
+        const port = process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
+        const res = await fetch(`http://127.0.0.1:${port}/api/status`);
+        if (res.ok) {
+          apiStatus = (await res.json()) as typeof apiStatus;
+        }
+      } catch {
+        // API not reachable — continue with daemon-only info
+      }
+
+      // Try to get agent list from config
+      let agents: string[] = [];
+      try {
+        const port = process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
+        const res = await fetch(`http://127.0.0.1:${port}/api/config`);
+        if (res.ok) {
+          const cfg = (await res.json()) as { agents?: { id: string }[] };
+          agents = cfg.agents?.map((a) => a.id) ?? [];
+        }
+      } catch {
+        // ignore
+      }
+
+      if (useJson) {
+        console.log(
+          JSON.stringify({
+            running: true,
+            pid: s.pid,
+            startedAt: s.startedAt?.toISOString(),
+            uptime: s.uptime,
+            configPath: s.configPath,
+            version: apiStatus.version,
+            sessions: apiStatus.sessions ?? 0,
+            cronJobs: apiStatus.cronJobs ?? 0,
+            agents,
+          })
+        );
+      } else {
         console.log(`Isotopes daemon is running`);
         console.log(`  PID:        ${s.pid}`);
+        if (apiStatus.version) console.log(`  Version:    ${apiStatus.version}`);
         if (s.startedAt) console.log(`  Started:    ${s.startedAt.toISOString()}`);
         if (s.uptime !== undefined) console.log(`  Uptime:     ${formatUptime(s.uptime)}`);
         if (s.configPath) console.log(`  Config:     ${s.configPath}`);
-      } else {
-        console.log("Isotopes daemon is not running");
+        if (agents.length > 0) console.log(`  Agents:     ${agents.join(", ")}`);
+        console.log(`  Sessions:   ${apiStatus.sessions ?? 0}`);
+        console.log(`  Cron jobs:  ${apiStatus.cronJobs ?? 0}`);
       }
       break;
     }
