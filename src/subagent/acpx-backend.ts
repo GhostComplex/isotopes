@@ -5,6 +5,15 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
+import { Readable, Writable } from "node:stream";
+import {
+  ClientSideConnection,
+  PROTOCOL_VERSION,
+  ndJsonStream,
+  type RequestPermissionRequest,
+  type RequestPermissionResponse,
+  type SessionNotification,
+} from "@agentclientprotocol/sdk";
 import { createLogger } from "../core/logger.js";
 import {
   ACPX_AGENTS,
@@ -466,14 +475,288 @@ export class AcpxBackend {
   }
 
   /**
+   * Handle permission request from ACP protocol.
+   * Auto-approves based on permission mode configuration.
+   */
+  private async resolvePermission(
+    params: RequestPermissionRequest,
+    options: AcpxSpawnOptions,
+  ): Promise<RequestPermissionResponse> {
+    const permissionMode = options.permissionMode ?? this.permissionMode;
+    const allowedTools = options.allowedTools ?? this.allowedTools;
+    const permOptions = params.options ?? [];
+
+    if (permOptions.length === 0) {
+      log.debug("Permission request has no options — cancelling");
+      return { outcome: { outcome: "cancelled" } };
+    }
+
+    // Helper to find option by kind
+    const findOption = (...kinds: string[]) => {
+      for (const kind of kinds) {
+        const match = permOptions.find((opt) => opt.kind === kind);
+        if (match) return match;
+      }
+      return undefined;
+    };
+
+    // Extract tool name from request
+    const toolName = params.toolCall?.title ?? "unknown";
+
+    switch (permissionMode) {
+      case "skip": {
+        // Auto-approve all requests
+        const allowOption = findOption("allow_once", "allow_always");
+        if (allowOption) {
+          log.debug(`Auto-approved (skip mode): ${toolName}`);
+          return { outcome: { outcome: "selected", optionId: allowOption.optionId } };
+        }
+        // Fallback to first option if no allow option found
+        log.debug(`Auto-approved (skip mode, fallback): ${toolName}`);
+        return { outcome: { outcome: "selected", optionId: permOptions[0].optionId } };
+      }
+
+      case "allowlist": {
+        // Check if tool is in allowed list
+        const isAllowed = allowedTools.some((allowed) => toolName.includes(allowed));
+        if (isAllowed) {
+          const allowOption = findOption("allow_once", "allow_always");
+          if (allowOption) {
+            log.debug(`Auto-approved (allowlist): ${toolName}`);
+            return { outcome: { outcome: "selected", optionId: allowOption.optionId } };
+          }
+        }
+        // Reject if not in allowlist
+        const rejectOption = findOption("reject_once", "reject_always");
+        if (rejectOption) {
+          log.debug(`Rejected (not in allowlist): ${toolName}`);
+          return { outcome: { outcome: "selected", optionId: rejectOption.optionId } };
+        }
+        log.debug(`Permission cancelled (no reject option): ${toolName}`);
+        return { outcome: { outcome: "cancelled" } };
+      }
+
+      case "default":
+      default: {
+        // Default mode — reject (no interactive prompts in subagents)
+        const rejectOption = findOption("reject_once", "reject_always");
+        if (rejectOption) {
+          log.debug(`Rejected (default mode): ${toolName}`);
+          return { outcome: { outcome: "selected", optionId: rejectOption.optionId } };
+        }
+        log.debug(`Permission cancelled (default mode): ${toolName}`);
+        return { outcome: { outcome: "cancelled" } };
+      }
+    }
+  }
+
+  /**
+   * Spawn a sub-agent using `claude acp` with ClientSideConnection.
+   * This is the preferred method when `claude` CLI is available.
+   *
+   * @param taskId - Unique identifier for this task
+   * @param options - Spawn options (agent, prompt, cwd, etc.)
+   * @yields AcpxEvent stream (start, message, tool_use, tool_result, done, error)
+   */
+  private async *spawnAcp(
+    taskId: string,
+    options: AcpxSpawnOptions,
+  ): AsyncGenerator<AcpxEvent> {
+    log.info(`Spawning claude acp for ${options.agent}`, { taskId, cwd: options.cwd });
+
+    // Spawn claude acp process
+    const proc = spawn(
+      "claude",
+      ["acp"],
+      {
+        cwd: options.cwd,
+        shell: false,
+        stdio: ["pipe", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${process.env.HOME}/.local/bin`,
+        },
+      },
+    );
+
+    this.processes.set(taskId, proc);
+
+    if (!proc.stdin || !proc.stdout) {
+      throw new Error("Failed to create ACP stdio pipes");
+    }
+
+    // Convert Node streams to Web streams
+    const input = Writable.toWeb(proc.stdin);
+    const output = Readable.toWeb(proc.stdout) as unknown as ReadableStream<Uint8Array>;
+    const stream = ndJsonStream(input, output);
+
+    // Collect events in a queue
+    const eventQueue: AcpxEvent[] = [];
+    let processExited = false;
+    let exitCode = 0;
+    let resolveWait: (() => void) | undefined;
+    let stderrBuffer = "";
+
+    function enqueue(event: AcpxEvent): void {
+      eventQueue.push(event);
+      resolveWait?.();
+    }
+
+    // Create ClientSideConnection
+    const client = new ClientSideConnection(
+      () => ({
+        sessionUpdate: async (params: SessionNotification) => {
+          const update = params.update;
+          if (!("sessionUpdate" in update)) return;
+
+          switch (update.sessionUpdate) {
+            case "agent_message_chunk": {
+              if (update.content?.type === "text") {
+                enqueue({ type: "message", content: update.content.text });
+              }
+              break;
+            }
+
+            case "tool_call": {
+              if (update.status === "pending") {
+                const meta = update._meta as Record<string, unknown> | undefined;
+                const claudeCode = meta?.claudeCode as Record<string, unknown> | undefined;
+                const toolName = String(claudeCode?.toolName ?? "");
+                enqueue({
+                  type: "tool_use",
+                  toolName,
+                  toolInput: update.rawInput,
+                });
+              }
+              break;
+            }
+
+            case "tool_call_update": {
+              if (update.status === "completed") {
+                const meta = update._meta as Record<string, unknown> | undefined;
+                const claudeCode = meta?.claudeCode as Record<string, unknown> | undefined;
+                const toolName = String(claudeCode?.toolName ?? "");
+                const rawOutput = update.rawOutput;
+                enqueue({
+                  type: "tool_result",
+                  toolName,
+                  toolResult: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput),
+                });
+              }
+              break;
+            }
+
+            default:
+              break;
+          }
+        },
+        requestPermission: async (params: RequestPermissionRequest) => {
+          return this.resolvePermission(params, options);
+        },
+      }),
+      stream,
+    );
+
+    // Handle stderr
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderrBuffer += chunk.toString();
+    });
+
+    // Handle process exit
+    proc.on("close", (code) => {
+      // Emit stderr as error event only if process failed
+      const stderr = stderrBuffer.trim();
+      if (stderr && code !== 0) {
+        enqueue({ type: "error", error: stderr });
+      }
+
+      exitCode = code ?? 0;
+      processExited = true;
+      resolveWait?.();
+    });
+
+    proc.on("error", (err) => {
+      enqueue({ type: "error", error: err.message });
+      processExited = true;
+      resolveWait?.();
+    });
+
+    // Start ACP session
+    let sessionId: string | undefined;
+    try {
+      // Initialize connection
+      await client.initialize({
+        protocolVersion: PROTOCOL_VERSION,
+        clientCapabilities: {
+          fs: { readTextFile: true, writeTextFile: true },
+          terminal: true,
+        },
+        clientInfo: { name: "isotopes-subagent", version: "0.1.0" },
+      });
+
+      // Create session
+      const session = await client.newSession({
+        cwd: options.cwd,
+        mcpServers: [],
+      });
+      sessionId = session.sessionId;
+
+      // Send prompt
+      const promptResult = client.prompt({
+        sessionId,
+        prompt: [{ type: "text", text: options.prompt }],
+      });
+
+      // Yield start event
+      yield { type: "start" };
+
+      // Wait for prompt to complete (this triggers sessionUpdate callbacks)
+      await promptResult;
+
+      // Mark as done
+      enqueue({ type: "done", exitCode: 0 });
+    } catch (err) {
+      enqueue({ type: "error", error: String(err) });
+      enqueue({ type: "done", exitCode: 1 });
+    }
+
+    // Drain the event queue
+    try {
+      while (true) {
+        // Yield any queued events
+        while (eventQueue.length > 0) {
+          yield eventQueue.shift()!;
+        }
+
+        // If process has exited and queue is empty, we're done
+        if (processExited) break;
+
+        // Wait for more events
+        await new Promise<void>((resolve) => {
+          resolveWait = resolve;
+        });
+      }
+    } finally {
+      this.processes.delete(taskId);
+      if (proc && !proc.killed) {
+        proc.kill();
+      }
+    }
+
+    // Always yield a final done event
+    yield { type: "done", exitCode };
+
+    log.info(`claude acp ${options.agent} completed`, { taskId, exitCode });
+  }
+
+  /**
    * Spawn a sub-agent and yield events as they arrive.
    *
-   * Tries acpx first (`npx acpx ...`). If acpx spawn fails (ENOENT),
+   * Tries `claude acp` first with ClientSideConnection. If that fails,
    * falls back to legacy `claude -p --output-format stream-json` mode.
    *
-   * Yields a "start" event immediately, then streams JSON-line events
-   * from stdout. Errors on stderr are accumulated and emitted as error
-   * events. A final "done" event is always emitted when the process exits.
+   * Yields a "start" event immediately, then streams events from the process.
+   * A final "done" event is always emitted when the process exits.
    *
    * @param taskId - Unique identifier for this task (used for cancellation)
    * @param options - Spawn options (agent, prompt, cwd, etc.)
@@ -496,7 +779,16 @@ export class AcpxBackend {
       );
     }
 
-    // Try acpx first, fall back to legacy claude -p
+    // Try claude acp first (preferred method using ClientSideConnection)
+    try {
+      yield* this.spawnAcp(taskId, options);
+      return;
+    } catch (err) {
+      // If claude acp fails, fall back to legacy mode
+      log.info(`claude acp not available, falling back to legacy mode`, { taskId, error: String(err) });
+    }
+
+    // Fall back to legacy acpx or claude -p mode
     let proc: ChildProcess;
     let lineParser: (line: string) => AcpxEvent | undefined;
 
