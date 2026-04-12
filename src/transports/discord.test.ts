@@ -13,13 +13,14 @@ type MockChannel = {
   sendTyping: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
   isThread: ReturnType<typeof vi.fn>;
+  type?: number;
 };
 
 type MockIncomingMessage = {
-  author: { bot: boolean; username: string; id: string };
+  author: { bot: boolean; username: string; id: string; displayName?: string };
   content: string;
   createdTimestamp: number;
-  guild: { id: string };
+  guild: { id: string } | null;
   channelId: string;
   channel: MockChannel;
   mentions: { has: ReturnType<typeof vi.fn> };
@@ -215,7 +216,13 @@ describe("DiscordTransport", () => {
       expect(sessionStore.addMessage).toHaveBeenNthCalledWith(
         1,
         "session-123",
-        expect.objectContaining({ role: "user", content: textContent("hello again") }),
+        expect.objectContaining({ 
+          role: "user", 
+          content: [expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining("hello again"),
+          })],
+        }),
       );
       expect(promptSpy).toHaveBeenCalledWith([
         { role: "assistant", content: textContent("Previous reply") },
@@ -901,6 +908,111 @@ describe("DiscordTransport", () => {
       // With historyTurns=2, only the last 2 user turns should be kept
       const userMessages = promptInput.filter(m => m.role === "user");
       expect(userMessages.length).toBeLessThanOrEqual(2);
+    });
+  });
+
+  describe("inbound_meta injection", () => {
+    function makeChannel(): MockChannel {
+      return {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+        isThread: vi.fn().mockReturnValue(false),
+      };
+    }
+
+    it("injects inbound_meta block for group chats", async () => {
+      sessionStore.findByKey = vi.fn().mockResolvedValue(null);
+      sessionStore.create = vi.fn().mockResolvedValue({ id: "session-1" });
+      sessionStore.getMessages = vi.fn().mockResolvedValue([]);
+
+      const msg: MockIncomingMessage = {
+        author: { bot: false, username: "alice", id: "user-alice", displayName: "Alice" },
+        content: "<@bot-123> Hello world",
+        createdTimestamp: Date.now(),
+        guild: { id: "guild-1" },
+        channelId: "channel-1",
+        channel: makeChannel(),
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        thread: undefined,
+      };
+
+      // Need to set up bindings via config
+      const testTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        channels: {
+          discord: {
+            accounts: {
+              testacct: {
+                guilds: {
+                  "guild-1": { requireMention: true },
+                },
+              },
+            },
+          },
+        },
+        accountId: "testacct",
+      });
+
+      await (
+        testTransport as unknown as {
+          handleMessage: (message: MockIncomingMessage) => Promise<void>;
+        }
+      ).handleMessage(msg);
+
+      const addMessageCall = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(addMessageCall).toBeDefined();
+      const userMessage = addMessageCall[1];
+      const contentText = userMessage.content[0].text;
+
+      // Verify inbound_meta block is present
+      expect(contentText).toContain('<inbound_meta type="untrusted">');
+      expect(contentText).toContain("<chat_type>group</chat_type>");
+      expect(contentText).toContain("<sender_id>user-alice</sender_id>");
+      expect(contentText).toContain("<sender_username>alice</sender_username>");
+      // Verify user message is still there
+      expect(contentText).toContain("Hello world");
+    });
+
+    it("injects direct chat_type for DMs", async () => {
+      sessionStore.findByKey = vi.fn().mockResolvedValue(null);
+      sessionStore.create = vi.fn().mockResolvedValue({ id: "session-1" });
+      sessionStore.getMessages = vi.fn().mockResolvedValue([]);
+
+      const testTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager,
+        sessionStore,
+        defaultAgentId: "default",
+        allowDMs: true,
+      });
+
+      const msg: MockIncomingMessage = {
+        author: { bot: false, username: "bob", id: "user-bob" },
+        content: "private message",
+        createdTimestamp: Date.now(),
+        guild: null, // DM has no guild
+        channelId: "dm-channel",
+        channel: { ...makeChannel(), type: 1 }, // DM channel type
+        mentions: { has: vi.fn(() => false) },
+        thread: undefined,
+      };
+
+      await (
+        testTransport as unknown as {
+          handleMessage: (message: MockIncomingMessage) => Promise<void>;
+        }
+      ).handleMessage(msg);
+
+      const addMessageCall = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(addMessageCall).toBeDefined();
+      const userMessage = addMessageCall[1];
+      const contentText = userMessage.content[0].text;
+
+      expect(contentText).toContain("<chat_type>direct</chat_type>");
+      expect(contentText).toContain("private message");
     });
   });
 

@@ -1,7 +1,7 @@
 // src/transports/message-metadata.test.ts — Tests for message metadata extraction
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { extractDiscordMetadata, extractCliMetadata } from "./message-metadata.js";
+import { extractDiscordMetadata, extractCliMetadata, formatInboundMeta, type MessageMetadata } from "./message-metadata.js";
 
 // ---------------------------------------------------------------------------
 // Mock discord.js message factory
@@ -198,5 +198,82 @@ describe("extractCliMetadata", () => {
       type: "dm",
     });
     expect(metadata.replyTo).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatInboundMeta tests
+// ---------------------------------------------------------------------------
+
+describe("formatInboundMeta", () => {
+  it("formats basic metadata for group chat", () => {
+    const meta: MessageMetadata = {
+      sender: { id: "123", username: "testuser", isBot: false },
+      timestamps: { sent: 1700000000000, received: 1700000001000 },
+      channel: { id: "456", name: "general", type: "text" },
+    };
+    
+    const result = formatInboundMeta(meta, "group");
+    
+    expect(result).toContain('<inbound_meta type="untrusted">');
+    expect(result).toContain("<chat_type>group</chat_type>");
+    expect(result).toContain("<channel_id>456</channel_id>");
+    expect(result).toContain("<channel_name>general</channel_name>");
+    expect(result).toContain("<sender_id>123</sender_id>");
+    expect(result).toContain("<sender_username>testuser</sender_username>");
+    expect(result).toContain("<timestamp>1700000000000</timestamp>");
+    expect(result).toContain("</inbound_meta>");
+  });
+
+  it("formats metadata for direct chat", () => {
+    const meta: MessageMetadata = {
+      sender: { id: "123", username: "testuser", isBot: false },
+      timestamps: { sent: 1700000000000, received: 1700000001000 },
+      channel: { id: "789", type: "dm" },
+    };
+    
+    const result = formatInboundMeta(meta, "direct");
+    
+    expect(result).toContain("<chat_type>direct</chat_type>");
+    expect(result).not.toContain("<channel_name>");
+  });
+
+  it("includes reply_to when present", () => {
+    const meta: MessageMetadata = {
+      sender: { id: "123", username: "testuser", isBot: false },
+      timestamps: { sent: 1700000000000, received: 1700000001000 },
+      channel: { id: "456", type: "text" },
+      replyTo: "msg-999",
+    };
+    
+    const result = formatInboundMeta(meta, "group");
+    
+    expect(result).toContain("<reply_to>msg-999</reply_to>");
+  });
+
+  it("includes display name when present", () => {
+    const meta: MessageMetadata = {
+      sender: { id: "123", username: "testuser", displayName: "Test User", isBot: false },
+      timestamps: { sent: 1700000000000, received: 1700000001000 },
+      channel: { id: "456", type: "text" },
+    };
+    
+    const result = formatInboundMeta(meta, "group");
+    
+    expect(result).toContain("<sender_display_name>Test User</sender_display_name>");
+  });
+
+  it("escapes XML special characters", () => {
+    const meta: MessageMetadata = {
+      sender: { id: "123", username: "test<user>", displayName: "Test & User", isBot: false },
+      timestamps: { sent: 1700000000000, received: 1700000001000 },
+      channel: { id: "456", name: "chat\"room'1", type: "text" },
+    };
+    
+    const result = formatInboundMeta(meta, "group");
+    
+    expect(result).toContain("<sender_username>test&lt;user&gt;</sender_username>");
+    expect(result).toContain("<sender_display_name>Test &amp; User</sender_display_name>");
+    expect(result).toContain("<channel_name>chat&quot;room&apos;1</channel_name>");
   });
 });

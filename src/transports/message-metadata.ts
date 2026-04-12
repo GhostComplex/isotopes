@@ -112,3 +112,49 @@ export function extractCliMetadata(): MessageMetadata {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Inbound metadata formatting (untrusted context block)
+// ---------------------------------------------------------------------------
+
+/** Format metadata as an XML block for injection into message content. */
+export function formatInboundMeta(meta: MessageMetadata, chatType: "direct" | "group"): string {
+  const lines: string[] = [
+    `<inbound_meta type="untrusted">`,
+    `  <chat_type>${chatType}</chat_type>`,
+    `  <channel_id>${meta.channel.id}</channel_id>`,
+  ];
+  
+  if (meta.channel.name) {
+    lines.push(`  <channel_name>${escapeXml(meta.channel.name)}</channel_name>`);
+  }
+  
+  lines.push(
+    `  <sender_id>${meta.sender.id}</sender_id>`,
+    `  <sender_username>${escapeXml(meta.sender.username)}</sender_username>`,
+  );
+  
+  if (meta.sender.displayName) {
+    lines.push(`  <sender_display_name>${escapeXml(meta.sender.displayName)}</sender_display_name>`);
+  }
+  
+  lines.push(`  <timestamp>${meta.timestamps.sent}</timestamp>`);
+  
+  if (meta.replyTo) {
+    lines.push(`  <reply_to>${meta.replyTo}</reply_to>`);
+  }
+  
+  lines.push(`</inbound_meta>`);
+  
+  return lines.join("\n");
+}
+
+/** Escape XML special characters. */
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}

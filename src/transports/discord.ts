@@ -27,7 +27,7 @@ import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
 import { runAgentLoop } from "../core/agent-runner.js";
 import { isSilentReply } from "./silent-reply.js";
-import { extractDiscordMetadata } from "./message-metadata.js";
+import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey } from "../core/session-keys.js";
 import {
@@ -428,11 +428,15 @@ export class DiscordTransport implements Transport {
       : [];
     const enrichedContent = buildHistoryContext(historyEntries, content);
 
-    // 8. Add user message to session
+    // 8. Add user message to session with inbound metadata
     const messageMetadata = extractDiscordMetadata(msg);
+    const chatType = msg.guild ? "group" : "direct";
+    const inboundMeta = formatInboundMeta(messageMetadata, chatType);
+    const contentWithMeta = `${inboundMeta}\n\n${enrichedContent}`;
+    
     const userMessage: Message = {
       role: "user",
-      content: textContent(enrichedContent),
+      content: textContent(contentWithMeta),
       timestamp: msg.createdTimestamp,
       metadata: {
         userId: msg.author.id,
