@@ -463,14 +463,27 @@ export class DiscordTransport implements Transport {
     // Try to find existing session by key
     const existing = await sessionStore.findByKey(sessionKey);
     if (existing) {
+      // Backfill channel/guild name if missing
+      if (existing.metadata && !existing.metadata.channelName) {
+        const channelName = "name" in msg.channel ? (msg.channel as { name?: string }).name : undefined;
+        const guildName = msg.guild?.name;
+        if (channelName) {
+          existing.metadata.channelName = channelName;
+          if (guildName) existing.metadata.guildName = guildName;
+        }
+      }
       return existing;
     }
 
     // Create new session with key
+    const channelName = "name" in msg.channel ? (msg.channel as { name?: string }).name : undefined;
+    const guildName = msg.guild?.name;
     const session = await sessionStore.create(agentId, {
       key: sessionKey,
       transport: "discord",
       channelId: msg.channelId,
+      channelName: channelName ?? undefined,
+      guildName: guildName ?? undefined,
       threadId: msg.thread?.id,
     });
     return session;

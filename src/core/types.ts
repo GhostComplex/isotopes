@@ -211,6 +211,8 @@ export interface SessionMetadata {
   key?: string;                        // Unique key for session lookup (e.g., discord:{botId}:channel:{id}:{agentId})
   transport: 'discord' | 'feishu' | 'web';
   channelId?: string;
+  channelName?: string;
+  guildName?: string;
   threadId?: string;
   /** If true, session is exempt from TTL-based cleanup */
   persistent?: boolean;

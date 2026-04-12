@@ -131,6 +131,8 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
     key?: string;
     agentId: string;
     threadId: string | undefined;
+    channelName?: string;
+    guildName?: string;
     status: string;
     createdAt: string;
     lastActivityAt: string;
@@ -163,6 +165,8 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
           key: s.metadata?.key,
           agentId: s.agentId || agentId,
           threadId: s.metadata?.threadId,
+          channelName: s.metadata?.channelName,
+          guildName: s.metadata?.guildName,
           status: "active",
           createdAt: s.lastActiveAt.toISOString(),
           lastActivityAt: s.lastActiveAt.toISOString(),

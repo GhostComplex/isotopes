@@ -77,6 +77,10 @@ function formatTime(isoString) {
 }
 
 function sessionDisplayName(session) {
+  // Use channel name if available
+  if (session.channelName) {
+    return `#${session.channelName}`;
+  }
   if (session.key) {
     // Discord keys: "discord:{botId}:channel:{channelId}:{agentId}"
     const discordMatch = session.key.match(/^discord:\d+:channel:(\d+):(.+)$/);
