@@ -1,10 +1,11 @@
 // src/subagent/acpx-backend.ts — ACP sub-agent spawning backend
-// Spawns sub-agents via `npx acpx --format json` with ACP JSON-RPC streaming.
-// Falls back to legacy `claude -p --output-format stream-json` if acpx is unavailable.
+// Spawns sub-agents via @agentclientprotocol/sdk with typed ACP JSON-RPC streaming.
+// Falls back to legacy `claude -p --output-format stream-json` if agent command fails.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
+import { Writable, Readable } from "node:stream";
 import { createLogger } from "../core/logger.js";
 import {
   ACPX_AGENTS,
@@ -14,99 +15,28 @@ import {
 } from "./types.js";
 import type { SubagentPermissionMode } from "../core/config.js";
 import { DEFAULT_SUBAGENT_ALLOWED_TOOLS } from "../core/config.js";
+import * as acp from "@agentclientprotocol/sdk";
 
 const log = createLogger("subagent:acpx");
+
+/** Agent command registry — maps agent names to spawn commands */
+const AGENT_COMMANDS: Record<string, string> = {
+  claude: "npx -y @agentclientprotocol/claude-agent-acp",
+  codex: "npx @zed-industries/codex-acp",
+  gemini: "gemini --acp",
+  cursor: "cursor-agent acp",
+  copilot: "copilot --acp --stdio",
+  opencode: "npx -y opencode-ai acp",
+  kimi: "kimi acp",
+  qwen: "qwen --acp",
+};
 
 /** Maximum concurrent sub-agent processes allowed */
 export const MAX_CONCURRENT_AGENTS = 5;
 
 // ---------------------------------------------------------------------------
-// JSON line parsing
+// JSON line parsing (legacy fallback only)
 // ---------------------------------------------------------------------------
-
-/**
- * Parse a single ACP JSON-RPC notification line from acpx stdout into an AcpxEvent.
- * Handles session/update notifications with agent_message_chunk, tool_call,
- * tool_call_update, and final result messages.
- * Unrecognised lines are silently ignored (returns undefined).
- */
-export function parseAcpxJsonLine(line: string): AcpxEvent | undefined {
-  const trimmed = line.trim();
-  if (!trimmed || !trimmed.startsWith("{")) return undefined;
-
-  try {
-    const obj = JSON.parse(trimmed) as Record<string, unknown>;
-
-    // Final result with stopReason (JSON-RPC response with id)
-    if (obj.id !== undefined && obj.result !== undefined) {
-      const result = obj.result as Record<string, unknown>;
-      if (result.stopReason) {
-        return { type: "done", exitCode: 0 };
-      }
-      return undefined;
-    }
-
-    // JSON-RPC notification
-    const method = obj.method as string | undefined;
-    if (method !== "session/update") return undefined;
-
-    const params = obj.params as Record<string, unknown> | undefined;
-    if (!params) return undefined;
-
-    const update = params.update as Record<string, unknown> | undefined;
-    if (!update) return undefined;
-
-    const sessionUpdate = update.sessionUpdate as string | undefined;
-    if (!sessionUpdate) return undefined;
-
-    switch (sessionUpdate) {
-      case "agent_message_chunk": {
-        const content = update.content as Record<string, unknown> | undefined;
-        if (content?.type === "text" && typeof content.text === "string") {
-          return { type: "message", content: content.text };
-        }
-        return undefined;
-      }
-
-      case "tool_call": {
-        const status = update.status as string | undefined;
-        if (status === "pending") {
-          const meta = update._meta as Record<string, unknown> | undefined;
-          const claudeCode = meta?.claudeCode as Record<string, unknown> | undefined;
-          const toolName = String(claudeCode?.toolName ?? "");
-          return {
-            type: "tool_use",
-            toolName,
-            toolInput: update.rawInput,
-          };
-        }
-        return undefined;
-      }
-
-      case "tool_call_update": {
-        const status = update.status as string | undefined;
-        if (status === "completed") {
-          const meta = update._meta as Record<string, unknown> | undefined;
-          const claudeCode = meta?.claudeCode as Record<string, unknown> | undefined;
-          const toolName = String(claudeCode?.toolName ?? "");
-          const rawOutput = update.rawOutput;
-          return {
-            type: "tool_result",
-            toolName,
-            toolResult: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput),
-          };
-        }
-        return undefined;
-      }
-
-      default:
-        return undefined;
-    }
-  } catch {
-    log.debug("Failed to parse acpx JSON-RPC line", trimmed);
-    return undefined;
-  }
-}
 
 /**
  * Parse a single JSON line from claude CLI stdout into an AcpxEvent.
@@ -358,54 +288,31 @@ export class AcpxBackend {
   }
 
   /**
-   * Build the command-line arguments for `acpx`.
-   *
-   * Returns two arrays:
-   * - preAgentArgs: Global flags BEFORE agent name (--cwd, --format, --approve-all)
-   * - postAgentArgs: Command + flags AFTER agent name (exec, --file, --model, --max-turns)
+   * Parse agent command and spawn the agent process.
+   * Returns the child process or throws if spawn fails.
    */
-  buildAcpxArgs(options: AcpxSpawnOptions): { preAgentArgs: string[]; postAgentArgs: string[] } {
-    const preAgentArgs: string[] = [
-      "--cwd", options.cwd,
-      "--format", "json",
-    ];
-
-    // Apply permission mode
-    const permissionMode = options.permissionMode ?? this.permissionMode;
-    const allowedTools = options.allowedTools ?? this.allowedTools;
-
-    switch (permissionMode) {
-      case "skip":
-        preAgentArgs.push("--approve-all");
-        log.debug("Using acpx with --approve-all (permissionMode 'skip')");
-        break;
-      case "allowlist":
-        if (allowedTools.length > 0) {
-          preAgentArgs.push("--allowed-tools", allowedTools.join(","));
-          log.debug(`Using acpx with --allowed-tools: ${allowedTools.join(", ")}`);
-        }
-        break;
-      case "default":
-        log.debug("Using acpx with default permissions");
-        break;
+  private spawnAgentProcess(options: AcpxSpawnOptions): ChildProcess {
+    const agentCommand = AGENT_COMMANDS[options.agent];
+    if (!agentCommand) {
+      throw new Error(`No command registered for agent: ${options.agent}`);
     }
 
-    // --model, --max-turns, --timeout are global flags — must go BEFORE agent subcommand
-    if (options.model) {
-      preAgentArgs.push("--model", options.model);
-    }
+    // Parse command into executable and args
+    const parts = agentCommand.split(/\s+/);
+    const executable = parts[0];
+    const args = parts.slice(1);
 
-    if (options.maxTurns !== undefined) {
-      preAgentArgs.push("--max-turns", String(options.maxTurns));
-    }
+    log.info(`Spawning ${options.agent} via ${agentCommand}`, { cwd: options.cwd });
 
-    if (options.timeout !== undefined) {
-      preAgentArgs.push("--timeout", String(options.timeout));
-    }
-
-    const postAgentArgs: string[] = ["exec", "--file", "-"];
-
-    return { preAgentArgs, postAgentArgs };
+    return spawn(executable, args, {
+      cwd: options.cwd,
+      shell: false,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${process.env.HOME}/.local/bin`,
+      },
+    });
   }
 
   /**
@@ -468,12 +375,11 @@ export class AcpxBackend {
   /**
    * Spawn a sub-agent and yield events as they arrive.
    *
-   * Tries acpx first (`npx acpx ...`). If acpx spawn fails (ENOENT),
-   * falls back to legacy `claude -p --output-format stream-json` mode.
+   * Tries SDK-based spawn first using agent command registry.
+   * Falls back to legacy `claude -p --output-format stream-json` if agent command fails.
    *
-   * Yields a "start" event immediately, then streams JSON-line events
-   * from stdout. Errors on stderr are accumulated and emitted as error
-   * events. A final "done" event is always emitted when the process exits.
+   * Yields a "start" event immediately, then streams events via SDK's sessionUpdate
+   * handler. A final "done" event is always emitted when the process exits.
    *
    * @param taskId - Unique identifier for this task (used for cancellation)
    * @param options - Spawn options (agent, prompt, cwd, etc.)
@@ -496,32 +402,15 @@ export class AcpxBackend {
       );
     }
 
-    // Try acpx first, fall back to legacy claude -p
+    // Try SDK-based spawn first, fall back to legacy claude -p
     let proc: ChildProcess;
-    let lineParser: (line: string) => AcpxEvent | undefined;
+    let useSDK = false;
 
     try {
-      const { preAgentArgs, postAgentArgs } = this.buildAcpxArgs(options);
-      const acpxArgs = ["acpx", ...preAgentArgs, options.agent, ...postAgentArgs];
+      proc = this.spawnAgentProcess(options);
+      useSDK = true;
 
-      log.info(`Spawning acpx ${options.agent}`, { taskId, cwd: options.cwd, args: acpxArgs });
-
-      proc = spawn(
-        "npx",
-        acpxArgs,
-        {
-          cwd: options.cwd,
-          shell: false,
-          stdio: ["pipe", "pipe", "pipe"],
-          env: {
-            ...process.env,
-            PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${process.env.HOME}/.local/bin`,
-          },
-        },
-      );
-      lineParser = parseAcpxJsonLine;
-
-      // Check for immediate spawn failure (ENOENT) synchronously via error event
+      // Check for immediate spawn failure synchronously via error event
       const spawnError = await new Promise<Error | null>((resolve) => {
         proc.once("error", (err) => resolve(err));
         // If no error fires on next tick, spawn succeeded
@@ -535,7 +424,7 @@ export class AcpxBackend {
       // Fall back to legacy claude -p mode
       const legacyArgs = this.buildLegacyArgs(options);
 
-      log.info(`acpx not available, falling back to claude -p`, { taskId, error: String(err) });
+      log.info(`Agent command failed, falling back to claude -p`, { taskId, error: String(err) });
 
       proc = spawn(
         "claude",
@@ -550,19 +439,174 @@ export class AcpxBackend {
           },
         },
       );
-      lineParser = parseJsonLine;
+      useSDK = false;
     }
 
     this.processes.set(taskId, proc);
 
+    // Yield start event
+    yield { type: "start" };
+
+    if (useSDK) {
+      // SDK-based execution
+      yield* this.runWithSDK(proc, options, taskId);
+    } else {
+      // Legacy execution
+      yield* this.runLegacy(proc, options, taskId, parseJsonLine);
+    }
+
+    this.processes.delete(taskId);
+  }
+
+  /**
+   * Run agent using SDK protocol.
+   */
+  private async *runWithSDK(
+    proc: ChildProcess,
+    options: AcpxSpawnOptions,
+    taskId: string,
+  ): AsyncGenerator<AcpxEvent> {
+    const eventQueue: AcpxEvent[] = [];
+    let resolveWait: (() => void) | undefined;
+
+    function enqueue(event: AcpxEvent): void {
+      eventQueue.push(event);
+      resolveWait?.();
+    }
+
+    // Create SDK stream
+    const input = Writable.toWeb(proc.stdin!);
+    const output = Readable.toWeb(proc.stdout!);
+    const stream = acp.ndJsonStream(input, output);
+
+    // Create client with handlers
+    const client = new acp.ClientSideConnection(
+      (_agent) => ({
+        // Permission handler — return cancelled (we use allowed-tools for permission)
+        async requestPermission(_params) {
+          return { outcome: { outcome: "cancelled" } };
+        },
+        // Session update handler — convert to AcpxEvent
+        async sessionUpdate(params) {
+          const update = params.update;
+          switch (update.sessionUpdate) {
+            case "agent_message_chunk":
+              if (update.content.type === "text") {
+                enqueue({ type: "message", content: update.content.text });
+              }
+              break;
+            case "tool_call":
+              if (update.status === "pending") {
+                const meta = update._meta as Record<string, unknown> | undefined;
+                const claudeCode = meta?.claudeCode as Record<string, unknown> | undefined;
+                const toolName = String(claudeCode?.toolName ?? "");
+                enqueue({
+                  type: "tool_use",
+                  toolName,
+                  toolInput: update.rawInput,
+                });
+              }
+              break;
+            case "tool_call_update":
+              if (update.status === "completed") {
+                const meta = update._meta as Record<string, unknown> | undefined;
+                const claudeCode = meta?.claudeCode as Record<string, unknown> | undefined;
+                const toolName = String(claudeCode?.toolName ?? "");
+                const rawOutput = update.rawOutput;
+                enqueue({
+                  type: "tool_result",
+                  toolName,
+                  toolResult: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput),
+                });
+              }
+              break;
+          }
+        },
+      }),
+      stream,
+    );
+
+    let exitCode = 0;
+    let sdkDone = false;
+
+    // Run SDK protocol in background
+    (async () => {
+      try {
+        // Initialize connection
+        await client.initialize({
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
+
+        // Create session
+        const sessionResult = await client.newSession({
+          cwd: options.cwd,
+          mcpServers: [],
+        });
+
+        // Send prompt
+        const promptResult = await client.prompt({
+          sessionId: sessionResult.sessionId,
+          prompt: [{ type: "text", text: options.prompt }],
+        });
+
+        log.info(`Agent completed with ${promptResult.stopReason}`, { taskId });
+        enqueue({ type: "done", exitCode: 0 });
+      } catch (error) {
+        log.error("SDK protocol error", { taskId, error });
+        enqueue({ type: "error", error: String(error) });
+        enqueue({ type: "done", exitCode: 1 });
+      } finally {
+        sdkDone = true;
+        resolveWait?.();
+      }
+    })();
+
+    // Handle process errors and exit
+    proc.on("error", (err) => {
+      enqueue({ type: "error", error: err.message });
+      sdkDone = true;
+      resolveWait?.();
+    });
+
+    proc.on("close", (code) => {
+      exitCode = code ?? 0;
+      if (!sdkDone) {
+        // Process exited before SDK finished
+        enqueue({ type: "done", exitCode });
+        sdkDone = true;
+        resolveWait?.();
+      }
+    });
+
+    // Drain event queue
+    while (true) {
+      while (eventQueue.length > 0) {
+        yield eventQueue.shift()!;
+      }
+
+      if (sdkDone) break;
+
+      await new Promise<void>((resolve) => {
+        resolveWait = resolve;
+      });
+    }
+  }
+
+  /**
+   * Run agent using legacy JSON-line parsing.
+   */
+  private async *runLegacy(
+    proc: ChildProcess,
+    options: AcpxSpawnOptions,
+    taskId: string,
+    lineParser: (line: string) => AcpxEvent | undefined,
+  ): AsyncGenerator<AcpxEvent> {
     // Write prompt to stdin and close it
     if (proc.stdin) {
       proc.stdin.write(options.prompt);
       proc.stdin.end();
     }
-
-    // Yield start event
-    yield { type: "start" };
 
     // Buffer for incomplete lines
     let stdoutBuffer = "";
@@ -610,7 +654,6 @@ export class AcpxBackend {
       }
 
       // Emit stderr as error event only if process actually failed (non-zero exit)
-      // acpx may log warnings like "Error handling notification" to stderr even on success
       const stderr = stderrBuffer.trim();
       if (stderr && code !== 0) {
         enqueue({ type: "error", error: stderr });
@@ -628,29 +671,25 @@ export class AcpxBackend {
     });
 
     // Drain the event queue
-    try {
-      while (true) {
-        // Yield any queued events
-        while (eventQueue.length > 0) {
-          yield eventQueue.shift()!;
-        }
-
-        // If process has exited and queue is empty, we're done
-        if (processExited) break;
-
-        // Wait for more events
-        await new Promise<void>((resolve) => {
-          resolveWait = resolve;
-        });
+    while (true) {
+      // Yield any queued events
+      while (eventQueue.length > 0) {
+        yield eventQueue.shift()!;
       }
-    } finally {
-      this.processes.delete(taskId);
+
+      // If process has exited and queue is empty, we're done
+      if (processExited) break;
+
+      // Wait for more events
+      await new Promise<void>((resolve) => {
+        resolveWait = resolve;
+      });
     }
 
     // Always yield a final done event
     yield { type: "done", exitCode };
 
-    log.info(`claude ${options.agent} completed`, { taskId, exitCode });
+    log.info(`Agent ${options.agent} completed`, { taskId, exitCode });
   }
 
   /**

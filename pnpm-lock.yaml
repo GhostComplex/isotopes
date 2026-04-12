@@ -8,15 +8,18 @@ importers:
 
   .:
     dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: ^0.18.2
+        version: 0.18.2(zod@3.25.76)
       '@larksuiteoapi/node-sdk':
         specifier: ^1.60.0
         version: 1.60.0
       '@mariozechner/pi-agent-core':
         specifier: ^0.64.0
-        version: 0.64.0(ws@8.20.0)(zod@3.24.4)
+        version: 0.64.0(ws@8.20.0)(zod@3.25.76)
       '@mariozechner/pi-ai':
         specifier: ^0.64.0
-        version: 0.64.0(ws@8.20.0)(zod@3.24.4)
+        version: 0.64.0(ws@8.20.0)(zod@3.25.76)
       acpx:
         specifier: ^0.5.3
         version: 0.5.3
@@ -27,8 +30,8 @@ importers:
         specifier: 2.7.1
         version: 2.7.1
       zod:
-        specifier: 3.24.4
-        version: 3.24.4
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@eslint/js':
         specifier: 9.27.0
@@ -68,6 +71,11 @@ packages:
 
   '@agentclientprotocol/sdk@0.17.1':
     resolution: {integrity: sha512-yjyIn8POL18IOXioLySYiL0G44kZ/IZctAls7vS3AC3X+qLhFXbWmzABSZehwRnWFShMXT+ODa/HJG1+mGXZ1A==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+
+  '@agentclientprotocol/sdk@0.18.2':
+    resolution: {integrity: sha512-l/o9NKvUc00GPa6RFJ4AccQq2O/PAf83xQ75mThHuL3H571iN4+PEdwnTBez67sS8Nv2aSA373xCZ5CbTXEwzA==}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
@@ -2169,8 +2177,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@3.24.4:
-    resolution: {integrity: sha512-OdqJE9UDRPwWsrHjLN2F8bPxvwJBK22EHLWtanu0LSYr5YqzsaaW3RMgmjwr8Rypg5k+meEJdSPXJZXE/yqOMg==}
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
@@ -2181,11 +2189,15 @@ snapshots:
     dependencies:
       zod: 4.3.6
 
-  '@anthropic-ai/sdk@0.73.0(zod@3.24.4)':
+  '@agentclientprotocol/sdk@0.18.2(zod@3.25.76)':
+    dependencies:
+      zod: 3.25.76
+
+  '@anthropic-ai/sdk@0.73.0(zod@3.25.76)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 3.24.4
+      zod: 3.25.76
 
   '@aws-crypto/crc32@5.2.0':
     dependencies:
@@ -2802,9 +2814,9 @@ snapshots:
       - debug
       - utf-8-validate
 
-  '@mariozechner/pi-agent-core@0.64.0(ws@8.20.0)(zod@3.24.4)':
+  '@mariozechner/pi-agent-core@0.64.0(ws@8.20.0)(zod@3.25.76)':
     dependencies:
-      '@mariozechner/pi-ai': 0.64.0(ws@8.20.0)(zod@3.24.4)
+      '@mariozechner/pi-ai': 0.64.0(ws@8.20.0)(zod@3.25.76)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - aws-crt
@@ -2814,9 +2826,9 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-ai@0.64.0(ws@8.20.0)(zod@3.24.4)':
+  '@mariozechner/pi-ai@0.64.0(ws@8.20.0)(zod@3.25.76)':
     dependencies:
-      '@anthropic-ai/sdk': 0.73.0(zod@3.24.4)
+      '@anthropic-ai/sdk': 0.73.0(zod@3.25.76)
       '@aws-sdk/client-bedrock-runtime': 3.1024.0
       '@google/genai': 1.48.0
       '@mistralai/mistralai': 1.14.1
@@ -2824,11 +2836,11 @@ snapshots:
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
       chalk: 5.6.2
-      openai: 6.26.0(ws@8.20.0)(zod@3.24.4)
+      openai: 6.26.0(ws@8.20.0)(zod@3.25.76)
       partial-json: 0.1.7
       proxy-agent: 6.5.0
       undici: 7.24.7
-      zod-to-json-schema: 3.25.2(zod@3.24.4)
+      zod-to-json-schema: 3.25.2(zod@3.25.76)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - aws-crt
@@ -2841,8 +2853,8 @@ snapshots:
   '@mistralai/mistralai@1.14.1':
     dependencies:
       ws: 8.20.0
-      zod: 4.3.6
-      zod-to-json-schema: 3.25.2(zod@4.3.6)
+      zod: 3.25.76
+      zod-to-json-schema: 3.25.2(zod@3.25.76)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -4153,10 +4165,10 @@ snapshots:
     dependencies:
       mimic-function: 5.0.1
 
-  openai@6.26.0(ws@8.20.0)(zod@3.24.4):
+  openai@6.26.0(ws@8.20.0)(zod@3.25.76):
     optionalDependencies:
       ws: 8.20.0
-      zod: 3.24.4
+      zod: 3.25.76
 
   optionator@0.9.4:
     dependencies:
@@ -4628,14 +4640,10 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod-to-json-schema@3.25.2(zod@3.24.4):
+  zod-to-json-schema@3.25.2(zod@3.25.76):
     dependencies:
-      zod: 3.24.4
+      zod: 3.25.76
 
-  zod-to-json-schema@3.25.2(zod@4.3.6):
-    dependencies:
-      zod: 4.3.6
-
-  zod@3.24.4: {}
+  zod@3.25.76: {}
 
   zod@4.3.6: {}
