@@ -609,9 +609,10 @@ export class AcpxBackend {
         }
       }
 
-      // Emit stderr as error event if present (but only if it looks like an error)
+      // Emit stderr as error event only if process actually failed (non-zero exit)
+      // acpx may log warnings like "Error handling notification" to stderr even on success
       const stderr = stderrBuffer.trim();
-      if (stderr && (stderr.toLowerCase().includes("error") || code !== 0)) {
+      if (stderr && code !== 0) {
         enqueue({ type: "error", error: stderr });
       }
 
