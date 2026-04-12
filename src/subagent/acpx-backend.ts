@@ -396,9 +396,8 @@ export class AcpxBackend {
       postAgentArgs.push("--model", options.model);
     }
 
-    if (options.maxTurns !== undefined) {
-      postAgentArgs.push("--max-turns", String(options.maxTurns));
-    }
+    // Note: acpx exec does not support --max-turns (unlike claude -p)
+    // maxTurns is only used in buildLegacyArgs() for fallback
 
     return { preAgentArgs, postAgentArgs };
   }
