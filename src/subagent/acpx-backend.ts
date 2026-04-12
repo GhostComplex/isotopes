@@ -370,11 +370,24 @@ export class AcpxBackend {
       "--format", "json",
     ];
 
-    // Only add --approve-all for "skip" permission mode
+    // Apply permission mode
     const permissionMode = options.permissionMode ?? this.permissionMode;
-    if (permissionMode === "skip") {
-      preAgentArgs.push("--approve-all");
-      log.debug("Using acpx with --approve-all (permissionMode 'skip')");
+    const allowedTools = options.allowedTools ?? this.allowedTools;
+
+    switch (permissionMode) {
+      case "skip":
+        preAgentArgs.push("--approve-all");
+        log.debug("Using acpx with --approve-all (permissionMode 'skip')");
+        break;
+      case "allowlist":
+        if (allowedTools.length > 0) {
+          preAgentArgs.push("--allowed-tools", allowedTools.join(","));
+          log.debug(`Using acpx with --allowed-tools: ${allowedTools.join(", ")}`);
+        }
+        break;
+      case "default":
+        log.debug("Using acpx with default permissions");
+        break;
     }
 
     const postAgentArgs: string[] = ["exec", "--file", "-"];

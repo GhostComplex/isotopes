@@ -485,4 +485,18 @@ describe("buildAcpxArgs", () => {
     const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp" });
     expect(result.preAgentArgs).not.toContain("--approve-all");
   });
+
+  it("includes --allowed-tools for allowlist mode", () => {
+    const backend = new AcpxBackend({ permissionMode: "allowlist", allowedTools: ["Read", "Write", "Edit"] });
+    const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp" });
+    expect(result.preAgentArgs).toContain("--allowed-tools");
+    expect(result.preAgentArgs).toContain("Read,Write,Edit");
+  });
+
+  it("uses default permission mode when set to 'default'", () => {
+    const backend = new AcpxBackend({ permissionMode: "default" });
+    const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp" });
+    expect(result.preAgentArgs).not.toContain("--approve-all");
+    expect(result.preAgentArgs).not.toContain("--allowed-tools");
+  });
 });
