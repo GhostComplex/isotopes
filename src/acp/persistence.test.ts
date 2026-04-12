@@ -403,8 +403,10 @@ describe("AcpSessionManager with persistence", () => {
     manager.addMessage(s1.id, { role: "user", content: "Msg to claude" });
     manager.addMessage(s2.id, { role: "user", content: "Msg to codex" });
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 200));
     manager.destroy();
+    // Allow destroy flush to complete
+    await new Promise((r) => setTimeout(r, 100));
 
     const manager2 = new AcpSessionManager(makeAcpConfig());
     await manager2.init(makePersistenceConfig());

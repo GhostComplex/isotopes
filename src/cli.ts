@@ -123,12 +123,20 @@ Usage:
   isotopes                           Run in foreground (default)
   isotopes start [--config path]     Start as background daemon
   isotopes stop                      Stop the running daemon
-  isotopes status                    Show daemon status
+  isotopes status [--json]           Show daemon status
   isotopes restart [--config path]   Restart the daemon
   isotopes reload [agentId]          Reload workspace (hot-reload)
 
   isotopes chat "prompt" [--agent id] [--json]
                                      One-shot chat with an agent
+
+  isotopes cron list [--json]        List all cron jobs
+  isotopes cron add <name> <expr> <agent> [--action type]
+                                     Add a cron job
+  isotopes cron remove <id>          Remove a cron job
+  isotopes cron enable <id>          Enable a cron job
+  isotopes cron disable <id>         Disable a cron job
+  isotopes cron run <id>             Run a cron job now
 
   isotopes service install           Install as system service
   isotopes service uninstall         Remove system service
@@ -351,6 +359,233 @@ function formatUptime(seconds: number): string {
   if (m > 0) parts.push(`${m}m`);
   parts.push(`${s}s`);
   return parts.join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// Cron commands
+// ---------------------------------------------------------------------------
+
+interface CronJobInfo {
+  id: string;
+  name: string;
+  expression: string;
+  agentId: string;
+  enabled: boolean;
+  lastRun?: string | null;
+  nextRun?: string | null;
+}
+
+async function handleCronCommand(): Promise<void> {
+  const action = subArgs[0];
+  const useJson = subArgs.includes("--json");
+  const port = process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const handleApiError = (e: unknown) => {
+    if (e instanceof Error && e.message.includes("ECONNREFUSED")) {
+      console.error("Cannot connect to isotopes daemon. Is it running?");
+      console.error("Try: isotopes start");
+    } else {
+      console.error("API error:", e instanceof Error ? e.message : String(e));
+    }
+    process.exit(1);
+  };
+
+  switch (action) {
+    case "list": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron`);
+        if (!res.ok) {
+          console.error(`API error: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+        const jobs = (await res.json()) as CronJobInfo[];
+
+        if (useJson) {
+          console.log(JSON.stringify(jobs, null, 2));
+        } else if (jobs.length === 0) {
+          console.log("No cron jobs configured");
+        } else {
+          // Table output
+          console.log("ID        Name                 Expression       Agent         Enabled  Next Run");
+          console.log("─".repeat(90));
+          for (const j of jobs) {
+            const id = j.id.slice(0, 8).padEnd(8);
+            const name = j.name.slice(0, 20).padEnd(20);
+            const expr = j.expression.padEnd(16);
+            const agent = j.agentId.slice(0, 12).padEnd(12);
+            const enabled = j.enabled ? "yes" : "no ";
+            const next = j.nextRun ? new Date(j.nextRun).toLocaleString() : "—";
+            console.log(`${id}  ${name}  ${expr}  ${agent}  ${enabled}      ${next}`);
+          }
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    case "add": {
+      // isotopes cron add <name> <expression> <agentId> [--action type]
+      const name = subArgs[1];
+      const expression = subArgs[2];
+      const agentId = subArgs[3];
+      const actionIdx = subArgs.indexOf("--action");
+      const actionType = actionIdx !== -1 ? subArgs[actionIdx + 1] : "prompt";
+
+      if (!name || !expression || !agentId) {
+        console.error("Usage: isotopes cron add <name> <expression> <agentId> [--action type]");
+        console.error("Example: isotopes cron add daily-check '0 9 * * *' fairy");
+        process.exit(1);
+      }
+
+      try {
+        const res = await fetch(`${baseUrl}/api/cron`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            expression,
+            agentId,
+            action: { type: actionType },
+            enabled: true,
+          }),
+        });
+
+        if (!res.ok) {
+          const err = (await res.json().catch(() => ({}))) as { error?: string };
+          console.error(`Failed to create cron job: ${err.error ?? res.statusText}`);
+          process.exit(1);
+        }
+
+        const job = (await res.json()) as CronJobInfo;
+        if (useJson) {
+          console.log(JSON.stringify(job, null, 2));
+        } else {
+          console.log(`Cron job created: ${job.id}`);
+          console.log(`  Name:       ${job.name}`);
+          console.log(`  Expression: ${job.expression}`);
+          console.log(`  Agent:      ${job.agentId}`);
+          if (job.nextRun) console.log(`  Next run:   ${new Date(job.nextRun).toLocaleString()}`);
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    case "remove": {
+      const jobId = subArgs[1];
+      if (!jobId) {
+        console.error("Usage: isotopes cron remove <job-id>");
+        process.exit(1);
+      }
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/${jobId}`, { method: "DELETE" });
+        if (res.status === 404) {
+          console.error(`Cron job not found: ${jobId}`);
+          process.exit(1);
+        }
+        if (!res.ok) {
+          console.error(`API error: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+        if (useJson) {
+          console.log(JSON.stringify({ removed: jobId }));
+        } else {
+          console.log(`Cron job removed: ${jobId}`);
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    case "enable": {
+      const jobId = subArgs[1];
+      if (!jobId) {
+        console.error("Usage: isotopes cron enable <job-id>");
+        process.exit(1);
+      }
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/${jobId}/enable`, { method: "PUT" });
+        if (res.status === 404) {
+          console.error(`Cron job not found: ${jobId}`);
+          process.exit(1);
+        }
+        if (!res.ok) {
+          console.error(`API error: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+        if (useJson) {
+          console.log(JSON.stringify({ enabled: jobId }));
+        } else {
+          console.log(`Cron job enabled: ${jobId}`);
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    case "disable": {
+      const jobId = subArgs[1];
+      if (!jobId) {
+        console.error("Usage: isotopes cron disable <job-id>");
+        process.exit(1);
+      }
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/${jobId}/disable`, { method: "PUT" });
+        if (res.status === 404) {
+          console.error(`Cron job not found: ${jobId}`);
+          process.exit(1);
+        }
+        if (!res.ok) {
+          console.error(`API error: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+        if (useJson) {
+          console.log(JSON.stringify({ disabled: jobId }));
+        } else {
+          console.log(`Cron job disabled: ${jobId}`);
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    case "run": {
+      const jobId = subArgs[1];
+      if (!jobId) {
+        console.error("Usage: isotopes cron run <job-id>");
+        process.exit(1);
+      }
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/${jobId}/run`, { method: "POST" });
+        if (res.status === 404) {
+          console.error(`Cron job not found: ${jobId}`);
+          process.exit(1);
+        }
+        if (!res.ok) {
+          console.error(`API error: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+        if (useJson) {
+          console.log(JSON.stringify({ triggered: jobId }));
+        } else {
+          console.log(`Cron job triggered: ${jobId}`);
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    default:
+      console.error(`Usage: isotopes cron <list|add|remove|enable|disable|run> [args] [--json]`);
+      process.exit(1);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -802,6 +1037,10 @@ async function run(): Promise<void> {
 
     case "chat":
       await handleChatCommand();
+      break;
+
+    case "cron":
+      await handleCronCommand();
       break;
 
     case undefined:
