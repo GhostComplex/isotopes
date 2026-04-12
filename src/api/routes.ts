@@ -291,6 +291,26 @@ addRoute("GET", "/api/sessions/:id/messages", async (req, res, deps) => {
     }
   }
 
+  // Try Discord per-agent session stores
+  if (deps.discordSessionStores) {
+    for (const store of deps.discordSessionStores.values()) {
+      const discordSession = await store.get(req.params.id);
+      if (discordSession) {
+        const messages = await store.getMessages(req.params.id);
+        sendJson(res, 200, {
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: Array.isArray(m.content)
+              ? m.content.map((b) => (typeof b === "string" ? b : (b as { text?: string }).text ?? JSON.stringify(b))).join("")
+              : String(m.content),
+            timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+          })),
+        });
+        return;
+      }
+    }
+  }
+
   sendError(res, 404, `Session "${req.params.id}" not found`);
 });
 
