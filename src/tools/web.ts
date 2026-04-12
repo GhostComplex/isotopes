@@ -1,5 +1,4 @@
-// src/tools/web.ts — Web fetch tool
-// Note: web_search requires external API key (Brave/SerpAPI) - not included in MVP
+// src/tools/web.ts — Web fetch and search tools
 
 import type { Tool } from "../core/types.js";
 import type { ToolHandler } from "../core/tools.js";
@@ -164,6 +163,144 @@ export function createWebFetchTool(): { tool: Tool; handler: ToolHandler } {
       } catch (error) {
         const err = error instanceof Error ? error.message : String(error);
         return `[error] Failed to fetch: ${err}`;
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Web Search Tool (DuckDuckGo HTML scraping)
+// ---------------------------------------------------------------------------
+
+/** A single search result. */
+export interface SearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+/**
+ * Parse DuckDuckGo HTML search results into structured data.
+ */
+export function parseDuckDuckGoResults(html: string, count: number): SearchResult[] {
+  const results: SearchResult[] = [];
+
+  // Match result links: <a rel="nofollow" class="result__a" href="URL">Title</a>
+  const linkRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+  // Match snippets: <a class="result__snippet" ...>Snippet</a> or <span class="result__snippet">...</span>
+  const snippetRegex = /<(?:a|span)[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|span)>/gi;
+
+  const links: { url: string; title: string }[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = linkRegex.exec(html)) !== null) {
+    let url = match[1];
+    // DuckDuckGo wraps URLs in a redirect — extract actual URL
+    const uddgMatch = url.match(/[?&]uddg=([^&]+)/);
+    if (uddgMatch) {
+      url = decodeURIComponent(uddgMatch[1]);
+    }
+    const title = decodeHtmlEntities(match[2].replace(/<[^>]+>/g, "").trim());
+    if (title && url) {
+      links.push({ url, title });
+    }
+  }
+
+  const snippets: string[] = [];
+  while ((match = snippetRegex.exec(html)) !== null) {
+    const snippet = decodeHtmlEntities(match[1].replace(/<[^>]+>/g, "").trim());
+    snippets.push(snippet);
+  }
+
+  for (let i = 0; i < Math.min(links.length, count); i++) {
+    results.push({
+      title: links[i].title,
+      url: links[i].url,
+      snippet: snippets[i] || "",
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Create web_search tool using DuckDuckGo HTML scraping.
+ */
+export function createWebSearchTool(): { tool: Tool; handler: ToolHandler } {
+  return {
+    tool: {
+      name: "web_search",
+      description:
+        "Search the web using DuckDuckGo. Returns titles, URLs, and snippets.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query",
+          },
+          count: {
+            type: "number",
+            description: "Number of results (1-10, default 5)",
+          },
+          region: {
+            type: "string",
+            description: "Region code (e.g., 'us-en', 'uk-en')",
+          },
+        },
+        required: ["query"],
+      },
+    },
+    handler: async (args) => {
+      const { query, count: rawCount, region } = args as {
+        query: string;
+        count?: number;
+        region?: string;
+      };
+
+      if (!query || query.trim().length === 0) {
+        return "[error] Search query cannot be empty";
+      }
+
+      const count = Math.max(1, Math.min(10, rawCount ?? 5));
+
+      const params = new URLSearchParams({ q: query });
+      if (region) {
+        params.set("kl", region);
+      }
+
+      const url = `https://html.duckduckgo.com/html/?${params.toString()}`;
+
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "User-Agent": USER_AGENT,
+            Accept: "text/html",
+          },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+          redirect: "follow",
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const html = await response.text();
+        const results = parseDuckDuckGoResults(html, count);
+
+        if (results.length === 0) {
+          return `No results found for "${query}"`;
+        }
+
+        const formatted = results
+          .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
+          .join("\n\n");
+
+        return `Search results for "${query}":\n\n${formatted}`;
+      } catch (error) {
+        const err = error instanceof Error ? error.message : String(error);
+        return `[error] Search failed: ${err}`;
       }
     },
   };

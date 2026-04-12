@@ -66,7 +66,8 @@ export {
 } from "./self-iteration.js";
 export type { SelfIterationConfig } from "./self-iteration.js";
 
-export { createWebFetchTool } from "./web.js";
+export { createWebFetchTool, createWebSearchTool } from "./web.js";
+export type { SearchResult } from "./web.js";
 
 export {
   createSessionsSpawnTool,

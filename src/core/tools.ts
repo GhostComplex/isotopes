@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolSettings, Tool } from "./types.js";
 import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
-import { createWebFetchTool } from "../tools/web.js";
+import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import type { AcpxAgent, AcpxEvent, DiscordSinkConfig } from "../subagent/types.js";
 import { DiscordSink } from "../subagent/discord-sink.js";
 import { getSubagentContext } from "./subagent-context.js";
@@ -836,6 +836,7 @@ export function createWorkspaceToolsWithGuards(
   // Web fetch tool
   if (settings?.web) {
     tools.push(createWebFetchTool());
+    tools.push(createWebSearchTool());
   }
   return tools;
 }
