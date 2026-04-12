@@ -270,6 +270,10 @@ async function runSubagentWithDiscord(
   log.info("Starting sub-agent with Discord streaming", { agent, cwd, channelId });
   // Start the sink (creates thread)
   await sink.start(taskLabel);
+
+  // Get threadId after thread is created
+  const threadId = sink.getThreadId();
+
   // Collect events for building result
   const events: AcpxEvent[] = [];
   try {
@@ -279,6 +283,8 @@ async function runSubagentWithDiscord(
       cwd,
       timeout,
       allowedWorkspaces,
+      channelId,
+      threadId, // Pass threadId for /stop support in threads
       onEvent: async (event) => {
         events.push(event);
         await sink.sendEvent(event);
@@ -295,7 +301,6 @@ async function runSubagentWithDiscord(
     // Send summary to main channel
     await sink.finish(acpxResult);
     // Call onComplete callback for auto-unbind
-    const threadId = sink.getThreadId();
     if (onComplete && threadId) {
       try {
         await onComplete(threadId);
@@ -328,7 +333,6 @@ async function runSubagentWithDiscord(
       exitCode: 1,
     });
     // Call onComplete callback even on failure (for cleanup)
-    const threadId = sink.getThreadId();
     if (onComplete && threadId) {
       try {
         await onComplete(threadId);

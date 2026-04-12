@@ -6,6 +6,8 @@ export interface TaskInfo {
   taskId: string;
   sessionId: string;
   channelId: string;
+  /** Thread ID where subagent streams output (if any) */
+  threadId?: string;
   startedAt: Date;
 }
 
@@ -42,6 +44,19 @@ export class TaskRegistry {
   /** Get all tasks for a given session. */
   getBySession(sessionId: string): TaskInfo[] {
     return [...this.tasks.values()].filter((t) => t.sessionId === sessionId);
+  }
+
+  /** Get task by thread ID, or undefined if not found. */
+  getByThreadId(threadId: string): TaskInfo | undefined {
+    return [...this.tasks.values()].find((t) => t.threadId === threadId);
+  }
+
+  /** Set the thread ID for a running task. */
+  setThreadId(taskId: string, threadId: string): void {
+    const task = this.tasks.get(taskId);
+    if (task) {
+      task.threadId = threadId;
+    }
   }
 
   /** List all running tasks. */

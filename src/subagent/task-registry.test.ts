@@ -81,4 +81,38 @@ describe("TaskRegistry", () => {
       expect(registry.list()).toEqual([]);
     });
   });
+
+  describe("setThreadId()", () => {
+    it("sets threadId on existing task", () => {
+      registry.register("task-1", "sess-1", "chan-1");
+      registry.setThreadId("task-1", "thread-123");
+      const task = registry.get("task-1");
+      expect(task!.threadId).toBe("thread-123");
+    });
+
+    it("is a no-op for unknown taskId", () => {
+      expect(() => registry.setThreadId("nonexistent", "thread-1")).not.toThrow();
+    });
+  });
+
+  describe("getByThreadId()", () => {
+    it("returns task with matching threadId", () => {
+      registry.register("task-1", "sess-1", "chan-1");
+      registry.setThreadId("task-1", "thread-123");
+      
+      const task = registry.getByThreadId("thread-123");
+      expect(task).toBeDefined();
+      expect(task!.taskId).toBe("task-1");
+    });
+
+    it("returns undefined when no task has that threadId", () => {
+      registry.register("task-1", "sess-1", "chan-1");
+      expect(registry.getByThreadId("thread-999")).toBeUndefined();
+    });
+
+    it("returns undefined when tasks have no threadId set", () => {
+      registry.register("task-1", "sess-1", "chan-1");
+      expect(registry.getByThreadId("thread-1")).toBeUndefined();
+    });
+  });
 });

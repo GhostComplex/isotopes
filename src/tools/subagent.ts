@@ -48,6 +48,8 @@ export interface SpawnSubagentOptions {
   sessionId?: string;
   /** Channel ID for task registry tracking */
   channelId?: string;
+  /** Thread ID where subagent streams output (for /stop support) */
+  threadId?: string;
 }
 
 /** Result from spawning a sub-agent */
@@ -146,6 +148,11 @@ export async function spawnSubagent(
 
   // Register task for tracking/abort
   taskRegistry.register(taskId, options.sessionId ?? "", options.channelId ?? "");
+
+  // Set threadId if provided (for /stop support in threads)
+  if (options.threadId) {
+    taskRegistry.setThreadId(taskId, options.threadId);
+  }
 
   try {
     const events = backend.spawn(taskId, {

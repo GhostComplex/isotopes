@@ -39,6 +39,8 @@ import { ChannelHistoryBuffer, buildHistoryContext } from "../core/channel-histo
 import { DedupeCache } from "../core/dedupe.js";
 import { InboundDebouncer } from "../core/debounce.js";
 import { SlashCommandHandler } from "../commands/slash-commands.js";
+import { taskRegistry } from "../subagent/task-registry.js";
+import { cancelSubagent } from "../tools/subagent.js";
 
 const log = loggers.discord;
 
@@ -363,6 +365,15 @@ export class DiscordTransport implements Transport {
     let content = this.extractContent(msg);
     if (!content.trim()) return;
 
+    // 4.3. Subagent thread interception — handle /stop in subagent threads
+    if (isThread) {
+      const task = taskRegistry.getByThreadId(msg.channelId);
+      if (task) {
+        await this.handleSubagentThreadMessage(msg, task, content);
+        return;
+      }
+    }
+
     // 4.5. Slash command interception — handle admin commands before agent dispatch
     if (this.commandHandler.isCommand(content)) {
       const agentId = this.resolveAgentId(msg);
@@ -470,6 +481,37 @@ export class DiscordTransport implements Transport {
       accountId: this.config.accountId,
       isMentioned,
       isDM: false,
+    });
+  }
+
+  /**
+   * Handle a message in a subagent thread.
+   * Supports /stop and /cancel commands to kill the running subagent.
+   */
+  private async handleSubagentThreadMessage(
+    msg: DiscordMessage,
+    task: { taskId: string; sessionId: string; channelId: string; threadId?: string },
+    content: string,
+  ): Promise<void> {
+    const normalizedContent = content.trim().toLowerCase();
+
+    // Check for stop/cancel commands
+    if (normalizedContent === "/stop" || normalizedContent === "/cancel") {
+      log.info(`Cancelling subagent from thread`, { taskId: task.taskId, threadId: msg.channelId });
+      const cancelled = cancelSubagent(task.taskId);
+      if (cancelled) {
+        await (msg.channel as SendableChannel).send("🛑 Subagent cancelled.");
+      } else {
+        await (msg.channel as SendableChannel).send("⚠️ Subagent already finished or not found.");
+      }
+      return;
+    }
+
+    // For now, other messages in subagent threads are acknowledged but not forwarded
+    // (acpx stdin is closed after initial prompt — true steering requires acpx changes)
+    log.debug(`Subagent thread message ignored (steering not supported)`, {
+      taskId: task.taskId,
+      content: content.slice(0, 50),
     });
   }
 
