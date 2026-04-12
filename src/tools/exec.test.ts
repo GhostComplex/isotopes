@@ -77,6 +77,46 @@ describe("ProcessRegistry", () => {
     registry.clear();
     expect(registry.list()).toHaveLength(0);
   });
+
+  it("tracks completed process count", async () => {
+    const a = registry.spawn("echo a", process.cwd());
+    const b = registry.spawn("sleep 60", process.cwd());
+    
+    // Wait for first process to complete
+    await new Promise((r) => setTimeout(r, 100));
+    expect(a.status).toBe("exited");
+    expect(b.status).toBe("running");
+    expect(registry.getCompletedCount()).toBe(1);
+  });
+
+  it("cleans up completed processes manually", async () => {
+    registry.spawn("echo a", process.cwd());
+    registry.spawn("echo b", process.cwd());
+    
+    // Wait for processes to complete
+    await new Promise((r) => setTimeout(r, 100));
+    expect(registry.getCompletedCount()).toBe(2);
+    
+    const removed = registry.cleanup();
+    expect(removed).toBe(2);
+    expect(registry.list()).toHaveLength(0);
+  });
+
+  it("evicts oldest completed processes when maxCompleted exceeded", async () => {
+    const smallRegistry = new ProcessRegistry({ maxCompleted: 2 });
+    
+    // Spawn 3 processes that complete immediately
+    smallRegistry.spawn("echo 1", process.cwd());
+    await new Promise((r) => setTimeout(r, 50));
+    smallRegistry.spawn("echo 2", process.cwd());
+    await new Promise((r) => setTimeout(r, 50));
+    smallRegistry.spawn("echo 3", process.cwd());
+    await new Promise((r) => setTimeout(r, 100));
+    
+    // Should have evicted oldest, keeping only 2
+    expect(smallRegistry.getCompletedCount()).toBeLessThanOrEqual(2);
+    smallRegistry.clear();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -40,13 +40,24 @@ export interface ProcessInfo {
   _proc: ChildProcess;
 }
 
+/** Default maximum number of completed processes to retain. */
+const DEFAULT_MAX_COMPLETED = 100;
+
 /**
  * ProcessRegistry — singleton that tracks background processes spawned by
  * the exec tool. Each agent workspace gets its own registry instance.
+ *
+ * Automatically evicts oldest completed processes when maxCompleted is exceeded
+ * to prevent unbounded memory growth (#296).
  */
 export class ProcessRegistry {
   private processes = new Map<string, ProcessInfo>();
   private nextId = 1;
+  private maxCompleted: number;
+
+  constructor(options?: { maxCompleted?: number }) {
+    this.maxCompleted = options?.maxCompleted ?? DEFAULT_MAX_COMPLETED;
+  }
 
   /** Spawn a background process and register it. */
   spawn(command: string, cwd: string): ProcessInfo {
@@ -84,12 +95,14 @@ export class ProcessRegistry {
     child.on("exit", (code) => {
       info.status = "exited";
       info.exit_code = code ?? 1;
+      this.evictOldestCompleted();
     });
 
     child.on("error", (err) => {
       info.status = "exited";
       info.exit_code = 1;
       info.stderr += `\n[spawn error] ${err.message}`;
+      this.evictOldestCompleted();
     });
 
     this.processes.set(id, info);
@@ -137,6 +150,54 @@ export class ProcessRegistry {
     }
     this.processes.clear();
     this.nextId = 1;
+  }
+
+  /** Get count of completed (exited) processes. */
+  getCompletedCount(): number {
+    let count = 0;
+    for (const info of this.processes.values()) {
+      if (info.status === "exited") count++;
+    }
+    return count;
+  }
+
+  /** Manually remove all completed processes. */
+  cleanup(): number {
+    const toRemove: string[] = [];
+    for (const [id, info] of this.processes.entries()) {
+      if (info.status === "exited") {
+        toRemove.push(id);
+      }
+    }
+    for (const id of toRemove) {
+      this.processes.delete(id);
+    }
+    return toRemove.length;
+  }
+
+  /**
+   * Evict oldest completed processes if count exceeds maxCompleted.
+   * Called automatically when a process exits.
+   */
+  private evictOldestCompleted(): void {
+    const completed: Array<{ id: string; startTime: number }> = [];
+    for (const [id, info] of this.processes.entries()) {
+      if (info.status === "exited") {
+        completed.push({ id, startTime: new Date(info.start_time).getTime() });
+      }
+    }
+
+    if (completed.length <= this.maxCompleted) return;
+
+    // Sort by start time (oldest first)
+    completed.sort((a, b) => a.startTime - b.startTime);
+
+    // Remove oldest until we're at maxCompleted
+    const toRemove = completed.length - this.maxCompleted;
+    for (let i = 0; i < toRemove; i++) {
+      this.processes.delete(completed[i].id);
+      log.debug(`Evicted completed process ${completed[i].id}`);
+    }
   }
 }
 
