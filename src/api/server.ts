@@ -63,8 +63,9 @@ export class ApiServer {
     agentManager?: AgentManager,
     chatSessionStore?: SessionStore,
     usageTracker?: UsageTracker,
+    discordSessionStores?: Map<string, SessionStore>,
   ) {
-    this.deps = { sessionManager, cronScheduler, configReloader, agentManager, chatSessionStore, usageTracker };
+    this.deps = { sessionManager, cronScheduler, configReloader, agentManager, chatSessionStore, usageTracker, discordSessionStores };
   }
 
   /**

@@ -540,6 +540,7 @@ async function main() {
 
   // Start Discord transport if configured
   let discordManager: DiscordTransportManager | undefined;
+  let discordSessionStores: Map<string, DefaultSessionStore> | undefined;
 
   if (config.discord) {
     // Accounts are always normalized by loadConfig (legacy token → accounts.default)
@@ -558,6 +559,7 @@ async function main() {
       }
 
       await Promise.all([...sessionStores.values()].map((store) => store.init()));
+      discordSessionStores = sessionStores;
 
       // Use first agent's session store as default
       const defaultAgentId = config.discord.defaultAgentId || config.agents[0]?.id;
@@ -657,6 +659,7 @@ async function main() {
     agentManager,
     chatSessionStore,
     usageTracker,
+    discordSessionStores,
   );
   await apiServer.start();
   logger.info("Dashboard available at http://127.0.0.1:2712/dashboard");

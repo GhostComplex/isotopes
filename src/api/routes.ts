@@ -28,6 +28,8 @@ export interface RouteDeps {
   agentManager?: AgentManager;
   /** Session store for WebChat routes */
   chatSessionStore?: SessionStore;
+  /** Per-agent session stores for Discord sessions */
+  discordSessionStores?: Map<string, SessionStore>;
   /** Usage tracker for token/cost accumulation */
   usageTracker?: UsageTracker;
 }
@@ -150,33 +152,107 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
     }));
   }
 
-  sendJson(res, 200, [...acpSessions, ...chatSessions]);
+  // Discord sessions (per-agent file-persisted stores)
+  const discordSessions: typeof chatSessions = [];
+  if (deps.discordSessionStores) {
+    for (const [agentId, store] of deps.discordSessionStores) {
+      const sessions = await store.list();
+      for (const s of sessions) {
+        discordSessions.push({
+          id: s.id,
+          key: s.metadata?.key,
+          agentId: s.agentId || agentId,
+          threadId: s.metadata?.threadId,
+          status: "active",
+          createdAt: s.lastActiveAt.toISOString(),
+          lastActivityAt: s.lastActiveAt.toISOString(),
+          messageCount: 0,
+          source: "discord",
+        });
+      }
+    }
+  }
+
+  sendJson(res, 200, [...acpSessions, ...chatSessions, ...discordSessions]);
 });
 
 // ---------------------------------------------------------------------------
 // GET /api/sessions/:id — get session details
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/sessions/:id", (req, res, deps) => {
+addRoute("GET", "/api/sessions/:id", async (req, res, deps) => {
+  // Try ACP session first
   const session = deps.sessionManager.getSession(req.params.id);
-  if (!session) {
-    sendError(res, 404, `Session "${req.params.id}" not found`);
+  if (session) {
+    sendJson(res, 200, {
+      id: session.id,
+      agentId: session.agentId,
+      threadId: session.threadId,
+      status: session.status,
+      createdAt: session.createdAt.toISOString(),
+      lastActivityAt: session.lastActivityAt.toISOString(),
+      history: session.history.map((m) => ({
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp.toISOString(),
+      })),
+    });
     return;
   }
 
-  sendJson(res, 200, {
-    id: session.id,
-    agentId: session.agentId,
-    threadId: session.threadId,
-    status: session.status,
-    createdAt: session.createdAt.toISOString(),
-    lastActivityAt: session.lastActivityAt.toISOString(),
-    history: session.history.map((m) => ({
-      role: m.role,
-      content: m.content,
-      timestamp: m.timestamp.toISOString(),
-    })),
-  });
+  // Try chat session store
+  if (deps.chatSessionStore) {
+    const chatSession = await deps.chatSessionStore.get(req.params.id);
+    if (chatSession) {
+      const messages = await deps.chatSessionStore.getMessages(req.params.id);
+      sendJson(res, 200, {
+        id: chatSession.id,
+        agentId: chatSession.agentId,
+        threadId: chatSession.metadata?.threadId,
+        status: "active",
+        createdAt: chatSession.lastActiveAt.toISOString(),
+        lastActivityAt: chatSession.lastActiveAt.toISOString(),
+        source: "chat",
+        history: messages.map((m) => ({
+          role: m.role,
+          content: Array.isArray(m.content)
+            ? m.content.map((b) => (typeof b === "string" ? b : (b as { text?: string }).text ?? JSON.stringify(b))).join("")
+            : String(m.content),
+          timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+        })),
+      });
+      return;
+    }
+  }
+
+  // Try Discord per-agent session stores
+  if (deps.discordSessionStores) {
+    for (const store of deps.discordSessionStores.values()) {
+      const discordSession = await store.get(req.params.id);
+      if (discordSession) {
+        const messages = await store.getMessages(req.params.id);
+        sendJson(res, 200, {
+          id: discordSession.id,
+          agentId: discordSession.agentId,
+          threadId: discordSession.metadata?.threadId,
+          status: "active",
+          createdAt: discordSession.lastActiveAt.toISOString(),
+          lastActivityAt: discordSession.lastActiveAt.toISOString(),
+          source: "discord",
+          history: messages.map((m) => ({
+            role: m.role,
+            content: Array.isArray(m.content)
+              ? m.content.map((b) => (typeof b === "string" ? b : (b as { text?: string }).text ?? JSON.stringify(b))).join("")
+              : String(m.content),
+            timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+          })),
+        });
+        return;
+      }
+    }
+  }
+
+  sendError(res, 404, `Session "${req.params.id}" not found`);
 });
 
 // ---------------------------------------------------------------------------
