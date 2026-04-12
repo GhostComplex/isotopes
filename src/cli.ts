@@ -17,7 +17,7 @@ import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
 import { DiscordTransportManager } from "./transports/discord-manager.js";
 import { ThreadBindingManager } from "./core/thread-bindings.js";
-import { AcpSessionManager } from "./acp/index.js";
+import { AcpSessionManager, AgentMessageBus } from "./acp/index.js";
 import { logger } from "./core/logger.js";
 import {
   ToolRegistry,
@@ -29,6 +29,7 @@ import {
 import { createSelfIterationTools } from "./tools/self-iteration.js";
 import { createIterateCodebaseTool } from "./tools/iterate-codebase.js";
 import { createReplyReactTools, LazyTransportContext } from "./tools/reply-react.js";
+import { createSessionTools } from "./tools/sessions.js";
 import {
   getConfigPath,
   getIsotopesHome,
@@ -287,6 +288,15 @@ async function main() {
   const core = new PiMonoCore();
   const agentManager = new DefaultAgentManager(core);
 
+  // Shared ACP instances (created early so session tools can reference them)
+  const acpConfig = resolveAcpConfig(config.acp);
+  const acpSessionManager = new AcpSessionManager(
+    acpConfig ?? { enabled: false, backend: "acpx", defaultAgent: config.agents[0]?.id ?? "default" },
+  );
+  const agentMessageBus = new AgentMessageBus(acpSessionManager);
+  const startedAt = new Date();
+  const modelOverrides = new Map<string, string>();
+
   // Create agents with workspace tools
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
@@ -375,6 +385,19 @@ async function main() {
       toolRegistry.register(tool, handler);
     }
 
+    // Register ACP session tools for inter-agent communication
+    const sessionTools = createSessionTools({
+      sessionManager: acpSessionManager,
+      messageBus: agentMessageBus,
+      currentAgentId: agentConfig.id,
+      agentManager,
+      startedAt,
+      modelOverrides,
+    });
+    for (const { tool, handler } of sessionTools) {
+      toolRegistry.register(tool, handler);
+    }
+
     // Build tool guard prompt and store it for hot-reload persistence (M11.4)
     const toolGuardPrompt = buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, workspacePath, agentAllowedWorkspaces);
     agentConfig.systemPrompt = [
@@ -431,10 +454,6 @@ async function main() {
   }
 
   // Shared instances for Discord transport and API server
-  const acpConfig = resolveAcpConfig(config.acp);
-  const acpSessionManager = new AcpSessionManager(
-    acpConfig ?? { enabled: false, backend: "acpx", defaultAgent: config.agents[0]?.id ?? "default" },
-  );
   const cronScheduler = new CronScheduler();
   const usageTracker = new UsageTracker();
 
