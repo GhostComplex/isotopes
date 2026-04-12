@@ -97,6 +97,8 @@ export interface AcpxEvent {
   error?: string;
   /** Process exit code (for "done" events) */
   exitCode?: number;
+  /** Cost in USD (for "done" events, if available) */
+  costUsd?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +117,10 @@ export interface AcpxResult {
   events: AcpxEvent[];
   /** Process exit code */
   exitCode: number;
+  /** Cost in USD (if available from the agent) */
+  costUsd?: number;
+  /** Runtime duration in milliseconds */
+  durationMs?: number;
 }
 
 // ---------------------------------------------------------------------------

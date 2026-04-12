@@ -187,14 +187,15 @@ function mapRawEvent(obj: Record<string, unknown>): AcpxEvent | undefined {
     case "result": {
       const result = obj.result as string | undefined;
       const subtype = obj.subtype as string | undefined;
+      const costUsd = typeof obj.cost_usd === "number" ? obj.cost_usd : undefined;
       
       if (subtype === "error_max_turns") {
         return { type: "error", error: "Max turns reached" };
       }
       
-      // Result contains final text output
-      if (result) {
-        return { type: "message", content: result };
+      // Result contains final text output and cost
+      if (result || costUsd !== undefined) {
+        return { type: "done", content: result, exitCode: 0, costUsd };
       }
       return undefined;
     }

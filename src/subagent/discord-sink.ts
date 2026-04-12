@@ -87,11 +87,19 @@ export function formatSummary(result: AcpxResult, threadId?: string): string {
 
   let summary = `${status} (exit code: ${result.exitCode})`;
 
-  if (messageCount > 0 || toolCount > 0) {
-    const parts: string[] = [];
-    if (messageCount > 0) parts.push(`${messageCount} message${messageCount !== 1 ? "s" : ""}`);
-    if (toolCount > 0) parts.push(`${toolCount} tool call${toolCount !== 1 ? "s" : ""}`);
-    summary += `\n${parts.join(", ")}`;
+  // Add stats line (messages, tool calls, duration, cost)
+  const statParts: string[] = [];
+  if (messageCount > 0) statParts.push(`${messageCount} message${messageCount !== 1 ? "s" : ""}`);
+  if (toolCount > 0) statParts.push(`${toolCount} tool call${toolCount !== 1 ? "s" : ""}`);
+  if (result.durationMs !== undefined) {
+    const seconds = Math.round(result.durationMs / 1000);
+    statParts.push(`${seconds}s`);
+  }
+  if (result.costUsd !== undefined) {
+    statParts.push(`$${result.costUsd.toFixed(4)}`);
+  }
+  if (statParts.length > 0) {
+    summary += `\n${statParts.join(", ")}`;
   }
 
   if (result.error) {

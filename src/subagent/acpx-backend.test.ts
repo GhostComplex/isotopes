@@ -133,6 +133,24 @@ describe("parseJsonLine", () => {
     const event = parseJsonLine(line);
     expect(event).toEqual({ type: "error", error: "unknown error" });
   });
+
+  it("parses Claude CLI result event with cost_usd", () => {
+    const line = JSON.stringify({ type: "result", result: "Final output", cost_usd: 0.0125 });
+    const event = parseJsonLine(line);
+    expect(event).toEqual({ type: "done", content: "Final output", exitCode: 0, costUsd: 0.0125 });
+  });
+
+  it("parses Claude CLI result event without cost_usd", () => {
+    const line = JSON.stringify({ type: "result", result: "Final output" });
+    const event = parseJsonLine(line);
+    expect(event).toEqual({ type: "done", content: "Final output", exitCode: 0, costUsd: undefined });
+  });
+
+  it("parses Claude CLI result event with cost_usd but no result text", () => {
+    const line = JSON.stringify({ type: "result", cost_usd: 0.05 });
+    const event = parseJsonLine(line);
+    expect(event).toEqual({ type: "done", content: undefined, exitCode: 0, costUsd: 0.05 });
+  });
 });
 
 // ---------------------------------------------------------------------------

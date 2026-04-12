@@ -298,6 +298,9 @@ async function runSubagentWithDiscord(
   // Get threadId after thread is created
   const threadId = sink.getThreadId();
 
+  // Track start time for duration calculation
+  const startTime = Date.now();
+
   // Collect events for building result
   const events: AcpxEvent[] = [];
   try {
@@ -314,6 +317,11 @@ async function runSubagentWithDiscord(
         await sink.sendEvent(event);
       },
     });
+
+    // Calculate duration and extract cost from events
+    const durationMs = Date.now() - startTime;
+    const costUsd = events.find(e => e.costUsd !== undefined)?.costUsd;
+
     // Build AcpxResult for finish message
     const acpxResult = {
       success: result.success,
@@ -321,6 +329,8 @@ async function runSubagentWithDiscord(
       error: result.error,
       events,
       exitCode: result.exitCode,
+      durationMs,
+      costUsd,
     };
     // Send summary to main channel
     await sink.finish(acpxResult);
@@ -349,12 +359,14 @@ async function runSubagentWithDiscord(
     const errorEvent: AcpxEvent = { type: "error", error };
     events.push(errorEvent);
     await sink.sendEvent(errorEvent);
-    // Send failure summary
+    // Send failure summary with duration
+    const durationMs = Date.now() - startTime;
     await sink.finish({
       success: false,
       error,
       events,
       exitCode: 1,
+      durationMs,
     });
     // Call onComplete callback even on failure (for cleanup)
     if (onComplete && threadId) {

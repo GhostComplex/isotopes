@@ -277,6 +277,47 @@ describe("formatSummary", () => {
     expect(summary).not.toContain("<#");
     expect(summary).not.toContain("Details");
   });
+
+  it("includes duration when durationMs is provided", () => {
+    const result: AcpxResult = {
+      success: true,
+      events: [{ type: "done", exitCode: 0 }],
+      exitCode: 0,
+      durationMs: 45000,
+    };
+    const summary = formatSummary(result);
+    expect(summary).toContain("45s");
+  });
+
+  it("includes cost when costUsd is provided", () => {
+    const result: AcpxResult = {
+      success: true,
+      events: [{ type: "done", exitCode: 0 }],
+      exitCode: 0,
+      costUsd: 0.0123,
+    };
+    const summary = formatSummary(result);
+    expect(summary).toContain("$0.0123");
+  });
+
+  it("includes all stats in one line", () => {
+    const result: AcpxResult = {
+      success: true,
+      events: [
+        { type: "message", content: "hi" },
+        { type: "tool_use", toolName: "shell" },
+        { type: "done", exitCode: 0 },
+      ],
+      exitCode: 0,
+      durationMs: 30000,
+      costUsd: 0.05,
+    };
+    const summary = formatSummary(result);
+    expect(summary).toContain("1 message");
+    expect(summary).toContain("1 tool call");
+    expect(summary).toContain("30s");
+    expect(summary).toContain("$0.0500");
+  });
 });
 
 // ---------------------------------------------------------------------------
