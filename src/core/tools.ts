@@ -474,15 +474,32 @@ async function resolveWorkspaceConstrainedPath(
   }
   return realTargetPath;
 }
+const IMAGE_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".ico", ".tiff", ".tif",
+]);
+
+const DEFAULT_MAX_LINES = 2000;
+const DEFAULT_MAX_READ_SIZE = 50 * 1024; // 50 KB for text files
+
 /**
  * Create a file read tool.
+ *
+ * Supports text files (with optional offset/limit for pagination) and image
+ * files (returned as base64-encoded strings). Text files are truncated at
+ * `maxLines` (default 2000) when neither offset nor limit is specified.
  */
 export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, maxReadSize = 1024 * 1024, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
+  const {
+    basePath,
+    maxReadSize = DEFAULT_MAX_READ_SIZE,
+    constrainToWorkspace = true,
+    allowedWorkspaces = [],
+  } = options;
   return {
     tool: {
       name: "read_file",
-      description: "Read the contents of a file. Returns the file content as text.",
+      description:
+        "Read the contents of a file. Returns text content (with optional line offset/limit for large files) or base64-encoded data for image files.",
       parameters: {
         type: "object",
         properties: {
@@ -490,19 +507,66 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
             type: "string",
             description: "Path to the file to read (relative to workspace or absolute)",
           },
+          offset: {
+            type: "number",
+            description: "Line number to start reading from (0-based). Only applies to text files.",
+          },
+          limit: {
+            type: "number",
+            description: "Maximum number of lines to return. Only applies to text files.",
+          },
         },
         required: ["path"],
       },
     },
     handler: async (args) => {
-      const { path: filePath } = args as { path: string };
+      const { path: filePath, offset, limit } = args as {
+        path: string;
+        offset?: number;
+        limit?: number;
+      };
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "read", constrainToWorkspace, allowedWorkspaces);
+        const resolvedPath = await resolveWorkspaceConstrainedPath(
+          filePath,
+          basePath,
+          "read",
+          constrainToWorkspace,
+          allowedWorkspaces,
+        );
         const stats = await fs.stat(resolvedPath);
-        if (stats.size > maxReadSize) {
-          return `[error] File too large (${stats.size} bytes, max ${maxReadSize})`;
+
+        // Image files — return base64
+        const ext = path.extname(resolvedPath).toLowerCase();
+        if (IMAGE_EXTENSIONS.has(ext)) {
+          const buf = await fs.readFile(resolvedPath);
+          const mimeType = ext === ".svg" ? "image/svg+xml" : `image/${ext.slice(1).replace("jpg", "jpeg")}`;
+          return JSON.stringify({
+            type: "image",
+            encoding: "base64",
+            mime_type: mimeType,
+            data: buf.toString("base64"),
+          });
+        }
+
+        // Text files
+        if (stats.size > maxReadSize && offset == null && limit == null) {
+          return `[error] File too large (${stats.size} bytes, max ${maxReadSize}). Use offset and limit to read in chunks.`;
         }
         const content = await fs.readFile(resolvedPath, "utf-8");
+        const allLines = content.split("\n");
+        const totalLines = allLines.length;
+
+        const startLine = offset ?? 0;
+        const maxLines = limit ?? DEFAULT_MAX_LINES;
+        const selectedLines = allLines.slice(startLine, startLine + maxLines);
+        const truncated = startLine + maxLines < totalLines;
+
+        if (offset != null || limit != null || truncated) {
+          const result = selectedLines.join("\n");
+          const meta = `[lines ${startLine + 1}-${startLine + selectedLines.length} of ${totalLines}]`;
+          return truncated ? `${meta}\n${result}\n[truncated]` : `${meta}\n${result}`;
+        }
+
         return content;
       } catch (error) {
         const err = error as { code?: string; message?: string };

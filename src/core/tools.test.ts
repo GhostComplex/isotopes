@@ -298,6 +298,123 @@ describe("Built-in tools", () => {
         await fs.rm(outsideFile, { force: true });
       }
     });
+
+    it("reads file with offset", async () => {
+      const testFile = path.join(tempDir, "lines.txt");
+      await fs.writeFile(testFile, "line0\nline1\nline2\nline3\nline4");
+
+      const { handler } = createReadFileTool({ basePath: tempDir });
+      const result = await handler({ path: "lines.txt", offset: 2 });
+
+      expect(result).toContain("line2");
+      expect(result).toContain("line3");
+      expect(result).toContain("line4");
+      expect(result).not.toContain("line0");
+      expect(result).not.toContain("line1\n");
+    });
+
+    it("reads file with limit", async () => {
+      const testFile = path.join(tempDir, "lines.txt");
+      await fs.writeFile(testFile, "line0\nline1\nline2\nline3\nline4");
+
+      const { handler } = createReadFileTool({ basePath: tempDir });
+      const result = await handler({ path: "lines.txt", limit: 2 });
+
+      expect(result).toContain("line0");
+      expect(result).toContain("line1");
+      expect(result).toContain("[truncated]");
+      expect(result).toContain("[lines 1-2 of 5]");
+    });
+
+    it("reads file with offset and limit", async () => {
+      const testFile = path.join(tempDir, "lines.txt");
+      await fs.writeFile(testFile, "line0\nline1\nline2\nline3\nline4");
+
+      const { handler } = createReadFileTool({ basePath: tempDir });
+      const result = await handler({ path: "lines.txt", offset: 1, limit: 2 });
+
+      expect(result).toContain("[lines 2-3 of 5]");
+      expect(result).toContain("line1");
+      expect(result).toContain("line2");
+      expect(result).toContain("[truncated]");
+    });
+
+    it("truncates large files to 2000 lines by default", async () => {
+      const testFile = path.join(tempDir, "big.txt");
+      const lines = Array.from({ length: 3000 }, (_, i) => `line ${i}`);
+      await fs.writeFile(testFile, lines.join("\n"));
+
+      const { handler } = createReadFileTool({ basePath: tempDir, maxReadSize: 1024 * 1024 });
+      const result = await handler({ path: "big.txt" });
+
+      expect(result).toContain("[lines 1-2000 of 3000]");
+      expect(result).toContain("[truncated]");
+      expect(result).toContain("line 0");
+      expect(result).toContain("line 1999");
+      expect(result).not.toContain("line 2000\n");
+    });
+
+    it("returns error for files exceeding maxReadSize without offset/limit", async () => {
+      const testFile = path.join(tempDir, "huge.txt");
+      // Write more than default 50KB
+      await fs.writeFile(testFile, "x".repeat(60 * 1024));
+
+      const { handler } = createReadFileTool({ basePath: tempDir });
+      const result = await handler({ path: "huge.txt" });
+
+      expect(result).toContain("[error]");
+      expect(result).toContain("File too large");
+      expect(result).toContain("offset and limit");
+    });
+
+    it("reads image file as base64 JSON", async () => {
+      const testFile = path.join(tempDir, "test.png");
+      const fakeImageData = Buffer.from([0x89, 0x50, 0x4e, 0x47]); // PNG magic bytes
+      await fs.writeFile(testFile, fakeImageData);
+
+      const { handler } = createReadFileTool({ basePath: tempDir });
+      const result = await handler({ path: "test.png" });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.type).toBe("image");
+      expect(parsed.encoding).toBe("base64");
+      expect(parsed.mime_type).toBe("image/png");
+      expect(parsed.data).toBe(fakeImageData.toString("base64"));
+    });
+
+    it("reads jpg image with correct mime type", async () => {
+      const testFile = path.join(tempDir, "photo.jpg");
+      await fs.writeFile(testFile, Buffer.from([0xff, 0xd8, 0xff]));
+
+      const { handler } = createReadFileTool({ basePath: tempDir });
+      const result = await handler({ path: "photo.jpg" });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.mime_type).toBe("image/jpeg");
+    });
+
+    it("reads svg image with correct mime type", async () => {
+      const testFile = path.join(tempDir, "icon.svg");
+      await fs.writeFile(testFile, "<svg></svg>");
+
+      const { handler } = createReadFileTool({ basePath: tempDir });
+      const result = await handler({ path: "icon.svg" });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.mime_type).toBe("image/svg+xml");
+    });
+
+    it("allows reading large files when offset/limit is specified", async () => {
+      const testFile = path.join(tempDir, "huge-with-offset.txt");
+      await fs.writeFile(testFile, "x".repeat(60 * 1024));
+
+      const { handler } = createReadFileTool({ basePath: tempDir });
+      // Should not error — offset/limit bypasses the size check
+      const result = await handler({ path: "huge-with-offset.txt", offset: 0, limit: 10 });
+
+      expect(result).not.toContain("[error]");
+      expect(result).toContain("[lines");
+    });
   });
 
   describe("createWriteFileTool", () => {
