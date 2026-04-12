@@ -463,14 +463,12 @@ export class DiscordTransport implements Transport {
     // Try to find existing session by key
     const existing = await sessionStore.findByKey(sessionKey);
     if (existing) {
-      // Backfill channel/guild name if missing
-      if (existing.metadata && !existing.metadata.channelName) {
+      // Refresh channel/guild name on every message (handles renames)
+      if (existing.metadata) {
         const channelName = "name" in msg.channel ? (msg.channel as { name?: string }).name : undefined;
         const guildName = msg.guild?.name;
-        if (channelName) {
-          existing.metadata.channelName = channelName;
-          if (guildName) existing.metadata.guildName = guildName;
-        }
+        if (channelName) existing.metadata.channelName = channelName;
+        if (guildName) existing.metadata.guildName = guildName;
       }
       return existing;
     }
