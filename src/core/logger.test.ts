@@ -122,4 +122,43 @@ describe("Logger", () => {
       );
     });
   });
+
+  describe("dynamic log level", () => {
+    it("respects LOG_LEVEL changes at runtime", () => {
+      // Start with info level
+      vi.stubEnv("LOG_LEVEL", "info");
+      const log = createLogger("dynamic");
+
+      // debug should be filtered at info level
+      log.debug("should not appear");
+      expect(console.debug).not.toHaveBeenCalled();
+
+      // Change to debug level
+      vi.stubEnv("LOG_LEVEL", "debug");
+
+      // Now debug should appear (same logger instance)
+      log.debug("should appear");
+      expect(console.debug).toHaveBeenCalledWith(
+        expect.stringContaining("should appear"),
+      );
+    });
+
+    it("respects LOG_LEVEL changes for filtering", () => {
+      // Start with debug level
+      vi.stubEnv("LOG_LEVEL", "debug");
+      const log = createLogger("dynamic");
+
+      log.info("info at debug level");
+      expect(console.log).toHaveBeenCalled();
+
+      vi.mocked(console.log).mockClear();
+
+      // Raise to error level
+      vi.stubEnv("LOG_LEVEL", "error");
+
+      // info should now be filtered
+      log.info("info at error level");
+      expect(console.log).not.toHaveBeenCalled();
+    });
+  });
 });

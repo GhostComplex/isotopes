@@ -61,10 +61,9 @@ export interface Logger {
  * @param tag - Short identifier prepended to every log line (e.g. `"core"`, `"discord"`)
  */
 export function createLogger(tag: string): Logger {
-  const minLevel = LOG_LEVELS[getLogLevel()];
-
   const log = (level: LogLevel, message: string, args: unknown[]) => {
-    if (LOG_LEVELS[level] < minLevel) return;
+    // Evaluate log level on each call (not at construction) so runtime changes take effect
+    if (LOG_LEVELS[level] < LOG_LEVELS[getLogLevel()]) return;
 
     const formatted = format(level, tag, message);
 
