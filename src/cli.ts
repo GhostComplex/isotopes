@@ -4,6 +4,7 @@
 
 import { parseArgs } from "node:util";
 import path from "node:path";
+import * as fs from "node:fs/promises";
 import { VERSION } from "./index.js";
 import type { Message } from "./core/types.js";
 import {
@@ -123,12 +124,15 @@ Usage:
   isotopes                           Run in foreground (default)
   isotopes start [--config path]     Start as background daemon
   isotopes stop                      Stop the running daemon
-  isotopes status                    Show daemon status
+  isotopes status [--json]           Show daemon status
   isotopes restart [--config path]   Restart the daemon
   isotopes reload [agentId]          Reload workspace (hot-reload)
 
   isotopes chat "prompt" [--agent id] [--json]
                                      One-shot chat with an agent
+
+  isotopes logs [--lines N] [--level L] [-f]
+                                     View daemon logs
 
   isotopes service install           Install as system service
   isotopes service uninstall         Remove system service
@@ -351,6 +355,123 @@ function formatUptime(seconds: number): string {
   if (m > 0) parts.push(`${m}m`);
   parts.push(`${s}s`);
   return parts.join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// Logs command
+// ---------------------------------------------------------------------------
+
+async function handleLogsCommand(): Promise<void> {
+  const followMode = subArgs.includes("-f") || subArgs.includes("--follow");
+  const linesIdx = subArgs.findIndex((a) => a === "--lines" || a === "-n");
+  const lines = linesIdx !== -1 ? subArgs[linesIdx + 1] : "100";
+  const levelIdx = subArgs.findIndex((a) => a === "--level");
+  const levelFilter = levelIdx !== -1 ? subArgs[levelIdx + 1]?.toUpperCase() : null;
+
+  const port = process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const handleApiError = (e: unknown) => {
+    if (e instanceof Error && e.message.includes("ECONNREFUSED")) {
+      console.error("Cannot connect to isotopes daemon. Is it running?");
+      console.error("Try: isotopes start");
+    } else {
+      console.error("API error:", e instanceof Error ? e.message : String(e));
+    }
+    process.exit(1);
+  };
+
+  const filterByLevel = (logLines: string): string => {
+    if (!levelFilter) return logLines;
+    const levels = ["DEBUG", "INFO", "WARN", "ERROR"];
+    const minLevel = levels.indexOf(levelFilter);
+    if (minLevel === -1) return logLines; // invalid level, show all
+
+    return logLines
+      .split("\n")
+      .filter((line) => {
+        // Match log format: [timestamp] [LEVEL]
+        const match = line.match(/\[(DEBUG|INFO|WARN|ERROR)\s*\]/);
+        if (!match) return true; // keep non-log lines
+        return levels.indexOf(match[1]) >= minLevel;
+      })
+      .join("\n");
+  };
+
+  if (followMode) {
+    // Use tail -f directly on log file
+    const { getLogsDir } = await import("./core/paths.js");
+    const logsDir = getLogsDir();
+    const logFiles = ["isotopes.log", "isotopes.out.log"];
+
+    let logFile: string | null = null;
+    for (const f of logFiles) {
+      const p = path.join(logsDir, f);
+      try {
+        await fs.access(p);
+        logFile = p;
+        break;
+      } catch {
+        // try next
+      }
+    }
+
+    if (!logFile) {
+      console.error("No log file found. Is isotopes running?");
+      process.exit(1);
+    }
+
+    console.log(`Following ${logFile} (Ctrl+C to exit)...`);
+
+    // Use tail -f
+    const { spawn } = await import("child_process");
+    const tail = spawn("tail", ["-f", "-n", lines, logFile], {
+      stdio: levelFilter ? ["ignore", "pipe", "inherit"] : "inherit",
+    });
+
+    if (levelFilter && tail.stdout) {
+      // Filter in real-time
+      const readline = await import("readline");
+      const rl = readline.createInterface({ input: tail.stdout });
+      const levels = ["DEBUG", "INFO", "WARN", "ERROR"];
+      const minLevel = levels.indexOf(levelFilter);
+
+      rl.on("line", (line) => {
+        const match = line.match(/\[(DEBUG|INFO|WARN|ERROR)\s*\]/);
+        if (!match || levels.indexOf(match[1]) >= minLevel) {
+          console.log(line);
+        }
+      });
+    }
+
+    // Handle Ctrl+C
+    process.on("SIGINT", () => {
+      tail.kill();
+      process.exit(0);
+    });
+
+    await new Promise((resolve) => tail.on("close", resolve));
+  } else {
+    // One-shot: fetch from API
+    try {
+      const res = await fetch(`${baseUrl}/api/logs?lines=${lines}`);
+      if (!res.ok) {
+        console.error(`API error: ${res.status} ${res.statusText}`);
+        process.exit(1);
+      }
+      const data = (await res.json()) as { logs: string; file: string | null };
+
+      if (!data.file) {
+        console.log("No log file found.");
+        return;
+      }
+
+      const filtered = filterByLevel(data.logs);
+      console.log(filtered);
+    } catch (e) {
+      handleApiError(e);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -802,6 +923,10 @@ async function run(): Promise<void> {
 
     case "chat":
       await handleChatCommand();
+      break;
+
+    case "logs":
+      await handleLogsCommand();
       break;
 
     case undefined:

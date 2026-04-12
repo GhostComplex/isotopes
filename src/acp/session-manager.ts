@@ -298,9 +298,9 @@ export class AcpSessionManager {
   // -------------------------------------------------------------------------
 
   /** Release persistence timers and resources. */
-  destroy(): void {
+  async destroy(): Promise<void> {
     if (this.persistence) {
-      this.persistence.destroy();
+      await this.persistence.destroy();
     }
   }
 

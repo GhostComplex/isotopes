@@ -252,8 +252,8 @@ describe("AcpSessionPersistence", () => {
 describe("AcpSessionManager with persistence", () => {
   let manager: AcpSessionManager;
 
-  afterEach(() => {
-    manager?.destroy();
+  afterEach(async () => {
+    await manager?.destroy();
   });
 
   it("persists sessions to disk on creation", async () => {
@@ -285,7 +285,7 @@ describe("AcpSessionManager with persistence", () => {
 
     // Allow writes to flush
     await new Promise((r) => setTimeout(r, 100));
-    manager1.destroy();
+    await manager1.destroy();
 
     // Create a new manager and init — should restore
     manager = new AcpSessionManager(makeAcpConfig());
@@ -323,7 +323,7 @@ describe("AcpSessionManager with persistence", () => {
     const restored = manager2.getSession(s.id);
     expect(restored!.status).toBe("paused");
     expect(restored!.threadId).toBe("thread-new");
-    manager2.destroy();
+    await manager2.destroy();
   });
 
   it("persists termination", async () => {
@@ -341,7 +341,7 @@ describe("AcpSessionManager with persistence", () => {
 
     const restored = manager2.getSession(s.id);
     expect(restored!.status).toBe("terminated");
-    manager2.destroy();
+    await manager2.destroy();
   });
 
   it("cleans up stale sessions based on TTL", async () => {
@@ -404,7 +404,7 @@ describe("AcpSessionManager with persistence", () => {
     manager.addMessage(s2.id, { role: "user", content: "Msg to codex" });
 
     await new Promise((r) => setTimeout(r, 100));
-    manager.destroy();
+    await manager.destroy();
 
     const manager2 = new AcpSessionManager(makeAcpConfig());
     await manager2.init(makePersistenceConfig());
@@ -414,6 +414,6 @@ describe("AcpSessionManager with persistence", () => {
     expect(manager2.getSessionByThread("t2")!.agentId).toBe("codex");
     expect(manager2.getSession(s1.id)!.history[0].content).toBe("Msg to claude");
     expect(manager2.getSession(s2.id)!.history[0].content).toBe("Msg to codex");
-    manager2.destroy();
+    await manager2.destroy();
   });
 });
