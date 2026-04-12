@@ -1,5 +1,6 @@
-// src/subagent/acpx-backend.ts — Claude Code sub-agent spawning backend
-// Wraps `claude -p --output-format stream-json` as a child process with JSON line streaming.
+// src/subagent/acpx-backend.ts — ACP sub-agent spawning backend
+// Spawns sub-agents via `npx acpx --format json` with ACP JSON-RPC streaming.
+// Falls back to legacy `claude -p --output-format stream-json` if acpx is unavailable.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync, realpathSync } from "node:fs";
@@ -22,6 +23,90 @@ export const MAX_CONCURRENT_AGENTS = 5;
 // ---------------------------------------------------------------------------
 // JSON line parsing
 // ---------------------------------------------------------------------------
+
+/**
+ * Parse a single ACP JSON-RPC notification line from acpx stdout into an AcpxEvent.
+ * Handles session/update notifications with agent_message_chunk, tool_call,
+ * tool_call_update, and final result messages.
+ * Unrecognised lines are silently ignored (returns undefined).
+ */
+export function parseAcpxJsonLine(line: string): AcpxEvent | undefined {
+  const trimmed = line.trim();
+  if (!trimmed || !trimmed.startsWith("{")) return undefined;
+
+  try {
+    const obj = JSON.parse(trimmed) as Record<string, unknown>;
+
+    // Final result with stopReason (JSON-RPC response with id)
+    if (obj.id !== undefined && obj.result !== undefined) {
+      const result = obj.result as Record<string, unknown>;
+      if (result.stopReason) {
+        return { type: "done", exitCode: 0 };
+      }
+      return undefined;
+    }
+
+    // JSON-RPC notification
+    const method = obj.method as string | undefined;
+    if (method !== "session/update") return undefined;
+
+    const params = obj.params as Record<string, unknown> | undefined;
+    if (!params) return undefined;
+
+    const update = params.update as Record<string, unknown> | undefined;
+    if (!update) return undefined;
+
+    const sessionUpdate = update.sessionUpdate as string | undefined;
+    if (!sessionUpdate) return undefined;
+
+    switch (sessionUpdate) {
+      case "agent_message_chunk": {
+        const content = update.content as Record<string, unknown> | undefined;
+        if (content?.type === "text" && typeof content.text === "string") {
+          return { type: "message", content: content.text };
+        }
+        return undefined;
+      }
+
+      case "tool_call": {
+        const status = update.status as string | undefined;
+        if (status === "pending") {
+          const meta = update._meta as Record<string, unknown> | undefined;
+          const claudeCode = meta?.claudeCode as Record<string, unknown> | undefined;
+          const toolName = String(claudeCode?.toolName ?? "");
+          return {
+            type: "tool_use",
+            toolName,
+            toolInput: update.rawInput,
+          };
+        }
+        return undefined;
+      }
+
+      case "tool_call_update": {
+        const status = update.status as string | undefined;
+        if (status === "completed") {
+          const meta = update._meta as Record<string, unknown> | undefined;
+          const claudeCode = meta?.claudeCode as Record<string, unknown> | undefined;
+          const toolName = String(claudeCode?.toolName ?? "");
+          const rawOutput = update.rawOutput;
+          return {
+            type: "tool_result",
+            toolName,
+            toolResult: typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput),
+          };
+        }
+        return undefined;
+      }
+
+      default:
+        return undefined;
+    }
+  } catch {
+    log.debug("Failed to parse acpx JSON-RPC line", trimmed);
+    return undefined;
+  }
+}
 
 /**
  * Parse a single JSON line from claude CLI stdout into an AcpxEvent.
@@ -273,7 +358,40 @@ export class AcpxBackend {
   }
 
   /**
-   * Build the command-line arguments for `claude -p`.
+   * Build the command-line arguments for `acpx`.
+   *
+   * Returns two arrays:
+   * - preAgentArgs: Global flags BEFORE agent name (--cwd, --format, --approve-all)
+   * - postAgentArgs: Command + flags AFTER agent name (exec, --file, --model, --max-turns)
+   */
+  buildAcpxArgs(options: AcpxSpawnOptions): { preAgentArgs: string[]; postAgentArgs: string[] } {
+    const preAgentArgs: string[] = [
+      "--cwd", options.cwd,
+      "--format", "json",
+    ];
+
+    // Only add --approve-all for "skip" permission mode
+    const permissionMode = options.permissionMode ?? this.permissionMode;
+    if (permissionMode === "skip") {
+      preAgentArgs.push("--approve-all");
+      log.debug("Using acpx with --approve-all (permissionMode 'skip')");
+    }
+
+    const postAgentArgs: string[] = ["exec", "--file", "-"];
+
+    if (options.model) {
+      postAgentArgs.push("--model", options.model);
+    }
+
+    if (options.maxTurns !== undefined) {
+      postAgentArgs.push("--max-turns", String(options.maxTurns));
+    }
+
+    return { preAgentArgs, postAgentArgs };
+  }
+
+  /**
+   * Build the command-line arguments for legacy `claude -p` fallback.
    * Note: prompt is passed via stdin, not as an argument.
    *
    * M8.1: Supports configurable permission modes:
@@ -281,7 +399,7 @@ export class AcpxBackend {
    * - "allowlist" — --allowedTools with configured list (recommended)
    * - "default" — no permission flags (uses claude CLI defaults)
    */
-  buildArgs(options: AcpxSpawnOptions): string[] {
+  buildLegacyArgs(options: AcpxSpawnOptions): string[] {
     const args: string[] = [
       "-p",  // Print mode (non-interactive)
       "--output-format", "stream-json",  // Stream JSON events
@@ -330,7 +448,10 @@ export class AcpxBackend {
   }
 
   /**
-   * Spawn a Claude Code sub-agent and yield events as they arrive.
+   * Spawn a sub-agent and yield events as they arrive.
+   *
+   * Tries acpx first (`npx acpx ...`). If acpx spawn fails (ENOENT),
+   * falls back to legacy `claude -p --output-format stream-json` mode.
    *
    * Yields a "start" event immediately, then streams JSON-line events
    * from stdout. Errors on stderr are accumulated and emitted as error
@@ -357,24 +478,62 @@ export class AcpxBackend {
       );
     }
 
-    const args = this.buildArgs(options);
+    // Try acpx first, fall back to legacy claude -p
+    let proc: ChildProcess;
+    let lineParser: (line: string) => AcpxEvent | undefined;
 
-    log.info(`Spawning claude ${options.agent}`, { taskId, cwd: options.cwd, args });
+    try {
+      const { preAgentArgs, postAgentArgs } = this.buildAcpxArgs(options);
+      const acpxArgs = ["acpx", ...preAgentArgs, options.agent, ...postAgentArgs];
 
-    const proc = spawn(
-      "claude",
-      args,
-      {
-        cwd: options.cwd,
-        shell: false,
-        stdio: ["pipe", "pipe", "pipe"],  // Changed from "ignore" to "pipe" for stdin
-        env: {
-          ...process.env,
-          // Ensure PATH includes common locations
-          PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${process.env.HOME}/.local/bin`,
+      log.info(`Spawning acpx ${options.agent}`, { taskId, cwd: options.cwd, args: acpxArgs });
+
+      proc = spawn(
+        "npx",
+        acpxArgs,
+        {
+          cwd: options.cwd,
+          shell: false,
+          stdio: ["pipe", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${process.env.HOME}/.local/bin`,
+          },
         },
-      },
-    );
+      );
+      lineParser = parseAcpxJsonLine;
+
+      // Check for immediate spawn failure (ENOENT) synchronously via error event
+      const spawnError = await new Promise<Error | null>((resolve) => {
+        proc.once("error", (err) => resolve(err));
+        // If no error fires on next tick, spawn succeeded
+        setImmediate(() => resolve(null));
+      });
+
+      if (spawnError) {
+        throw spawnError;
+      }
+    } catch (err) {
+      // Fall back to legacy claude -p mode
+      const legacyArgs = this.buildLegacyArgs(options);
+
+      log.info(`acpx not available, falling back to claude -p`, { taskId, error: String(err) });
+
+      proc = spawn(
+        "claude",
+        legacyArgs,
+        {
+          cwd: options.cwd,
+          shell: false,
+          stdio: ["pipe", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:${process.env.HOME}/.local/bin`,
+          },
+        },
+      );
+      lineParser = parseJsonLine;
+    }
 
     this.processes.set(taskId, proc);
 
@@ -410,7 +569,7 @@ export class AcpxBackend {
       stdoutBuffer = lines.pop() ?? "";
 
       for (const line of lines) {
-        const event = parseJsonLine(line);
+        const event = lineParser(line);
         if (event) {
           enqueue(event);
         }
@@ -426,7 +585,7 @@ export class AcpxBackend {
     proc.on("close", (code) => {
       // Flush remaining stdout buffer
       if (stdoutBuffer.trim()) {
-        const event = parseJsonLine(stdoutBuffer);
+        const event = lineParser(stdoutBuffer);
         if (event) {
           enqueue(event);
         }

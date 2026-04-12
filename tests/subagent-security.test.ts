@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { tmpdir } from "node:os";
 import { mkdtempSync, mkdirSync, symlinkSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { AcpxBackend } from "../src/subagent/acpx-backend.js";
+import { AcpxBackend, parseAcpxJsonLine } from "../src/subagent/acpx-backend.js";
 import {
   initSubagentBackend,
 
@@ -19,7 +19,7 @@ import {
 describe("M8.4.1: permissionMode configuration", () => {
   it("defaults to 'allowlist' when not specified", () => {
     const backend = new AcpxBackend();
-    const args = backend.buildArgs({
+    const args = backend.buildLegacyArgs({
       agent: "claude",
       prompt: "test",
       cwd: "/tmp",
@@ -32,7 +32,7 @@ describe("M8.4.1: permissionMode configuration", () => {
     const backend = new AcpxBackend({
       permissionMode: "skip",
     });
-    const args = backend.buildArgs({
+    const args = backend.buildLegacyArgs({
       agent: "claude",
       prompt: "test",
       cwd: "/tmp",
@@ -46,7 +46,7 @@ describe("M8.4.1: permissionMode configuration", () => {
       permissionMode: "allowlist",
       allowedTools: ["Read", "Write", "Edit"],
     });
-    const args = backend.buildArgs({
+    const args = backend.buildLegacyArgs({
       agent: "claude",
       prompt: "test",
       cwd: "/tmp",
@@ -62,7 +62,7 @@ describe("M8.4.1: permissionMode configuration", () => {
     const backend = new AcpxBackend({
       permissionMode: "default",
     });
-    const args = backend.buildArgs({
+    const args = backend.buildLegacyArgs({
       agent: "claude",
       prompt: "test",
       cwd: "/tmp",
@@ -78,7 +78,7 @@ describe("M8.4.1: permissionMode configuration", () => {
     });
     
     // Override with skip mode
-    const args = backend.buildArgs({
+    const args = backend.buildLegacyArgs({
       agent: "claude",
       prompt: "test",
       cwd: "/tmp",
@@ -98,7 +98,7 @@ describe("M8.4.2: allowedTools filtering", () => {
     const backend = new AcpxBackend({
       permissionMode: "allowlist",
     });
-    const args = backend.buildArgs({
+    const args = backend.buildLegacyArgs({
       agent: "claude",
       prompt: "test",
       cwd: "/tmp",
@@ -117,7 +117,7 @@ describe("M8.4.2: allowedTools filtering", () => {
       permissionMode: "allowlist",
       allowedTools: ["Read", "LS"],
     });
-    const args = backend.buildArgs({
+    const args = backend.buildLegacyArgs({
       agent: "claude",
       prompt: "test",
       cwd: "/tmp",
@@ -137,7 +137,7 @@ describe("M8.4.2: allowedTools filtering", () => {
       permissionMode: "allowlist",
       allowedTools: [],
     });
-    const args = backend.buildArgs({
+    const args = backend.buildLegacyArgs({
       agent: "claude",
       prompt: "test",
       cwd: "/tmp",
@@ -151,7 +151,7 @@ describe("M8.4.2: allowedTools filtering", () => {
       permissionMode: "allowlist",
       allowedTools: ["Read", "Write"],
     });
-    const args = backend.buildArgs({
+    const args = backend.buildLegacyArgs({
       agent: "claude",
       prompt: "test",
       cwd: "/tmp",
@@ -372,5 +372,117 @@ describe("M8.4.7: Legacy constructor compatibility", () => {
       permissionMode: "skip",
     });
     expect(backend.workspacesKey).toBe("/home/user/project");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseAcpxJsonLine
+// ---------------------------------------------------------------------------
+
+describe("parseAcpxJsonLine", () => {
+  it("parses agent_message_chunk → message event", () => {
+    const line = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "s1",
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hello" } }
+      }
+    });
+    const event = parseAcpxJsonLine(line);
+    expect(event).toEqual({ type: "message", content: "hello" });
+  });
+
+  it("parses tool_call pending → tool_use event", () => {
+    const line = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "s1",
+        update: {
+          sessionUpdate: "tool_call",
+          status: "pending",
+          _meta: { claudeCode: { toolName: "Bash" } },
+          toolCallId: "t1",
+          rawInput: { command: "ls" }
+        }
+      }
+    });
+    const event = parseAcpxJsonLine(line);
+    expect(event).toEqual({ type: "tool_use", toolName: "Bash", toolInput: { command: "ls" } });
+  });
+
+  it("parses tool_call_update completed → tool_result event", () => {
+    const line = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "s1",
+        update: {
+          sessionUpdate: "tool_call_update",
+          status: "completed",
+          _meta: { claudeCode: { toolName: "Bash" } },
+          rawOutput: "file1\nfile2"
+        }
+      }
+    });
+    const event = parseAcpxJsonLine(line);
+    expect(event).toEqual({ type: "tool_result", toolName: "Bash", toolResult: "file1\nfile2" });
+  });
+
+  it("parses final result → done event", () => {
+    const line = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 2,
+      result: { stopReason: "end_turn", usage: { tokensIn: 100, tokensOut: 50 } }
+    });
+    const event = parseAcpxJsonLine(line);
+    expect(event).toEqual({ type: "done", exitCode: 0 });
+  });
+
+  it("ignores non-session/update notifications", () => {
+    const line = JSON.stringify({ jsonrpc: "2.0", method: "session/new", params: {} });
+    expect(parseAcpxJsonLine(line)).toBeUndefined();
+  });
+
+  it("handles malformed JSON gracefully", () => {
+    expect(parseAcpxJsonLine("{invalid")).toBeUndefined();
+    expect(parseAcpxJsonLine("")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildAcpxArgs
+// ---------------------------------------------------------------------------
+
+describe("buildAcpxArgs", () => {
+  it("returns correct structure with defaults", () => {
+    const backend = new AcpxBackend({ permissionMode: "skip" });
+    const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp" });
+    expect(result.preAgentArgs).toContain("--cwd");
+    expect(result.preAgentArgs).toContain("--format");
+    expect(result.preAgentArgs).toContain("json");
+    expect(result.preAgentArgs).toContain("--approve-all");
+    expect(result.postAgentArgs).toEqual(["exec", "--file", "-"]);
+  });
+
+  it("includes model flag when specified", () => {
+    const backend = new AcpxBackend({ permissionMode: "skip" });
+    const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp", model: "claude-opus" });
+    expect(result.postAgentArgs).toContain("--model");
+    expect(result.postAgentArgs).toContain("claude-opus");
+  });
+
+  it("includes max-turns flag when specified", () => {
+    const backend = new AcpxBackend({ permissionMode: "skip" });
+    const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp", maxTurns: 10 });
+    expect(result.postAgentArgs).toContain("--max-turns");
+    expect(result.postAgentArgs).toContain("10");
+  });
+
+  it("skips --approve-all for non-skip permission modes", () => {
+    const backend = new AcpxBackend({ permissionMode: "allowlist" });
+    const result = backend.buildAcpxArgs({ agent: "claude", prompt: "test", cwd: "/tmp" });
+    expect(result.preAgentArgs).not.toContain("--approve-all");
   });
 });

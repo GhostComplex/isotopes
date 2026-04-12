@@ -223,9 +223,9 @@ describe("AcpxBackend", () => {
     });
   });
 
-  describe("buildArgs", () => {
+  describe("buildLegacyArgs", () => {
     it("includes print mode and stream-json output by default", () => {
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "claude",
         prompt: "test prompt",
         cwd: "/tmp",
@@ -238,7 +238,7 @@ describe("AcpxBackend", () => {
 
     // M8: Default is now 'allowlist' mode, not 'skip' mode
     it("uses allowlist permission mode by default (M8)", () => {
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "claude",
         prompt: "test prompt",
         cwd: "/tmp",
@@ -251,7 +251,7 @@ describe("AcpxBackend", () => {
 
     // M8: Test that default allowed tools match the safe list (no Bash)
     it("includes the default allowed tool list without Bash (M8)", () => {
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "claude",
         prompt: "test prompt",
         cwd: "/tmp",
@@ -269,7 +269,7 @@ describe("AcpxBackend", () => {
       const skipBackend = new AcpxBackend({
         permissionMode: "skip",
       });
-      const args = skipBackend.buildArgs({
+      const args = skipBackend.buildLegacyArgs({
         agent: "claude",
         prompt: "test",
         cwd: "/tmp",
@@ -282,7 +282,7 @@ describe("AcpxBackend", () => {
       const defaultBackend = new AcpxBackend({
         permissionMode: "default",
       });
-      const args = defaultBackend.buildArgs({
+      const args = defaultBackend.buildLegacyArgs({
         agent: "claude",
         prompt: "test",
         cwd: "/tmp",
@@ -297,7 +297,7 @@ describe("AcpxBackend", () => {
         permissionMode: "allowlist",
         allowedTools: ["Read", "Write", "Bash"],
       });
-      const args = customBackend.buildArgs({
+      const args = customBackend.buildLegacyArgs({
         agent: "claude",
         prompt: "test",
         cwd: "/tmp",
@@ -309,7 +309,7 @@ describe("AcpxBackend", () => {
     // M8: Test per-spawn option override
     it("allows per-spawn permissionMode override", () => {
       // Backend defaults to 'allowlist', but spawn uses 'skip'
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "claude",
         prompt: "test",
         cwd: "/tmp",
@@ -319,7 +319,7 @@ describe("AcpxBackend", () => {
     });
 
     it("includes --model when specified", () => {
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "claude",
         prompt: "test",
         cwd: "/tmp",
@@ -331,7 +331,7 @@ describe("AcpxBackend", () => {
     });
 
     it("does not encode timeout in CLI args", () => {
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "claude",
         prompt: "test",
         cwd: "/tmp",
@@ -342,7 +342,7 @@ describe("AcpxBackend", () => {
     });
 
     it("includes --max-turns when specified", () => {
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "claude",
         prompt: "test",
         cwd: "/tmp",
@@ -354,7 +354,7 @@ describe("AcpxBackend", () => {
     });
 
     it("does not include prompt in args because it is passed via stdin", () => {
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "claude",
         prompt: "do something cool",
         cwd: "/tmp",
@@ -366,7 +366,7 @@ describe("AcpxBackend", () => {
 
     // M8: Updated to reflect new default (allowlist mode, no Bash)
     it("builds minimal args correctly with default allowlist mode (M8)", () => {
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "codex",
         prompt: "hello",
         cwd: "/home",
@@ -381,7 +381,7 @@ describe("AcpxBackend", () => {
 
     // M8: Updated to reflect new behavior
     it("builds full args correctly with model and maxTurns (M8)", () => {
-      const args = backend.buildArgs({
+      const args = backend.buildLegacyArgs({
         agent: "gemini",
         prompt: "write tests",
         cwd: "/project",
