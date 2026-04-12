@@ -108,6 +108,9 @@ const { values, positionals } = parseArgs({
     config: { type: "string", short: "c" },
     agent: { type: "string" },
     json: { type: "boolean" },
+    lines: { type: "string" },
+    level: { type: "string" },
+    follow: { type: "boolean", short: "f" },
   },
   allowPositionals: true,
 });
@@ -130,6 +133,21 @@ Usage:
   isotopes chat "prompt" [--agent id] [--json]
                                      One-shot chat with an agent
 
+  isotopes sessions list             List all sessions
+  isotopes sessions show <id>        Show session details
+  isotopes sessions delete <id>      Delete a session
+  isotopes sessions reset <id>       Reset session history
+
+  isotopes cron list                 List scheduled jobs
+  isotopes cron add <spec> <task>    Add a cron job
+  isotopes cron remove <id>          Remove a cron job
+  isotopes cron enable <id>          Enable a job
+  isotopes cron disable <id>         Disable a job
+  isotopes cron run <id>             Run a job now
+
+  isotopes logs [--lines N] [--level LEVEL] [-f]
+                                     View daemon logs
+
   isotopes service install           Install as system service
   isotopes service uninstall         Remove system service
   isotopes service enable            Enable service (auto-start)
@@ -141,6 +159,9 @@ Options:
   -c, --config     Path to config file
   --agent          Agent ID for chat command
   --json           Output chat response as JSON
+  --lines          Number of log lines (default: 50)
+  --level          Filter logs by level (debug/info/warn/error)
+  -f, --follow     Follow log output
 
 Config: ~/.isotopes/isotopes.yaml
 
@@ -410,6 +431,327 @@ function formatUptime(seconds: number): string {
   if (m > 0) parts.push(`${m}m`);
   parts.push(`${s}s`);
   return parts.join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// Sessions command
+// ---------------------------------------------------------------------------
+
+async function handleSessionsCommand(): Promise<void> {
+  const subCmd = positionals[0];
+  const sessionId = positionals[1];
+  const port = 2712;
+
+  try {
+    switch (subCmd) {
+      case "list":
+      case undefined: {
+        const res = await fetch(`http://127.0.0.1:${port}/api/sessions`);
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const sessions = await res.json() as Array<{ id: string; agentId: string; messageCount?: number; createdAt?: string }>;
+        if (values.json) {
+          console.log(JSON.stringify(sessions, null, 2));
+        } else {
+          if (sessions.length === 0) {
+            console.log("No active sessions");
+          } else {
+            console.log(`Sessions (${sessions.length}):\n`);
+            for (const s of sessions) {
+              console.log(`  ${s.id}`);
+              console.log(`    Agent: ${s.agentId}`);
+              console.log(`    Messages: ${s.messageCount ?? "?"}`);
+              console.log(`    Created: ${s.createdAt ?? "?"}`);
+              console.log();
+            }
+          }
+        }
+        break;
+      }
+      case "show": {
+        if (!sessionId) {
+          console.error("Usage: isotopes sessions show <id>");
+          process.exit(1);
+        }
+        const res = await fetch(`http://127.0.0.1:${port}/api/sessions/${sessionId}`);
+        if (!res.ok) {
+          if (res.status === 404) {
+            console.error(`Session not found: ${sessionId}`);
+          } else {
+            throw new Error(`API error: ${res.status}`);
+          }
+          process.exit(1);
+        }
+        const session = await res.json() as { id: string; agentId: string; messageCount?: number; createdAt?: string };
+        if (values.json) {
+          console.log(JSON.stringify(session, null, 2));
+        } else {
+          console.log(`Session: ${session.id}`);
+          console.log(`  Agent: ${session.agentId}`);
+          console.log(`  Messages: ${session.messageCount ?? "?"}`);
+          console.log(`  Created: ${session.createdAt ?? "?"}`);
+        }
+        break;
+      }
+      case "delete": {
+        if (!sessionId) {
+          console.error("Usage: isotopes sessions delete <id>");
+          process.exit(1);
+        }
+        const res = await fetch(`http://127.0.0.1:${port}/api/sessions/${sessionId}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          if (res.status === 404) {
+            console.error(`Session not found: ${sessionId}`);
+          } else {
+            throw new Error(`API error: ${res.status}`);
+          }
+          process.exit(1);
+        }
+        console.log(`Session deleted: ${sessionId}`);
+        break;
+      }
+      case "reset": {
+        if (!sessionId) {
+          console.error("Usage: isotopes sessions reset <id>");
+          process.exit(1);
+        }
+        const res = await fetch(`http://127.0.0.1:${port}/api/sessions/${sessionId}/reset`, {
+          method: "POST",
+        });
+        if (!res.ok) {
+          if (res.status === 404) {
+            console.error(`Session not found: ${sessionId}`);
+          } else {
+            throw new Error(`API error: ${res.status}`);
+          }
+          process.exit(1);
+        }
+        console.log(`Session reset: ${sessionId}`);
+        break;
+      }
+      default:
+        console.error(`Unknown sessions subcommand: ${subCmd}`);
+        console.error("Usage: isotopes sessions [list|show|delete|reset] [id]");
+        process.exit(1);
+    }
+  } catch (err) {
+    if (err instanceof TypeError && String(err).includes("fetch")) {
+      console.error("Cannot connect to daemon. Is it running? Try: isotopes start");
+    } else {
+      console.error("Error:", err instanceof Error ? err.message : err);
+    }
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cron command
+// ---------------------------------------------------------------------------
+
+async function handleCronCommand(): Promise<void> {
+  const subCmd = positionals[0];
+  const port = 2712;
+
+  try {
+    switch (subCmd) {
+      case "list":
+      case undefined: {
+        const res = await fetch(`http://127.0.0.1:${port}/api/cron`);
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const jobs = await res.json() as Array<{ id: string; schedule: string; agentId: string; enabled: boolean; lastRun?: string; nextRun?: string }>;
+        if (values.json) {
+          console.log(JSON.stringify(jobs, null, 2));
+        } else {
+          if (jobs.length === 0) {
+            console.log("No cron jobs configured");
+          } else {
+            console.log(`Cron Jobs (${jobs.length}):\n`);
+            for (const j of jobs) {
+              const status = j.enabled ? "enabled" : "disabled";
+              console.log(`  ${j.id} [${status}]`);
+              console.log(`    Schedule: ${j.schedule}`);
+              console.log(`    Agent: ${j.agentId}`);
+              if (j.lastRun) console.log(`    Last run: ${j.lastRun}`);
+              if (j.nextRun) console.log(`    Next run: ${j.nextRun}`);
+              console.log();
+            }
+          }
+        }
+        break;
+      }
+      case "add": {
+        const schedule = positionals[1];
+        const task = positionals.slice(2).join(" ");
+        if (!schedule || !task) {
+          console.error("Usage: isotopes cron add <schedule> <task>");
+          console.error('Example: isotopes cron add "0 9 * * *" "Send daily summary"');
+          process.exit(1);
+        }
+        const res = await fetch(`http://127.0.0.1:${port}/api/cron`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ schedule, task }),
+        });
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const job = await res.json() as { id: string };
+        console.log(`Cron job created: ${job.id}`);
+        break;
+      }
+      case "remove": {
+        const jobId = positionals[1];
+        if (!jobId) {
+          console.error("Usage: isotopes cron remove <id>");
+          process.exit(1);
+        }
+        const res = await fetch(`http://127.0.0.1:${port}/api/cron/${jobId}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          if (res.status === 404) {
+            console.error(`Job not found: ${jobId}`);
+          } else {
+            throw new Error(`API error: ${res.status}`);
+          }
+          process.exit(1);
+        }
+        console.log(`Cron job removed: ${jobId}`);
+        break;
+      }
+      case "enable": {
+        const jobId = positionals[1];
+        if (!jobId) {
+          console.error("Usage: isotopes cron enable <id>");
+          process.exit(1);
+        }
+        const res = await fetch(`http://127.0.0.1:${port}/api/cron/${jobId}/enable`, {
+          method: "POST",
+        });
+        if (!res.ok) {
+          if (res.status === 404) {
+            console.error(`Job not found: ${jobId}`);
+          } else {
+            throw new Error(`API error: ${res.status}`);
+          }
+          process.exit(1);
+        }
+        console.log(`Cron job enabled: ${jobId}`);
+        break;
+      }
+      case "disable": {
+        const jobId = positionals[1];
+        if (!jobId) {
+          console.error("Usage: isotopes cron disable <id>");
+          process.exit(1);
+        }
+        const res = await fetch(`http://127.0.0.1:${port}/api/cron/${jobId}/disable`, {
+          method: "POST",
+        });
+        if (!res.ok) {
+          if (res.status === 404) {
+            console.error(`Job not found: ${jobId}`);
+          } else {
+            throw new Error(`API error: ${res.status}`);
+          }
+          process.exit(1);
+        }
+        console.log(`Cron job disabled: ${jobId}`);
+        break;
+      }
+      case "run": {
+        const jobId = positionals[1];
+        if (!jobId) {
+          console.error("Usage: isotopes cron run <id>");
+          process.exit(1);
+        }
+        const res = await fetch(`http://127.0.0.1:${port}/api/cron/${jobId}/run`, {
+          method: "POST",
+        });
+        if (!res.ok) {
+          if (res.status === 404) {
+            console.error(`Job not found: ${jobId}`);
+          } else {
+            throw new Error(`API error: ${res.status}`);
+          }
+          process.exit(1);
+        }
+        console.log(`Cron job triggered: ${jobId}`);
+        break;
+      }
+      default:
+        console.error(`Unknown cron subcommand: ${subCmd}`);
+        console.error("Usage: isotopes cron [list|add|remove|enable|disable|run] [args]");
+        process.exit(1);
+    }
+  } catch (err) {
+    if (err instanceof TypeError && String(err).includes("fetch")) {
+      console.error("Cannot connect to daemon. Is it running? Try: isotopes start");
+    } else {
+      console.error("Error:", err instanceof Error ? err.message : err);
+    }
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Logs command
+// ---------------------------------------------------------------------------
+
+async function handleLogsCommand(): Promise<void> {
+  const logsDir = getLogsDir();
+  const logFile = path.join(logsDir, "isotopes.log");
+  const lines = values.lines ? parseInt(String(values.lines), 10) : 50;
+  const level = values.level as string | undefined;
+  const follow = values.follow ?? false;
+
+  // Check if log file exists
+  const fsPromises = await import("node:fs/promises");
+  try {
+    await fsPromises.access(logFile);
+  } catch {
+    console.error(`Log file not found: ${logFile}`);
+    console.error("Is the daemon running? Try: isotopes start");
+    process.exit(1);
+  }
+
+  // Filter function
+  const matchesLevel = (line: string): boolean => {
+    if (!level) return true;
+    const levelUpper = level.toUpperCase();
+    // Match common log formats: [INFO], INFO:, level=info, etc.
+    return line.toUpperCase().includes(levelUpper);
+  };
+
+  if (follow) {
+    // Follow mode: use tail -f
+    const { spawn } = await import("node:child_process");
+    const tail = spawn("tail", ["-f", logFile], { stdio: ["ignore", "pipe", "inherit"] });
+
+    tail.stdout.on("data", (chunk: Buffer) => {
+      const lines = chunk.toString().split("\n");
+      for (const line of lines) {
+        if (line && matchesLevel(line)) {
+          console.log(line);
+        }
+      }
+    });
+
+    // Handle Ctrl+C gracefully
+    process.on("SIGINT", () => {
+      tail.kill();
+      process.exit(0);
+    });
+  } else {
+    // Read last N lines
+    const content = await fsPromises.readFile(logFile, "utf-8");
+    const allLines = content.split("\n").filter(Boolean);
+    const filtered = level ? allLines.filter(matchesLevel) : allLines;
+    const lastN = filtered.slice(-lines);
+
+    for (const line of lastN) {
+      console.log(line);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -861,6 +1203,18 @@ async function run(): Promise<void> {
 
     case "chat":
       await handleChatCommand();
+      break;
+
+    case "sessions":
+      await handleSessionsCommand();
+      break;
+
+    case "cron":
+      await handleCronCommand();
+      break;
+
+    case "logs":
+      await handleLogsCommand();
       break;
 
     case undefined:
