@@ -325,12 +325,20 @@ export class DiscordTransport implements Transport {
     // 4.5. Slash command interception — handle admin commands before agent dispatch
     if (this.commandHandler.isCommand(content)) {
       const agentId = this.resolveAgentId(msg);
+      const sessionStore = this.getSessionStore(agentId);
+      const sessionKey = this.getSessionKey(msg, agentId);
+      const session = await sessionStore.findByKey(sessionKey);
+      const agent = this.config.agentManager.get(agentId);
+
       const result = await this.commandHandler.execute(content, {
         agentManager: this.config.agentManager,
-        sessionStore: this.getSessionStore(agentId),
+        sessionStore,
         agentId,
         userId: msg.author.id,
         username: msg.author.username,
+        sessionId: session?.id,
+        sessionKey,
+        agentInstance: agent,
       });
       await (msg.channel as SendableChannel).send(result.response);
       return;

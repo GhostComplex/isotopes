@@ -235,6 +235,171 @@ describe("SlashCommandHandler", () => {
   });
 
   // -----------------------------------------------------------------------
+  // /new and /reset
+  // -----------------------------------------------------------------------
+
+  describe("/new and /reset", () => {
+    it("clears session messages and returns success", async () => {
+      const sessionStore = createMockSessionStore();
+      (sessionStore.clearMessages as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      const agentInstance = {
+        prompt: vi.fn(),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+        clearMessages: vi.fn(),
+      };
+
+      const ctx = createContext({
+        sessionStore,
+        sessionId: "session-123",
+        agentInstance,
+      });
+
+      const result = await handler.execute("/new", ctx);
+
+      expect(sessionStore.clearMessages).toHaveBeenCalledWith("session-123");
+      expect(agentInstance.clearMessages).toHaveBeenCalled();
+      expect(result.response).toContain("Session reset");
+    });
+
+    it("/reset works as alias for /new", async () => {
+      const sessionStore = createMockSessionStore();
+      (sessionStore.clearMessages as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      const ctx = createContext({
+        sessionStore,
+        sessionId: "session-456",
+      });
+
+      const result = await handler.execute("/reset", ctx);
+
+      expect(sessionStore.clearMessages).toHaveBeenCalledWith("session-456");
+      expect(result.response).toContain("Session reset");
+    });
+
+    it("returns info message when no active session", async () => {
+      const ctx = createContext({ sessionId: undefined });
+      const result = await handler.execute("/new", ctx);
+      expect(result.response).toContain("No active session to reset");
+    });
+
+    it("reports error on clearMessages failure", async () => {
+      const sessionStore = createMockSessionStore();
+      (sessionStore.clearMessages as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error("Session not found"),
+      );
+
+      const ctx = createContext({
+        sessionStore,
+        sessionId: "session-789",
+      });
+
+      const result = await handler.execute("/new", ctx);
+
+      expect(result.response).toContain("Reset failed");
+      expect(result.response).toContain("Session not found");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // /compact
+  // -----------------------------------------------------------------------
+
+  describe("/compact", () => {
+    it("triggers compaction and returns stats", async () => {
+      const sessionStore = createMockSessionStore();
+      (sessionStore.getMessages as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce([1, 2, 3, 4, 5])  // before
+        .mockResolvedValueOnce([1, 2]);          // after
+
+      const agentInstance = {
+        prompt: vi.fn(),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+        forceCompact: vi.fn().mockResolvedValue(true),
+      };
+
+      const ctx = createContext({
+        sessionStore,
+        sessionId: "session-compact",
+        agentInstance,
+      });
+
+      const result = await handler.execute("/compact", ctx);
+
+      expect(agentInstance.forceCompact).toHaveBeenCalled();
+      expect(result.response).toContain("Compacted: 5 → 2 messages");
+    });
+
+    it("returns info when nothing to compact", async () => {
+      const agentInstance = {
+        prompt: vi.fn(),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+        forceCompact: vi.fn().mockResolvedValue(false),
+      };
+
+      const ctx = createContext({
+        sessionId: "session-small",
+        agentInstance,
+      });
+
+      const result = await handler.execute("/compact", ctx);
+
+      expect(result.response).toContain("Nothing to compact");
+    });
+
+    it("returns info when no active session", async () => {
+      const ctx = createContext({ sessionId: undefined });
+      const result = await handler.execute("/compact", ctx);
+      expect(result.response).toContain("No active session to compact");
+    });
+
+    it("returns error when agent does not support compaction", async () => {
+      const agentInstance = {
+        prompt: vi.fn(),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+        // No forceCompact method
+      };
+
+      const ctx = createContext({
+        sessionId: "session-no-compact",
+        agentInstance,
+      });
+
+      const result = await handler.execute("/compact", ctx);
+
+      expect(result.response).toContain("Compaction not supported");
+    });
+
+    it("reports error on compaction failure", async () => {
+      const agentInstance = {
+        prompt: vi.fn(),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+        forceCompact: vi.fn().mockRejectedValue(new Error("Model API error")),
+      };
+
+      const ctx = createContext({
+        sessionId: "session-error",
+        agentInstance,
+      });
+
+      const result = await handler.execute("/compact", ctx);
+
+      expect(result.response).toContain("Compaction failed");
+      expect(result.response).toContain("Model API error");
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Invalid input
   // -----------------------------------------------------------------------
 

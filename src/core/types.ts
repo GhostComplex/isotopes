@@ -244,6 +244,8 @@ export interface SessionStore {
   delete(sessionId: string): Promise<void>;
   /** List all sessions (lightweight, no message bodies). */
   list(): Promise<Session[]>;
+  /** Clear all messages from a session (keeps session metadata, clears history) */
+  clearMessages(sessionId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

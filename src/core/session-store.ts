@@ -177,6 +177,22 @@ export class DefaultSessionStore implements SessionStore {
     }
   }
 
+  async clearMessages(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session "${sessionId}" not found`);
+    }
+
+    // Clear in-memory messages
+    session.messages = [];
+    session.messagesLoaded = true;
+    session.lastActiveAt = new Date();
+
+    // Truncate transcript file
+    await fs.writeFile(this.transcriptFile(sessionId), "");
+    await this.persistIndex();
+  }
+
   // -------------------------------------------------------------------------
   // TTL & cleanup
   // -------------------------------------------------------------------------

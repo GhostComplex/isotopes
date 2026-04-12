@@ -1,7 +1,7 @@
 // src/commands/slash-commands.ts — Slash command handler for admin operations
 // Parses and dispatches /status, /reload, /model commands from chat messages.
 
-import type { AgentManager, SessionStore } from "../core/types.js";
+import type { AgentManager, SessionStore, AgentInstance } from "../core/types.js";
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("commands");
@@ -22,6 +22,12 @@ export interface CommandContext {
   userId: string;
   /** Discord username of the invoker */
   username: string;
+  /** Current session ID (if available) */
+  sessionId?: string;
+  /** Current session key (if available) */
+  sessionKey?: string;
+  /** Agent instance (if available) */
+  agentInstance?: AgentInstance;
 }
 
 /** Result of executing a slash command */
@@ -102,6 +108,11 @@ export class SlashCommandHandler {
         return this.handleReload(ctx);
       case "model":
         return this.handleModel(ctx, parsed.args);
+      case "new":
+      case "reset":
+        return this.handleNew(ctx);
+      case "compact":
+        return this.handleCompact(ctx, parsed.args);
       default:
         return { response: `Unknown command: /${parsed.name}` };
     }
@@ -173,10 +184,60 @@ export class SlashCommandHandler {
       return { response: `❌ Model switch failed: ${msg}` };
     }
   }
+
+  private async handleNew(ctx: CommandContext): Promise<CommandResult> {
+    if (!ctx.sessionId) {
+      return { response: "ℹ️ No active session to reset." };
+    }
+
+    try {
+      await ctx.sessionStore.clearMessages(ctx.sessionId);
+      ctx.agentInstance?.clearMessages?.();
+
+      log.info(`Session reset by ${ctx.username} (${ctx.userId})`);
+      return { response: "✅ Session reset. Starting fresh." };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`Session reset failed: ${msg}`);
+      return { response: `❌ Reset failed: ${msg}` };
+    }
+  }
+
+  private async handleCompact(ctx: CommandContext, instructions: string): Promise<CommandResult> {
+    if (!ctx.sessionId) {
+      return { response: "ℹ️ No active session to compact." };
+    }
+
+    if (!ctx.agentInstance?.forceCompact) {
+      return { response: "❌ Compaction not supported for this agent." };
+    }
+
+    try {
+      const messagesBefore = (await ctx.sessionStore.getMessages(ctx.sessionId)).length;
+      const compacted = await ctx.agentInstance.forceCompact();
+
+      if (!compacted) {
+        return { response: "ℹ️ Nothing to compact (context too small)." };
+      }
+
+      const messagesAfter = (await ctx.sessionStore.getMessages(ctx.sessionId)).length;
+
+      if (instructions) {
+        log.info(`Compact instructions (not used yet): ${instructions}`);
+      }
+
+      return {
+        response: `✅ Compacted: ${messagesBefore} → ${messagesAfter} messages`,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { response: `❌ Compaction failed: ${msg}` };
+    }
+  }
 }
 
 /** Set of known command names for isCommand() filtering */
-const KNOWN_COMMANDS = new Set(["status", "reload", "model"]);
+const KNOWN_COMMANDS = new Set(["status", "reload", "model", "new", "reset", "compact"]);
 
 /** Format milliseconds as a human-readable uptime string */
 function formatUptime(ms: number): string {

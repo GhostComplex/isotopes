@@ -426,4 +426,59 @@ describe("DefaultSessionStore", () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // clearMessages
+  // -------------------------------------------------------------------------
+
+  describe("clearMessages", () => {
+    it("clears in-memory messages", async () => {
+      const session = await store.create("agent-1");
+      await store.addMessage(session.id, { role: "user", content: textContent("msg1") });
+      await store.addMessage(session.id, { role: "assistant", content: textContent("msg2") });
+
+      await store.clearMessages(session.id);
+
+      const messages = await store.getMessages(session.id);
+      expect(messages).toHaveLength(0);
+    });
+
+    it("truncates transcript file on disk", async () => {
+      const session = await store.create("agent-1");
+      await store.addMessage(session.id, { role: "user", content: textContent("persist1") });
+      await store.addMessage(session.id, { role: "assistant", content: textContent("persist2") });
+
+      const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
+
+      // Verify messages are persisted
+      const beforeContent = await fs.readFile(transcriptFile, "utf-8");
+      expect(beforeContent.trim().split("\n")).toHaveLength(2);
+
+      await store.clearMessages(session.id);
+
+      // Verify transcript is truncated
+      const afterContent = await fs.readFile(transcriptFile, "utf-8");
+      expect(afterContent).toBe("");
+    });
+
+    it("throws on non-existent session", async () => {
+      await expect(
+        store.clearMessages("non-existent"),
+      ).rejects.toThrow('Session "non-existent" not found');
+    });
+
+    it("updates lastActiveAt", async () => {
+      const session = await store.create("agent-1");
+
+      // Wait a tiny bit to ensure time difference
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const beforeTimestamp = (await store.get(session.id))!.lastActiveAt.getTime();
+
+      await store.clearMessages(session.id);
+
+      const afterTimestamp = (await store.get(session.id))!.lastActiveAt.getTime();
+      expect(afterTimestamp).toBeGreaterThan(beforeTimestamp);
+    });
+  });
+
 });
