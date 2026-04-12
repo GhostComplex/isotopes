@@ -284,8 +284,10 @@ describe("AcpSessionManager with persistence", () => {
     manager1.addMessage(s1.id, { role: "assistant", content: "Hi!" });
 
     // Allow writes to flush
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 200));
     manager1.destroy();
+    // Allow destroy flush to complete
+    await new Promise((r) => setTimeout(r, 100));
 
     // Create a new manager and init — should restore
     manager = new AcpSessionManager(makeAcpConfig());
@@ -333,8 +335,8 @@ describe("AcpSessionManager with persistence", () => {
     const s = manager.createSession("claude");
     manager.terminateSession(s.id);
 
-    // Allow writes to flush
-    await new Promise((r) => setTimeout(r, 50));
+    // Allow async persistIndex to flush
+    await new Promise((r) => setTimeout(r, 200));
 
     const manager2 = new AcpSessionManager(makeAcpConfig());
     await manager2.init(makePersistenceConfig());
@@ -403,8 +405,10 @@ describe("AcpSessionManager with persistence", () => {
     manager.addMessage(s1.id, { role: "user", content: "Msg to claude" });
     manager.addMessage(s2.id, { role: "user", content: "Msg to codex" });
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 200));
     manager.destroy();
+    // Allow destroy flush to complete
+    await new Promise((r) => setTimeout(r, 100));
 
     const manager2 = new AcpSessionManager(makeAcpConfig());
     await manager2.init(makePersistenceConfig());

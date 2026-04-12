@@ -123,12 +123,17 @@ Usage:
   isotopes                           Run in foreground (default)
   isotopes start [--config path]     Start as background daemon
   isotopes stop                      Stop the running daemon
-  isotopes status                    Show daemon status
+  isotopes status [--json]           Show daemon status
   isotopes restart [--config path]   Restart the daemon
   isotopes reload [agentId]          Reload workspace (hot-reload)
 
   isotopes chat "prompt" [--agent id] [--json]
                                      One-shot chat with an agent
+
+  isotopes sessions list [--json]    List all sessions
+  isotopes sessions show <id>        Show session details
+  isotopes sessions delete <id>      Delete a session
+  isotopes sessions reset <id>       Reset session (clear history)
 
   isotopes service install           Install as system service
   isotopes service uninstall         Remove system service
@@ -351,6 +356,159 @@ function formatUptime(seconds: number): string {
   if (m > 0) parts.push(`${m}m`);
   parts.push(`${s}s`);
   return parts.join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// Sessions commands
+// ---------------------------------------------------------------------------
+
+interface SessionInfo {
+  id: string;
+  agentId: string;
+  status: string;
+  messages?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+async function handleSessionsCommand(): Promise<void> {
+  const action = subArgs[0];
+  const sessionId = subArgs[1];
+  const useJson = subArgs.includes("--json");
+  const port = process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const handleApiError = (e: unknown) => {
+    if (e instanceof Error && e.message.includes("ECONNREFUSED")) {
+      console.error("Cannot connect to isotopes daemon. Is it running?");
+      console.error("Try: isotopes start");
+    } else {
+      console.error("API error:", e instanceof Error ? e.message : String(e));
+    }
+    process.exit(1);
+  };
+
+  switch (action) {
+    case "list": {
+      try {
+        const res = await fetch(`${baseUrl}/api/sessions`);
+        if (!res.ok) {
+          console.error(`API error: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+        const sessions = (await res.json()) as SessionInfo[];
+
+        if (useJson) {
+          console.log(JSON.stringify(sessions, null, 2));
+        } else if (sessions.length === 0) {
+          console.log("No active sessions");
+        } else {
+          // Table output
+          console.log("ID                                    Agent         Status    Messages");
+          console.log("─".repeat(76));
+          for (const s of sessions) {
+            const id = s.id.padEnd(36);
+            const agent = (s.agentId ?? "—").padEnd(12);
+            const status = (s.status ?? "—").padEnd(9);
+            const msgs = String(s.messages ?? 0);
+            console.log(`${id}  ${agent}  ${status}  ${msgs}`);
+          }
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    case "show": {
+      if (!sessionId) {
+        console.error("Usage: isotopes sessions show <session-id>");
+        process.exit(1);
+      }
+      try {
+        const res = await fetch(`${baseUrl}/api/sessions/${sessionId}`);
+        if (res.status === 404) {
+          console.error(`Session not found: ${sessionId}`);
+          process.exit(1);
+        }
+        if (!res.ok) {
+          console.error(`API error: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+        const session = (await res.json()) as SessionInfo & { messages?: unknown[] };
+
+        if (useJson) {
+          console.log(JSON.stringify(session, null, 2));
+        } else {
+          console.log(`Session: ${session.id}`);
+          console.log(`  Agent:     ${session.agentId ?? "—"}`);
+          console.log(`  Status:    ${session.status ?? "—"}`);
+          console.log(`  Messages:  ${session.messages?.length ?? 0}`);
+          if (session.createdAt) console.log(`  Created:   ${session.createdAt}`);
+          if (session.updatedAt) console.log(`  Updated:   ${session.updatedAt}`);
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    case "delete": {
+      if (!sessionId) {
+        console.error("Usage: isotopes sessions delete <session-id>");
+        process.exit(1);
+      }
+      try {
+        const res = await fetch(`${baseUrl}/api/sessions/${sessionId}`, { method: "DELETE" });
+        if (res.status === 404) {
+          console.error(`Session not found: ${sessionId}`);
+          process.exit(1);
+        }
+        if (!res.ok) {
+          console.error(`API error: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+        if (useJson) {
+          console.log(JSON.stringify({ deleted: sessionId }));
+        } else {
+          console.log(`Session deleted: ${sessionId}`);
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    case "reset": {
+      if (!sessionId) {
+        console.error("Usage: isotopes sessions reset <session-id>");
+        process.exit(1);
+      }
+      try {
+        const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/reset`, { method: "POST" });
+        if (res.status === 404) {
+          console.error(`Session not found: ${sessionId}`);
+          process.exit(1);
+        }
+        if (!res.ok) {
+          console.error(`API error: ${res.status} ${res.statusText}`);
+          process.exit(1);
+        }
+        if (useJson) {
+          console.log(JSON.stringify({ reset: sessionId }));
+        } else {
+          console.log(`Session reset: ${sessionId}`);
+        }
+      } catch (e) {
+        handleApiError(e);
+      }
+      break;
+    }
+
+    default:
+      console.error(`Usage: isotopes sessions <list|show|delete|reset> [session-id] [--json]`);
+      process.exit(1);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -802,6 +960,10 @@ async function run(): Promise<void> {
 
     case "chat":
       await handleChatCommand();
+      break;
+
+    case "sessions":
+      await handleSessionsCommand();
       break;
 
     case undefined:
