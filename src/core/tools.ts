@@ -10,6 +10,7 @@ import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import type { AcpxAgent, AcpxEvent, DiscordSinkConfig } from "../subagent/types.js";
 import { DiscordSink } from "../subagent/discord-sink.js";
 import { getSubagentContext } from "./subagent-context.js";
+import { failureTracker } from "../subagent/failure-tracker.js";
 import { createLogger } from "./logger.js";
 const execAsync = promisify(exec);
 const log = createLogger("tools:subagent");
@@ -208,16 +209,39 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
         : workspacePath;
       // Check for Discord context
       const discordContext = getSubagentContext();
+
+      // Check failure tracker (only when sessionId available)
+      const sessionId = discordContext?.sessionId;
+      if (sessionId) {
+        const check = failureTracker.shouldBlock(sessionId, task);
+        if (check.blocked) {
+          log.warn("Blocking subagent spawn due to previous failures", { sessionId, reason: check.reason });
+          return `[blocked] ${check.reason}`;
+        }
+      }
+
       try {
+        let result: string;
         if (discordContext) {
           // Run with Discord streaming
-          return await runSubagentWithDiscord(task, agent as AcpxAgent, cwd, timeout, allAllowedWorkspaces, discordContext);
+          result = await runSubagentWithDiscord(task, agent as AcpxAgent, cwd, timeout, allAllowedWorkspaces, discordContext);
         } else {
           // Run without Discord streaming (original behavior)
-          return await runSubagentPlain(task, agent as AcpxAgent, cwd, timeout, allAllowedWorkspaces);
+          result = await runSubagentPlain(task, agent as AcpxAgent, cwd, timeout, allAllowedWorkspaces);
         }
+
+        // Record failure if result indicates failure
+        if (sessionId && (result.includes("[sub-agent failed]") || result.includes("[error]"))) {
+          failureTracker.recordFailure(sessionId, task, result);
+        }
+
+        return result;
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
+        // Record failure
+        if (sessionId) {
+          failureTracker.recordFailure(sessionId, task, error);
+        }
         return `[error] Failed to spawn sub-agent: ${error}`;
       }
     },

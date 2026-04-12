@@ -3,6 +3,7 @@
 
 import type { AgentManager, SessionStore, AgentInstance } from "../core/types.js";
 import { createLogger } from "../core/logger.js";
+import { failureTracker } from "../subagent/failure-tracker.js";
 
 const log = createLogger("commands");
 
@@ -193,6 +194,8 @@ export class SlashCommandHandler {
     try {
       await ctx.sessionStore.clearMessages(ctx.sessionId);
       ctx.agentInstance?.clearMessages?.();
+      // Clear failure tracker for this session (allow re-attempting previously failed tasks)
+      failureTracker.clearSession(ctx.sessionId);
 
       log.info(`Session reset by ${ctx.username} (${ctx.userId})`);
       return { response: "✅ Session reset. Starting fresh." };

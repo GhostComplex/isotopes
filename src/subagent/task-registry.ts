@@ -8,6 +8,8 @@ export interface TaskInfo {
   channelId: string;
   /** Thread ID where subagent streams output (if any) */
   threadId?: string;
+  /** Original task description */
+  task: string;
   startedAt: Date;
 }
 
@@ -22,11 +24,12 @@ export class TaskRegistry {
   private tasks: Map<string, TaskInfo> = new Map();
 
   /** Register a new running task. */
-  register(taskId: string, sessionId: string, channelId: string): void {
+  register(taskId: string, sessionId: string, channelId: string, task: string): void {
     this.tasks.set(taskId, {
       taskId,
       sessionId,
       channelId,
+      task,
       startedAt: new Date(),
     });
   }

@@ -19,6 +19,8 @@ export interface SubagentDiscordContext {
   createThread: CreateThreadFn;
   /** Channel ID where the subagent was triggered */
   channelId: string;
+  /** Session ID for failure tracking */
+  sessionId?: string;
   /** Whether to show tool calls in the thread */
   showToolCalls?: boolean;
   /** Callback invoked when subagent completes (for auto-unbind) */

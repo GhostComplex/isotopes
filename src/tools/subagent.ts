@@ -147,7 +147,7 @@ export async function spawnSubagent(
   const backend = getBackend(options.allowedWorkspaces);
 
   // Register task for tracking/abort
-  taskRegistry.register(taskId, options.sessionId ?? "", options.channelId ?? "");
+  taskRegistry.register(taskId, options.sessionId ?? "", options.channelId ?? "", prompt);
 
   // Set threadId if provided (for /stop support in threads)
   if (options.threadId) {

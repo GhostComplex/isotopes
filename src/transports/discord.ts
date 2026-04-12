@@ -40,6 +40,7 @@ import { DedupeCache } from "../core/dedupe.js";
 import { InboundDebouncer } from "../core/debounce.js";
 import { SlashCommandHandler } from "../commands/slash-commands.js";
 import { taskRegistry } from "../subagent/task-registry.js";
+import { failureTracker } from "../subagent/failure-tracker.js";
 import { cancelSubagent } from "../tools/subagent.js";
 
 const log = loggers.discord;
@@ -490,7 +491,7 @@ export class DiscordTransport implements Transport {
    */
   private async handleSubagentThreadMessage(
     msg: DiscordMessage,
-    task: { taskId: string; sessionId: string; channelId: string; threadId?: string },
+    task: { taskId: string; sessionId: string; channelId: string; threadId?: string; task: string },
     content: string,
   ): Promise<void> {
     const normalizedContent = content.trim().toLowerCase();
@@ -500,6 +501,10 @@ export class DiscordTransport implements Transport {
       log.info(`Cancelling subagent from thread`, { taskId: task.taskId, threadId: msg.channelId });
       const cancelled = cancelSubagent(task.taskId);
       if (cancelled) {
+        // Record cancellation to block future re-attempts of this task
+        if (task.sessionId) {
+          failureTracker.recordCancel(task.sessionId, task.task);
+        }
         await (msg.channel as SendableChannel).send("🛑 Subagent cancelled.");
       } else {
         await (msg.channel as SendableChannel).send("⚠️ Subagent already finished or not found.");
@@ -586,7 +591,7 @@ export class DiscordTransport implements Transport {
    * Create a subagent Discord context for the given channel.
    * This context enables subagent tool to stream output to Discord threads.
    */
-  private createSubagentContext(channel: SendableChannel): SubagentDiscordContext {
+  private createSubagentContext(channel: SendableChannel, sessionId?: string): SubagentDiscordContext {
     const threadBindingConfig = this.config.threadBindings;
     const autoUnbindEnabled = threadBindingConfig?.autoUnbindOnComplete !== false;
     const sendFarewell = threadBindingConfig?.sendFarewell ?? false;
@@ -615,6 +620,7 @@ export class DiscordTransport implements Transport {
         return { id: thread.id };
       },
       channelId: channel.id,
+      sessionId,
       showToolCalls: this.config.subagentShowToolCalls ?? true,
       onComplete: autoUnbindEnabled
         ? async (threadId: string) => {
@@ -699,7 +705,7 @@ export class DiscordTransport implements Transport {
 
       if (this.config.enableSubagentStreaming !== false) {
         // Run with subagent Discord context enabled
-        const subagentContext = this.createSubagentContext(channel);
+        const subagentContext = this.createSubagentContext(channel, sessionId);
         const result = await runWithSubagentContextAsync(subagentContext, runLoop);
 
         errorMessage = result.errorMessage;

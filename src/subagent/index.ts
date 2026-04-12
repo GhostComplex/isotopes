@@ -47,6 +47,9 @@ export type { SendMessageFn, CreateThreadFn } from "./discord-sink.js";
 export { TaskRegistry, taskRegistry } from "./task-registry.js";
 export type { TaskInfo } from "./task-registry.js";
 
+export { FailureTracker, failureTracker } from "./failure-tracker.js";
+export type { BlockCheck } from "./failure-tracker.js";
+
 // ---------------------------------------------------------------------------
 // SubagentManager
 // ---------------------------------------------------------------------------
