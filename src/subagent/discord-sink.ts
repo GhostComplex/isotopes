@@ -75,6 +75,27 @@ export function formatEvent(event: AcpxEvent, config: DiscordSinkConfig): string
 }
 
 /**
+ * Get human-readable explanation for an exit code.
+ */
+function getExitCodeExplanation(exitCode: number | undefined): string {
+  if (exitCode === undefined) return "";
+  switch (exitCode) {
+    case 0:
+      return "success";
+    case 1:
+      return "API error";
+    case 2:
+      return "user abort";
+    case 3:
+      return "max turns exceeded";
+    case 137:
+      return "terminated by user";
+    default:
+      return "";
+  }
+}
+
+/**
  * Format an AcpxResult summary for the completion message.
  *
  * @param result - The result to format
@@ -85,7 +106,11 @@ export function formatSummary(result: AcpxResult, threadId?: string): string {
   const messageCount = result.events.filter((e) => e.type === "message").length;
   const toolCount = result.events.filter((e) => e.type === "tool_use").length;
 
-  let summary = `${status} (exit code: ${result.exitCode})`;
+  const exitCodeExplanation = getExitCodeExplanation(result.exitCode);
+  const exitCodeStr = exitCodeExplanation
+    ? `${result.exitCode} — ${exitCodeExplanation}`
+    : `${result.exitCode}`;
+  let summary = `${status} (exit code: ${exitCodeStr})`;
 
   // Add stats line (messages, tool calls, duration, cost)
   const statParts: string[] = [];
