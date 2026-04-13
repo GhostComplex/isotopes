@@ -217,6 +217,8 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
           log.warn("Blocking subagent spawn due to previous failures", { sessionId, reason: check.reason });
           return `[blocked] ${check.reason}`;
         }
+        // Record spawn attempt for rate limiting
+        failureTracker.recordSpawn(sessionId);
       }
 
       try {

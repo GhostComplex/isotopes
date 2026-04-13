@@ -132,4 +132,119 @@ describe("FailureTracker", () => {
       expect(tracker.getFailureCount("session-1", longTask2)).toBe(1);
     });
   });
+
+  describe("spawn rate limiting", () => {
+    beforeEach(() => {
+      // Use a short window for testing
+      tracker.setRateLimitConfig({ maxSpawnsPerWindow: 3, windowMs: 1000 });
+    });
+
+    it("allows spawns below rate limit", () => {
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+
+      const check = tracker.isRateLimited("session-1");
+      expect(check.blocked).toBe(false);
+    });
+
+    it("blocks spawns at rate limit", () => {
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+
+      const check = tracker.isRateLimited("session-1");
+      expect(check.blocked).toBe(true);
+      expect(check.reason).toContain("Rate limit exceeded");
+      expect(check.reason).toContain("3 spawn attempts");
+    });
+
+    it("blocks spawns exceeding rate limit", () => {
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+
+      const check = tracker.isRateLimited("session-1");
+      expect(check.blocked).toBe(true);
+      expect(check.reason).toContain("4 spawn attempts");
+    });
+
+    it("tracks spawns independently per session", () => {
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+
+      tracker.recordSpawn("session-2");
+
+      expect(tracker.isRateLimited("session-1").blocked).toBe(true);
+      expect(tracker.isRateLimited("session-2").blocked).toBe(false);
+    });
+
+    it("cleans up old spawns outside the window", async () => {
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+
+      expect(tracker.isRateLimited("session-1").blocked).toBe(true);
+
+      // Wait for window to expire
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
+      // Old spawns should be cleaned up
+      expect(tracker.isRateLimited("session-1").blocked).toBe(false);
+    });
+
+    it("shouldBlock checks rate limit before task-specific failures", () => {
+      // Trigger rate limit
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+
+      // Task hasn't failed yet, but rate limit should block
+      const check = tracker.shouldBlock("session-1", "new task");
+      expect(check.blocked).toBe(true);
+      expect(check.reason).toContain("Rate limit exceeded");
+    });
+
+    it("clearSession clears spawn history", () => {
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+
+      tracker.clearSession("session-1");
+
+      expect(tracker.isRateLimited("session-1").blocked).toBe(false);
+    });
+
+    it("setRateLimitConfig updates configuration", () => {
+      tracker.setRateLimitConfig({ maxSpawnsPerWindow: 10, windowMs: 5000 });
+
+      // Can now spawn more times
+      for (let i = 0; i < 9; i++) {
+        tracker.recordSpawn("session-1");
+      }
+
+      expect(tracker.isRateLimited("session-1").blocked).toBe(false);
+
+      tracker.recordSpawn("session-1");
+      expect(tracker.isRateLimited("session-1").blocked).toBe(true);
+    });
+
+    it("catches prompt-variant spam that bypasses hash-based tracking", () => {
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+      tracker.recordSpawn("session-1");
+
+      // Different prompts (different hashes), but same session
+      const check1 = tracker.shouldBlock("session-1", "implement feature X");
+      const check2 = tracker.shouldBlock("session-1", "implement feature Y");
+      const check3 = tracker.shouldBlock("session-1", "implement feature Z");
+
+      // All should be blocked by rate limit despite different prompts
+      expect(check1.blocked).toBe(true);
+      expect(check2.blocked).toBe(true);
+      expect(check3.blocked).toBe(true);
+      expect(check1.reason).toContain("Rate limit exceeded");
+    });
+  });
 });
