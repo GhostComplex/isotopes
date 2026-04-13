@@ -845,6 +845,7 @@ async function main() {
       subagentEnabled,
       agentAllowedWorkspaces,
       agentConfig.codingMode,
+      config.acp?.subagent?.maxTurns,
     );
 
     // Apply tool policy (allow/deny) before registration
