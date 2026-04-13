@@ -242,6 +242,12 @@ function mapRawEvent(obj: Record<string, unknown>): AcpxEvent | undefined {
 // ---------------------------------------------------------------------------
 
 /**
+ * Shared processes map across all AcpxBackend instances.
+ * This allows cancelSubagent() to work even when called with a different backend instance.
+ */
+const processes = new Map<string, ChildProcess>();
+
+/**
  * Configuration options for AcpxBackend (M8).
  */
 export interface AcpxBackendOptions {
@@ -271,8 +277,6 @@ export interface AcpxBackendOptions {
  * Events are streamed as an async generator from the process stdout.
  */
 export class AcpxBackend {
-  /** Active child processes keyed by taskId */
-  private processes: Map<string, ChildProcess> = new Map();
 
   /** Allowed workspace roots for cwd validation */
   private allowedRoots: string[];
@@ -491,7 +495,7 @@ export class AcpxBackend {
     this.validateCwd(options.cwd);
 
     // Security: enforce concurrent process limit
-    if (this.processes.size >= MAX_CONCURRENT_AGENTS) {
+    if (processes.size >= MAX_CONCURRENT_AGENTS) {
       throw new Error(
         `Max concurrent sub-agents reached (${MAX_CONCURRENT_AGENTS}). Cancel existing tasks first.`
       );
@@ -554,7 +558,7 @@ export class AcpxBackend {
       lineParser = parseJsonLine;
     }
 
-    this.processes.set(taskId, proc);
+    processes.set(taskId, proc);
 
     // Write prompt to stdin and close it
     if (proc.stdin) {
@@ -645,7 +649,7 @@ export class AcpxBackend {
         });
       }
     } finally {
-      this.processes.delete(taskId);
+      processes.delete(taskId);
     }
 
     // Always yield a final done event
@@ -663,7 +667,7 @@ export class AcpxBackend {
    * @returns true if a process was found and signalled
    */
   cancel(taskId: string): boolean {
-    const proc = this.processes.get(taskId);
+    const proc = processes.get(taskId);
     if (!proc || proc.killed) {
       return false;
     }
@@ -693,7 +697,7 @@ export class AcpxBackend {
    * @returns true if the process exists and has not exited
    */
   isRunning(taskId: string): boolean {
-    const proc = this.processes.get(taskId);
+    const proc = processes.get(taskId);
     return !!proc && !proc.killed && proc.exitCode === null;
   }
 
@@ -701,14 +705,14 @@ export class AcpxBackend {
    * Get the number of currently active processes.
    */
   get activeCount(): number {
-    return this.processes.size;
+    return processes.size;
   }
 
   /**
    * Cancel all running processes.
    */
   cancelAll(): void {
-    for (const taskId of [...this.processes.keys()]) {
+    for (const taskId of [...processes.keys()]) {
       this.cancel(taskId);
     }
   }
