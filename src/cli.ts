@@ -896,10 +896,12 @@ async function main() {
     }
 
     // Register exec/process tools (shared registry across agents)
-    const execTools = createExecTools({ cwd: workspacePath, registry: processRegistry });
-    const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
-    for (const { tool, handler } of filteredExecTools) {
-      toolRegistry.register(tool, handler);
+    if (resolvedToolGuards.cli) {
+      const execTools = createExecTools({ cwd: workspacePath, registry: processRegistry });
+      const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
+      for (const { tool, handler } of filteredExecTools) {
+        toolRegistry.register(tool, handler);
+      }
     }
 
     // Build tool guard prompt and store it for hot-reload persistence (M11.4)

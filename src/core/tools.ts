@@ -1,7 +1,5 @@
 // src/core/tools.ts — Tool registry and execution
 // Manages tool definitions and their handlers.
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolSettings, Tool } from "./types.js";
@@ -12,7 +10,6 @@ import { DiscordSink } from "../subagent/discord-sink.js";
 import { getSubagentContext } from "./subagent-context.js";
 import { failureTracker } from "../subagent/failure-tracker.js";
 import { createLogger } from "./logger.js";
-const execAsync = promisify(exec);
 const log = createLogger("tools:subagent");
 /** Function that executes a tool call and returns a string result. */
 export type ToolHandler = (args: unknown) => Promise<string>;
@@ -380,60 +377,6 @@ async function runSubagentWithDiscord(
   }
 }
 // ---------------------------------------------------------------------------
-// Shell tool
-// ---------------------------------------------------------------------------
-export interface ShellToolOptions {
-  /** Working directory for command execution */
-  cwd?: string;
-  /** Maximum execution time in ms (default: 30000) */
-  timeout?: number;
-  /** Maximum output size in bytes (default: 100KB) */
-  maxOutput?: number;
-}
-/**
- * Create a shell execution tool.
- */
-export function createShellTool(options: ShellToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { cwd, timeout = 30000, maxOutput = 100 * 1024 } = options;
-  return {
-    tool: {
-      name: "shell",
-      description: "Execute a shell command and return the output. Use for running programs, scripts, or system commands.",
-      parameters: {
-        type: "object",
-        properties: {
-          command: {
-            type: "string",
-            description: "The shell command to execute",
-          },
-        },
-        required: ["command"],
-      },
-    },
-    handler: async (args) => {
-      const { command } = args as { command: string };
-      try {
-        const { stdout, stderr } = await execAsync(command, {
-          cwd,
-          timeout,
-          maxBuffer: maxOutput,
-        });
-        let output = stdout;
-        if (stderr) {
-          output += (output ? "\n" : "") + `[stderr] ${stderr}`;
-        }
-        return output || "(no output)";
-      } catch (error) {
-        const err = error as { message?: string; code?: number; signal?: string; stderr?: string };
-        if (err.signal === "SIGTERM") {
-          return `[error] Command timed out after ${timeout}ms`;
-        }
-        return `[error] ${err.message || String(error)}${err.stderr ? `\n[stderr] ${err.stderr}` : ""}`;
-      }
-    },
-  };
-}
-// ---------------------------------------------------------------------------
 // File tools
 // ---------------------------------------------------------------------------
 export interface FileToolOptions {
@@ -799,10 +742,10 @@ export function buildToolGuardPrompt(
     lines.push("- File operations may access host paths outside the workspace.");
   }
   if (guards.cli) {
-    lines.push(`- Shell command execution is enabled and runs with cwd=${workspacePath}.`);
-    lines.push("- Use shell only when file tools are insufficient for the task.");
+    lines.push(`- Shell/exec command execution is enabled and runs with cwd=${workspacePath}.`);
+    lines.push("- Use exec only when file tools are insufficient for the task.");
   } else {
-    lines.push("- Shell command execution is disabled in this runtime.");
+    lines.push("- Shell/exec command execution is disabled in this runtime.");
   }
   return lines.join("\n");
 }
@@ -871,9 +814,6 @@ export function createWorkspaceToolsWithGuards(
     createListDirTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
     createTimeTool(),
   ];
-  if (guards.cli) {
-    tools.unshift(createShellTool({ cwd: workspacePath }));
-  }
   if (subagentEnabled) {
     tools.push(createSubagentTool({ workspacePath, allowedWorkspaces }));
   }

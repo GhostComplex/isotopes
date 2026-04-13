@@ -258,26 +258,26 @@ describe("NO_REPLY suppression", () => {
 describe("tool policy deny", () => {
   it("removes denied tools from the registry", () => {
     const tools = createWorkspaceToolsWithGuards(tmpDir, { cli: true });
-    const filtered = applyToolPolicy(tools, { deny: ["shell"] });
+    const filtered = applyToolPolicy(tools, { deny: ["read_file"] });
 
     const names = filtered.map((t) => t.tool.name);
-    expect(names).not.toContain("shell");
-    expect(names).toContain("read_file");
+    expect(names).not.toContain("read_file");
+    expect(names).toContain("write_file");
     expect(names).toContain("edit");
   });
 
   it("denied tool cannot be executed", async () => {
     const tools = createWorkspaceToolsWithGuards(tmpDir, { cli: true });
-    const filtered = applyToolPolicy(tools, { deny: ["shell"] });
+    const filtered = applyToolPolicy(tools, { deny: ["read_file"] });
 
     const registry = new ToolRegistry();
     for (const { tool, handler } of filtered) {
       registry.register(tool, handler);
     }
 
-    expect(registry.has("shell")).toBe(false);
-    await expect(registry.execute("shell", { command: "echo hi" }))
-      .rejects.toThrow('Tool "shell" not found');
+    expect(registry.has("read_file")).toBe(false);
+    await expect(registry.execute("read_file", { path: "test.txt" }))
+      .rejects.toThrow('Tool "read_file" not found');
   });
 
   it("exec tool denied via policy is not executable", async () => {
@@ -306,13 +306,13 @@ describe("tool policy deny", () => {
   it("deny takes precedence over allow", () => {
     const tools = createWorkspaceToolsWithGuards(tmpDir, { cli: true });
     const filtered = applyToolPolicy(tools, {
-      allow: ["read_file", "shell"],
-      deny: ["shell"],
+      allow: ["read_file", "edit"],
+      deny: ["edit"],
     });
 
     const names = filtered.map((t) => t.tool.name);
     expect(names).toContain("read_file");
-    expect(names).not.toContain("shell");
+    expect(names).not.toContain("edit");
   });
 });
 
@@ -324,7 +324,7 @@ describe("full tool wiring", () => {
   it("registers all core tools without conflict", async () => {
     const registry = new ToolRegistry();
 
-    // Workspace tools (read, write, edit, list_dir, time + shell when cli=true)
+    // Workspace tools (read, write, edit, list_dir, time)
     const workspaceTools = createWorkspaceToolsWithGuards(tmpDir, {
       cli: true,
       web: true,
@@ -333,9 +333,7 @@ describe("full tool wiring", () => {
       registry.register(tool, handler);
     }
 
-    // Exec tools (exec, process_list, process_kill) — note: shell is separate
-    // In cli.ts, exec tools are added alongside workspace tools. Since "shell"
-    // and "exec" are different tools, both can coexist.
+    // Exec tools (exec, process_list, process_kill) — registered separately like cli.ts
     const execTools = createExecTools({ cwd: tmpDir });
     for (const { tool, handler } of execTools) {
       registry.register(tool, handler);
@@ -361,7 +359,6 @@ describe("full tool wiring", () => {
     expect(registry.has("write_file")).toBe(true);
     expect(registry.has("edit")).toBe(true);
     expect(registry.has("list_dir")).toBe(true);
-    expect(registry.has("shell")).toBe(true);
     expect(registry.has("exec")).toBe(true);
     expect(registry.has("web_fetch")).toBe(true);
     expect(registry.has("web_search")).toBe(true);

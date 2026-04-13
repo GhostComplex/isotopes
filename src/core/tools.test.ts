@@ -9,7 +9,6 @@ import {
   buildToolGuardPrompt,
   createEchoTool,
   createTimeTool,
-  createShellTool,
   createReadFileTool,
   createWriteFileTool,
   createEditFileTool,
@@ -199,35 +198,6 @@ describe("Built-in tools", () => {
       const result = await handler({ timezone: "Invalid/Zone" });
 
       expect(result).toContain("Invalid timezone");
-    });
-  });
-
-  describe("createShellTool", () => {
-    it("executes command and returns output", async () => {
-      const { handler } = createShellTool();
-      const result = await handler({ command: "echo hello" });
-
-      expect(result.trim()).toBe("hello");
-    });
-
-    it("respects cwd option", async () => {
-      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-test-"));
-      try {
-        const { handler } = createShellTool({ cwd: tempDir });
-        const result = await handler({ command: "pwd" });
-
-        // macOS: /var is symlinked to /private/var
-        expect(result.trim()).toContain(path.basename(tempDir));
-      } finally {
-        await fs.rm(tempDir, { recursive: true, force: true });
-      }
-    });
-
-    it("returns error for failed command", async () => {
-      const { handler } = createShellTool();
-      const result = await handler({ command: "exit 1" });
-
-      expect(result).toContain("[error]");
     });
   });
 
@@ -629,12 +599,14 @@ describe("Built-in tools", () => {
       expect(names).toContain("list_dir");
       expect(names).toContain("get_current_time");
       expect(names).not.toContain("shell");
+      expect(names).not.toContain("exec"); // exec is registered separately in cli.ts
     });
 
-    it("enables shell when cli guard is turned on", () => {
+    it("does not include shell or exec (exec is registered in cli.ts)", () => {
       const tools = createWorkspaceToolsWithGuards("/tmp/workspace", { cli: true });
-
-      expect(tools.map((entry) => entry.tool.name)).toContain("shell");
+      const names = tools.map((entry) => entry.tool.name);
+      expect(names).not.toContain("shell");
+      expect(names).toContain("read_file");
     });
 
     it("excludes file writing tools when codingMode is 'subagent'", () => {
@@ -651,9 +623,8 @@ describe("Built-in tools", () => {
       expect(names).not.toContain("write_file");
       expect(names).not.toContain("edit");
 
-      // Should still have spawn_subagent, shell, read_file
+      // Should still have spawn_subagent, read_file (exec is in cli.ts)
       expect(names).toContain("spawn_subagent");
-      expect(names).toContain("shell");
       expect(names).toContain("read_file");
     });
 
@@ -705,9 +676,8 @@ describe("Built-in tools", () => {
       );
 
       expect(prompt).toContain("Only the following tools are available");
-      expect(prompt).toContain("shell");
       expect(prompt).toContain("restricted to the workspace: /tmp/workspace");
-      expect(prompt).toContain("Shell command execution is enabled");
+      expect(prompt).toContain("exec command execution is enabled");
     });
   });
 });
