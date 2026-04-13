@@ -320,7 +320,21 @@ export class DiscordTransport implements Transport {
       return;
     }
 
-    // 3. Should-respond check — record to channel history if not responding
+    // 3. Extract content early for subagent thread interception
+    let content = this.extractContent(msg);
+    if (!content.trim()) return;
+
+    // 3.5. Subagent thread interception — handle /stop in subagent threads BEFORE shouldRespond check
+    // This allows /stop to work without @mention in subagent threads
+    if (isThread) {
+      const task = taskRegistry.getByThreadId(msg.channelId);
+      if (task) {
+        await this.handleSubagentThreadMessage(msg, task, content);
+        return;
+      }
+    }
+
+    // 4. Should-respond check — record to channel history if not responding
     const respond = this.shouldRespond(msg);
 
     // Thread-specific control: if threads.respond=false, don't respond in threads
@@ -362,20 +376,7 @@ export class DiscordTransport implements Transport {
 
     log.debug(`Received message from ${msg.author.username}: ${msg.content.substring(0, 50)}...`);
 
-    // 4. Extract content
-    let content = this.extractContent(msg);
-    if (!content.trim()) return;
-
-    // 4.3. Subagent thread interception — handle /stop in subagent threads
-    if (isThread) {
-      const task = taskRegistry.getByThreadId(msg.channelId);
-      if (task) {
-        await this.handleSubagentThreadMessage(msg, task, content);
-        return;
-      }
-    }
-
-    // 4.5. Slash command interception — handle admin commands before agent dispatch
+    // 5. Slash command interception — handle admin commands before agent dispatch
     if (this.commandHandler.isCommand(content)) {
       const agentId = this.resolveAgentId(msg);
       const sessionStore = this.getSessionStore(agentId);
