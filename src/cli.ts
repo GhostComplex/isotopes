@@ -375,7 +375,9 @@ async function handleChatCommand(): Promise<void> {
     const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
     workspacePath = await ensureExplicitWorkspaceDir(resolved);
   } else {
-    workspacePath = await ensureWorkspaceDir(agentFile.id);
+    const isSingleAgent = config.agents.length === 1;
+    const workspaceKey = isSingleAgent ? "default" : agentFile.id;
+    workspacePath = await ensureWorkspaceDir(workspaceKey);
   }
 
   await ensureWorkspaceStructure(workspacePath);
