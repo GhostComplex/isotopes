@@ -272,7 +272,7 @@ async function collectResultFromEvents(events: AcpxEvent[]): Promise<AcpxResult>
   }
 
   return {
-    success: lastExitCode === 0 && !errors,
+    success: lastExitCode === 0,
     output: messages || undefined,
     error: errors || undefined,
     events,
