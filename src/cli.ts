@@ -791,15 +791,19 @@ async function main() {
   const agentMessageBus = new AgentMessageBus(acpSessionManager);
   const startedAt = new Date();
   const modelOverrides = new Map<string, string>();
-  const processRegistry = new ProcessRegistry();
 
   // Create agents with workspace tools
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
+  const processRegistries = new Map<string, ProcessRegistry>();
   const isSingleAgent = config.agents.length === 1;
 
   for (const agentFile of config.agents) {
     const agentConfig = toAgentConfig(agentFile, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
+
+    // Create per-agent ProcessRegistry for CLI tool isolation (#289)
+    const processRegistry = new ProcessRegistry();
+    processRegistries.set(agentConfig.id, processRegistry);
 
     // Workspace layout:
     //   Explicit config:  agent.workspace (absolute or relative to ISOTOPES_HOME)
@@ -1183,8 +1187,10 @@ async function main() {
       }
     }
 
-    // Kill orphaned background processes (#286)
-    processRegistry.clear();
+    // Kill orphaned background processes (#286, #289)
+    for (const registry of processRegistries.values()) {
+      registry.clear();
+    }
 
     process.exit(0);
   });
@@ -1205,8 +1211,10 @@ async function main() {
       }
     }
 
-    // Kill orphaned background processes (#286)
-    processRegistry.clear();
+    // Kill orphaned background processes (#286, #289)
+    for (const registry of processRegistries.values()) {
+      registry.clear();
+    }
 
     process.exit(0);
   });

@@ -363,4 +363,76 @@ describe("createExecTools", () => {
     );
     expect(killResult.success).toBe(true);
   });
+
+  it("isolates processes between separate registries", async () => {
+    // Simulate two agents with separate registries
+    const registry1 = new ProcessRegistry();
+    const registry2 = new ProcessRegistry();
+
+    const tools1 = createExecTools({ registry: registry1 });
+    const tools2 = createExecTools({ registry: registry2 });
+
+    const exec1 = tools1.find((t) => t.tool.name === "exec")!.handler;
+    const list1 = tools1.find((t) => t.tool.name === "process_list")!.handler;
+
+    const exec2 = tools2.find((t) => t.tool.name === "exec")!.handler;
+    const list2 = tools2.find((t) => t.tool.name === "process_list")!.handler;
+
+    // Agent 1 starts a process
+    const result1 = JSON.parse(
+      await exec1({ command: "sleep 60", background: true }),
+    );
+
+    // Agent 2 starts a process
+    const result2 = JSON.parse(
+      await exec2({ command: "sleep 60", background: true }),
+    );
+
+    // Each agent should only see their own process
+    const list1Result = JSON.parse(await list1({}));
+    const list2Result = JSON.parse(await list2({}));
+
+    expect(list1Result.processes).toHaveLength(1);
+    expect(list1Result.processes[0].process_id).toBe(result1.process_id);
+
+    expect(list2Result.processes).toHaveLength(1);
+    expect(list2Result.processes[0].process_id).toBe(result2.process_id);
+
+    // Cleanup
+    registry1.clear();
+    registry2.clear();
+  });
+
+  it("prevents one registry from killing another registry's processes", async () => {
+    const registry1 = new ProcessRegistry();
+    const registry2 = new ProcessRegistry();
+
+    const tools1 = createExecTools({ registry: registry1 });
+    const tools2 = createExecTools({ registry: registry2 });
+
+    const exec1 = tools1.find((t) => t.tool.name === "exec")!.handler;
+    const kill2 = tools2.find((t) => t.tool.name === "process_kill")!.handler;
+
+    // Agent 1 starts a process
+    const result1 = JSON.parse(
+      await exec1({ command: "sleep 60", background: true }),
+    );
+
+    // Agent 2 tries to kill Agent 1's process
+    const killResult = JSON.parse(
+      await kill2({ process_id: result1.process_id }),
+    );
+
+    // Should fail because the process doesn't exist in registry2
+    expect(killResult.error).toContain("Process not found");
+
+    // Verify Agent 1's process is still alive
+    const info = registry1.get(result1.process_id);
+    expect(info).toBeDefined();
+    expect(info!.status).toBe("running");
+
+    // Cleanup
+    registry1.clear();
+    registry2.clear();
+  });
 });
