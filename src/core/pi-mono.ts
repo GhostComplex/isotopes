@@ -629,6 +629,10 @@ class PiMonoInstance implements AgentInstance {
     this.agent.clearMessages();
   }
 
+  getMessages(): Message[] {
+    return this.agent.state.messages.map(fromAgentMessage);
+  }
+
   /**
    * Force context compaction for overflow recovery.
    * Returns true if compaction occurred, false if not possible or not configured.

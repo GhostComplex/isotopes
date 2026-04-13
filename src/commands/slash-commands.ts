@@ -223,6 +223,12 @@ export class SlashCommandHandler {
         return { response: "ℹ️ Nothing to compact (context too small)." };
       }
 
+      // Sync compacted messages back to SessionStore
+      if (ctx.agentInstance.getMessages) {
+        const compactedMessages = ctx.agentInstance.getMessages();
+        await ctx.sessionStore.setMessages(ctx.sessionId, compactedMessages);
+      }
+
       const messagesAfter = (await ctx.sessionStore.getMessages(ctx.sessionId)).length;
 
       if (instructions) {

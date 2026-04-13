@@ -173,6 +173,8 @@ export interface AgentInstance {
   forceCompact?(): Promise<boolean>;
   /** Clear internal message state before prompting with fresh context */
   clearMessages?(): void;
+  /** Get current messages from the agent instance (for persisting to SessionStore) */
+  getMessages?(): Message[];
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +255,8 @@ export interface SessionStore {
   list(): Promise<Session[]>;
   /** Clear all messages from a session (keeps session metadata, clears history) */
   clearMessages(sessionId: string): Promise<void>;
+  /** Replace all messages in a session (used by compaction) */
+  setMessages(sessionId: string, messages: Message[]): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

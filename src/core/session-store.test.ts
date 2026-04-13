@@ -481,4 +481,103 @@ describe("DefaultSessionStore", () => {
     });
   });
 
+  describe("setMessages", () => {
+    it("replaces in-memory messages", async () => {
+      const session = await store.create("agent-1");
+      await store.addMessage(session.id, { role: "user", content: textContent("old1") });
+      await store.addMessage(session.id, { role: "assistant", content: textContent("old2") });
+
+      const newMessages = [
+        { role: "user" as const, content: textContent("new1") },
+        { role: "assistant" as const, content: textContent("new2") },
+        { role: "user" as const, content: textContent("new3") },
+      ];
+
+      await store.setMessages(session.id, newMessages);
+
+      const messages = await store.getMessages(session.id);
+      expect(messages).toHaveLength(3);
+      expect(messages[0].content).toEqual(textContent("new1"));
+      expect(messages[1].content).toEqual(textContent("new2"));
+      expect(messages[2].content).toEqual(textContent("new3"));
+    });
+
+    it("overwrites transcript file on disk", async () => {
+      const session = await store.create("agent-1");
+      await store.addMessage(session.id, { role: "user", content: textContent("old1") });
+      await store.addMessage(session.id, { role: "assistant", content: textContent("old2") });
+
+      const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
+
+      // Verify old messages are persisted
+      const beforeContent = await fs.readFile(transcriptFile, "utf-8");
+      expect(beforeContent.trim().split("\n")).toHaveLength(2);
+
+      const newMessages = [
+        { role: "user" as const, content: textContent("new1") },
+      ];
+
+      await store.setMessages(session.id, newMessages);
+
+      // Verify transcript is overwritten with new messages
+      const afterContent = await fs.readFile(transcriptFile, "utf-8");
+      const lines = afterContent.trim().split("\n");
+      expect(lines).toHaveLength(1);
+
+      const record = JSON.parse(lines[0]);
+      expect(record.message.content).toEqual(textContent("new1"));
+    });
+
+    it("persists after store restart", async () => {
+      const session = await store.create("agent-1");
+      await store.addMessage(session.id, { role: "user", content: textContent("old") });
+
+      const newMessages = [
+        { role: "user" as const, content: textContent("compacted1") },
+        { role: "assistant" as const, content: textContent("compacted2") },
+      ];
+
+      await store.setMessages(session.id, newMessages);
+
+      // Create new store instance
+      const newStore = new DefaultSessionStore({ dataDir: tempDir });
+      await newStore.init();
+
+      const messages = await newStore.getMessages(session.id);
+      expect(messages).toHaveLength(2);
+      expect(messages[0].content).toEqual(textContent("compacted1"));
+      expect(messages[1].content).toEqual(textContent("compacted2"));
+    });
+
+    it("throws on non-existent session", async () => {
+      await expect(
+        store.setMessages("non-existent", [{ role: "user", content: textContent("test") }]),
+      ).rejects.toThrow('Session "non-existent" not found');
+    });
+
+    it("updates lastActiveAt", async () => {
+      const session = await store.create("agent-1");
+
+      // Wait a tiny bit to ensure time difference
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const beforeTimestamp = (await store.get(session.id))!.lastActiveAt.getTime();
+
+      await store.setMessages(session.id, [{ role: "user", content: textContent("test") }]);
+
+      const afterTimestamp = (await store.get(session.id))!.lastActiveAt.getTime();
+      expect(afterTimestamp).toBeGreaterThan(beforeTimestamp);
+    });
+
+    it("handles empty message array", async () => {
+      const session = await store.create("agent-1");
+      await store.addMessage(session.id, { role: "user", content: textContent("old") });
+
+      await store.setMessages(session.id, []);
+
+      const messages = await store.getMessages(session.id);
+      expect(messages).toHaveLength(0);
+    });
+  });
+
 });

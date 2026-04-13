@@ -193,6 +193,30 @@ export class DefaultSessionStore implements SessionStore {
     await this.persistIndex();
   }
 
+  async setMessages(sessionId: string, messages: Message[]): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session "${sessionId}" not found`);
+    }
+
+    // Update in-memory messages
+    session.messages = [...messages];
+    session.messagesLoaded = true;
+    session.lastActiveAt = new Date();
+
+    // Overwrite transcript file with new messages
+    const file = this.transcriptFile(sessionId);
+    const records = messages.map((message): PersistedTranscriptRecord => ({
+      type: "message",
+      timestamp: message.timestamp ?? Date.now(),
+      message,
+    }));
+    const content = records.map((r) => JSON.stringify(r)).join("\n") + (records.length > 0 ? "\n" : "");
+    await fs.writeFile(file, content);
+
+    this.debouncedPersistIndex();
+  }
+
   // -------------------------------------------------------------------------
   // TTL & cleanup
   // -------------------------------------------------------------------------
