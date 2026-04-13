@@ -1173,6 +1173,18 @@ async function main() {
     hotReload.stop();
     if (discordManager) await discordManager.stop();
     await apiServer.stop();
+
+    // Clean up session stores (#286)
+    chatSessionStore.destroy();
+    if (discordSessionStores) {
+      for (const store of discordSessionStores.values()) {
+        store.destroy();
+      }
+    }
+
+    // Kill orphaned background processes (#286)
+    processRegistry.clear();
+
     process.exit(0);
   });
 
@@ -1183,6 +1195,18 @@ async function main() {
     hotReload.stop();
     if (discordManager) await discordManager.stop();
     await apiServer.stop();
+
+    // Clean up session stores (#286)
+    chatSessionStore.destroy();
+    if (discordSessionStores) {
+      for (const store of discordSessionStores.values()) {
+        store.destroy();
+      }
+    }
+
+    // Kill orphaned background processes (#286)
+    processRegistry.clear();
+
     process.exit(0);
   });
 }
