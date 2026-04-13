@@ -51,12 +51,20 @@ export async function loadWorkspaceContext(workspacePath: string): Promise<Works
   const memoryPath = path.join(workspacePath, "MEMORY.md");
   memory = await readFileIfExists(memoryPath);
 
+  // Load yesterday's daily memory if exists
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0]; // YYYY-MM-DD
+  const yesterdayMemoryPath = path.join(workspacePath, "memory", `${yesterday}.md`);
+  const yesterdayMemory = await readFileIfExists(yesterdayMemoryPath);
+  if (yesterdayMemory) {
+    memory = memory ? `${memory}\n\n## Yesterday's Notes\n\n${yesterdayMemory}` : `## Yesterday's Notes\n\n${yesterdayMemory}`;
+  }
+
   // Load today's daily memory if exists
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
   const dailyMemoryPath = path.join(workspacePath, "memory", `${today}.md`);
   const dailyMemory = await readFileIfExists(dailyMemoryPath);
   if (dailyMemory) {
-    memory = memory ? `${memory}\n\n## Today's Notes\n\n${dailyMemory}` : dailyMemory;
+    memory = memory ? `${memory}\n\n## Today's Notes\n\n${dailyMemory}` : `## Today's Notes\n\n${dailyMemory}`;
   }
 
   // Load skills from workspace

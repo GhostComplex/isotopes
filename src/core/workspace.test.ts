@@ -102,6 +102,75 @@ describe("Workspace", () => {
       expect(ctx.memory).toContain("Daily notes");
     });
 
+    it("loads only today's memory when yesterday doesn't exist", async () => {
+      await fs.mkdir(path.join(tempDir, "memory"));
+      const today = new Date().toISOString().split("T")[0];
+      await fs.writeFile(
+        path.join(tempDir, "memory", `${today}.md`),
+        "Today's notes",
+      );
+
+      const ctx = await loadWorkspaceContext(tempDir);
+
+      expect(ctx.memory).toContain("Today's notes");
+      expect(ctx.memory).toContain("## Today's Notes");
+      expect(ctx.memory).not.toContain("## Yesterday's Notes");
+    });
+
+    it("loads only yesterday's memory when today doesn't exist", async () => {
+      await fs.mkdir(path.join(tempDir, "memory"));
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+      await fs.writeFile(
+        path.join(tempDir, "memory", `${yesterday}.md`),
+        "Yesterday's notes",
+      );
+
+      const ctx = await loadWorkspaceContext(tempDir);
+
+      expect(ctx.memory).toContain("Yesterday's notes");
+      expect(ctx.memory).toContain("## Yesterday's Notes");
+      expect(ctx.memory).not.toContain("## Today's Notes");
+    });
+
+    it("loads both yesterday and today's memory in chronological order", async () => {
+      await fs.writeFile(path.join(tempDir, "MEMORY.md"), "Base memory");
+      await fs.mkdir(path.join(tempDir, "memory"));
+
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+      const today = new Date().toISOString().split("T")[0];
+
+      await fs.writeFile(
+        path.join(tempDir, "memory", `${yesterday}.md`),
+        "Yesterday's content",
+      );
+      await fs.writeFile(
+        path.join(tempDir, "memory", `${today}.md`),
+        "Today's content",
+      );
+
+      const ctx = await loadWorkspaceContext(tempDir);
+
+      expect(ctx.memory).toContain("Base memory");
+      expect(ctx.memory).toContain("Yesterday's content");
+      expect(ctx.memory).toContain("Today's content");
+
+      // Verify chronological order: yesterday should come before today
+      const yesterdayIndex = ctx.memory!.indexOf("Yesterday's Notes");
+      const todayIndex = ctx.memory!.indexOf("Today's Notes");
+      expect(yesterdayIndex).toBeLessThan(todayIndex);
+    });
+
+    it("loads neither yesterday nor today when both don't exist", async () => {
+      await fs.writeFile(path.join(tempDir, "MEMORY.md"), "Base memory only");
+      await fs.mkdir(path.join(tempDir, "memory"));
+
+      const ctx = await loadWorkspaceContext(tempDir);
+
+      expect(ctx.memory).toBe("Base memory only");
+      expect(ctx.memory).not.toContain("## Yesterday's Notes");
+      expect(ctx.memory).not.toContain("## Today's Notes");
+    });
+
     it("returns empty values for missing files", async () => {
       const ctx = await loadWorkspaceContext(tempDir);
 
