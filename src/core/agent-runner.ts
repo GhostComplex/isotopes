@@ -31,6 +31,8 @@ export interface RunAgentOptions {
   onTextDelta?: OnTextDelta;
   /** Optional usage tracker for per-session/global accumulation */
   usageTracker?: UsageTracker;
+  /** Called after turn_end events to check for pending messages */
+  onToolComplete?: () => Promise<string | null>;
 }
 
 /**
@@ -47,7 +49,7 @@ export interface RunAgentOptions {
  * stay in the transport layer via the onTextDelta callback.
  */
 export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
-  const { agent, input, sessionId, sessionStore, log, onTextDelta, usageTracker } = opts;
+  const { agent, input, sessionId, sessionStore, log, onTextDelta, usageTracker, onToolComplete } = opts;
 
   let responseText = "";
   let errorMessage: string | null = null;
@@ -61,6 +63,15 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
     } else if (event.type === "turn_end") {
       if (usageTracker && event.usage) {
         usageTracker.record(sessionId, event.usage);
+      }
+
+      // Check for pending messages after tool calls complete
+      if (onToolComplete) {
+        const pendingContext = await onToolComplete();
+        if (pendingContext) {
+          log.debug(`Injecting pending messages via steer()`);
+          agent.steer({ role: "user", content: textContent(pendingContext) });
+        }
       }
     } else if (event.type === "agent_end") {
       // Store final assistant message

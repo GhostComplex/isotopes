@@ -207,6 +207,11 @@ export class DiscordTransport implements Transport {
   private debouncer: InboundDebouncer;
   private commandHandler: SlashCommandHandler;
 
+  // Track which sessions are currently in a prompt turn
+  private activeSessions = new Set<string>();
+  // Buffer messages that arrive while a session is prompting
+  private pendingMessages = new Map<string, Array<{ content: string; sender: string; timestamp: number }>>();
+
   constructor(config: DiscordTransportConfig) {
     this.config = config;
     this.threadBindingManager = config.threadBindingManager ?? new ThreadBindingManager();
@@ -422,6 +427,29 @@ export class DiscordTransport implements Transport {
     const sessionStore = this.getSessionStore(agentId);
     const sessionKey = this.getSessionKey(msg, agentId);
     const session = await this.findOrCreateSession(sessionStore, sessionKey, agentId, msg);
+
+    // 6.5. If session is currently active (in a prompt turn), buffer this message instead
+    if (this.activeSessions.has(session.id)) {
+      log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
+      const pending = this.pendingMessages.get(session.id) ?? [];
+      pending.push({
+        content,
+        sender: msg.author.username,
+        timestamp: msg.createdTimestamp,
+      });
+      this.pendingMessages.set(session.id, pending);
+
+      // Still record to channel history for context
+      if (this.config.context?.channelHistory !== false && msg.guild) {
+        this.channelHistory.append(msg.channelId, {
+          sender: msg.author.username,
+          body: content,
+          timestamp: msg.createdTimestamp,
+          messageId: msg.id,
+        });
+      }
+      return;
+    }
 
     // 7. Consume channel history and build enriched content
     const historyEntries = (this.config.context?.channelHistory !== false && msg.guild)
@@ -670,6 +698,9 @@ export class DiscordTransport implements Transport {
     // Start typing indicator
     const typing = this.startTyping(channel);
 
+    // Mark session as active
+    this.activeSessions.add(sessionId);
+
     try {
       // Track what we've already sent via the segmented buffer
       let lastSentLength = 0;
@@ -701,6 +732,14 @@ export class DiscordTransport implements Transport {
             }
           },
           usageTracker: this.config.usageTracker,
+          onToolComplete: async () => {
+            const pending = this.pendingMessages.get(sessionId);
+            if (!pending?.length) return null;
+
+            const messages = pending.splice(0); // drain buffer
+            const formatted = messages.map(m => `${m.sender}: ${m.content}`).join("\n");
+            return `[Messages arrived while you were working]\n${formatted}`;
+          },
         });
       };
 
@@ -753,6 +792,10 @@ export class DiscordTransport implements Transport {
       }
     } finally {
       typing.stop();
+      // Mark session as no longer active
+      this.activeSessions.delete(sessionId);
+      // Clean up any remaining pending messages (shouldn't happen, but safety)
+      this.pendingMessages.delete(sessionId);
     }
   }
 

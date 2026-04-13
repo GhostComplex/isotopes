@@ -1123,4 +1123,112 @@ describe("DiscordTransport", () => {
       expect(localSessionStore.addMessage).not.toHaveBeenCalled();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Frozen context (pending message buffering during long tool calls)
+  // ---------------------------------------------------------------------------
+
+  describe("frozen context — pending message buffering", () => {
+    function makeChannel(): MockChannel {
+      return {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+        isThread: vi.fn().mockReturnValue(false),
+      };
+    }
+
+    function makeMsg(overrides: Partial<MockIncomingMessage> = {}): MockIncomingMessage {
+      return {
+        author: { bot: false, username: "tester", id: "user-1" },
+        content: "<@bot-123> hello",
+        createdTimestamp: Date.now(),
+        guild: { id: "guild-1" },
+        channelId: "channel-1",
+        channel: makeChannel(),
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        thread: undefined,
+        id: `msg-${Date.now()}`,
+        ...overrides,
+      };
+    }
+
+    it("buffers messages when session is active (in-flight prompt)", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = createMockSessionStore();
+
+      // Create a promise that we can control to simulate a long-running agent
+      let resolvePrompt: () => void;
+      const promptWait = new Promise<void>((resolve) => { resolvePrompt = resolve; });
+
+      // Agent that waits for our signal before completing
+      const hangingAgent = {
+        prompt: vi.fn(async function* () {
+          yield { type: "text_delta" as const, text: "Working..." };
+          await promptWait; // Wait here until we signal
+          yield { type: "agent_end" as const, messages: [] };
+        }),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+      };
+      localAgentManager.get = vi.fn().mockReturnValue(hangingAgent);
+
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+
+      await localTransport.start();
+
+      // First message — starts the agent prompt (makes session active)
+      const msg1 = makeMsg({ content: "<@bot-123> start work", id: "msg-1" });
+      const handleMessagePromise = (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg1);
+
+      // Wait for prompt to be initiated (give it time to mark session as active)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Second message — should be buffered since session is active
+      const msg2 = makeMsg({ content: "<@bot-123> are you done yet?", id: "msg-2" });
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg2);
+
+      // Agent should only be called once (second message was buffered)
+      expect(hangingAgent.prompt).toHaveBeenCalledTimes(1);
+
+      // Now signal the agent to complete
+      resolvePrompt!();
+      await handleMessagePromise;
+    });
+
+    it("clears active session and pending buffer after agent completes", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = createMockSessionStore();
+
+      // Agent that completes normally
+      const completingAgent = createMockAgentInstance([
+        { type: "text_delta", text: "Done!" },
+        { type: "agent_end", messages: [] },
+      ]);
+      localAgentManager.get = vi.fn().mockReturnValue(completingAgent);
+
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+
+      await localTransport.start();
+
+      const msg = makeMsg({ content: "<@bot-123> hello", id: "msg-1" });
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // After completion, sending another message should trigger a new prompt (not buffered)
+      const msg2 = makeMsg({ content: "<@bot-123> hello again", id: "msg-2" });
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg2);
+
+      expect(completingAgent.prompt).toHaveBeenCalledTimes(2);
+    });
+  });
 });

@@ -134,4 +134,68 @@ describe("runAgentLoop", () => {
 
     expect(deltas).toEqual(["a", "ab"]);
   });
+
+  it("calls onToolComplete after turn_end and injects via steer", async () => {
+    const agent = createMockAgentInstance([
+      { type: "turn_end" },
+      { type: "agent_end", messages: [] },
+    ]);
+    const sessionStore = createMockSessionStore();
+    const onToolComplete = vi.fn().mockResolvedValue("[Messages arrived]\nuser1: hello");
+
+    await runAgentLoop({
+      agent,
+      input: "hi",
+      sessionId: "s1",
+      sessionStore,
+      log: createMockLogger(),
+      onToolComplete,
+    });
+
+    expect(onToolComplete).toHaveBeenCalledTimes(1);
+    expect(agent.steer).toHaveBeenCalledWith({
+      role: "user",
+      content: textContent("[Messages arrived]\nuser1: hello"),
+    });
+  });
+
+  it("does not call steer if onToolComplete returns null", async () => {
+    const agent = createMockAgentInstance([
+      { type: "turn_end" },
+      { type: "agent_end", messages: [] },
+    ]);
+    const sessionStore = createMockSessionStore();
+    const onToolComplete = vi.fn().mockResolvedValue(null);
+
+    await runAgentLoop({
+      agent,
+      input: "hi",
+      sessionId: "s1",
+      sessionStore,
+      log: createMockLogger(),
+      onToolComplete,
+    });
+
+    expect(onToolComplete).toHaveBeenCalledTimes(1);
+    expect(agent.steer).not.toHaveBeenCalled();
+  });
+
+  it("does not call onToolComplete if not provided", async () => {
+    const agent = createMockAgentInstance([
+      { type: "turn_end" },
+      { type: "agent_end", messages: [] },
+    ]);
+    const sessionStore = createMockSessionStore();
+
+    await runAgentLoop({
+      agent,
+      input: "hi",
+      sessionId: "s1",
+      sessionStore,
+      log: createMockLogger(),
+    });
+
+    // Should not crash, just skip the callback
+    expect(agent.steer).not.toHaveBeenCalled();
+  });
 });
