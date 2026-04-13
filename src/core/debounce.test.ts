@@ -69,7 +69,7 @@ describe("InboundDebouncer", () => {
     expect(r2!.text).toBe("world");
   });
 
-  it("cancel resolves all waiters", async () => {
+  it("cancel resolves all waiters with null", async () => {
     vi.useFakeTimers();
     const debouncer = new InboundDebouncer({ windowMs: 100 });
 
@@ -77,24 +77,30 @@ describe("InboundDebouncer", () => {
     const p2 = debouncer.submit("key1", "b", "m2", 1050);
     debouncer.cancel("key1");
 
-    // Primary gets an empty result, secondary gets null
+    // Both primary and secondary get null
     const r1 = await p1;
     const r2 = await p2;
-    expect(r1!.text).toBe("");
+    expect(r1).toBeNull();
     expect(r2).toBeNull();
     expect(debouncer.pendingCount).toBe(0);
   });
 
-  it("dispose cancels all pending", async () => {
+  it("dispose cancels all pending and resolves with null", async () => {
     vi.useFakeTimers();
     const debouncer = new InboundDebouncer({ windowMs: 100 });
 
-    debouncer.submit("key1", "a", "m1", 1000);
-    debouncer.submit("key2", "b", "m2", 1000);
+    const p1 = debouncer.submit("key1", "a", "m1", 1000);
+    const p2 = debouncer.submit("key2", "b", "m2", 1000);
     expect(debouncer.pendingCount).toBe(2);
 
     debouncer.dispose();
     expect(debouncer.pendingCount).toBe(0);
+
+    // All primary callers get null
+    const r1 = await p1;
+    const r2 = await p2;
+    expect(r1).toBeNull();
+    expect(r2).toBeNull();
   });
 
   it("tracks timestamps from first and last message", async () => {

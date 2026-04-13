@@ -35,7 +35,7 @@ interface PendingBuffer {
   metadata: Record<string, unknown>;
   timer: ReturnType<typeof setTimeout>;
   /** Resolve for the primary (first) caller */
-  primaryResolve: (result: DebouncedMessage) => void;
+  primaryResolve: (result: DebouncedMessage | null) => void;
   /** Resolves for secondary callers — they get null */
   secondaryResolves: Array<(result: null) => void>;
 }
@@ -93,7 +93,7 @@ export class InboundDebouncer {
     }
 
     // Primary caller — create new buffer
-    return new Promise<DebouncedMessage>((resolve) => {
+    return new Promise<DebouncedMessage | null>((resolve) => {
       const buffer: PendingBuffer = {
         texts: [text],
         messageIds: [messageId],
@@ -114,7 +114,7 @@ export class InboundDebouncer {
     if (!buffer) return;
     clearTimeout(buffer.timer);
     // Resolve all waiters with null to unblock them
-    buffer.primaryResolve({ text: "", messageIds: [], firstTimestamp: 0, lastTimestamp: 0, metadata: {} });
+    buffer.primaryResolve(null);
     for (const resolve of buffer.secondaryResolves) {
       resolve(null);
     }
