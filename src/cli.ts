@@ -69,6 +69,10 @@ const SERVICE_DESCRIPTION = "Isotopes AI Agent Daemon";
 // Daemon helpers
 // ---------------------------------------------------------------------------
 
+function getApiPort(): number {
+  return process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
+}
+
 function makeDaemon(configPath?: string): DaemonProcess {
   const home = getIsotopesHome();
   return new DaemonProcess({
@@ -224,7 +228,7 @@ async function handleDaemonCommand(): Promise<void> {
       } = {};
 
       try {
-        const port = process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
+        const port = getApiPort();
         const res = await fetch(`http://127.0.0.1:${port}/api/status`);
         if (res.ok) {
           apiStatus = (await res.json()) as typeof apiStatus;
@@ -236,7 +240,7 @@ async function handleDaemonCommand(): Promise<void> {
       // Try to get agent list from config
       let agents: string[] = [];
       try {
-        const port = process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
+        const port = getApiPort();
         const res = await fetch(`http://127.0.0.1:${port}/api/config`);
         if (res.ok) {
           const cfg = (await res.json()) as { agents?: { id: string }[] };
@@ -440,7 +444,7 @@ function formatUptime(seconds: number): string {
 async function handleSessionsCommand(): Promise<void> {
   const subCmd = positionals[0];
   const sessionId = positionals[1];
-  const port = 2712;
+  const port = getApiPort();
 
   try {
     switch (subCmd) {
@@ -551,7 +555,7 @@ async function handleSessionsCommand(): Promise<void> {
 
 async function handleCronCommand(): Promise<void> {
   const subCmd = positionals[0];
-  const port = 2712;
+  const port = getApiPort();
 
   try {
     switch (subCmd) {
@@ -1154,7 +1158,7 @@ async function main() {
   await chatSessionStore.init();
 
   const apiServer = new ApiServer(
-    { port: 2712 },
+    { port: getApiPort() },
     acpSessionManager,
     cronScheduler,
     undefined,       // configReloader
@@ -1164,8 +1168,8 @@ async function main() {
     discordSessionStores,
   );
   await apiServer.start();
-  logger.info("Dashboard available at http://127.0.0.1:2712/dashboard");
-  logger.info("WebChat available at http://127.0.0.1:2712/chat");
+  logger.info(`Dashboard available at http://127.0.0.1:${getApiPort()}/dashboard`);
+  logger.info(`WebChat available at http://127.0.0.1:${getApiPort()}/chat`);
 
   // Keep process alive
   logger.info("Running... Press Ctrl+C to stop");
