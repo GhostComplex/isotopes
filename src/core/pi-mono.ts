@@ -235,18 +235,22 @@ function getAgentEndMetadata(messages: Message[]): {
 }
 
 // ---------------------------------------------------------------------------
-// Orphaned toolResult stripping (#146)
+// Message sanitization (#146)
 // ---------------------------------------------------------------------------
 
 /**
- * Strip `toolResult` messages whose corresponding assistant `toolCall` is
- * missing from the context.  This happens when the SDK's `transformMessages`
- * drops errored/aborted assistant messages but keeps their tool results,
- * which the Anthropic API then rejects as orphaned `tool_result` blocks.
+ * Sanitize messages to prevent 400 errors from the Claude API:
+ * 1. Strip aborted/errored assistant messages with empty content
+ * 2. Strip `toolResult` messages whose corresponding assistant `toolCall` is
+ *    missing from the context
+ *
+ * This happens when the SDK's `transformMessages` drops errored/aborted
+ * assistant messages but keeps their tool results, which the Anthropic API
+ * then rejects as orphaned `tool_result` blocks.
  *
  * Operates on `AgentMessage[]` (pi-agent-core format).
  */
-export function stripOrphanedToolResults(messages: AgentMessage[]): AgentMessage[] {
+export function sanitizeMessages(messages: AgentMessage[]): AgentMessage[] {
   // Collect all toolCall IDs present in non-errored/non-aborted assistants
   const validToolCallIds = new Set<string>();
   for (const msg of messages) {
@@ -262,16 +266,34 @@ export function stripOrphanedToolResults(messages: AgentMessage[]): AgentMessage
   }
 
   return messages.filter((msg) => {
-    if (msg.role !== "toolResult") return true;
-    const m = msg as { role: string; toolCallId?: string };
-    // Keep if toolCallId matches a valid (non-errored) assistant toolCall
-    if (m.toolCallId && !validToolCallIds.has(m.toolCallId)) {
-      log.debug(`Stripping orphaned toolResult (toolCallId: ${m.toolCallId})`);
-      return false;
+    // Filter out aborted/errored assistant messages with empty content
+    if (msg.role === "assistant") {
+      const m = msg as { role: string; stopReason?: string; content?: unknown };
+      if ((m.stopReason === "error" || m.stopReason === "aborted") &&
+          (Array.isArray(m.content) && m.content.length === 0)) {
+        log.debug(`Stripping empty assistant message (stopReason: ${m.stopReason})`);
+        return false;
+      }
     }
+
+    // Filter out orphaned toolResults
+    if (msg.role === "toolResult") {
+      const m = msg as { role: string; toolCallId?: string };
+      // Keep if toolCallId matches a valid (non-errored) assistant toolCall
+      if (m.toolCallId && !validToolCallIds.has(m.toolCallId)) {
+        log.debug(`Stripping orphaned toolResult (toolCallId: ${m.toolCallId})`);
+        return false;
+      }
+    }
+
     return true;
   });
 }
+
+/**
+ * @deprecated Use sanitizeMessages instead
+ */
+export const stripOrphanedToolResults = sanitizeMessages;
 
 // ---------------------------------------------------------------------------
 // Tool conversion
@@ -373,9 +395,10 @@ export class PiMonoCore implements AgentCore {
     }
 
     const transformContext = async (messages: AgentMessage[], signal?: AbortSignal): Promise<AgentMessage[]> => {
-      // Strip orphaned toolResult messages whose assistant (with the
-      // matching toolCall) was dropped by the SDK due to error/abort (#146).
-      const sanitized = stripOrphanedToolResults(messages);
+      // Sanitize messages: strip empty aborted/errored assistant messages and
+      // orphaned toolResult messages whose assistant (with the matching toolCall)
+      // was dropped by the SDK due to error/abort (#146).
+      const sanitized = sanitizeMessages(messages);
       // Then apply compaction if configured
       if (compactionTransform) {
         return compactionTransform(sanitized, signal);

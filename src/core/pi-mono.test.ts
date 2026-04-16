@@ -866,6 +866,107 @@ describe("stripOrphanedToolResults", () => {
 
     expect(result).toHaveLength(2);
   });
+
+  it("strips aborted assistant messages with empty content", () => {
+    const messages = [
+      { role: "user", content: "do something", timestamp: 1000 },
+      {
+        role: "assistant",
+        content: [],
+        stopReason: "aborted",
+        timestamp: 2000,
+      },
+      { role: "user", content: "try again", timestamp: 3000 },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((m) => m.role)).toEqual(["user", "user"]);
+  });
+
+  it("strips error assistant messages with empty content", () => {
+    const messages = [
+      { role: "user", content: "search for X", timestamp: 1000 },
+      {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        timestamp: 2000,
+      },
+      { role: "user", content: "try again", timestamp: 3000 },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((m) => m.role)).toEqual(["user", "user"]);
+  });
+
+  it("keeps normal assistant messages with content", () => {
+    const messages = [
+      { role: "user", content: "hello", timestamp: 1000 },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "hi there" }],
+        stopReason: "end_turn",
+        timestamp: 2000,
+      },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("keeps aborted assistant messages that have content", () => {
+    const messages = [
+      { role: "user", content: "tell me a story", timestamp: 1000 },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "Once upon a time..." }],
+        stopReason: "aborted",
+        timestamp: 2000,
+      },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("handles both empty assistant and orphaned toolResult together", () => {
+    const messages = [
+      { role: "user", content: "first request", timestamp: 1000 },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "toolu_123", name: "shell" }],
+        stopReason: "error",
+        timestamp: 2000,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_123",
+        content: "output",
+        timestamp: 3000,
+      },
+      {
+        role: "assistant",
+        content: [],
+        stopReason: "aborted",
+        timestamp: 4000,
+      },
+      { role: "user", content: "retry", timestamp: 5000 },
+    ] as unknown[];
+
+    const result = stripOrphanedToolResults(messages as import("@mariozechner/pi-agent-core").AgentMessage[]);
+
+    // Should strip both the orphaned toolResult AND the empty aborted assistant
+    expect(result).toHaveLength(3);
+    expect(result.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+  });
 });
 
 describe("transformContext hook (#146)", () => {
