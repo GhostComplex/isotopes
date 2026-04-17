@@ -84,19 +84,19 @@ For fixing multiple issues in parallel:
 
 ```bash
 # 1. Create worktrees
-git worktree add -b fix/issue-78 /tmp/issue-78 main
-git worktree add -b fix/issue-99 /tmp/issue-99 main
+git worktree add -b fix/issue-78 _repos/worktrees/issue-78 main
+git worktree add -b fix/issue-99 _repos/worktrees/issue-99 main
 
 # 2. Spawn agents in each
-spawn_subagent(agent: "claude", task: "Fix issue #78...", working_directory: "/tmp/issue-78")
-spawn_subagent(agent: "claude", task: "Fix issue #99...", working_directory: "/tmp/issue-99")
+spawn_subagent(agent: "claude", task: "Fix issue #78...", working_directory: "_repos/worktrees/issue-78")
+spawn_subagent(agent: "claude", task: "Fix issue #99...", working_directory: "_repos/worktrees/issue-99")
 
 # 3. Create PRs after fixes
-cd /tmp/issue-78 && git push -u origin fix/issue-78
+cd _repos/worktrees/issue-78 && git push -u origin fix/issue-78
 gh pr create --title "fix: ..." --body "..."
 
 # 4. Cleanup
-git worktree remove /tmp/issue-78
+git worktree remove _repos/worktrees/issue-78
 ```
 
 ## Progress Updates
@@ -111,6 +111,6 @@ When spawning coding agents:
 1. **Always spawn claude first** — only switch agent if claude fails
 2. **Never hand-code patches yourself** — you're an orchestrator, delegate to agents
 3. **Be patient** — don't kill agents because they're "slow"
-4. **Never spawn agents in your own workspace** (`~/.isotopes/workspace-dev`) for code changes — always in the source repo
+4. **Never spawn agents in your own workspace** (your own workspace directory) for code changes — always in the source repo
 5. **Run tests after changes** — `npm run build && npm test` in the repo
 6. **One concern per agent spawn** — keep tasks focused
