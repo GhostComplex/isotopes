@@ -114,6 +114,9 @@ export class SlashCommandHandler {
         return this.handleNew(ctx);
       case "compact":
         return this.handleCompact(ctx, parsed.args);
+      case "stop":
+      case "cancel":
+        return { response: "⚠️ Use /stop or /cancel in a subagent thread to stop a running task." };
       default:
         return { response: `Unknown command: /${parsed.name}` };
     }
@@ -246,7 +249,7 @@ export class SlashCommandHandler {
 }
 
 /** Set of known command names for isCommand() filtering */
-const KNOWN_COMMANDS = new Set(["status", "reload", "model", "new", "reset", "compact"]);
+const KNOWN_COMMANDS = new Set(["status", "reload", "model", "new", "reset", "compact", "stop", "cancel"]);
 
 /** Format milliseconds as a human-readable uptime string */
 function formatUptime(ms: number): string {

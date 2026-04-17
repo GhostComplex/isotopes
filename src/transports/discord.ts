@@ -5,11 +5,15 @@ import {
   Client,
   GatewayIntentBits,
   Partials,
+  REST,
+  Routes,
+  SlashCommandBuilder,
   type Message as DiscordMessage,
   type TextChannel,
   type DMChannel,
   type NewsChannel,
   type ThreadChannel,
+  type Interaction,
 } from "discord.js";
 import {
   textContent,
@@ -238,6 +242,9 @@ export class DiscordTransport implements Transport {
     this.client.on("ready", () => {
       log.info(`Logged in as ${this.client.user?.tag}`);
       this.ready = true;
+      this.registerApplicationCommands().catch(err =>
+        log.error("Failed to register application commands", { error: err instanceof Error ? err.message : String(err) })
+      );
     });
 
     this.client.on("messageCreate", (msg) => this.handleMessage(msg));
@@ -246,6 +253,8 @@ export class DiscordTransport implements Transport {
     if (this.config.threadBindings?.enabled) {
       this.client.on("threadCreate", (thread) => this.handleThreadCreate(thread));
     }
+
+    this.client.on("interactionCreate", (interaction) => this.handleInteraction(interaction));
 
     await this.client.login(this.config.token);
   }
@@ -293,6 +302,86 @@ export class DiscordTransport implements Transport {
       parentChannelId: thread.parentId,
       agentId,
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Application Commands (slash commands)
+  // ---------------------------------------------------------------------------
+
+  private async registerApplicationCommands(): Promise<void> {
+    const commands = [
+      new SlashCommandBuilder().setName("status").setDescription("Show agent status"),
+      new SlashCommandBuilder().setName("new").setDescription("Start a new session"),
+      new SlashCommandBuilder().setName("reset").setDescription("Reset current session"),
+      new SlashCommandBuilder().setName("compact").setDescription("Compact session context")
+        .addStringOption(opt => opt.setName("instructions").setDescription("Compaction instructions").setRequired(false)),
+      new SlashCommandBuilder().setName("model").setDescription("View or switch model")
+        .addStringOption(opt => opt.setName("name").setDescription("Model name").setRequired(false)),
+      new SlashCommandBuilder().setName("reload").setDescription("Reload agent workspace"),
+      new SlashCommandBuilder().setName("stop").setDescription("Stop running subagent"),
+      new SlashCommandBuilder().setName("cancel").setDescription("Cancel running subagent"),
+    ];
+
+    const rest = new REST({ version: "10" }).setToken(this.config.token);
+    await rest.put(
+      Routes.applicationCommands(this.client.user!.id),
+      { body: commands.map(c => c.toJSON()) },
+    );
+    log.info(`Registered ${commands.length} application commands`);
+  }
+
+  private async handleInteraction(interaction: Interaction): Promise<void> {
+    if (!interaction.isChatInputCommand()) return;
+
+    await interaction.deferReply();
+
+    try {
+      const commandName = interaction.commandName;
+      const args = interaction.options.getString("instructions")
+        ?? interaction.options.getString("name")
+        ?? "";
+      const content = args ? `/${commandName} ${args}` : `/${commandName}`;
+
+      // Resolve agent — use bot's own user ID to look up agentBindings
+      const botUserId = this.client.user?.id ?? "";
+      const agentId = this.config.agentBindings?.[botUserId]
+        ?? this.config.defaultAgentId
+        ?? "default";
+      const sessionStore = this.getSessionStore(agentId);
+
+      // Build session key from interaction context
+      const channelId = interaction.channelId;
+      const isThread = interaction.channel?.isThread() ?? false;
+      const sessionKey = isThread
+        ? buildSessionKey("discord", botUserId, "thread", channelId, agentId)
+        : interaction.guildId
+          ? buildSessionKey("discord", botUserId, "channel", channelId, agentId)
+          : buildSessionKey("discord", botUserId, "dm", interaction.user.id, agentId);
+
+      const session = await sessionStore.findByKey(sessionKey);
+      const agent = this.config.agentManager.get(agentId);
+
+      const result = await this.commandHandler.execute(content, {
+        agentManager: this.config.agentManager,
+        sessionStore,
+        agentId,
+        userId: interaction.user.id,
+        username: interaction.user.username,
+        sessionId: session?.id,
+        sessionKey,
+        agentInstance: agent,
+      });
+
+      await interaction.editReply(result.response);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error("Interaction handler error", { error: msg });
+      try {
+        await interaction.editReply(`❌ Command failed: ${msg}`);
+      } catch {
+        // interaction may have expired
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
