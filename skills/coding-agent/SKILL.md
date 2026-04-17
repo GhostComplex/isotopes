@@ -84,19 +84,19 @@ For fixing multiple issues in parallel:
 
 ```bash
 # 1. Create worktrees
-git worktree add -b fix/issue-78 _repos/worktrees/issue-78 main
-git worktree add -b fix/issue-99 _repos/worktrees/issue-99 main
+git worktree add -b fix/issue-78 worktrees/issue-78 main
+git worktree add -b fix/issue-99 worktrees/issue-99 main
 
 # 2. Spawn agents in each
-spawn_subagent(agent: "claude", task: "Fix issue #78...", working_directory: "_repos/worktrees/issue-78")
-spawn_subagent(agent: "claude", task: "Fix issue #99...", working_directory: "_repos/worktrees/issue-99")
+spawn_subagent(agent: "claude", task: "Fix issue #78...", working_directory: "worktrees/issue-78")
+spawn_subagent(agent: "claude", task: "Fix issue #99...", working_directory: "worktrees/issue-99")
 
 # 3. Create PRs after fixes
-cd _repos/worktrees/issue-78 && git push -u origin fix/issue-78
+cd worktrees/issue-78 && git push -u origin fix/issue-78
 gh pr create --title "fix: ..." --body "..."
 
 # 4. Cleanup
-git worktree remove _repos/worktrees/issue-78
+git worktree remove worktrees/issue-78
 ```
 
 ## Progress Updates
