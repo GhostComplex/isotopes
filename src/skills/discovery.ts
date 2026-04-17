@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { getIsotopesHome } from "../core/paths.js";
+import { resolveBundledSkillsDir } from "./bundled-dir.js";
 
 // Directories to skip during recursive scanning
 const IGNORED_DIRS = new Set([
@@ -29,6 +30,8 @@ export interface DiscoveryOptions {
   workspacePath?: string;
   /** Additional paths to scan for skills */
   additionalPaths?: string[];
+  /** Bundled skills path (auto-detected from package root). Set to null to disable. */
+  bundledPath?: string | null;
 }
 
 export interface DiscoveredSkill {
@@ -56,7 +59,8 @@ export function getWorkspaceSkillsPath(workspacePath: string): string {
  * Discover skills from configured paths.
  * Scans directories recursively for SKILL.md files.
  *
- * Discovery order (per PRD):
+ * Discovery order (lowest to highest priority):
+ * 0. Bundled: {packageRoot}/skills/
  * 1. Global: ~/.isotopes/skills/
  * 2. Workspace: {workspace}/skills/
  * 3. Additional paths (if provided)
@@ -68,9 +72,16 @@ export async function discoverSkills(
     globalPath = getGlobalSkillsPath(),
     workspacePath,
     additionalPaths = [],
+    bundledPath,
   } = options;
 
   const pathsToScan: string[] = [];
+
+  // Bundled skills (lowest priority — scanned first, overridden by global/workspace)
+  const resolvedBundled = bundledPath === null ? undefined : (bundledPath ?? resolveBundledSkillsDir());
+  if (resolvedBundled) {
+    pathsToScan.push(resolvedBundled);
+  }
 
   // Add paths in discovery order
   pathsToScan.push(globalPath);
