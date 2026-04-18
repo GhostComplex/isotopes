@@ -32,7 +32,6 @@ import {
   resolveToolGuards,
   applyToolPolicy,
 } from "./core/tools.js";
-import { createIterateCodebaseTool } from "./tools/iterate-codebase.js";
 import { createReplyReactTools, LazyTransportContext } from "./tools/reply-react.js";
 import { createSessionTools } from "./tools/sessions.js";
 import { createExecTools, ProcessRegistry } from "./tools/exec.js";
@@ -866,18 +865,6 @@ async function main() {
     const filteredTools = applyToolPolicy(workspaceTools, agentConfig.toolSettings);
     for (const { tool, handler } of filteredTools) {
       toolRegistry.register(tool, handler);
-    }
-
-    // Register self-iteration tools if enabled (M10.6)
-    if (agentFile.selfIteration?.enabled) {
-      // Register iterate_codebase tool alongside self-iteration
-      const { tool: iterTool, handler: iterHandler } = createIterateCodebaseTool({
-        workspacePath,
-        repoPath: process.cwd(),
-        subagentEnabled: config.acp?.enabled === true,
-        allowedWorkspaces: agentAllowedWorkspaces,
-      });
-      toolRegistry.register(iterTool, iterHandler);
     }
 
     // Register reply/react tools (transport is bound lazily after Discord starts)

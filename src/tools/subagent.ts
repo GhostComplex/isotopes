@@ -107,7 +107,7 @@ function getBackend(allowedWorkspaces?: string[]): SubagentBackend {
 let taskCounter = 0;
 
 /**
- * Get the shared SubagentBackend instance for use by other modules (e.g. IterationExecutor).
+ * Get the shared SubagentBackend instance for use by other modules.
  * Returns undefined if the backend hasn't been initialized (no permissionMode set).
  */
 export function getSubagentBackend(allowedWorkspaces?: string[]): SubagentBackend | undefined {

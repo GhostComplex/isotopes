@@ -62,7 +62,6 @@ pnpm test:integration
 - `src/workspace/` — File watcher, hot-reload manager, workspace templates and state.
 - `src/skills/` — Skill discovery, parsing, and prompt injection.
 - `src/subagent/` — Sub-agent management via the Claude Agent SDK, Discord sink for output routing.
-- `src/iteration/` — Self-iteration planning, execution, reporting, validation.
 - `src/cli.ts` — CLI entry point. Parses args, dispatches subcommands or runs foreground.
 
 ### Key patterns

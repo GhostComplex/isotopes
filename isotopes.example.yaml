@@ -49,12 +49,6 @@ agents:
     #   mode: aggressive
     # sandbox:                              # per-agent override (see global "sandbox" below)
     #   mode: non-main
-    # selfIteration:                        # let agent edit its own SOUL.md / MEMORY.md
-    #   enabled: false
-    #   backup: true
-    #   allowedFiles:
-    #     - SOUL.md
-    #     - MEMORY.md
     # cron:                                 # per-agent scheduled prompts (#193)
     #   tasks:
     #     - name: morning-standup

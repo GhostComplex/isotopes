@@ -84,8 +84,6 @@ export interface AgentConfigFile {
   provider?: ProviderConfigFile;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
-  /** Self-iteration configuration (M10) */
-  selfIteration?: SelfIterationConfigFile;
   /** Heartbeat configuration (#191) */
   heartbeat?: HeartbeatConfigFile;
   /** Cron scheduled tasks (#193) */
@@ -103,12 +101,6 @@ export interface AgentConfigFile {
    * - 'auto': Agent chooses (default)
    */
   codingMode?: "subagent" | "direct" | "auto";
-}
-
-/** Self-iteration configuration in config file */
-export interface SelfIterationConfigFile {
-  /** Enable self-iteration tools. Default: false */
-  enabled?: boolean;
 }
 
 export interface AgentToolsConfigFile {
