@@ -342,28 +342,24 @@ export class SubagentBackend {
   }
 }
 
-/** Collect all events from a spawn generator into a SubagentResult. */
-export async function collectResult(
-  events: AsyncGenerator<SubagentEvent>,
-): Promise<SubagentResult> {
-  const collected: SubagentEvent[] = [];
+/** Aggregate a fully-collected event list into a SubagentResult. Pure / sync-friendly. */
+export function summarizeEvents(events: SubagentEvent[]): SubagentResult {
   let lastExitCode = 0;
   let costUsd: number | undefined;
 
-  for await (const event of events) {
-    collected.push(event);
+  for (const event of events) {
     if (event.type === "done") {
       if (event.exitCode !== undefined) lastExitCode = event.exitCode;
       if (event.costUsd !== undefined) costUsd = event.costUsd;
     }
   }
 
-  const messages = collected
+  const messages = events
     .filter((e) => e.type === "message" && e.content)
     .map((e) => e.content!)
     .join("\n");
 
-  const errors = collected
+  const errors = events
     .filter((e) => e.type === "error" && e.error)
     .map((e) => e.error!)
     .join("\n");
@@ -372,8 +368,17 @@ export async function collectResult(
     success: lastExitCode === 0 && !errors,
     output: messages || undefined,
     error: errors || undefined,
-    events: collected,
+    events,
     exitCode: lastExitCode,
     costUsd,
   };
+}
+
+/** Collect all events from a spawn generator into a SubagentResult. */
+export async function collectResult(
+  events: AsyncGenerator<SubagentEvent>,
+): Promise<SubagentResult> {
+  const collected: SubagentEvent[] = [];
+  for await (const event of events) collected.push(event);
+  return summarizeEvents(collected);
 }

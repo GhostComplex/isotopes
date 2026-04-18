@@ -33,7 +33,7 @@ export type {
 
 export { SUBAGENT_AGENTS } from "./types.js";
 
-export { SubagentBackend, collectResult, mapSdkMessage, MAX_CONCURRENT_AGENTS } from "./backend.js";
+export { SubagentBackend, collectResult, summarizeEvents, mapSdkMessage, MAX_CONCURRENT_AGENTS } from "./backend.js";
 export type { SubagentBackendOptions } from "./backend.js";
 
 export {

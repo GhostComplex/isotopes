@@ -32,3 +32,6 @@ coverage/
 
 .isotopes/
 isotopes.yml
+
+# Local Claude Code working dirs (plans, scratch, etc.)
+.claude/

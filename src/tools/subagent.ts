@@ -5,8 +5,8 @@ import { createLogger } from "../core/logger.js";
 import {
   SubagentBackend,
   SUBAGENT_AGENTS,
+  summarizeEvents,
   type SubagentAgent,
-  type SubagentResult,
   type SubagentEvent,
 } from "../subagent/index.js";
 import { taskRegistry } from "../subagent/task-registry.js";
@@ -175,7 +175,7 @@ export async function spawnSubagent(
     }
 
     // Build result from collected events
-    const result = await collectResultFromEvents(collected);
+    const result = summarizeEvents(collected);
 
     log.info("Sub-agent completed", {
       taskId,
@@ -245,34 +245,3 @@ export function getSupportedAgents(): readonly string[] {
   return [...SUBAGENT_AGENTS];
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async function collectResultFromEvents(events: SubagentEvent[]): Promise<SubagentResult> {
-  let lastExitCode = 0;
-
-  const messages = events
-    .filter((e) => e.type === "message" && e.content)
-    .map((e) => e.content!)
-    .join("\n");
-
-  const errors = events
-    .filter((e) => e.type === "error" && e.error)
-    .map((e) => e.error!)
-    .join("\n");
-
-  for (const event of events) {
-    if (event.type === "done" && event.exitCode !== undefined) {
-      lastExitCode = event.exitCode;
-    }
-  }
-
-  return {
-    success: lastExitCode === 0,
-    output: messages || undefined,
-    error: errors || undefined,
-    events,
-    exitCode: lastExitCode,
-  };
-}
