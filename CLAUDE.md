@@ -93,3 +93,24 @@ pnpm test:integration
 - Config: `~/.isotopes/isotopes.yaml`
 - Environment variables load from `.env.local` (gitignored)
 - Logging: `createLogger("tag")` — format `[ISO] [LEVEL] [tag] message`, controlled by `LOG_LEVEL` or `DEBUG=isotopes`
+
+## Project Management
+
+GitHub Project [#11 isotopes](https://github.com/orgs/GhostComplex/projects/11) tracks all work. Status column rules:
+
+| Column | Meaning | Agent action |
+|---|---|---|
+| **Backlog** | Idea captured, not yet vetted. Default column for newly created issues. | Read for context. **Do not pick up.** |
+| **Ready** | Triaged and approved for work. | **Pick from here** when looking for work. |
+| **In progress** | Actively being worked on. | Move here when you start; one issue per worktree. |
+| **In review** | PR open, awaiting review/merge. | Move here as soon as you open the PR. |
+| **Done** | Merged. | Auto on merge — don't touch. |
+| **Archive** | Human-only historical record. | **Read-only.** Never change status, never reopen. |
+
+Workflow:
+- New issue → Backlog (human triages to Ready)
+- Pick a Ready issue → move to In progress → open worktree
+- Open PR → move to In review (link the issue with `Closes #N` in the PR body)
+- Merge → Done (automatic)
+
+**Never commit directly to `main`.** All changes go through a worktree + PR, even one-line doc fixes. `main` is updated only via merged PRs.
