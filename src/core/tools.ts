@@ -163,7 +163,7 @@ export interface SubagentToolOptions {
  * posted to the main channel when complete.
  */
 export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; handler: ToolHandler } {
-  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout = 300, maxTurns } = options;
+  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns } = options;
   const supportedAgents = getSupportedAgents();
   const agents = allowedAgents ?? [...supportedAgents];
   // Combine workspace path with additional allowed workspaces
@@ -255,7 +255,7 @@ async function runSubagentPlain(
   task: string,
   agent: SubagentAgent,
   cwd: string,
-  timeout: number,
+  timeout: number | undefined,
   allowedWorkspaces: string[],
   maxTurns?: number,
 ): Promise<string> {
@@ -280,7 +280,7 @@ async function runSubagentWithDiscord(
   task: string,
   agent: SubagentAgent,
   cwd: string,
-  timeout: number,
+  timeout: number | undefined,
   allowedWorkspaces: string[],
   context: NonNullable<ReturnType<typeof getSubagentContext>>,
   maxTurns?: number,

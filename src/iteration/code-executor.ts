@@ -238,7 +238,7 @@ export function restoreFromBackup(backupPath: string): boolean {
  * Executes iteration steps using Claude subagent with verification.
  */
 export class CodeExecutor {
-  private config: Required<CodeExecutorConfig>;
+  private config: Omit<Required<CodeExecutorConfig>, "timeout"> & { timeout?: number };
 
   constructor(config: CodeExecutorConfig) {
     this.config = {
@@ -247,7 +247,7 @@ export class CodeExecutor {
       verify: config.verify ?? true,
       model: config.model ?? "",
       maxTurns: config.maxTurns ?? 20,
-      timeout: config.timeout ?? 300,
+      timeout: config.timeout,
     };
   }
 

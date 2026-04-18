@@ -269,11 +269,10 @@ export class SubagentBackend {
 
     yield { type: "start" };
 
-    // Optional timeout: abort after N seconds if specified
-    const timeoutHandle = options.timeout
-      ? setTimeout(() => abortController.abort(), options.timeout * 1000)
-      : undefined;
-    timeoutHandle?.unref();
+    // Timeout: abort after N seconds. Default 900s (15 min) — single source of truth.
+    const timeoutSec = options.timeout ?? 900;
+    const timeoutHandle = setTimeout(() => abortController.abort(), timeoutSec * 1000);
+    timeoutHandle.unref();
 
     let sawDone = false;
     // tool_use blocks carry name+id; tool_result blocks only carry the id.
@@ -300,7 +299,7 @@ export class SubagentBackend {
         sawDone = true;
       }
     } finally {
-      if (timeoutHandle) clearTimeout(timeoutHandle);
+      clearTimeout(timeoutHandle);
       runs.delete(taskId);
     }
 

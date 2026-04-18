@@ -163,7 +163,7 @@ export async function spawnSubagent(
       prompt,
       cwd: options.cwd,
       model: options.model,
-      timeout: options.timeout ?? 300,
+      timeout: options.timeout,
       maxTurns: options.maxTurns ?? 50,
     });
 
