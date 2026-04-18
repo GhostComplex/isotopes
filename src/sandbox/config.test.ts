@@ -209,6 +209,70 @@ describe("Sandbox Config", () => {
         expect(config.docker?.memoryLimit).toBe(memoryLimit);
       }
     });
+
+    it("applies hardening defaults when docker is provided without overrides", () => {
+      const cfg = resolveSandboxConfig("test-agent", {
+        mode: "all",
+        docker: { image: "test:latest" },
+      });
+      expect(cfg.docker?.pidsLimit).toBe(256);
+      expect(cfg.docker?.capDrop).toEqual(["ALL"]);
+      expect(cfg.docker?.capAdd).toEqual(["DAC_OVERRIDE", "CHOWN", "FOWNER"]);
+      expect(cfg.docker?.noNewPrivileges).toBe(true);
+    });
+
+    it("preserves explicit hardening overrides", () => {
+      const cfg = resolveSandboxConfig("test-agent", {
+        mode: "all",
+        docker: {
+          image: "test:latest",
+          pidsLimit: 0,
+          capDrop: [],
+          capAdd: ["NET_ADMIN"],
+          noNewPrivileges: false,
+        },
+      });
+      expect(cfg.docker?.pidsLimit).toBe(0);
+      expect(cfg.docker?.capDrop).toEqual([]);
+      expect(cfg.docker?.capAdd).toEqual(["NET_ADMIN"]);
+      expect(cfg.docker?.noNewPrivileges).toBe(false);
+    });
+
+    it("throws on negative pidsLimit", () => {
+      expect(() =>
+        resolveSandboxConfig("test-agent", {
+          mode: "all",
+          docker: { image: "test:latest", pidsLimit: -1 },
+        }),
+      ).toThrow("docker.pidsLimit must be a non-negative integer");
+    });
+
+    it("throws on non-integer pidsLimit", () => {
+      expect(() =>
+        resolveSandboxConfig("test-agent", {
+          mode: "all",
+          docker: { image: "test:latest", pidsLimit: 1.5 },
+        }),
+      ).toThrow("docker.pidsLimit must be a non-negative integer");
+    });
+
+    it("throws on non-array capDrop", () => {
+      expect(() =>
+        resolveSandboxConfig("test-agent", {
+          mode: "all",
+          docker: { image: "test:latest", capDrop: "ALL" as unknown as string[] },
+        }),
+      ).toThrow("docker.capDrop must be an array");
+    });
+
+    it("throws on non-boolean noNewPrivileges", () => {
+      expect(() =>
+        resolveSandboxConfig("test-agent", {
+          mode: "all",
+          docker: { image: "test:latest", noNewPrivileges: "yes" as unknown as boolean },
+        }),
+      ).toThrow("docker.noNewPrivileges must be a boolean");
+    });
   });
 
   describe("shouldSandbox", () => {

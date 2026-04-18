@@ -23,6 +23,14 @@ export interface DockerConfig {
   cpuLimit?: number;
   /** Memory limit (e.g., "512m", "1g") */
   memoryLimit?: string;
+  /** Max PIDs in container. Default: 256. Set to 0 to disable. */
+  pidsLimit?: number;
+  /** Linux capabilities to drop. Default: ["ALL"]. */
+  capDrop?: string[];
+  /** Linux capabilities to add back after capDrop. Default: ["DAC_OVERRIDE","CHOWN","FOWNER"]. */
+  capAdd?: string[];
+  /** Apply --security-opt=no-new-privileges. Default: true. */
+  noNewPrivileges?: boolean;
 }
 
 /** Sandbox configuration for an agent */
@@ -86,6 +94,24 @@ function validateSandboxConfig(config: SandboxConfig, label: string): void {
         );
       }
     }
+
+    if (config.docker.pidsLimit !== undefined) {
+      if (typeof config.docker.pidsLimit !== "number" || config.docker.pidsLimit < 0 || !Number.isInteger(config.docker.pidsLimit)) {
+        throw new Error(
+          `${label}: docker.pidsLimit must be a non-negative integer (0 disables the limit)`,
+        );
+      }
+    }
+
+    if (config.docker.capDrop !== undefined && !Array.isArray(config.docker.capDrop)) {
+      throw new Error(`${label}: docker.capDrop must be an array of strings`);
+    }
+    if (config.docker.capAdd !== undefined && !Array.isArray(config.docker.capAdd)) {
+      throw new Error(`${label}: docker.capAdd must be an array of strings`);
+    }
+    if (config.docker.noNewPrivileges !== undefined && typeof config.docker.noNewPrivileges !== "boolean") {
+      throw new Error(`${label}: docker.noNewPrivileges must be a boolean`);
+    }
   }
 }
 
@@ -97,6 +123,10 @@ function validateSandboxConfig(config: SandboxConfig, label: string): void {
 const DEFAULT_DOCKER_CONFIG: DockerConfig = {
   image: "isotopes-sandbox:latest",
   network: "bridge",
+  pidsLimit: 256,
+  capDrop: ["ALL"],
+  capAdd: ["DAC_OVERRIDE", "CHOWN", "FOWNER"],
+  noNewPrivileges: true,
 };
 
 /**
@@ -144,6 +174,10 @@ function mergeDockerConfig(
     extraHosts: override?.extraHosts ?? defaults?.extraHosts,
     cpuLimit: override?.cpuLimit ?? defaults?.cpuLimit,
     memoryLimit: override?.memoryLimit ?? defaults?.memoryLimit,
+    pidsLimit: override?.pidsLimit ?? defaults?.pidsLimit ?? DEFAULT_DOCKER_CONFIG.pidsLimit,
+    capDrop: override?.capDrop ?? defaults?.capDrop ?? DEFAULT_DOCKER_CONFIG.capDrop,
+    capAdd: override?.capAdd ?? defaults?.capAdd ?? DEFAULT_DOCKER_CONFIG.capAdd,
+    noNewPrivileges: override?.noNewPrivileges ?? defaults?.noNewPrivileges ?? DEFAULT_DOCKER_CONFIG.noNewPrivileges,
   };
 }
 

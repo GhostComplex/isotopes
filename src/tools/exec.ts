@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 import { createLogger } from "../core/logger.js";
 import type { Tool } from "../core/types.js";
 import type { ToolHandler } from "../core/tools.js";
+import type { SandboxExecutor } from "../sandbox/executor.js";
+import type { SandboxConfig } from "../sandbox/config.js";
 
 const execAsync = promisify(exec);
 const log = createLogger("tools:exec");
@@ -60,14 +62,23 @@ export class ProcessRegistry {
   }
 
   /** Spawn a background process and register it. */
-  spawn(command: string, cwd: string): ProcessInfo {
+  spawn(command: string, cwd: string, options?: { argv?: string[] }): ProcessInfo {
     const id = `proc_${this.nextId++}`;
 
-    const child = spawn("sh", ["-c", command], {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: false,
-    });
+    // If argv is provided (sandbox path), spawn that directly so stdout/stderr
+    // pipes and SIGTERM kill flow through the host child handle. Otherwise
+    // fall back to the host shell.
+    const child = options?.argv && options.argv.length > 0
+      ? spawn(options.argv[0], options.argv.slice(1), {
+          cwd,
+          stdio: ["ignore", "pipe", "pipe"],
+          detached: false,
+        })
+      : spawn("sh", ["-c", command], {
+          cwd,
+          stdio: ["ignore", "pipe", "pipe"],
+          detached: false,
+        });
 
     const info: ProcessInfo = {
       process_id: id,
@@ -210,6 +221,17 @@ export interface ExecToolOptions {
   cwd?: string;
   /** ProcessRegistry instance for background process tracking. */
   registry?: ProcessRegistry;
+  /** Optional sandbox executor — when provided alongside agentId and
+   *  agentSandboxConfig, exec routes through a Docker container instead
+   *  of running on the host. */
+  sandboxExecutor?: SandboxExecutor;
+  /** Agent ID owning this exec tool (required for sandbox routing). */
+  agentId?: string;
+  /** Whether this agent counts as the "main" agent for `mode: "non-main"`.
+   *  Defaults to false (multi-agent setups have no primary). */
+  isMainAgent?: boolean;
+  /** Resolved sandbox config for this agent. Required for sandbox routing. */
+  agentSandboxConfig?: SandboxConfig;
 }
 
 /**
@@ -223,6 +245,11 @@ export function createExecTool(
 ): { tool: Tool; handler: ToolHandler } {
   const { cwd = process.cwd() } = options;
   const registry = options.registry ?? new ProcessRegistry();
+  const { sandboxExecutor, agentId, agentSandboxConfig, isMainAgent } = options;
+
+  const useSandbox = (): boolean =>
+    !!(sandboxExecutor && agentId && agentSandboxConfig &&
+       sandboxExecutor.shouldExecuteInSandbox(agentId, isMainAgent ?? false, agentSandboxConfig));
 
   return {
     tool: {
@@ -269,12 +296,29 @@ export function createExecTool(
 
       // Background mode — spawn and return immediately
       if (background) {
-        const info = registry.spawn(command, cwd);
+        let argv: string[] | undefined;
+        if (useSandbox()) {
+          try {
+            argv = await sandboxExecutor!.buildExecArgv(agentId!, ["sh", "-c", command], { workspacePath: cwd });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log.warn("Sandbox container creation failed for background exec", { command, error: msg });
+            return JSON.stringify({
+              stdout: "",
+              stderr: `[sandbox error] ${msg}`,
+              exit_code: 1,
+              error: `Sandbox container creation failed: ${msg}`,
+            });
+          }
+        }
+
+        const info = registry.spawn(command, cwd, argv ? { argv } : undefined);
 
         log.info("Background process started", {
           processId: info.process_id,
           command,
           cwd,
+          sandboxed: !!argv,
         });
 
         return JSON.stringify({
@@ -290,6 +334,43 @@ export function createExecTool(
         Math.max((timeoutSec ?? DEFAULT_TIMEOUT_SEC) * 1000, 1000),
         MAX_TIMEOUT_MS,
       );
+
+      // Sandbox foreground path
+      if (useSandbox()) {
+        try {
+          const result = await sandboxExecutor!.execute(
+            agentId!,
+            ["sh", "-c", command],
+            { workspacePath: cwd, timeout: timeoutMs },
+          );
+
+          log.info("Command executed (sandbox)", { command, cwd, exitCode: result.exitCode });
+
+          return JSON.stringify({
+            stdout: result.stdout || "",
+            stderr: result.stderr || "",
+            exit_code: result.exitCode,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("timed out")) {
+            log.warn("Command timed out (sandbox)", { command, timeoutMs });
+            return JSON.stringify({
+              stdout: "",
+              stderr: "",
+              exit_code: 124,
+              error: `Command timed out after ${timeoutMs / 1000}s`,
+            });
+          }
+          log.warn("Sandbox exec failed", { command, error: msg });
+          return JSON.stringify({
+            stdout: "",
+            stderr: `[sandbox error] ${msg}`,
+            exit_code: 1,
+            error: `Sandbox exec failed: ${msg}`,
+          });
+        }
+      }
 
       try {
         const { stdout, stderr } = await execAsync(command, {

@@ -119,11 +119,8 @@ export class ContainerManager {
    */
   async exec(containerId: string, command: string[]): Promise<ExecResult> {
     try {
-      const { stdout, stderr } = await execFileAsync("docker", [
-        "exec",
-        containerId,
-        ...command,
-      ]);
+      const argv = this.buildExecArgv(containerId, command);
+      const { stdout, stderr } = await execFileAsync(argv[0], argv.slice(1));
 
       return { exitCode: 0, stdout, stderr };
     } catch (error: unknown) {
@@ -137,6 +134,15 @@ export class ContainerManager {
       }
       throw error;
     }
+  }
+
+  /**
+   * Build the argv to run a command inside the container as a host-side
+   * `docker exec` child process. Used by background-process spawning so that
+   * stdin/stdout/stderr/SIGTERM all flow through the host child handle.
+   */
+  buildExecArgv(containerId: string, command: string[]): string[] {
+    return ["docker", "exec", "-i", containerId, ...command];
   }
 
   /**
@@ -197,7 +203,7 @@ export class ContainerManager {
     workspacePath: string,
     access: WorkspaceAccess,
   ): string[] {
-    const args: string[] = ["create", "--name", name];
+    const args: string[] = ["create", "--name", name, "--init"];
 
     // Workspace volume mount
     const mountSuffix = access === "ro" ? ":ro" : "";
@@ -222,6 +228,24 @@ export class ContainerManager {
     }
     if (this.config.memoryLimit) {
       args.push("--memory", this.config.memoryLimit);
+    }
+    if (this.config.pidsLimit !== undefined && this.config.pidsLimit > 0) {
+      args.push("--pids-limit", String(this.config.pidsLimit));
+    }
+
+    // Linux capability hardening
+    if (this.config.capDrop) {
+      for (const cap of this.config.capDrop) {
+        args.push("--cap-drop", cap);
+      }
+    }
+    if (this.config.capAdd) {
+      for (const cap of this.config.capAdd) {
+        args.push("--cap-add", cap);
+      }
+    }
+    if (this.config.noNewPrivileges !== false) {
+      args.push("--security-opt", "no-new-privileges");
     }
 
     // Image

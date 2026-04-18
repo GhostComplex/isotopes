@@ -65,6 +65,24 @@ export class SandboxExecutor {
   }
 
   /**
+   * Build the host-side argv for running `command` inside the agent's
+   * container via `docker exec`. Ensures the container exists.
+   *
+   * Used by background-process spawning: the caller spawns this argv as a
+   * regular host child process and tracks the ChildProcess handle, getting
+   * stdout/stderr pipes and SIGTERM-based kill for free (docker exec defaults
+   * to --sig-proxy=true, so signals reach the container PID).
+   */
+  async buildExecArgv(
+    agentId: string,
+    command: string[],
+    options?: SandboxExecOptions,
+  ): Promise<string[]> {
+    const container = await this.ensureContainer(agentId, options?.workspacePath);
+    return this.containerManager.buildExecArgv(container.id, command);
+  }
+
+  /**
    * Check whether a specific agent should be sandboxed.
    *
    * @param agentId - The agent to check

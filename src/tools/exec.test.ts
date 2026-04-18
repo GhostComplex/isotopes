@@ -436,3 +436,153 @@ describe("createExecTools", () => {
     registry2.clear();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sandbox routing
+// ---------------------------------------------------------------------------
+
+import type { SandboxExecutor } from "../sandbox/executor.js";
+import type { SandboxConfig } from "../sandbox/config.js";
+
+function makeMockSandboxExecutor(overrides?: Partial<SandboxExecutor>): SandboxExecutor {
+  return {
+    shouldExecuteInSandbox: vi.fn(() => true),
+    execute: vi.fn(async () => ({ exitCode: 0, stdout: "sandboxed-out", stderr: "" })),
+    buildExecArgv: vi.fn(async (_id: string, cmd: string[]) => [
+      "docker", "exec", "-i", "ctr-1", ...cmd,
+    ]),
+    cleanup: vi.fn(async () => {}),
+    ...overrides,
+  } as unknown as SandboxExecutor;
+}
+
+const sandboxConfig: SandboxConfig = {
+  mode: "all",
+  workspaceAccess: "rw",
+  docker: { image: "isotopes-sandbox:latest" },
+};
+
+describe("exec tool sandbox routing", () => {
+  it("routes foreground exec through SandboxExecutor.execute when sandboxed", async () => {
+    const executor = makeMockSandboxExecutor();
+    const { handler } = createExecTool({
+      cwd: "/ws",
+      sandboxExecutor: executor,
+      agentId: "agent-1",
+      isMainAgent: false,
+      agentSandboxConfig: sandboxConfig,
+    });
+
+    const result = JSON.parse(await handler({ command: "echo hi" }) as string);
+
+    expect(executor.execute).toHaveBeenCalledWith(
+      "agent-1",
+      ["sh", "-c", "echo hi"],
+      { workspacePath: "/ws", timeout: expect.any(Number) },
+    );
+    expect(result.stdout).toBe("sandboxed-out");
+    expect(result.exit_code).toBe(0);
+  });
+
+  it("returns timeout JSON (not throw) when sandbox execute reports timeout", async () => {
+    const executor = makeMockSandboxExecutor({
+      execute: vi.fn(async () => {
+        throw new Error("Sandbox execution timed out after 1000ms");
+      }),
+    });
+    const { handler } = createExecTool({
+      cwd: "/ws",
+      sandboxExecutor: executor,
+      agentId: "agent-1",
+      agentSandboxConfig: sandboxConfig,
+    });
+
+    const result = JSON.parse(await handler({ command: "sleep 9999", timeout: 1 }) as string);
+    expect(result.exit_code).toBe(124);
+    expect(result.error).toMatch(/timed out/);
+  });
+
+  it("returns sandbox-error JSON (not throw) when container creation fails", async () => {
+    const executor = makeMockSandboxExecutor({
+      execute: vi.fn(async () => {
+        throw new Error("docker daemon not running");
+      }),
+    });
+    const { handler } = createExecTool({
+      cwd: "/ws",
+      sandboxExecutor: executor,
+      agentId: "agent-1",
+      agentSandboxConfig: sandboxConfig,
+    });
+
+    const result = JSON.parse(await handler({ command: "ls" }) as string);
+    expect(result.exit_code).toBe(1);
+    expect(result.stderr).toMatch(/sandbox error/);
+  });
+
+  it("routes background exec through SandboxExecutor.buildExecArgv", async () => {
+    const executor = makeMockSandboxExecutor();
+    const registry = new ProcessRegistry();
+    const spawnSpy = vi.spyOn(registry, "spawn");
+    const { handler } = createExecTool({
+      cwd: "/ws",
+      registry,
+      sandboxExecutor: executor,
+      agentId: "agent-1",
+      agentSandboxConfig: sandboxConfig,
+    });
+
+    const result = JSON.parse(await handler({ command: "sleep 3", background: true }) as string);
+
+    expect(executor.buildExecArgv).toHaveBeenCalledWith(
+      "agent-1",
+      ["sh", "-c", "sleep 3"],
+      { workspacePath: "/ws" },
+    );
+    expect(spawnSpy).toHaveBeenCalledWith("sleep 3", "/ws", {
+      argv: ["docker", "exec", "-i", "ctr-1", "sh", "-c", "sleep 3"],
+    });
+    expect(result.process_id).toBe("proc_1");
+    expect(result.status).toBe("running");
+
+    registry.clear();
+  });
+
+  it("returns sandbox-error JSON when buildExecArgv fails (background)", async () => {
+    const executor = makeMockSandboxExecutor({
+      buildExecArgv: vi.fn(async () => {
+        throw new Error("docker daemon not running");
+      }),
+    });
+    const registry = new ProcessRegistry();
+    const { handler } = createExecTool({
+      cwd: "/ws",
+      registry,
+      sandboxExecutor: executor,
+      agentId: "agent-1",
+      agentSandboxConfig: sandboxConfig,
+    });
+
+    const result = JSON.parse(await handler({ command: "sleep 3", background: true }) as string);
+    expect(result.exit_code).toBe(1);
+    expect(result.error).toMatch(/Sandbox container creation failed/);
+  });
+
+  it("falls back to host when shouldExecuteInSandbox returns false", async () => {
+    const executor = makeMockSandboxExecutor({
+      shouldExecuteInSandbox: vi.fn(() => false),
+    });
+    const { handler } = createExecTool({
+      cwd: "/tmp",
+      sandboxExecutor: executor,
+      agentId: "agent-1",
+      isMainAgent: true,
+      agentSandboxConfig: { mode: "non-main" },
+    });
+
+    const result = JSON.parse(await handler({ command: "echo host" }) as string);
+    expect(executor.execute).not.toHaveBeenCalled();
+    expect(result.stdout).toContain("host");
+    expect(result.exit_code).toBe(0);
+  });
+});

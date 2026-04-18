@@ -35,6 +35,9 @@ function createMockContainerManager(): ContainerManager {
       createdAt: new Date("2026-04-09T10:00:00Z"),
     }),
     list: vi.fn<ContainerManager["list"]>().mockResolvedValue([]),
+    buildExecArgv: vi.fn<ContainerManager["buildExecArgv"]>((id, cmd) => [
+      "docker", "exec", "-i", id, ...cmd,
+    ]),
   } as unknown as ContainerManager;
 }
 
@@ -163,6 +166,33 @@ describe("SandboxExecutor", () => {
       await expect(
         executor.execute("agent-1", ["sleep", "infinity"], { timeout: 50 }),
       ).rejects.toThrow("Sandbox execution timed out after 50ms");
+    });
+  });
+
+  describe("buildExecArgv", () => {
+    it("ensures container then returns docker exec argv", async () => {
+      const argv = await executor.buildExecArgv("agent-1", ["sh", "-c", "echo hi"], {
+        workspacePath: "/ws",
+      });
+
+      expect(mockManager.create).toHaveBeenCalledWith(
+        "isotopes-sandbox-agent-1",
+        "/ws",
+        "rw",
+      );
+      expect(mockManager.start).toHaveBeenCalled();
+      expect(mockManager.buildExecArgv).toHaveBeenCalledWith("container-123", [
+        "sh", "-c", "echo hi",
+      ]);
+      expect(argv).toEqual(["docker", "exec", "-i", "container-123", "sh", "-c", "echo hi"]);
+    });
+
+    it("reuses an existing container", async () => {
+      await executor.execute("agent-1", ["echo", "first"]);
+      await executor.buildExecArgv("agent-1", ["sh", "-c", "echo bg"]);
+
+      expect(mockManager.create).toHaveBeenCalledTimes(1);
+      expect(mockManager.buildExecArgv).toHaveBeenCalledTimes(1);
     });
   });
 

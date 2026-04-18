@@ -41,9 +41,11 @@ describe("ContainerManager", () => {
       expect(mockExecFile).toHaveBeenCalledWith("docker", [
         "create",
         "--name", "test-container",
+        "--init",
         "-v", "/home/user/workspace:/workspace",
         "-w", "/workspace",
         "--network", "bridge",
+        "--security-opt", "no-new-privileges",
         "isotopes-sandbox:latest",
         "tail", "-f", "/dev/null",
       ]);
@@ -52,6 +54,48 @@ describe("ContainerManager", () => {
       expect(result.name).toBe("test-container");
       expect(result.status).toBe("created");
       expect(result.image).toBe("isotopes-sandbox:latest");
+    });
+
+    it("emits hardening flags when DockerConfig provides them", async () => {
+      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+
+      const hardened: DockerConfig = {
+        ...defaultDockerConfig,
+        pidsLimit: 256,
+        capDrop: ["ALL"],
+        capAdd: ["DAC_OVERRIDE", "CHOWN", "FOWNER"],
+        noNewPrivileges: true,
+      };
+      const m = new ContainerManager(hardened);
+
+      await m.create("hardened", "/workspace", "rw");
+
+      const args = mockExecFile.mock.calls[0][1] as string[];
+      expect(args).toContain("--init");
+      expect(args).toContain("--pids-limit");
+      expect(args).toContain("256");
+      expect(args.filter((a) => a === "--cap-drop")).toHaveLength(1);
+      expect(args).toContain("ALL");
+      expect(args.filter((a) => a === "--cap-add")).toHaveLength(3);
+      expect(args).toContain("DAC_OVERRIDE");
+      expect(args).toContain("--security-opt");
+      expect(args).toContain("no-new-privileges");
+    });
+
+    it("omits --pids-limit when set to 0", async () => {
+      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+      const cfg: DockerConfig = { ...defaultDockerConfig, pidsLimit: 0 };
+      await new ContainerManager(cfg).create("t", "/w", "rw");
+      const args = mockExecFile.mock.calls[0][1] as string[];
+      expect(args).not.toContain("--pids-limit");
+    });
+
+    it("omits --security-opt when noNewPrivileges is false", async () => {
+      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+      const cfg: DockerConfig = { ...defaultDockerConfig, noNewPrivileges: false };
+      await new ContainerManager(cfg).create("t", "/w", "rw");
+      const args = mockExecFile.mock.calls[0][1] as string[];
+      expect(args).not.toContain("--security-opt");
     });
 
     it("adds :ro suffix for read-only workspace access", async () => {
@@ -162,7 +206,7 @@ describe("ContainerManager", () => {
       const result = await manager.exec("abc123", ["echo", "hello world"]);
 
       expect(mockExecFile).toHaveBeenCalledWith("docker", [
-        "exec", "abc123", "echo", "hello world",
+        "exec", "-i", "abc123", "echo", "hello world",
       ]);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe("hello world\n");
@@ -188,6 +232,13 @@ describe("ContainerManager", () => {
       await expect(manager.exec("abc123", ["echo"])).rejects.toThrow(
         "Docker daemon not running",
       );
+    });
+  });
+
+  describe("buildExecArgv", () => {
+    it("returns docker exec argv with -i and the command tokens", () => {
+      const argv = manager.buildExecArgv("abc123", ["sh", "-c", "echo hi"]);
+      expect(argv).toEqual(["docker", "exec", "-i", "abc123", "sh", "-c", "echo hi"]);
     });
   });
 

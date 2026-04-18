@@ -32,6 +32,7 @@ import {
 } from "./core/tools.js";
 import { createReplyReactTools, LazyTransportContext } from "./tools/reply-react.js";
 import { createExecTools, ProcessRegistry } from "./tools/exec.js";
+import { ContainerManager, SandboxExecutor } from "./sandbox/index.js";
 import {
   getConfigPath,
   getIsotopesHome,
@@ -795,6 +796,27 @@ async function main() {
   const processRegistries = new Map<string, ProcessRegistry>();
   const isSingleAgent = config.agents.length === 1;
 
+  // Build a single SandboxExecutor if any agent has sandbox enabled.
+  // Per-agent containers are lazy-created on first exec call.
+  let sandboxExecutor: SandboxExecutor | undefined;
+  const anySandboxed = config.agents.some((a) => {
+    const cfg = toAgentConfig(a, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
+    return cfg.sandbox && cfg.sandbox.mode !== "off";
+  });
+  if (anySandboxed) {
+    // Pick a docker config: prefer global, otherwise first sandboxed agent's resolved docker.
+    const firstSandboxed = config.agents
+      .map((a) => toAgentConfig(a, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox))
+      .find((c) => c.sandbox && c.sandbox.mode !== "off" && c.sandbox.docker);
+    const dockerConfig = firstSandboxed?.sandbox?.docker;
+    if (!dockerConfig) {
+      throw new Error("Sandbox is enabled but no docker config could be resolved");
+    }
+    const containerManager = new ContainerManager(dockerConfig);
+    sandboxExecutor = new SandboxExecutor(containerManager, firstSandboxed!.sandbox!);
+    logger.info(`Sandbox executor initialized (image: ${dockerConfig.image})`);
+  }
+
   for (const agentFile of config.agents) {
     const agentConfig = toAgentConfig(agentFile, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
 
@@ -864,7 +886,14 @@ async function main() {
 
     // Register exec/process tools (shared registry across agents)
     if (resolvedToolGuards.cli) {
-      const execTools = createExecTools({ cwd: workspacePath, registry: processRegistry });
+      const execTools = createExecTools({
+        cwd: workspacePath,
+        registry: processRegistry,
+        sandboxExecutor,
+        agentId: agentConfig.id,
+        isMainAgent: false,
+        agentSandboxConfig: agentConfig.sandbox,
+      });
       const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
       for (const { tool, handler } of filteredExecTools) {
         toolRegistry.register(tool, handler);
@@ -1138,6 +1167,15 @@ async function main() {
       registry.clear();
     }
 
+    // Stop and remove sandbox containers
+    if (sandboxExecutor) {
+      try {
+        await sandboxExecutor.cleanup();
+      } catch (err) {
+        logger.warn(`Sandbox cleanup error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     process.exit(0);
   });
 
@@ -1160,6 +1198,15 @@ async function main() {
     // Kill orphaned background processes (#286, #289)
     for (const registry of processRegistries.values()) {
       registry.clear();
+    }
+
+    // Stop and remove sandbox containers
+    if (sandboxExecutor) {
+      try {
+        await sandboxExecutor.cleanup();
+      } catch (err) {
+        logger.warn(`Sandbox cleanup error: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
     process.exit(0);
