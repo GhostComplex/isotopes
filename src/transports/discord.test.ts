@@ -1377,7 +1377,7 @@ describe("DiscordTransport", () => {
       await new Promise((r) => setTimeout(r, 100));
 
       const stopChannel = makeChannel();
-      const stopMsg = makeMsg({ channel: stopChannel, content: "/stop", id: "msg-stop", mentions: { has: vi.fn(() => false) } });
+      const stopMsg = makeMsg({ channel: stopChannel, content: "<@bot-123> /stop", id: "msg-stop" });
       await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(stopMsg);
 
       expect(agent.abort).toHaveBeenCalledTimes(1);
@@ -1408,7 +1408,7 @@ describe("DiscordTransport", () => {
 
       const stopChannel = makeChannel();
       await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
-        makeMsg({ channel: stopChannel, content: "/cancel", id: "msg-stop", mentions: { has: vi.fn(() => false) } }),
+        makeMsg({ channel: stopChannel, content: "<@bot-123> /cancel", id: "msg-stop" }),
       );
 
       expect(agent.abort).toHaveBeenCalledTimes(1);
@@ -1471,6 +1471,66 @@ describe("DiscordTransport", () => {
 
       expect(agent.abort).not.toHaveBeenCalled();
       expect(agent.prompt).toHaveBeenCalledTimes(1);
+
+      release();
+      await inFlight;
+    });
+    it("/stop in a group channel without @mention is ignored (multi-bot safety)", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = makeStatefulSessionStore();
+      const { agent, release } = makeHangingAgent();
+      localAgentManager.get = vi.fn().mockReturnValue(agent);
+
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+      await localTransport.start();
+
+      const inFlight = (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
+        makeMsg({ content: "<@bot-123> long task", id: "msg-1" }),
+      );
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Bare /stop in guild, NOT mentioning this bot — must be ignored
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
+        makeMsg({ content: "/stop", id: "msg-stop", mentions: { has: vi.fn(() => false) } }),
+      );
+
+      expect(agent.abort).not.toHaveBeenCalled();
+
+      release();
+      await inFlight;
+    });
+
+    it("/stop in a DM (no guild) works without @mention", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = makeStatefulSessionStore();
+      const { agent, release } = makeHangingAgent();
+      localAgentManager.get = vi.fn().mockReturnValue(agent);
+
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+      await localTransport.start();
+
+      const inFlight = (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
+        makeMsg({ content: "long task", id: "msg-1", guild: undefined, mentions: { has: vi.fn(() => false) } }),
+      );
+      await new Promise((r) => setTimeout(r, 100));
+
+      const stopChannel = makeChannel();
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
+        makeMsg({ channel: stopChannel, content: "/stop", id: "msg-stop", guild: undefined, mentions: { has: vi.fn(() => false) } }),
+      );
+
+      expect(agent.abort).toHaveBeenCalledTimes(1);
+      expect(stopChannel.send).toHaveBeenCalledWith("🛑 Stopped.");
 
       release();
       await inFlight;

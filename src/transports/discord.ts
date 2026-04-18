@@ -340,10 +340,18 @@ export class DiscordTransport implements Transport {
     }
 
     // 3.6. Main-agent /stop or /cancel — abort current runAgentLoop if any.
-    // Runs before shouldRespond so it works in nomention mode without @mention.
-    // Always swallowed so /stop is never dispatched as a normal user message.
-    const normalizedStop = content.trim().toLowerCase();
-    if (normalizedStop === "/stop" || normalizedStop === "/cancel") {
+    // Runs before shouldRespond so it works without channel-config gating, but in
+    // group channels we still require @mention so a shared /stop in a multi-bot
+    // channel only aborts the addressed bot's session. DMs are 1:1 so no mention
+    // is required there. Allows an optional leading @mention token in the raw
+    // content since extractContent only strips numeric Discord ids.
+    const stopMatch = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i.exec(msg.content.trim());
+    if (stopMatch) {
+      const botId = this.client.user?.id;
+      const isMentioned = botId ? msg.mentions.has(botId) : false;
+      if (msg.guild && !isMentioned) {
+        return; // group channel without @mention — not for this bot
+      }
       const agentId = this.resolveAgentId(msg);
       const sessionStore = this.getSessionStore(agentId);
       const sessionKey = this.getSessionKey(msg, agentId);
