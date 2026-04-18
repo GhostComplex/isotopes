@@ -1,3 +1,4 @@
+import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 // src/core/agent-manager.ts — Agent lifecycle management
 // Creates, stores, and manages AgentInstance objects.
 
@@ -170,7 +171,7 @@ export class DefaultAgentManager implements AgentManager {
         skillsPrompt: ctx.skillsPrompt,
       };
     } else {
-      const workspace = await loadWorkspaceContext(entry.workspacePath);
+      const workspace = await loadWorkspaceContext(entry.workspacePath, { bundledPath: resolveBundledSkillsDir() });
       systemPrompt = buildSystemPrompt(entry.baseSystemPrompt, workspace);
       entry.workspace = workspace;
     }

@@ -5,6 +5,7 @@
 // Side-effect import: pulls env from ~/.claude/settings.json into process.env
 // before anything else loads (SDK auth, model overrides). Existing env wins,
 // so .env.local and shell exports stay authoritative.
+import { resolveBundledSkillsDir } from "./skills/bundled-dir.js";
 import "./core/claude-settings-init.js";
 import { parseArgs } from "node:util";
 import path from "node:path";
@@ -385,7 +386,7 @@ async function handleChatCommand(): Promise<void> {
   }
 
   await ensureWorkspaceStructure(workspacePath);
-  const workspaceContext = await loadWorkspaceContext(workspacePath);
+  const workspaceContext = await loadWorkspaceContext(workspacePath, { bundledPath: resolveBundledSkillsDir() });
 
   // Build system prompt (no extra options needed for CLI chat)
   const agentSystemPrompt = buildSystemPrompt(agentConfig.systemPrompt, workspaceContext);
@@ -843,7 +844,7 @@ async function main() {
     await ensureWorkspaceStructure(workspacePath);
 
     // Load workspace context (SOUL.md, TOOLS.md, MEMORY.md, BOOTSTRAP.md, etc.)
-    const workspaceContext = await loadWorkspaceContext(workspacePath);
+    const workspaceContext = await loadWorkspaceContext(workspacePath, { bundledPath: resolveBundledSkillsDir() });
     const baseSystemPrompt = agentConfig.systemPrompt; // Store before workspace assembly
     agentConfig.systemPrompt = buildSystemPrompt(agentConfig.systemPrompt, workspaceContext);
     logger.debug(`Loaded workspace context for ${agentConfig.id}: systemPrompt=${workspaceContext.systemPromptAdditions.length > 0}, memory=${workspaceContext.memory !== null}`);
