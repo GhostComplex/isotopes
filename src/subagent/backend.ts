@@ -264,6 +264,9 @@ export class SubagentBackend {
     timeoutHandle?.unref();
 
     let sawDone = false;
+    // tool_use blocks carry name+id; tool_result blocks only carry the id.
+    // Keep a per-spawn id→name map so consumers see the real tool name.
+    const toolNameById = new Map<string, string>();
     try {
       const iterator = query({
         prompt: options.prompt,
@@ -271,7 +274,19 @@ export class SubagentBackend {
       });
 
       for await (const msg of iterator) {
+        // Pre-pass: harvest tool_use id→name pairs before mapSdkMessage strips ids.
+        if (msg.type === "assistant" && Array.isArray(msg.message?.content)) {
+          for (const block of msg.message.content) {
+            if (block.type === "tool_use" && typeof block.id === "string") {
+              toolNameById.set(block.id, String(block.name ?? ""));
+            }
+          }
+        }
         for (const ev of mapSdkMessage(msg)) {
+          if (ev.type === "tool_result" && ev.toolName) {
+            const real = toolNameById.get(ev.toolName);
+            if (real) ev.toolName = real;
+          }
           if (ev.type === "done") sawDone = true;
           yield ev;
         }

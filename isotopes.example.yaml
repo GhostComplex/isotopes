@@ -62,7 +62,6 @@ discord:
 # =============================================================================
 acp:
   enabled: true
-  backend: acpx                # acpx | claude-code | codex
   defaultAgent: main
   allowedAgents:
     - assistant

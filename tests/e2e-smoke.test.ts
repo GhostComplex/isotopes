@@ -182,7 +182,6 @@ describe("sessions_list tool", () => {
   it("returns empty session list when none exist", async () => {
     const sessionManager = new AcpSessionManager({
       enabled: true,
-      backend: "acpx",
       defaultAgent: "test-agent",
       allowedAgents: ["test-agent"],
     });
@@ -205,7 +204,6 @@ describe("sessions_list tool", () => {
   it("returns sessions after one is created", async () => {
     const sessionManager = new AcpSessionManager({
       enabled: true,
-      backend: "acpx",
       defaultAgent: "test-agent",
       allowedAgents: ["test-agent", "other-agent"],
     });
@@ -342,7 +340,6 @@ describe("full tool wiring", () => {
     // Session tools
     const sessionManager = new AcpSessionManager({
       enabled: true,
-      backend: "acpx",
       defaultAgent: "test-agent",
       allowedAgents: ["test-agent"],
     });
