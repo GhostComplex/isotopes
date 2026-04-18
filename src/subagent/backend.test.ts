@@ -52,6 +52,24 @@ describe("mapSdkMessage", () => {
     ]);
   });
 
+  it("resolves tool_result toolName via shared toolNameById map", () => {
+    const map = new Map<string, string>();
+    const useMsg = {
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "tu_1", name: "Read", input: {} }] },
+    } as unknown as SDKMessage;
+    mapSdkMessage(useMsg, map);
+
+    const resultMsg = {
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "tu_1", content: "data" }] },
+    } as unknown as SDKMessage;
+    const events = mapSdkMessage(resultMsg, map);
+    expect(events).toEqual([
+      { type: "tool_result", toolName: "Read", toolResult: "data" },
+    ]);
+  });
+
   it("skips user replay messages", () => {
     const msg = {
       type: "user",

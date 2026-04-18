@@ -26,9 +26,18 @@ export const MAX_CONCURRENT_AGENTS = 5;
 
 /**
  * Map a single SDK message into zero or more SubagentEvents.
+ *
+ * Pass a persistent `toolNameById` map across calls to resolve `tool_result`
+ * blocks back to the real tool name (Read/Edit/...): tool_use blocks carry
+ * both id and name; tool_result blocks only carry the id. Without the map,
+ * tool_result events fall back to the opaque `tool_use_id`.
+ *
  * Exported for unit testing.
  */
-export function mapSdkMessage(msg: SDKMessage): SubagentEvent[] {
+export function mapSdkMessage(
+  msg: SDKMessage,
+  toolNameById?: Map<string, string>,
+): SubagentEvent[] {
   const events: SubagentEvent[] = [];
 
   switch (msg.type) {
@@ -39,9 +48,11 @@ export function mapSdkMessage(msg: SDKMessage): SubagentEvent[] {
           if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
             events.push({ type: "message", content: block.text });
           } else if (block.type === "tool_use") {
+            const name = String(block.name ?? "");
+            if (toolNameById && typeof block.id === "string") toolNameById.set(block.id, name);
             events.push({
               type: "tool_use",
-              toolName: String(block.name ?? ""),
+              toolName: name,
               toolInput: block.input,
             });
           }
@@ -64,9 +75,10 @@ export function mapSdkMessage(msg: SDKMessage): SubagentEvent[] {
             block.type === "tool_result"
           ) {
             const b = block as { tool_use_id?: string; content?: unknown };
+            const id = String(b.tool_use_id ?? "");
             events.push({
               type: "tool_result",
-              toolName: String(b.tool_use_id ?? ""),
+              toolName: toolNameById?.get(id) ?? id,
               toolResult: typeof b.content === "string" ? b.content : JSON.stringify(b.content),
             });
           }
@@ -265,7 +277,7 @@ export class SubagentBackend {
 
     let sawDone = false;
     // tool_use blocks carry name+id; tool_result blocks only carry the id.
-    // Keep a per-spawn id→name map so consumers see the real tool name.
+    // Per-spawn map shared with mapSdkMessage so consumers see real tool names.
     const toolNameById = new Map<string, string>();
     try {
       const iterator = query({
@@ -274,19 +286,7 @@ export class SubagentBackend {
       });
 
       for await (const msg of iterator) {
-        // Pre-pass: harvest tool_use id→name pairs before mapSdkMessage strips ids.
-        if (msg.type === "assistant" && Array.isArray(msg.message?.content)) {
-          for (const block of msg.message.content) {
-            if (block.type === "tool_use" && typeof block.id === "string") {
-              toolNameById.set(block.id, String(block.name ?? ""));
-            }
-          }
-        }
-        for (const ev of mapSdkMessage(msg)) {
-          if (ev.type === "tool_result" && ev.toolName) {
-            const real = toolNameById.get(ev.toolName);
-            if (real) ev.toolName = real;
-          }
+        for (const ev of mapSdkMessage(msg, toolNameById)) {
           if (ev.type === "done") sawDone = true;
           yield ev;
         }
