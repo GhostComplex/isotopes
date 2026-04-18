@@ -23,6 +23,8 @@ const IGNORED_DIRS = new Set([
 const SKILL_FILE = "SKILL.md";
 
 export interface DiscoveryOptions {
+  /** Bundled skills path (package-level skills/) — lowest priority */
+  bundledPath?: string;
   /** Global skills path (default: ~/.isotopes/skills) */
   globalPath?: string;
   /** Workspace path to scan for skills in {workspace}/skills/ */
@@ -56,8 +58,9 @@ export function getWorkspaceSkillsPath(workspacePath: string): string {
  * Discover skills from configured paths.
  * Scans directories recursively for SKILL.md files.
  *
- * Discovery order (per PRD):
- * 1. Global: ~/.isotopes/skills/
+ * Discovery order (lowest to highest priority):
+ * 1. Bundled: {packageRoot}/skills/
+ * 2. Global: ~/.isotopes/skills/
  * 2. Workspace: {workspace}/skills/
  * 3. Additional paths (if provided)
  */
@@ -65,6 +68,7 @@ export async function discoverSkills(
   options: DiscoveryOptions = {},
 ): Promise<DiscoveredSkill[]> {
   const {
+    bundledPath,
     globalPath = getGlobalSkillsPath(),
     workspacePath,
     additionalPaths = [],
@@ -72,7 +76,12 @@ export async function discoverSkills(
 
   const pathsToScan: string[] = [];
 
-  // Add paths in discovery order
+  // Bundled first (lowest priority — later entries override via dedup)
+  if (bundledPath) {
+    pathsToScan.push(bundledPath);
+  }
+
+  // Global
   pathsToScan.push(globalPath);
 
   if (workspacePath) {
