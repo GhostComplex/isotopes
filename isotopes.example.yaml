@@ -1,106 +1,248 @@
 # Isotopes — Example Configuration
-# Copy to ~/.isotopes/isotopes.yaml and customize
+# Copy to ~/.isotopes/isotopes.yaml and customize.
+# Commented values show defaults — uncomment only when you need to change them.
 
 # =============================================================================
-# PROVIDER — LLM provider (required)
+# PROVIDER — default LLM provider (required; per-agent override below)
 # =============================================================================
 provider:
-  type: anthropic              # anthropic | openai | anthropic-proxy
-  model: claude-sonnet-4-20250514
+  type: anthropic                  # anthropic | openai | anthropic-proxy | openai-proxy
+  model: claude-opus-4.6
   apiKey: ${ANTHROPIC_API_KEY}
-  # baseUrl: https://your-proxy.example.com   # for proxy providers
+  # baseUrl: https://your-proxy.example.com    # for *-proxy types
+  # headers:                                   # extra HTTP headers
+  #   X-Custom-Header: value
 
 # =============================================================================
-# AGENTS — at least one agent is required
+# AGENTS — at least one is required
+# Two equivalent forms:
+#   1) array form (shown below)
+#   2) object form with shared defaults:
+#        agents:
+#          defaults:
+#            provider: { ... }
+#            tools: { ... }
+#            compaction: { ... }
+#            sandbox: { ... }
+#          list:
+#            - id: main
+#            - id: helper
 # =============================================================================
 agents:
-  - id: assistant
-    # Per-agent overrides (all optional):
-    # tools: { cli: true }
-    # compaction: { mode: aggressive }
-    # provider: { type: openai, model: gpt-4o, apiKey: ${OPENAI_API_KEY} }
-    # heartbeat:                   # periodic wake-up (#191)
-    #   enabled: true
-    #   intervalSeconds: 300       # 5 minutes (default: 300)
+  - id: main
+    # workspace: workspace-main             # absolute or relative to ISOTOPES_HOME
+    # allowedWorkspaces:                    # extra dirs subagents may cwd into
+    #   - /path/to/repo
+    # codingMode: auto                      # subagent | direct | auto
+    # heartbeatInterval: 0                  # ms; 0 = disabled (legacy field)
+    # heartbeatPrompt: "what's next?"       # custom heartbeat prompt
+    # heartbeat:                            # periodic wake-up (#191)
+    #   enabled: false
+    #   intervalSeconds: 300                # 5 min default
+    # provider:                             # per-agent override of top-level provider
+    #   type: openai
+    #   model: gpt-4o
+    #   apiKey: ${OPENAI_API_KEY}
+    # tools:                                # per-agent override (see global "tools" below)
+    #   cli: true
+    # compaction:                           # per-agent override
+    #   mode: aggressive
+    # sandbox:                              # per-agent override (see global "sandbox" below)
+    #   mode: non-main
+    # selfIteration:                        # let agent edit its own SOUL.md / MEMORY.md
+    #   enabled: false
+    #   backup: true
+    #   allowedFiles:
+    #     - SOUL.md
+    #     - MEMORY.md
+    # cron:                                 # per-agent scheduled prompts (#193)
+    #   tasks:
+    #     - name: morning-standup
+    #       schedule: "0 9 * * 1-5"
+    #       channel: discord:channel-id
+    #       prompt: "Post the daily standup."
+    #       enabled: true
 
 # =============================================================================
-# COMPACTION — context window management
+# TOOLS — global default tool policy (per-agent override under agents.<id>.tools)
+# =============================================================================
+# tools:
+#   cli: false                       # allow shell execution
+#   fs:
+#     workspaceOnly: true            # restrict file tools to workspace dir
+#   allow: []                        # if non-empty, ONLY these tools are exposed
+#   deny: []                         # always-blocked tools (wins over allow)
+
+# =============================================================================
+# COMPACTION — context window management (default applied to all agents)
 # =============================================================================
 compaction:
-  mode: aggressive             # off | safeguard | aggressive
-  contextWindow: 128000        # token budget
-  threshold: 0.5               # trigger at 50%
+  mode: safeguard                    # off | safeguard | aggressive
+  # contextWindow: 128000            # token budget
+  # threshold: 0.8                   # safeguard default 0.8, aggressive default 0.5
+  # preserveRecent: 10               # recent messages to keep verbatim
+
+# =============================================================================
+# SESSION — session lifecycle
+# =============================================================================
+# session:
+#   ttl: 86400                       # 24h
+#   cleanupInterval: 3600            # 1h sweep
 
 # =============================================================================
 # DISCORD — Discord transport
+# Two forms supported:
+#   - Single-bot (legacy): top-level token/tokenEnv/defaultAgentId, auto-wrapped
+#     into discord.accounts.default at load time.
+#   - Multi-bot: explicit discord.accounts map (preferred for >1 bot).
 # =============================================================================
 discord:
-  tokenEnv: DISCORD_TOKEN      # env var containing bot token
+  # Single-bot legacy form:
+  tokenEnv: DISCORD_TOKEN            # or `token: <literal>`
   defaultAgentId: main
   allowDMs: true
+  # allowBots: false                 # respond to messages from other bots
+  # channelAllowlist:
+  #   - "channel-id"
+  # agentBindings:                   # bot user id → agent id
+  #   "bot-user-id": main
+  # adminUsers:                      # discord user ids allowed to run /slash commands
+  #   - "user-id"
+
+  # Multi-bot form (mutually exclusive with the legacy fields above):
+  # accounts:
+  #   main:
+  #     tokenEnv: DISCORD_TOKEN_MAIN
+  #     defaultAgentId: main
+  #     allowDMs: true
+  #     channelAllowlist: []
+  #     agentBindings: {}
+  #   helper:
+  #     tokenEnv: DISCORD_TOKEN_HELPER
+  #     defaultAgentId: helper
+
   threadBindings:
     enabled: true
     spawnAcpSessions: true
-  # context management — all fields optional, defaults shown:
-  # context:
-  #   historyTurns: 20         # max user turns in prompt
-  #   channelHistory: true     # record lurked channel messages as context
-  #   channelHistoryLimit: 20  # max lurked messages per channel
-  #   dedupe: true             # dedup gateway replays
-  #   debounce: false          # combine rapid-fire messages (adds latency)
+    # autoUnbindOnComplete: true
+    # sendFarewell: false
+    # farewellMessage: "Bye!"
+
+  # subagentStreaming:               # M8: stream subagent output to Discord
+  #   enabled: true
+  #   showToolCalls: true
+
+  # context:                         # all fields optional, defaults shown
+  #   historyTurns: 20
+  #   channelHistory: true
+  #   channelHistoryLimit: 20
+  #   dedupe: true
+  #   debounce: false
+  #   debounceWindowMs: 1500
   #   pruning:
-  #     protectRecent: 3       # recent assistant messages to protect
-  #     headChars: 1500        # head chars to keep on trim
-  #     tailChars: 1500        # tail chars to keep on trim
-  # agentBindings:             # multi-bot routing
-  #   "bot-user-id": assistant
-  # channelAllowlist:          # restrict to specific channels
-  #   - "channel-id"
+  #     protectRecent: 3
+  #     headChars: 1500
+  #     tailChars: 1500
 
 # =============================================================================
-# ACP — Agent Communication Protocol (subagent spawning)
+# CHANNELS — per-guild / per-group runtime overrides
+# Discord guilds are nested under accounts.<accountId>.guilds.<guildId>.
+# Default requireMention is true (must @bot to respond).
+# =============================================================================
+# channels:
+#   discord:
+#     accounts:
+#       main:                              # accountId from discord.accounts (or "default" for legacy)
+#         guilds:
+#           "1480866703880487034":         # guild id
+#             requireMention: false        # respond to all messages in this guild
+#             context:                     # per-guild context overrides
+#               historyTurns: 30
+#               channelHistory: true
+#               channelHistoryLimit: 50
+#   feishu:
+#     groups:
+#       "oc_xxx":
+#         requireMention: false
+
+# =============================================================================
+# BINDINGS — agent ↔ channel routing
+# More specific match wins (channel + accountId + peer > channel + accountId > channel)
+# =============================================================================
+# bindings:
+#   - agentId: main
+#     match:
+#       channel: discord
+#       accountId: main
+#       peer:
+#         kind: group               # group | dm | thread
+#         id: "1480866703880487034"
+
+# =============================================================================
+# ACP — Agent Communication Protocol (sub-agent spawning)
 # =============================================================================
 acp:
   enabled: true
   defaultAgent: main
   allowedAgents:
-    - assistant
+    - main
+  # subagent:                         # M7/M8 subagent execution
+  #   defaultAgent: main
+  #   allowedAgents: [main]
+  #   timeout: 900                    # seconds; backend default 15min
+  #   maxTurns: 50
+  #   permissionMode: allowlist       # skip | allowlist | default
+  #   allowedTools:                   # used when permissionMode=allowlist
+  #     - Read
+  #     - Write
+  #     - Edit
+  #     - Glob
+  #     - Grep
+  #     - LS
+  #   enableShell: false              # appends Bash to allowedTools
+  #   useThread: true                 # spawn Discord thread for subagent output
+  #   showToolCalls: true
+  # persistence:                      # #195
+  #   enabled: false
+  #   dataDir: ${ISOTOPES_HOME}/acp-sessions
+  #   ttl: 86400
+  #   cleanupInterval: 3600
 
 # =============================================================================
-# Optional sections — uncomment to enable
+# CRON — channel-level scheduled jobs (per-agent cron lives under agents.<id>.cron)
 # =============================================================================
-
-# tools:                       # global tool permissions
-#   cli: false                 # shell execution (default: off)
-#   fs:
-#     workspaceOnly: true      # restrict file tools to workspace
-
-# sandbox:                     # secure code execution
-#   mode: non-main             # off | non-main | all
-#   workspaceAccess: rw        # rw | ro
-#   docker:
-#     image: node:20-slim
-#     network: bridge          # bridge | host | none
-#     memoryLimit: 512m
-#     cpuLimit: 1.0
-
-# session:                     # session lifecycle
-#   ttl: 86400                 # 24h TTL (default)
-#   cleanupInterval: 3600     # 1h cleanup sweep (default)
-
-# feishu:                      # Feishu/Lark transport
-#   appId: ${FEISHU_APP_ID}
-#   appSecret: ${FEISHU_APP_SECRET}
-#   defaultAgentId: assistant
-
-# cron:                        # scheduled tasks
+# cron:
 #   - name: daily-report
 #     expression: "0 9 * * *"
-#     agentId: assistant
+#     agentId: main
+#     enabled: true
 #     action:
-#       type: prompt
+#       type: prompt                  # prompt | message | callback
 #       prompt: "Generate daily report"
+#     # action: { type: message, content: "Good morning!" }
+#     # action: { type: callback, handler: generateReport }
 
-# api:                         # REST API server
-#   port: 3000
-#   host: 127.0.0.1
+# =============================================================================
+# SANDBOX — Docker-isolated code execution (default for all agents)
+# =============================================================================
+# sandbox:
+#   mode: off                         # off | non-main | all
+#   workspaceAccess: rw               # rw | ro
+#   docker:
+#     image: isotopes-sandbox:latest
+#     network: bridge                 # bridge | host | none
+#     extraHosts: []
+#     cpuLimit: 1.0
+#     memoryLimit: 512m
+
+# =============================================================================
+# FEISHU — Feishu / Lark transport
+# NOTE: FeishuTransport is exported from the library but NOT yet wired into the
+# CLI/daemon. Configuring it here has no effect until CLI integration lands.
+# Schema below reflects FeishuTransportConfig in src/transports/feishu.ts.
+# =============================================================================
+# feishu:
+#   appId: ${FEISHU_APP_ID}
+#   appSecret: ${FEISHU_APP_SECRET}
+#   defaultAgentId: main
+#   # agentBindings: {}
