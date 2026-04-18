@@ -1301,4 +1301,179 @@ describe("DiscordTransport", () => {
       expect(completingAgent.prompt).toHaveBeenCalledTimes(2);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Main-agent /stop and /cancel (issue #364)
+  // ---------------------------------------------------------------------------
+
+  describe("main-agent /stop", () => {
+    function makeChannel(): MockChannel {
+      return {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+        isThread: vi.fn().mockReturnValue(false),
+      };
+    }
+
+    function makeMsg(overrides: Partial<MockIncomingMessage> = {}): MockIncomingMessage {
+      return {
+        author: { bot: false, username: "tester", id: "user-1" },
+        content: "<@bot-123> hello",
+        createdTimestamp: Date.now(),
+        guild: { id: "guild-1" },
+        channelId: "channel-1",
+        channel: makeChannel(),
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        thread: undefined,
+        id: `msg-${Date.now()}`,
+        ...overrides,
+      };
+    }
+
+    function makeHangingAgent() {
+      let resolve!: () => void;
+      const wait = new Promise<void>((r) => { resolve = r; });
+      const agent = {
+        prompt: vi.fn(async function* () {
+          yield { type: "text_delta" as const, text: "thinking..." };
+          await wait;
+          yield { type: "agent_end" as const, messages: [] };
+        }),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+      };
+      return { agent, release: () => resolve() };
+    }
+
+    function makeStatefulSessionStore(sessionId = "session-stop") {
+      const store = createMockSessionStore(sessionId);
+      let stored: { id: string; agentId: string; lastActiveAt: Date; key?: string } | undefined;
+      store.create = vi.fn(async (agentId: string, opts?: { key?: string }) => {
+        stored = { id: sessionId, agentId, lastActiveAt: new Date(), key: opts?.key };
+        return stored;
+      }) as unknown as typeof store.create;
+      store.findByKey = vi.fn(async (key: string) => (stored?.key === key ? stored : undefined)) as unknown as typeof store.findByKey;
+      return store;
+    }
+
+    it("/stop aborts an in-flight main-agent turn and acks with 🛑", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = makeStatefulSessionStore();
+      const { agent, release } = makeHangingAgent();
+      localAgentManager.get = vi.fn().mockReturnValue(agent);
+
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+      await localTransport.start();
+
+      const channel = makeChannel();
+      const msg1 = makeMsg({ channel, content: "<@bot-123> long task", id: "msg-1" });
+      const inFlight = (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg1);
+      await new Promise((r) => setTimeout(r, 100));
+
+      const stopChannel = makeChannel();
+      const stopMsg = makeMsg({ channel: stopChannel, content: "/stop", id: "msg-stop", mentions: { has: vi.fn(() => false) } });
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(stopMsg);
+
+      expect(agent.abort).toHaveBeenCalledTimes(1);
+      expect(stopChannel.send).toHaveBeenCalledWith("🛑 Stopped.");
+
+      release();
+      await inFlight;
+    });
+
+    it("/cancel also aborts the in-flight turn", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = makeStatefulSessionStore();
+      const { agent, release } = makeHangingAgent();
+      localAgentManager.get = vi.fn().mockReturnValue(agent);
+
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+      await localTransport.start();
+
+      const inFlight = (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
+        makeMsg({ content: "<@bot-123> long task", id: "msg-1" }),
+      );
+      await new Promise((r) => setTimeout(r, 100));
+
+      const stopChannel = makeChannel();
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
+        makeMsg({ channel: stopChannel, content: "/cancel", id: "msg-stop", mentions: { has: vi.fn(() => false) } }),
+      );
+
+      expect(agent.abort).toHaveBeenCalledTimes(1);
+      release();
+      await inFlight;
+    });
+
+    it("/stop with no active turn does not abort and does not dispatch to model", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = createMockSessionStore();
+      const agent = {
+        prompt: vi.fn(),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+      };
+      localAgentManager.get = vi.fn().mockReturnValue(agent);
+
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+      await localTransport.start();
+
+      const channel = makeChannel();
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
+        makeMsg({ channel, content: "/stop", id: "msg-stop" }),
+      );
+
+      expect(agent.abort).not.toHaveBeenCalled();
+      expect(agent.prompt).not.toHaveBeenCalled();
+      expect(channel.send).not.toHaveBeenCalled();
+    });
+
+    it("normal messages during an in-flight turn do NOT abort (steer-at-turn_end preserved)", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = createMockSessionStore();
+      const { agent, release } = makeHangingAgent();
+      localAgentManager.get = vi.fn().mockReturnValue(agent);
+
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+      await localTransport.start();
+
+      const inFlight = (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
+        makeMsg({ content: "<@bot-123> long task", id: "msg-1" }),
+      );
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Plain user message — should be buffered, not abort
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(
+        makeMsg({ content: "<@bot-123> are you done?", id: "msg-2" }),
+      );
+
+      expect(agent.abort).not.toHaveBeenCalled();
+      expect(agent.prompt).toHaveBeenCalledTimes(1);
+
+      release();
+      await inFlight;
+    });
+  });
 });

@@ -339,6 +339,28 @@ export class DiscordTransport implements Transport {
       }
     }
 
+    // 3.6. Main-agent /stop or /cancel — abort current runAgentLoop if any.
+    // Runs before shouldRespond so it works in nomention mode without @mention.
+    // Always swallowed so /stop is never dispatched as a normal user message.
+    const normalizedStop = content.trim().toLowerCase();
+    if (normalizedStop === "/stop" || normalizedStop === "/cancel") {
+      const agentId = this.resolveAgentId(msg);
+      const sessionStore = this.getSessionStore(agentId);
+      const sessionKey = this.getSessionKey(msg, agentId);
+      const session = await sessionStore.findByKey(sessionKey);
+      if (session && this.activeSessions.has(session.id)) {
+        const agent = this.config.agentManager.get(agentId);
+        if (agent) {
+          log.info(`Main-agent /stop`, { sessionId: session.id, agentId });
+          agent.abort();
+          this.pendingMessages.delete(session.id);
+          await (msg.channel as SendableChannel).send("🛑 Stopped.");
+          return;
+        }
+      }
+      return;
+    }
+
     // 4. Should-respond check — record to channel history if not responding
     const respond = this.shouldRespond(msg);
 
