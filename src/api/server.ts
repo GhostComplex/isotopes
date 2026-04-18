@@ -3,7 +3,6 @@
 
 import http from "node:http";
 import { createLogger } from "../core/logger.js";
-import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { AgentManager, SessionStore } from "../core/types.js";
@@ -48,7 +47,7 @@ export interface ApiServerConfig {
 /**
  * ApiServer — minimal HTTP REST API built on Node.js built-in `http` module.
  *
- * Exposes endpoints for managing ACP sessions, cron jobs, config, and
+ * Exposes endpoints for managing chat / Discord sessions, cron jobs, config, and
  * daemon status. Supports CORS, JSON body parsing, and parameterized routes.
  */
 export class ApiServer {
@@ -57,7 +56,6 @@ export class ApiServer {
 
   constructor(
     private config: ApiServerConfig,
-    sessionManager: AcpSessionManager,
     cronScheduler: CronScheduler,
     configReloader?: ConfigReloader,
     agentManager?: AgentManager,
@@ -65,7 +63,7 @@ export class ApiServer {
     usageTracker?: UsageTracker,
     discordSessionStores?: Map<string, SessionStore>,
   ) {
-    this.deps = { sessionManager, cronScheduler, configReloader, agentManager, chatSessionStore, usageTracker, discordSessionStores };
+    this.deps = { cronScheduler, configReloader, agentManager, chatSessionStore, usageTracker, discordSessionStores };
   }
 
   /**

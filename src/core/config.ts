@@ -17,7 +17,6 @@ import type {
   ProviderConfig,
   SessionConfig,
 } from "./types.js";
-import type { AcpConfig, AcpPersistenceConfig } from "../acp/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "../sandbox/config.js";
 import { createLogger } from "./logger.js";
 
@@ -223,8 +222,6 @@ export interface DiscordConfigFile {
 export interface ThreadBindingConfigFile {
   /** Whether thread binding is enabled */
   enabled?: boolean;
-  /** Whether to spawn ACP sessions when threads are created (M3.2+) */
-  spawnAcpSessions?: boolean;
 }
 
 /** Subagent Discord streaming configuration (M8) */
@@ -243,6 +240,8 @@ export const DEFAULT_SUBAGENT_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", 
 
 /** Sub-agent execution configuration in config file (M7/M8) */
 export interface SubagentConfigFile {
+  /** Whether subagent backend is enabled. Default: false */
+  enabled?: boolean;
   /** Default sub-agent to use when spawning sub-agents */
   defaultAgent?: string;
   /** Agents allowed to be spawned as sub-agents */
@@ -290,32 +289,6 @@ export interface ResolvedSubagentConfig {
   showToolCalls: boolean;
 }
 
-/** ACP session persistence configuration in config file */
-export interface AcpPersistenceConfigFile {
-  /** Whether session persistence is enabled. Default: false */
-  enabled?: boolean;
-  /** Directory to store persisted session data. Default: $ISOTOPES_HOME/acp-sessions */
-  dataDir?: string;
-  /** Session TTL in seconds. Default: 86400 (24h) */
-  ttl?: number;
-  /** Cleanup interval in seconds. Default: 3600 (1h) */
-  cleanupInterval?: number;
-}
-
-/** ACP (Agent Communication Protocol) configuration in config file */
-export interface AcpConfigFile {
-  /** Whether ACP is enabled. Default: false */
-  enabled?: boolean;
-  /** Default agent ID to use when none is specified */
-  defaultAgent?: string;
-  /** Agent IDs allowed to participate in ACP sessions */
-  allowedAgents?: string[];
-  /** Sub-agent execution settings (M7/M8) */
-  subagent?: SubagentConfigFile;
-  /** Session persistence settings (#195) */
-  persistence?: AcpPersistenceConfigFile;
-}
-
 /** Cron job configuration in config file */
 export interface CronJobConfigFile {
   name: string;
@@ -353,8 +326,8 @@ export interface IsotopesConfigFileRaw {
   discord?: DiscordConfigFile;
   /** Channel configurations (per-guild/group settings) */
   channels?: ChannelsConfig;
-  /** ACP (Agent Communication Protocol) configuration */
-  acp?: AcpConfigFile;
+  /** Sub-agent (Claude Agent SDK) configuration */
+  subagent?: SubagentConfigFile;
   /** Channel-level cron job definitions */
   cron?: CronJobConfigFile[];
   /**
@@ -438,45 +411,6 @@ export function resolveSessionConfig(
 const VALID_PERMISSION_MODES = new Set<SubagentPermissionMode>(["skip", "allowlist", "default"]);
 
 /**
- * Resolve ACP config from the config file.
- * Returns undefined if ACP is not configured or not enabled.
- */
-export function resolveAcpConfig(
-  acpConfig?: AcpConfigFile,
-): AcpConfig | undefined {
-  if (!acpConfig || !acpConfig.enabled) return undefined;
-
-  if (!acpConfig.defaultAgent) {
-    throw new Error("acp.defaultAgent is required when ACP is enabled");
-  }
-
-  let persistence: AcpPersistenceConfig | undefined;
-  if (acpConfig.persistence?.enabled) {
-    if (acpConfig.persistence.ttl !== undefined) {
-      assertPositiveNumber(acpConfig.persistence.ttl, "acp.persistence.ttl");
-    }
-    if (acpConfig.persistence.cleanupInterval !== undefined) {
-      assertPositiveNumber(acpConfig.persistence.cleanupInterval, "acp.persistence.cleanupInterval");
-    }
-
-    const home = process.env.ISOTOPES_HOME ?? path.join(process.env.HOME ?? "~", ".isotopes");
-    persistence = {
-      enabled: true,
-      dataDir: acpConfig.persistence.dataDir ?? path.join(home, "acp-sessions"),
-      ttl: acpConfig.persistence.ttl ?? 86_400,
-      cleanupInterval: acpConfig.persistence.cleanupInterval ?? 3_600,
-    };
-  }
-
-  return {
-    enabled: true,
-    defaultAgent: acpConfig.defaultAgent,
-    allowedAgents: acpConfig.allowedAgents,
-    persistence,
-  };
-}
-
-/**
  * Resolve subagent config with defaults applied (M8).
  * Validates permission mode and logs security warnings.
  */
@@ -484,17 +418,17 @@ export function resolveSubagentConfig(
   subagentConfig?: SubagentConfigFile,
 ): ResolvedSubagentConfig {
   const permissionMode = subagentConfig?.permissionMode ?? "allowlist";
-  
+
   // Validate permission mode
   if (!VALID_PERMISSION_MODES.has(permissionMode)) {
     throw new Error(
-      `Invalid acp.subagent.permissionMode "${permissionMode}" (must be skip, allowlist, or default)`,
+      `Invalid subagent.permissionMode "${permissionMode}" (must be skip, allowlist, or default)`,
     );
   }
 
   // Build allowed tools list
   let allowedTools = subagentConfig?.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
-  
+
   // Add Bash if enableShell is true and not already in list
   if (subagentConfig?.enableShell && !allowedTools.includes("Bash")) {
     allowedTools = [...allowedTools, "Bash"];
@@ -503,11 +437,11 @@ export function resolveSubagentConfig(
   // Security warnings (M8.1)
   if (permissionMode === "skip") {
     log.warn(
-      "⚠️  SECURITY WARNING: acp.subagent.permissionMode is set to 'skip'. " +
+      "⚠️  SECURITY WARNING: subagent.permissionMode is set to 'skip'. " +
       "Sub-agents will have unrestricted tool access without any permission prompts. " +
       "This is NOT recommended for production use.",
     );
-    
+
     if (subagentConfig?.enableShell) {
       log.warn(
         "⚠️  CRITICAL SECURITY WARNING: permissionMode 'skip' combined with enableShell: true " +

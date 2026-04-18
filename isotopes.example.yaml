@@ -117,7 +117,6 @@ discord:
 
   threadBindings:
     enabled: true
-    spawnAcpSessions: true
     # autoUnbindOnComplete: true
     # sendFarewell: false
     # farewellMessage: "Bye!"
@@ -138,6 +137,7 @@ discord:
   #     headChars: 1500
   #     tailChars: 1500
 
+# =============================================================================
 # =============================================================================
 # CHANNELS — per-guild / per-group runtime overrides
 # Discord guilds are nested under accounts.<accountId>.guilds.<guildId>.
@@ -173,9 +173,9 @@ discord:
 #         id: "1480866703880487034"
 
 # =============================================================================
-# ACP — Agent Communication Protocol (sub-agent spawning)
+# Subagent — Claude Agent SDK backend for sub-agent spawning
 # =============================================================================
-acp:
+subagent:
   enabled: true
   defaultAgent: main
   allowedAgents:

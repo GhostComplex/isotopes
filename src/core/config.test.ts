@@ -12,7 +12,6 @@ import {
   resolveToolSettings,
   resolveCompactionConfigFromFile,
   resolveSessionConfig,
-  resolveAcpConfig,
   resolveSandboxConfigFromFile,
 } from "./config.js";
 import type { IsotopesConfigFile } from "./config.js";
@@ -625,43 +624,6 @@ session:
       const config = await loadConfig(configPath);
       expect(config.session?.ttl).toBe(43200);
       expect(config.session?.cleanupInterval).toBe(1800);
-    });
-  });
-
-  describe("resolveAcpConfig", () => {
-    it("returns undefined when config is undefined", () => {
-      expect(resolveAcpConfig()).toBeUndefined();
-    });
-
-    it("returns undefined when enabled is false", () => {
-      expect(resolveAcpConfig({ enabled: false, defaultAgent: "a" })).toBeUndefined();
-    });
-
-    it("returns config when enabled with valid fields", () => {
-      const config = resolveAcpConfig({
-        enabled: true,
-        defaultAgent: "major",
-      });
-
-      expect(config).toBeDefined();
-      expect(config!.enabled).toBe(true);
-      expect(config!.defaultAgent).toBe("major");
-    });
-
-    it("passes through allowedAgents", () => {
-      const config = resolveAcpConfig({
-        enabled: true,
-        defaultAgent: "major",
-        allowedAgents: ["major", "sac"],
-      });
-
-      expect(config!.allowedAgents).toEqual(["major", "sac"]);
-    });
-
-    it("throws when defaultAgent is missing", () => {
-      expect(() =>
-        resolveAcpConfig({ enabled: true }),
-      ).toThrow("acp.defaultAgent is required when ACP is enabled");
     });
   });
 

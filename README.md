@@ -8,7 +8,6 @@ A lightweight, self-hostable AI agent framework for multi-agent collaboration ac
 - **Self-evolving prompts** — Agents can update their own system prompts via `SOUL.md` and `MEMORY.md`
 - **Binding-based routing** — Route messages to agents by channel, account, and peer with priority resolution
 - **Transports** — Discord (channels, threads, DMs) and Feishu (groups, P2P, WebSocket)
-- **ACP** — Agent Communication Protocol for inter-agent messaging and shared context
 - **Git/GitHub tools** — Built-in `gh` CLI wrapper for PRs, issues, and repo management
 - **Cron automation** — Scheduled tasks with cron expressions (daily standups, periodic prompts)
 - **Daemon mode** — Background process with `start`/`stop`/`status`, plus launchd/systemd service install
@@ -97,7 +96,6 @@ discord:
 # See isotopes.example.yaml for full options including:
 # - Agent bindings (channel + account + peer routing)
 # - Feishu transport
-# - ACP protocol
 # - Cron jobs
 # - Sandbox/Docker config
 ```
@@ -303,7 +301,6 @@ Override the base directory with `ISOTOPES_HOME` environment variable.
 │                      Message Router                         │
 │   - Binding resolution (channel + account + peer)           │
 │   - Mention filtering (requireMention per guild/group)      │
-│   - ACP protocol + inter-agent messaging                    │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────┴──────────────────────────────────┐
@@ -380,10 +377,6 @@ src/
 ├── transports/         # Transport implementations
 │   ├── discord.ts          # Discord (channels, threads, DMs)
 │   └── feishu.ts           # Feishu/Lark (groups, P2P, WebSocket)
-├── acp/                # Agent Communication Protocol
-│   ├── session-manager.ts  # ACP session lifecycle
-│   ├── message-bus.ts      # Inter-agent message routing
-│   └── shared-context.ts   # Shared context between agents
 ├── automation/         # Scheduled tasks
 │   ├── cron-parser.ts      # Cron expression parsing
 │   └── cron-job.ts         # Job scheduler

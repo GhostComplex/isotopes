@@ -7,7 +7,6 @@ import { access, constants } from "node:fs/promises";
 import path from "node:path";
 
 import { VERSION } from "../index.js";
-import type { AcpSessionManager } from "../acp/session-manager.js";
 import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { AgentManager, SessionStore } from "../core/types.js";
@@ -21,7 +20,6 @@ import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middle
 
 /** Dependencies injected into route handlers. */
 export interface RouteDeps {
-  sessionManager: AcpSessionManager;
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
   /** Agent manager for WebChat routes */
@@ -97,13 +95,11 @@ export function matchRoute(
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/status", (_req, res, deps) => {
-  const sessionCount = deps.sessionManager.listSessions().length;
   const cronJobCount = deps.cronScheduler.listJobs().length;
 
   sendJson(res, 200, {
     version: VERSION,
     uptime: process.uptime(),
-    sessions: sessionCount,
     cronJobs: cronJobCount,
   });
 });
@@ -113,18 +109,6 @@ addRoute("GET", "/api/status", (_req, res, deps) => {
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/sessions", async (_req, res, deps) => {
-  // ACP sessions (in-memory)
-  const acpSessions = deps.sessionManager.listSessions().map((s) => ({
-    id: s.id,
-    agentId: s.agentId,
-    threadId: s.threadId,
-    status: s.status,
-    createdAt: s.createdAt.toISOString(),
-    lastActivityAt: s.lastActivityAt.toISOString(),
-    messageCount: s.history.length,
-    source: "acp" as const,
-  }));
-
   // Chat sessions (file-persisted)
   let chatSessions: Array<{
     id: string;
@@ -177,7 +161,7 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
     }
   }
 
-  sendJson(res, 200, [...acpSessions, ...chatSessions, ...discordSessions]);
+  sendJson(res, 200, [...chatSessions, ...discordSessions]);
 });
 
 // ---------------------------------------------------------------------------
@@ -185,25 +169,6 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/sessions/:id", async (req, res, deps) => {
-  // Try ACP session first
-  const session = deps.sessionManager.getSession(req.params.id);
-  if (session) {
-    sendJson(res, 200, {
-      id: session.id,
-      agentId: session.agentId,
-      threadId: session.threadId,
-      status: session.status,
-      createdAt: session.createdAt.toISOString(),
-      lastActivityAt: session.lastActivityAt.toISOString(),
-      history: session.history.map((m) => ({
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp.toISOString(),
-      })),
-    });
-    return;
-  }
-
   // Try chat session store
   if (deps.chatSessionStore) {
     const chatSession = await deps.chatSessionStore.get(req.params.id);
@@ -264,19 +229,6 @@ addRoute("GET", "/api/sessions/:id", async (req, res, deps) => {
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/sessions/:id/messages", async (req, res, deps) => {
-  // Try ACP session first
-  const acpSession = deps.sessionManager.getSession(req.params.id);
-  if (acpSession) {
-    sendJson(res, 200, {
-      messages: acpSession.history.map((m) => ({
-        role: m.role,
-        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-        timestamp: m.timestamp.toISOString(),
-      })),
-    });
-    return;
-  }
-
   // Try chat session store
   if (deps.chatSessionStore) {
     const chatSession = await deps.chatSessionStore.get(req.params.id);
@@ -316,52 +268,6 @@ addRoute("GET", "/api/sessions/:id/messages", async (req, res, deps) => {
   }
 
   sendError(res, 404, `Session "${req.params.id}" not found`);
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/sessions/:id/message — send message to session
-// ---------------------------------------------------------------------------
-
-addRoute("POST", "/api/sessions/:id/message", (req, res, deps) => {
-  const session = deps.sessionManager.getSession(req.params.id);
-  if (!session) {
-    sendError(res, 404, `Session "${req.params.id}" not found`);
-    return;
-  }
-
-  const body = req.body as { role?: string; content?: string } | undefined;
-  if (!body || typeof body.content !== "string" || !body.content) {
-    sendError(res, 400, "Request body must include 'content' (string)");
-    return;
-  }
-
-  const role = body.role === "assistant" || body.role === "system" ? body.role : "user";
-
-  const added = deps.sessionManager.addMessage(req.params.id, {
-    role,
-    content: body.content,
-  });
-
-  if (!added) {
-    sendError(res, 500, "Failed to add message");
-    return;
-  }
-
-  sendJson(res, 201, { ok: true });
-});
-
-// ---------------------------------------------------------------------------
-// DELETE /api/sessions/:id — terminate session
-// ---------------------------------------------------------------------------
-
-addRoute("DELETE", "/api/sessions/:id", (req, res, deps) => {
-  const terminated = deps.sessionManager.terminateSession(req.params.id);
-  if (!terminated) {
-    sendError(res, 404, `Session "${req.params.id}" not found`);
-    return;
-  }
-
-  sendJson(res, 200, { ok: true });
 });
 
 // ---------------------------------------------------------------------------

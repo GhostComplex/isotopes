@@ -3,7 +3,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
-import { AcpSessionManager } from "../acp/session-manager.js";
 import { CronScheduler } from "../automation/cron-job.js";
 import {
   createMockAgentInstance,
@@ -15,14 +14,6 @@ import type { AgentManager, SessionStore } from "../core/types.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function makeSessionManager(): AcpSessionManager {
-  return new AcpSessionManager({
-    enabled: true,
-    defaultAgent: "claude",
-    allowedAgents: ["claude", "codex"],
-  });
-}
 
 function request(
   port: number,
@@ -116,13 +107,11 @@ describe("Chat API routes", () => {
   let chatSessionStore: SessionStore;
 
   beforeEach(async () => {
-    const acpSessionManager = makeSessionManager();
     const cronScheduler = new CronScheduler();
     agentManager = createMockAgentManager();
     chatSessionStore = createMockSessionStore();
     server = new ApiServer(
       { port: 0 },
-      acpSessionManager,
       cronScheduler,
       undefined,
       agentManager,
@@ -396,7 +385,6 @@ describe("Chat API routes", () => {
     beforeEach(async () => {
       serverNoDeps = new ApiServer(
         { port: 0 },
-        makeSessionManager(),
         new CronScheduler(),
       );
       await serverNoDeps.start();

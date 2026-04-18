@@ -284,8 +284,6 @@ async function renderSessionDetail(id) {
   try {
     const session = await api(`/api/sessions/${encodeURIComponent(id)}`);
 
-    // Use history from session detail if available (ACP sessions),
-    // otherwise fetch from the messages endpoint (chat sessions).
     let messages = session.history || [];
     if (messages.length === 0) {
       try {

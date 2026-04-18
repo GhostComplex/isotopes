@@ -7,12 +7,8 @@ const sendBtn = document.getElementById("send-btn");
 const agentSelect = document.getElementById("agent-select");
 const newChatBtn = document.getElementById("new-chat-btn");
 const sessionListEl = document.getElementById("session-list");
-const readonlyBanner = document.getElementById("readonly-banner");
-const inputArea = document.getElementById("input-area");
-
 let sessionId = localStorage.getItem("isotopes-chat-session");
 let sending = false;
-let isReadonly = false;
 let sessions = [];
 let sessionPollTimer = null;
 
@@ -170,10 +166,6 @@ async function switchSession(session) {
   sessionId = session.id;
   localStorage.setItem("isotopes-chat-session", sessionId);
 
-  // Update readonly state
-  const readonly = session.source === "acp";
-  setReadonly(readonly);
-
   // Update active highlight
   renderSessionList();
 
@@ -195,20 +187,6 @@ async function switchSession(session) {
     }
   } catch (err) {
     appendMessage("error", `Failed to load history: ${err.message}`);
-  }
-}
-
-function setReadonly(readonly) {
-  isReadonly = readonly;
-  readonlyBanner.style.display = readonly ? "" : "none";
-  if (readonly) {
-    inputArea.classList.add("disabled");
-    inputEl.disabled = true;
-    sendBtn.disabled = true;
-  } else {
-    inputArea.classList.remove("disabled");
-    inputEl.disabled = false;
-    sendBtn.disabled = !inputEl.value.trim() || sending;
   }
 }
 
@@ -273,7 +251,7 @@ async function loadHistory() {
 
 async function sendMessage() {
   const message = inputEl.value.trim();
-  if (!message || sending || isReadonly) return;
+  if (!message || sending) return;
 
   const agentId = agentSelect.value;
   if (!agentId) {
@@ -410,7 +388,6 @@ function newChat() {
   sessionId = null;
   localStorage.removeItem("isotopes-chat-session");
   messagesEl.innerHTML = "";
-  setReadonly(false);
   appendMessage("system", "New conversation started.");
   renderSessionList();
 }
@@ -443,7 +420,7 @@ inputEl.addEventListener("keydown", (e) => {
 });
 
 inputEl.addEventListener("input", () => {
-  sendBtn.disabled = !inputEl.value.trim() || sending || isReadonly;
+  sendBtn.disabled = !inputEl.value.trim() || sending;
   autoResize();
 });
 

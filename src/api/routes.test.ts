@@ -3,20 +3,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
-import { AcpSessionManager } from "../acp/session-manager.js";
 import { CronScheduler } from "../automation/cron-job.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeSessionManager(): AcpSessionManager {
-  return new AcpSessionManager({
-    enabled: true,
-    defaultAgent: "claude",
-    allowedAgents: ["claude", "codex"],
-  });
-}
 
 function request(
   port: number,
@@ -62,19 +49,13 @@ function request(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe("API routes", () => {
   let server: ApiServer;
-  let sessionManager: AcpSessionManager;
   let cronScheduler: CronScheduler;
 
   beforeEach(async () => {
-    sessionManager = makeSessionManager();
     cronScheduler = new CronScheduler();
-    server = new ApiServer({ port: 0 }, sessionManager, cronScheduler);
+    server = new ApiServer({ port: 0 }, cronScheduler);
     await server.start();
   });
 
@@ -88,161 +69,21 @@ describe("API routes", () => {
     return addr.port;
   }
 
-  // -----------------------------------------------------------------------
-  // Sessions
-  // -----------------------------------------------------------------------
-
   describe("GET /api/sessions", () => {
     it("returns empty array when no sessions exist", async () => {
       const { status, data } = await request(getPort(), "GET", "/api/sessions");
       expect(status).toBe(200);
       expect(data).toEqual([]);
     });
-
-    it("returns sessions list", async () => {
-      sessionManager.createSession("claude", "thread-1");
-      sessionManager.createSession("codex");
-
-      const { status, data } = await request(getPort(), "GET", "/api/sessions");
-      expect(status).toBe(200);
-      const sessions = data as Array<{ id: string; agentId: string }>;
-      expect(sessions).toHaveLength(2);
-      expect(sessions[0].agentId).toBe("claude");
-      expect(sessions[1].agentId).toBe("codex");
-    });
-
-    it("includes messageCount in listing", async () => {
-      const s = sessionManager.createSession("claude");
-      sessionManager.addMessage(s.id, { role: "user", content: "hello" });
-
-      const { data } = await request(getPort(), "GET", "/api/sessions");
-      const sessions = data as Array<{ messageCount: number }>;
-      expect(sessions[0].messageCount).toBe(1);
-    });
   });
 
   describe("GET /api/sessions/:id", () => {
-    it("returns session details with history", async () => {
-      const s = sessionManager.createSession("claude", "thread-1");
-      sessionManager.addMessage(s.id, { role: "user", content: "Hello" });
-      sessionManager.addMessage(s.id, { role: "assistant", content: "Hi!" });
-
-      const { status, data } = await request(getPort(), "GET", `/api/sessions/${s.id}`);
-      expect(status).toBe(200);
-
-      const body = data as {
-        id: string;
-        agentId: string;
-        history: Array<{ role: string; content: string }>;
-      };
-      expect(body.id).toBe(s.id);
-      expect(body.agentId).toBe("claude");
-      expect(body.history).toHaveLength(2);
-      expect(body.history[0].content).toBe("Hello");
-      expect(body.history[1].content).toBe("Hi!");
-    });
-
     it("returns 404 for unknown session", async () => {
       const { status, data } = await request(getPort(), "GET", "/api/sessions/nonexistent");
       expect(status).toBe(404);
       expect((data as { error: string }).error).toContain("not found");
     });
   });
-
-  describe("POST /api/sessions/:id/message", () => {
-    it("adds a message to a session", async () => {
-      const s = sessionManager.createSession("claude");
-
-      const { status, data } = await request(
-        getPort(),
-        "POST",
-        `/api/sessions/${s.id}/message`,
-        { role: "user", content: "Hello!" },
-      );
-      expect(status).toBe(201);
-      expect((data as { ok: boolean }).ok).toBe(true);
-
-      // Verify message was added
-      const session = sessionManager.getSession(s.id);
-      expect(session!.history).toHaveLength(1);
-      expect(session!.history[0].content).toBe("Hello!");
-      expect(session!.history[0].role).toBe("user");
-    });
-
-    it("defaults role to 'user' for invalid roles", async () => {
-      const s = sessionManager.createSession("claude");
-
-      await request(getPort(), "POST", `/api/sessions/${s.id}/message`, {
-        role: "invalid",
-        content: "Test",
-      });
-
-      const session = sessionManager.getSession(s.id);
-      expect(session!.history[0].role).toBe("user");
-    });
-
-    it("accepts 'assistant' and 'system' roles", async () => {
-      const s = sessionManager.createSession("claude");
-
-      await request(getPort(), "POST", `/api/sessions/${s.id}/message`, {
-        role: "assistant",
-        content: "Hi",
-      });
-      await request(getPort(), "POST", `/api/sessions/${s.id}/message`, {
-        role: "system",
-        content: "System msg",
-      });
-
-      const session = sessionManager.getSession(s.id);
-      expect(session!.history[0].role).toBe("assistant");
-      expect(session!.history[1].role).toBe("system");
-    });
-
-    it("returns 404 for unknown session", async () => {
-      const { status } = await request(
-        getPort(),
-        "POST",
-        "/api/sessions/nonexistent/message",
-        { content: "Hello" },
-      );
-      expect(status).toBe(404);
-    });
-
-    it("returns 400 when content is missing", async () => {
-      const s = sessionManager.createSession("claude");
-
-      const { status, data } = await request(
-        getPort(),
-        "POST",
-        `/api/sessions/${s.id}/message`,
-        { role: "user" },
-      );
-      expect(status).toBe(400);
-      expect((data as { error: string }).error).toContain("content");
-    });
-  });
-
-  describe("DELETE /api/sessions/:id", () => {
-    it("terminates a session", async () => {
-      const s = sessionManager.createSession("claude");
-
-      const { status, data } = await request(getPort(), "DELETE", `/api/sessions/${s.id}`);
-      expect(status).toBe(200);
-      expect((data as { ok: boolean }).ok).toBe(true);
-
-      // Verify session is terminated
-      expect(sessionManager.getSession(s.id)!.status).toBe("terminated");
-    });
-
-    it("returns 404 for unknown session", async () => {
-      const { status } = await request(getPort(), "DELETE", "/api/sessions/nonexistent");
-      expect(status).toBe(404);
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // Cron
-  // -----------------------------------------------------------------------
 
   describe("GET /api/cron", () => {
     it("returns empty array when no jobs exist", async () => {
@@ -284,7 +125,6 @@ describe("API routes", () => {
       expect(body.name).toBe("daily-report");
       expect(body.enabled).toBe(true);
 
-      // Verify job was registered
       expect(cronScheduler.listJobs()).toHaveLength(1);
     });
 
@@ -329,7 +169,6 @@ describe("API routes", () => {
       expect(status).toBe(200);
       expect((data as { ok: boolean }).ok).toBe(true);
 
-      // Verify job was removed
       expect(cronScheduler.getJob(job.id)).toBeUndefined();
     });
 
@@ -339,13 +178,8 @@ describe("API routes", () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // Config
-  // -----------------------------------------------------------------------
-
   describe("GET /api/config", () => {
     it("returns 501 when config reloader is not available", async () => {
-      // Server was created without configReloader
       const { status, data } = await request(getPort(), "GET", "/api/config");
       expect(status).toBe(501);
       expect((data as { error: string }).error).toContain("not available");
@@ -359,14 +193,8 @@ describe("API routes", () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // Status
-  // -----------------------------------------------------------------------
-
   describe("GET /api/status", () => {
-    it("reflects session and cron counts", async () => {
-      sessionManager.createSession("claude");
-      sessionManager.createSession("codex");
+    it("reflects cron count", async () => {
       cronScheduler.register({
         name: "job1",
         expression: "0 9 * * *",
@@ -377,8 +205,7 @@ describe("API routes", () => {
 
       const { status, data } = await request(getPort(), "GET", "/api/status");
       expect(status).toBe(200);
-      const body = data as { sessions: number; cronJobs: number };
-      expect(body.sessions).toBe(2);
+      const body = data as { cronJobs: number };
       expect(body.cronJobs).toBe(1);
     });
   });

@@ -368,8 +368,6 @@ export interface ThreadControlConfig {
 export interface ThreadBindingConfig {
   /** Whether thread binding is enabled */
   enabled: boolean;
-  /** Whether to spawn ACP sessions when threads are created (M3.2+) */
-  spawnAcpSessions?: boolean;
   /** Whether to automatically unbind thread when subagent completes (default: true) */
   autoUnbindOnComplete?: boolean;
   /** Whether to send a farewell message when unbinding (default: false) */
@@ -384,7 +382,7 @@ export interface ThreadBinding {
   threadId: string;
   /** ID of the parent channel the thread was created in */
   parentChannelId: string;
-  /** Associated ACP session ID (populated in M3.2+) */
+  /** Opaque session/task ID associated with this thread (e.g. subagent task ID) */
   sessionId?: string;
   /** Agent ID this thread is bound to */
   agentId: string;

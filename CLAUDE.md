@@ -54,7 +54,6 @@ pnpm test:integration
 - `subagent.ts` — Subagent spawning and management.
 
 ### Other modules
-- `src/acp/` — Agent Communication Protocol: session management, message bus, shared context.
 - `src/automation/` — Cron expression parsing and job scheduling.
 - `src/api/` — REST API using raw Node `http` (no Express).
 - `src/daemon/` — PID-based daemon lifecycle, launchd/systemd service integration, log rotation.

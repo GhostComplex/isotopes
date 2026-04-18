@@ -80,7 +80,6 @@ export {
   toAgentConfig,
   getDiscordToken,
   normalizeDiscordAccounts,
-  resolveAcpConfig,
   resolveSandboxConfigFromFile,
   resolveSubagentConfig,
   DEFAULT_SUBAGENT_ALLOWED_TOOLS,
@@ -93,7 +92,6 @@ export type {
   DiscordAccountConfigFile,
   ProviderConfigFile,
   ThreadBindingConfigFile,
-  AcpConfigFile,
   CronJobConfigFile,
   SandboxConfigFile,
   SandboxDockerConfigFile,
@@ -116,30 +114,6 @@ export type { BindingQuery } from "./core/bindings.js";
 
 export { ThreadBindingManager } from "./core/thread-bindings.js";
 export type { ThreadBindingCallback } from "./core/thread-bindings.js";
-
-// ---------------------------------------------------------------------------
-// ACP (Agent Communication Protocol)
-// ---------------------------------------------------------------------------
-
-export { AcpSessionManager } from "./acp/index.js";
-export type {
-  AcpConfig,
-  AcpSession,
-  AcpSessionStatus,
-  AcpMessage,
-  AcpSessionEvent,
-  AcpSessionCallback,
-} from "./acp/index.js";
-
-export { AgentMessageBus } from "./acp/index.js";
-export type {
-  AgentMessage,
-  MessageDelivery,
-  MessageHandler,
-} from "./acp/index.js";
-
-export { SharedContextManager } from "./acp/index.js";
-export type { SharedContext } from "./acp/index.js";
 
 // ---------------------------------------------------------------------------
 // Mention detection
@@ -245,9 +219,6 @@ export {
   closeIssue,
   commentIssue,
   getRepo,
-  createSessionsSpawnTool,
-  createSessionsAnnounceTool,
-  createSessionTools,
 } from "./tools/index.js";
 export type {
   GitOptions,
@@ -261,7 +232,6 @@ export type {
   CreatePROptions,
   CreateIssueOptions,
   ReviewPROptions,
-  SessionsToolContext,
 } from "./tools/index.js";
 
 // ---------------------------------------------------------------------------

@@ -14,7 +14,6 @@ import type { Message } from "./core/types.js";
 import {
   loadConfig,
   toAgentConfig,
-  resolveAcpConfig,
   resolveSubagentConfig,
 } from "./core/config.js";
 import { initSubagentBackend } from "./tools/subagent.js";
@@ -23,7 +22,6 @@ import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
 import { DiscordTransportManager } from "./transports/discord-manager.js";
 import { ThreadBindingManager } from "./core/thread-bindings.js";
-import { AcpSessionManager, AgentMessageBus } from "./acp/index.js";
 import { logger } from "./core/logger.js";
 import {
   ToolRegistry,
@@ -33,7 +31,6 @@ import {
   applyToolPolicy,
 } from "./core/tools.js";
 import { createReplyReactTools, LazyTransportContext } from "./tools/reply-react.js";
-import { createSessionTools } from "./tools/sessions.js";
 import { createExecTools, ProcessRegistry } from "./tools/exec.js";
 import {
   getConfigPath,
@@ -779,8 +776,8 @@ async function main() {
   logger.info(`Loaded ${config.agents.length} agent(s)`);
 
   // Initialize subagent backend with config (M8)
-  if (config.acp?.enabled) {
-    const subagentConfig = resolveSubagentConfig(config.acp.subagent);
+  if (config.subagent?.enabled) {
+    const subagentConfig = resolveSubagentConfig(config.subagent);
     initSubagentBackend({
       permissionMode: subagentConfig.permissionMode,
       allowedTools: subagentConfig.allowedTools,
@@ -791,15 +788,6 @@ async function main() {
   // Initialize core with tool registry
   const core = new PiMonoCore();
   const agentManager = new DefaultAgentManager(core);
-
-  // Shared ACP instances (created early so session tools can reference them)
-  const acpConfig = resolveAcpConfig(config.acp);
-  const acpSessionManager = new AcpSessionManager(
-    acpConfig ?? { enabled: false, defaultAgent: config.agents[0]?.id ?? "default" },
-  );
-  const agentMessageBus = new AgentMessageBus(acpSessionManager);
-  const startedAt = new Date();
-  const modelOverrides = new Map<string, string>();
 
   // Create agents with workspace tools
   const agentWorkspaces = new Map<string, string>();
@@ -850,7 +838,7 @@ async function main() {
     // Register workspace tools for this agent
     const resolvedToolGuards = resolveToolGuards(agentConfig.toolSettings);
     const toolRegistry = new ToolRegistry();
-    const subagentEnabled = config.acp?.enabled === true;
+    const subagentEnabled = config.subagent?.enabled === true;
     const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];
     const workspaceTools = createWorkspaceToolsWithGuards(
       workspacePath,
@@ -858,7 +846,7 @@ async function main() {
       subagentEnabled,
       agentAllowedWorkspaces,
       agentConfig.codingMode,
-      config.acp?.subagent?.maxTurns,
+      config.subagent?.maxTurns,
     );
 
     // Apply tool policy (allow/deny) before registration
@@ -871,19 +859,6 @@ async function main() {
     const transportCtx = new LazyTransportContext();
     transportContexts.set(agentConfig.id, transportCtx);
     for (const { tool, handler } of createReplyReactTools(transportCtx)) {
-      toolRegistry.register(tool, handler);
-    }
-
-    // Register ACP session tools for inter-agent communication
-    const sessionTools = createSessionTools({
-      sessionManager: acpSessionManager,
-      messageBus: agentMessageBus,
-      currentAgentId: agentConfig.id,
-      agentManager,
-      startedAt,
-      modelOverrides,
-    });
-    for (const { tool, handler } of sessionTools) {
       toolRegistry.register(tool, handler);
     }
 
@@ -1067,7 +1042,6 @@ async function main() {
       const threadBindings = config.discord.threadBindings
         ? {
             enabled: config.discord.threadBindings.enabled ?? false,
-            spawnAcpSessions: config.discord.threadBindings.spawnAcpSessions,
           }
         : undefined;
 
@@ -1099,21 +1073,7 @@ async function main() {
       });
 
       if (threadBindings?.enabled) {
-        // Attach ACP session manager to thread binding manager once (shared across all accounts)
-        if (acpConfig) {
-          threadBindingManager.attachAcpSessionManager(acpSessionManager, {
-            spawnAcpSessions: threadBindings.spawnAcpSessions ?? false,
-          });
-          logger.info(
-            `Discord thread bindings enabled (spawnAcpSessions=${threadBindings.spawnAcpSessions ?? false})`,
-          );
-        } else if (threadBindings.spawnAcpSessions) {
-          logger.warn(
-            "discord.threadBindings.spawnAcpSessions is enabled, but ACP is not configured; sessions will not be auto-created",
-          );
-        } else {
-          logger.info("Discord thread bindings enabled");
-        }
+        logger.info("Discord thread bindings enabled");
       }
 
       await discordManager.start();
@@ -1142,7 +1102,6 @@ async function main() {
 
   const apiServer = new ApiServer(
     { port: getApiPort() },
-    acpSessionManager,
     cronScheduler,
     undefined,       // configReloader
     agentManager,

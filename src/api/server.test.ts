@@ -3,20 +3,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
-import { AcpSessionManager } from "../acp/session-manager.js";
 import { CronScheduler } from "../automation/cron-job.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function makeSessionManager(): AcpSessionManager {
-  return new AcpSessionManager({
-    enabled: true,
-    defaultAgent: "claude",
-    allowedAgents: ["claude", "codex"],
-  });
-}
 
 /** Simple HTTP fetch helper that works on raw http module */
 function request(
@@ -64,14 +55,12 @@ function request(
 
 describe("ApiServer", () => {
   let server: ApiServer;
-  let sessionManager: AcpSessionManager;
   let cronScheduler: CronScheduler;
 
   beforeEach(async () => {
-    sessionManager = makeSessionManager();
     cronScheduler = new CronScheduler();
     // Use port 0 so the OS assigns a free port
-    server = new ApiServer({ port: 0 }, sessionManager, cronScheduler);
+    server = new ApiServer({ port: 0 }, cronScheduler);
     await server.start();
   });
 
@@ -124,10 +113,9 @@ describe("ApiServer", () => {
     it("returns daemon status", async () => {
       const { status, data } = await request(getPort(), "GET", "/api/status");
       expect(status).toBe(200);
-      const body = data as { version: string; uptime: number; sessions: number; cronJobs: number };
+      const body = data as { version: string; uptime: number; cronJobs: number };
       expect(body.version).toBeDefined();
       expect(body.uptime).toBeGreaterThanOrEqual(0);
-      expect(body.sessions).toBe(0);
       expect(body.cronJobs).toBe(0);
     });
   });

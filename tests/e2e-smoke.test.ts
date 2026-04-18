@@ -19,9 +19,6 @@ import {
 } from "../src/core/tools.js";
 import { createExecTools } from "../src/tools/exec.js";
 import { createWebFetchTool } from "../src/tools/web.js";
-import { createSessionsListTool } from "../src/tools/sessions.js";
-import { AcpSessionManager } from "../src/acp/session-manager.js";
-import { AgentMessageBus } from "../src/acp/message-bus.js";
 
 // ---------------------------------------------------------------------------
 // Test workspace setup
@@ -175,59 +172,6 @@ describe("web_fetch tool", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. sessions_list tool
-// ---------------------------------------------------------------------------
-
-describe("sessions_list tool", () => {
-  it("returns empty session list when none exist", async () => {
-    const sessionManager = new AcpSessionManager({
-      enabled: true,
-      defaultAgent: "test-agent",
-      allowedAgents: ["test-agent"],
-    });
-    const messageBus = new AgentMessageBus(sessionManager);
-
-    const registry = new ToolRegistry();
-    const { tool, handler } = createSessionsListTool({
-      sessionManager,
-      messageBus,
-      currentAgentId: "test-agent",
-    });
-    registry.register(tool, handler);
-
-    const result = await registry.execute("sessions_list", {});
-    const parsed = JSON.parse(result);
-    expect(parsed.sessions).toEqual([]);
-    expect(parsed.total).toBe(0);
-  });
-
-  it("returns sessions after one is created", async () => {
-    const sessionManager = new AcpSessionManager({
-      enabled: true,
-      defaultAgent: "test-agent",
-      allowedAgents: ["test-agent", "other-agent"],
-    });
-    const messageBus = new AgentMessageBus(sessionManager);
-
-    sessionManager.createSession("other-agent");
-
-    const registry = new ToolRegistry();
-    const { tool, handler } = createSessionsListTool({
-      sessionManager,
-      messageBus,
-      currentAgentId: "test-agent",
-    });
-    registry.register(tool, handler);
-
-    const result = await registry.execute("sessions_list", {});
-    const parsed = JSON.parse(result);
-    expect(parsed.total).toBe(1);
-    expect(parsed.sessions[0].agent_id).toBe("other-agent");
-    expect(parsed.sessions[0].status).toBe("active");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // 7. NO_REPLY / HEARTBEAT_OK suppression
 // ---------------------------------------------------------------------------
 
@@ -337,20 +281,6 @@ describe("full tool wiring", () => {
       registry.register(tool, handler);
     }
 
-    // Session tools
-    const sessionManager = new AcpSessionManager({
-      enabled: true,
-      defaultAgent: "test-agent",
-      allowedAgents: ["test-agent"],
-    });
-    const messageBus = new AgentMessageBus(sessionManager);
-    const { tool: slTool, handler: slHandler } = createSessionsListTool({
-      sessionManager,
-      messageBus,
-      currentAgentId: "test-agent",
-    });
-    registry.register(slTool, slHandler);
-
     // Verify key tools are registered
     expect(registry.has("read_file")).toBe(true);
     expect(registry.has("write_file")).toBe(true);
@@ -359,7 +289,6 @@ describe("full tool wiring", () => {
     expect(registry.has("exec")).toBe(true);
     expect(registry.has("web_fetch")).toBe(true);
     expect(registry.has("web_search")).toBe(true);
-    expect(registry.has("sessions_list")).toBe(true);
     expect(registry.has("get_current_time")).toBe(true);
     expect(registry.has("process_list")).toBe(true);
     expect(registry.has("process_kill")).toBe(true);
@@ -371,9 +300,5 @@ describe("full tool wiring", () => {
     const execResult = await registry.execute("exec", { command: "echo smoke" });
     const execParsed = JSON.parse(execResult);
     expect(execParsed.stdout.trim()).toBe("smoke");
-
-    const sessResult = await registry.execute("sessions_list", {});
-    const sessParsed = JSON.parse(sessResult);
-    expect(sessParsed.total).toBe(0);
   });
 });

@@ -61,19 +61,6 @@ export { createWebFetchTool, createWebSearchTool } from "./web.js";
 export type { SearchResult } from "./web.js";
 
 export {
-  createSessionsSpawnTool,
-  createSessionsAnnounceTool,
-  createSessionsSendTool,
-  createSessionsListTool,
-  createSessionsHistoryTool,
-  createSessionsYieldTool,
-  createSessionsKillTool,
-  createSessionsStatusTool,
-  createSessionTools,
-} from "./sessions.js";
-export type { SessionsToolContext } from "./sessions.js";
-
-export {
   ProcessRegistry,
   createExecTool,
   createProcessListTool,

@@ -4,7 +4,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { ThreadBinding } from "./types.js";
-import type { AcpSessionManager } from "../acp/session-manager.js";
 import { logger } from "./logger.js";
 
 /** Callback invoked when a new thread binding is created */
@@ -17,18 +16,13 @@ export type ThreadUnbindCallback = (binding: ThreadBinding, reason?: string) => 
  * ThreadBindingManager — manages the mapping of Discord threads to agent sessions.
  *
  * When a Discord thread is created in a monitored channel, the transport calls
- * `bind()` to record the association. Downstream consumers (M3.2 ACP session
- * spawner) can subscribe via `onBind()` or look up bindings by thread/session ID.
- *
- * When an AcpSessionManager is attached and `spawnAcpSessions` is true, creating
- * a thread binding automatically spawns an ACP session for the bound agent.
+ * `bind()` to record the association. Downstream consumers can subscribe via
+ * `onBind()` or look up bindings by thread/session ID.
  */
 export class ThreadBindingManager {
   private bindings: Map<string, ThreadBinding> = new Map();
   private listeners: ThreadBindingCallback[] = [];
   private unbindListeners: ThreadUnbindCallback[] = [];
-  private acpSessionManager: AcpSessionManager | null = null;
-  private spawnAcpSessions = false;
   private persistPath: string | null = null;
 
   constructor(options?: { persistPath?: string }) {
@@ -38,7 +32,7 @@ export class ThreadBindingManager {
   /**
    * Load bindings from the persist file.
    * Call this once at startup.
-   * 
+   *
    * @param options.clearStale - If true, clear all bindings after loading (for startup cleanup)
    */
   async load(options?: { clearStale?: boolean }): Promise<void> {
@@ -98,7 +92,6 @@ export class ThreadBindingManager {
         createdAt: b.createdAt.toISOString(),
       }));
 
-      // Ensure directory exists
       await mkdir(path.dirname(this.persistPath), { recursive: true });
       await writeFile(this.persistPath, JSON.stringify(serialized, null, 2));
     } catch (err) {
@@ -107,31 +100,8 @@ export class ThreadBindingManager {
   }
 
   /**
-   * Attach an AcpSessionManager to auto-spawn ACP sessions on bind.
-   * Pass `spawnAcpSessions: true` to enable automatic session creation.
-   */
-  attachAcpSessionManager(
-    acpSessionManager: AcpSessionManager,
-    options?: { spawnAcpSessions?: boolean },
-  ): void {
-    this.acpSessionManager = acpSessionManager;
-    this.spawnAcpSessions = options?.spawnAcpSessions ?? false;
-  }
-
-  /**
-   * Detach the AcpSessionManager (disables auto-spawn).
-   */
-  detachAcpSessionManager(): void {
-    this.acpSessionManager = null;
-    this.spawnAcpSessions = false;
-  }
-
-  /**
    * Create a binding between a Discord thread and an agent.
    * If a binding already exists for the threadId, it is replaced.
-   *
-   * When an AcpSessionManager is attached with spawnAcpSessions enabled,
-   * an ACP session is automatically created and its ID stored in the binding.
    */
   bind(
     threadId: string,
@@ -143,16 +113,9 @@ export class ThreadBindingManager {
       createdAt: new Date(),
     };
 
-    // Auto-spawn ACP session if configured
-    if (this.acpSessionManager && this.spawnAcpSessions && !full.sessionId) {
-      const session = this.acpSessionManager.createSession(full.agentId, threadId);
-      full.sessionId = session.id;
-    }
-
     this.bindings.set(threadId, full);
     void this.save();
 
-    // Notify listeners
     for (const listener of this.listeners) {
       listener(full);
     }
@@ -174,7 +137,6 @@ export class ThreadBindingManager {
     this.bindings.delete(threadId);
     void this.save();
 
-    // Notify unbind listeners
     for (const listener of this.unbindListeners) {
       listener(binding, reason);
     }
@@ -212,23 +174,22 @@ export class ThreadBindingManager {
   /**
    * Clear all bindings. Used for startup cleanup when subagents are dead.
    * Notifies unbind listeners for each binding.
-   * 
+   *
    * @param reason - Reason for clearing (for logging/debugging)
    * @returns Number of bindings cleared
    */
   async clearAll(reason?: string): Promise<number> {
     const count = this.bindings.size;
-    
-    // Notify listeners for each binding being cleared
+
     for (const binding of this.bindings.values()) {
       for (const listener of this.unbindListeners) {
         listener(binding, reason);
       }
     }
-    
+
     this.bindings.clear();
     await this.save();
-    
+
     return count;
   }
 
