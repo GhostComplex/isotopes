@@ -144,28 +144,6 @@ export class ThreadBindingManager {
     return true;
   }
 
-  /**
-   * Remove a binding by session ID. Returns true if a binding was removed.
-   * Useful for auto-unbinding when a subagent session completes.
-   */
-  unbindBySessionId(sessionId: string, reason?: string): boolean {
-    const binding = this.getBySessionId(sessionId);
-    if (!binding) {
-      return false;
-    }
-    return this.unbind(binding.threadId, reason);
-  }
-
-  /** Look up a binding by its session ID (reverse lookup). */
-  getBySessionId(sessionId: string): ThreadBinding | undefined {
-    for (const binding of this.bindings.values()) {
-      if (binding.sessionId === sessionId) {
-        return binding;
-      }
-    }
-    return undefined;
-  }
-
   /** Get the total number of active bindings. */
   get size(): number {
     return this.bindings.size;
