@@ -255,7 +255,7 @@ export const DEFAULT_SUBAGENT_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", 
 
 /** Sub-agent execution configuration in config file (M7/M8) */
 export interface SubagentConfigFile {
-  /** Default acpx agent to use when spawning sub-agents */
+  /** Default sub-agent to use when spawning sub-agents */
   defaultAgent?: string;
   /** Agents allowed to be spawned as sub-agents */
   allowedAgents?: string[];
@@ -284,8 +284,6 @@ export interface SubagentConfigFile {
    * Default: false
    */
   enableShell?: boolean;
-  /** @deprecated Use permissionMode instead. Whether to auto-approve tool calls. Default: true */
-  approveAll?: boolean;
   /** Whether to create Discord threads for sub-agent output. Default: true */
   useThread?: boolean;
   /** Whether to show tool call details in Discord. Default: true */
@@ -320,8 +318,6 @@ export interface AcpPersistenceConfigFile {
 export interface AcpConfigFile {
   /** Whether ACP is enabled. Default: false */
   enabled?: boolean;
-  /** Backend type for agent communication */
-  backend?: "acpx" | "claude-code" | "codex";
   /** Default agent ID to use when none is specified */
   defaultAgent?: string;
   /** Agent IDs allowed to participate in ACP sessions */
@@ -451,25 +447,16 @@ export function resolveSessionConfig(
   };
 }
 
-const VALID_ACP_BACKENDS = new Set<string>(["acpx", "claude-code", "codex"]);
 const VALID_PERMISSION_MODES = new Set<SubagentPermissionMode>(["skip", "allowlist", "default"]);
 
 /**
  * Resolve ACP config from the config file.
  * Returns undefined if ACP is not configured or not enabled.
- * Validates that backend is a known type.
  */
 export function resolveAcpConfig(
   acpConfig?: AcpConfigFile,
 ): AcpConfig | undefined {
   if (!acpConfig || !acpConfig.enabled) return undefined;
-
-  const backend = acpConfig.backend ?? "acpx";
-  if (!VALID_ACP_BACKENDS.has(backend)) {
-    throw new Error(
-      `Invalid acp.backend "${backend}" (must be acpx, claude-code, or codex)`,
-    );
-  }
 
   if (!acpConfig.defaultAgent) {
     throw new Error("acp.defaultAgent is required when ACP is enabled");
@@ -495,7 +482,6 @@ export function resolveAcpConfig(
 
   return {
     enabled: true,
-    backend,
     defaultAgent: acpConfig.defaultAgent,
     allowedAgents: acpConfig.allowedAgents,
     persistence,
@@ -541,15 +527,6 @@ export function resolveSubagentConfig(
         "Only use this configuration in fully trusted, isolated environments.",
       );
     }
-  }
-
-  // Handle deprecated approveAll
-  if (subagentConfig?.approveAll !== undefined) {
-    log.warn(
-      "⚠️  DEPRECATION WARNING: acp.subagent.approveAll is deprecated. " +
-      "Use acp.subagent.permissionMode instead. " +
-      "(approveAll: true → permissionMode: 'skip', approveAll: false → permissionMode: 'default')",
-    );
   }
 
   return {

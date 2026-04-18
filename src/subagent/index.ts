@@ -2,15 +2,15 @@
 // Provides the high-level API for spawning sub-agents and streaming output to Discord.
 
 import { createLogger } from "../core/logger.js";
-import { AcpxBackend } from "./acpx-backend.js";
+import { SubagentBackend } from "./backend.js";
 import {
   DiscordSink,
   type SendMessageFn,
   type CreateThreadFn,
 } from "./discord-sink.js";
 import type {
-  AcpxEvent,
-  AcpxResult,
+  SubagentEvent,
+  SubagentResult,
   DiscordSinkConfig,
   SubagentTask,
 } from "./types.js";
@@ -22,19 +22,19 @@ const log = createLogger("subagent");
 // ---------------------------------------------------------------------------
 
 export type {
-  AcpxAgent,
-  AcpxSpawnOptions,
-  AcpxEventType,
-  AcpxEvent,
-  AcpxResult,
+  SubagentAgent,
+  SubagentSpawnOptions,
+  SubagentEventType,
+  SubagentEvent,
+  SubagentResult,
   DiscordSinkConfig,
   SubagentTask,
 } from "./types.js";
 
-export { ACPX_AGENTS } from "./types.js";
+export { SUBAGENT_AGENTS } from "./types.js";
 
-export { AcpxBackend, parseJsonLine, collectResult } from "./acpx-backend.js";
-export type { AcpxBackendOptions } from "./acpx-backend.js";
+export { SubagentBackend, collectResult, mapSdkMessage, MAX_CONCURRENT_AGENTS } from "./backend.js";
+export type { SubagentBackendOptions } from "./backend.js";
 
 export {
   DiscordSink,
@@ -57,13 +57,13 @@ export type { BlockCheck } from "./failure-tracker.js";
 /**
  * High-level manager that coordinates sub-agent spawning with Discord output.
  *
- * Combines AcpxBackend (process management) with DiscordSink (output formatting)
+ * Combines SubagentBackend (process management) with DiscordSink (output formatting)
  * to provide a single `spawn()` call that runs a sub-agent and streams results
  * to a Discord channel/thread.
  */
 export class SubagentManager {
   constructor(
-    private backend: AcpxBackend,
+    private backend: SubagentBackend,
     private sendMessage: SendMessageFn,
     private createThread: CreateThreadFn,
   ) {}
@@ -71,13 +71,13 @@ export class SubagentManager {
   /**
    * Spawn a sub-agent task, streaming output to Discord.
    *
-   * Creates a DiscordSink, starts the sub-agent via AcpxBackend,
+   * Creates a DiscordSink, starts the sub-agent via SubagentBackend,
    * and pipes all events through the sink for display.
    *
    * @param task - The sub-agent task to execute
-   * @returns The final AcpxResult with all collected events
+   * @returns The final SubagentResult with all collected events
    */
-  async spawn(task: SubagentTask): Promise<AcpxResult> {
+  async spawn(task: SubagentTask): Promise<SubagentResult> {
     const sinkConfig: DiscordSinkConfig = {
       showToolCalls: task.showToolCalls ?? true,
       showThinking: false,
@@ -97,7 +97,7 @@ export class SubagentManager {
 
     await sink.start(taskLabel);
 
-    const events: AcpxEvent[] = [];
+    const events: SubagentEvent[] = [];
 
     try {
       for await (const event of this.backend.spawn(task.id, {
@@ -105,7 +105,6 @@ export class SubagentManager {
         prompt: task.prompt,
         cwd: task.cwd,
         model: task.model,
-        approveAll: task.approveAll,
         permissionMode: task.permissionMode,
         allowedTools: task.allowedTools,
         timeout: task.timeout,
@@ -118,7 +117,7 @@ export class SubagentManager {
       const errorMsg = err instanceof Error ? err.message : String(err);
       log.error("Sub-agent task failed", { taskId: task.id, error: errorMsg });
 
-      const errorEvent: AcpxEvent = { type: "error", error: errorMsg };
+      const errorEvent: SubagentEvent = { type: "error", error: errorMsg };
       events.push(errorEvent);
       await sink.sendEvent(errorEvent);
     }
@@ -138,7 +137,7 @@ export class SubagentManager {
       .map((e) => e.error!)
       .join("\n") || undefined;
 
-    const result: AcpxResult = {
+    const result: SubagentResult = {
       success: exitCode === 0 && !hasError,
       output,
       error,

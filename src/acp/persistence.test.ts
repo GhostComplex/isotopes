@@ -35,7 +35,6 @@ function makePersistenceConfig(overrides?: Partial<AcpPersistenceConfig>): AcpPe
 function makeAcpConfig(overrides?: Partial<AcpConfig>): AcpConfig {
   return {
     enabled: true,
-    backend: "acpx",
     defaultAgent: "claude",
     allowedAgents: ["claude", "codex"],
     ...overrides,

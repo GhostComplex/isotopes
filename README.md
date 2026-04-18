@@ -104,6 +104,27 @@ discord:
 
 See [isotopes.example.yaml](isotopes.example.yaml) for all options.
 
+### Reusing Claude Code's settings.json
+
+If you already use Claude Code, isotopes will auto-load the `env` block from
+`~/.claude/settings.json` at startup. This lets the subagent SDK pick up your
+existing `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / model overrides without
+duplicating them in `.env.local`.
+
+```json
+// ~/.claude/settings.json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://your-proxy.example.com",
+    "ANTHROPIC_AUTH_TOKEN": "...",
+    "ANTHROPIC_MODEL": "claude-opus-4.7"
+  }
+}
+```
+
+Existing `process.env` values always win, so `.env.local` and shell exports
+keep priority. Override the path with `CLAUDE_SETTINGS_PATH=...`.
+
 ### Tool Guards
 
 ```yaml

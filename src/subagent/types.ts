@@ -1,4 +1,4 @@
-// src/subagent/types.ts — Type definitions for sub-agent spawning via acpx
+// src/subagent/types.ts — Type definitions for sub-agent spawning
 // Defines agent types, spawn options, event types, and result structures.
 
 import type { SubagentPermissionMode } from "../core/config.js";
@@ -7,60 +7,34 @@ import type { SubagentPermissionMode } from "../core/config.js";
 // Agent types
 // ---------------------------------------------------------------------------
 
-/** Supported acpx agent backends */
-export type AcpxAgent =
-  | "claude"
-  | "codex"
-  | "gemini"
-  | "cursor"
-  | "copilot"
-  | "opencode"
-  | "kimi"
-  | "qwen";
+/** Supported subagent backends. MVP: claude only. */
+export type SubagentAgent = "claude";
 
-/** All known acpx agent values for validation */
-export const ACPX_AGENTS: ReadonlySet<string> = new Set<string>([
-  "claude",
-  "codex",
-  "gemini",
-  "cursor",
-  "copilot",
-  "opencode",
-  "kimi",
-  "qwen",
-]);
+/** All known subagent values for validation */
+export const SUBAGENT_AGENTS: ReadonlySet<string> = new Set<string>(["claude"]);
 
 // ---------------------------------------------------------------------------
 // Spawn options
 // ---------------------------------------------------------------------------
 
-/** Options for spawning an acpx sub-agent */
-export interface AcpxSpawnOptions {
+/** Options for spawning a sub-agent */
+export interface SubagentSpawnOptions {
   /** Which agent backend to use */
-  agent: AcpxAgent;
+  agent: SubagentAgent;
   /** The prompt to send to the agent */
   prompt: string;
-  /** Working directory for the agent process */
+  /** Working directory for the agent */
   cwd: string;
-  /** Model override (e.g., "claude-sonnet-4-20250514") */
+  /** Model override (e.g., "claude-sonnet-4-5-20250929") */
   model?: string;
   /**
-   * @deprecated Use permissionMode instead.
-   * Auto-approve all tool calls. Default: true
-   */
-  approveAll?: boolean;
-  /**
-   * Permission mode for tool execution (M8)
-   * - "skip" — Use --dangerously-skip-permissions (full access, no prompts)
-   * - "allowlist" — Use --allowedTools with configured list (recommended)
-   * - "default" — Use claude CLI defaults (interactive prompts)
-   * Default: "allowlist" (inherited from backend config)
+   * Permission mode for tool execution.
+   * - "skip" — bypass permissions (full access, no prompts)
+   * - "allowlist" — SDK default mode + allowedTools list (recommended)
+   * - "default" — SDK default mode without allowedTools
    */
   permissionMode?: SubagentPermissionMode;
-  /**
-   * Tool allowlist for "allowlist" permission mode (M8)
-   * Default: inherited from backend config
-   */
+  /** Tool allowlist for "allowlist" permission mode */
   allowedTools?: string[];
   /** Timeout in seconds for the entire run */
   timeout?: number;
@@ -73,7 +47,7 @@ export interface AcpxSpawnOptions {
 // ---------------------------------------------------------------------------
 
 /** Types of events emitted during sub-agent execution */
-export type AcpxEventType =
+export type SubagentEventType =
   | "start"
   | "message"
   | "tool_use"
@@ -82,9 +56,9 @@ export type AcpxEventType =
   | "done";
 
 /** A single event from a running sub-agent */
-export interface AcpxEvent {
+export interface SubagentEvent {
   /** Event type */
-  type: AcpxEventType;
+  type: SubagentEventType;
   /** Message content (for "message" events) */
   content?: string;
   /** Tool name (for "tool_use" events) */
@@ -95,7 +69,7 @@ export interface AcpxEvent {
   toolResult?: string;
   /** Error message (for "error" events) */
   error?: string;
-  /** Process exit code (for "done" events) */
+  /** Exit code (for "done" events; 0 = success, 1 = error) */
   exitCode?: number;
   /** Cost in USD (for "done" events, if available) */
   costUsd?: number;
@@ -106,7 +80,7 @@ export interface AcpxEvent {
 // ---------------------------------------------------------------------------
 
 /** Final result after sub-agent execution completes */
-export interface AcpxResult {
+export interface SubagentResult {
   /** Whether the sub-agent completed successfully */
   success: boolean;
   /** Final concatenated output (assistant messages) */
@@ -114,8 +88,8 @@ export interface AcpxResult {
   /** Error message if the run failed */
   error?: string;
   /** All events emitted during the run */
-  events: AcpxEvent[];
-  /** Process exit code */
+  events: SubagentEvent[];
+  /** Exit code */
   exitCode: number;
   /** Cost in USD (if available from the agent) */
   costUsd?: number;
@@ -146,10 +120,10 @@ export interface SubagentTask {
   /** Unique task identifier */
   id: string;
   /** Which agent backend to use */
-  agent: AcpxAgent;
+  agent: SubagentAgent;
   /** The prompt to send to the agent */
   prompt: string;
-  /** Working directory for the agent process */
+  /** Working directory for the agent */
   cwd: string;
   /** Discord channel to send output to */
   channelId: string;
@@ -159,21 +133,9 @@ export interface SubagentTask {
   showToolCalls?: boolean;
   /** Model override */
   model?: string;
-  /**
-   * @deprecated Use permissionMode instead.
-   * Auto-approve all tool calls
-   */
-  approveAll?: boolean;
-  /**
-   * Permission mode for tool execution (M8)
-   * - "skip" — Use --dangerously-skip-permissions (full access, no prompts)
-   * - "allowlist" — Use --allowedTools with configured list (recommended)
-   * - "default" — Use claude CLI defaults (interactive prompts)
-   */
+  /** Permission mode for tool execution */
   permissionMode?: SubagentPermissionMode;
-  /**
-   * Tool allowlist for "allowlist" permission mode (M8)
-   */
+  /** Tool allowlist for "allowlist" permission mode */
   allowedTools?: string[];
   /** Timeout in seconds */
   timeout?: number;

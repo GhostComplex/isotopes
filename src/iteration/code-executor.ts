@@ -6,8 +6,8 @@ import { existsSync, copyFileSync, unlinkSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { createLogger } from "../core/logger.js";
-import { AcpxBackend, collectResult } from "../subagent/acpx-backend.js";
-import type { AcpxResult } from "../subagent/types.js";
+import { SubagentBackend, collectResult } from "../subagent/backend.js";
+import type { SubagentResult } from "../subagent/types.js";
 import type { IterationStep } from "./types.js";
 
 const log = createLogger("iteration:code-executor");
@@ -21,7 +21,7 @@ export interface CodeExecutorConfig {
   /** Project root directory (where package.json lives) */
   projectRoot: string;
   /** Subagent backend instance */
-  subagent: AcpxBackend;
+  subagent: SubagentBackend;
   /** Whether to run verification after each step. Default: true */
   verify?: boolean;
   /** Subagent model to use. Default: inherited from backend */
@@ -531,7 +531,7 @@ The file should be saved to: ${targetPath}`;
   /**
    * Run subagent with the given prompt.
    */
-  private async runSubagent(prompt: string): Promise<AcpxResult> {
+  private async runSubagent(prompt: string): Promise<SubagentResult> {
     const taskId = `iteration-${Date.now()}`;
 
     log.info("Starting subagent for code execution", { taskId });

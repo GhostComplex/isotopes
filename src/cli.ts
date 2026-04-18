@@ -2,6 +2,10 @@
 // src/cli.ts — Isotopes CLI entry point
 // Start agents from configuration file, with daemon lifecycle commands.
 
+// Side-effect import: pulls env from ~/.claude/settings.json into process.env
+// before anything else loads (SDK auth, model overrides). Existing env wins,
+// so .env.local and shell exports stay authoritative.
+import "./core/claude-settings-init.js";
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { VERSION } from "./index.js";
@@ -792,7 +796,7 @@ async function main() {
   // Shared ACP instances (created early so session tools can reference them)
   const acpConfig = resolveAcpConfig(config.acp);
   const acpSessionManager = new AcpSessionManager(
-    acpConfig ?? { enabled: false, backend: "acpx", defaultAgent: config.agents[0]?.id ?? "default" },
+    acpConfig ?? { enabled: false, defaultAgent: config.agents[0]?.id ?? "default" },
   );
   const agentMessageBus = new AgentMessageBus(acpSessionManager);
   const startedAt = new Date();

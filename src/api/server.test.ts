@@ -13,7 +13,6 @@ import { CronScheduler } from "../automation/cron-job.js";
 function makeSessionManager(): AcpSessionManager {
   return new AcpSessionManager({
     enabled: true,
-    backend: "acpx",
     defaultAgent: "claude",
     allowedAgents: ["claude", "codex"],
   });

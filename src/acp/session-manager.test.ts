@@ -8,7 +8,6 @@ import { ThreadBindingManager } from "../core/thread-bindings.js";
 function makeConfig(overrides?: Partial<AcpConfig>): AcpConfig {
   return {
     enabled: true,
-    backend: "acpx",
     defaultAgent: "claude",
     allowedAgents: ["claude", "codex"],
     ...overrides,
@@ -28,7 +27,7 @@ describe("AcpSessionManager", () => {
 
   describe("getConfig", () => {
     it("returns the config the manager was created with", () => {
-      const config = makeConfig({ backend: "codex" });
+      const config = makeConfig({ defaultAgent: "custom" });
       const mgr = new AcpSessionManager(config);
       expect(mgr.getConfig()).toBe(config);
     });

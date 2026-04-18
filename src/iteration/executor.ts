@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createLogger } from "../core/logger.js";
-import type { AcpxBackend } from "../subagent/acpx-backend.js";
+import type { SubagentBackend } from "../subagent/backend.js";
 import { CodeExecutor } from "./code-executor.js";
 import type { IterationPlan, IterationStep } from "./types.js";
 
@@ -22,7 +22,7 @@ export interface ExecutorOptions {
   /** If true, simulates execution without making changes */
   dryRun?: boolean;
   /** Subagent backend for real code execution (optional) */
-  subagent?: AcpxBackend;
+  subagent?: SubagentBackend;
   /** Whether to run verification (tsc + vitest) after each step. Default: true */
   verifySteps?: boolean;
   /** Subagent model override */

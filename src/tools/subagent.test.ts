@@ -1,194 +1,123 @@
-// src/tools/subagent.test.ts — Unit tests for subagent tool
+// src/tools/subagent.test.ts — Tests for spawnSubagent tool and backend singleton
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { SubagentEvent } from "../subagent/types.js";
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  spawnSubagent,
-  cancelSubagent,
-  hasRunningSubagents,
-  getActiveSubagentCount,
-  getSupportedAgents,
-} from "./subagent.js";
+const spawnMock = vi.fn();
+const cancelMock = vi.fn();
+const cancelAllMock = vi.fn();
 
-// Mock the subagent module
-vi.mock("../subagent/index.js", () => {
-  const mockBackend = {
-    spawn: vi.fn(),
-    cancel: vi.fn(),
-    cancelAll: vi.fn(),
-    activeCount: 0,
-  };
-
+vi.mock("../subagent/index.js", async () => {
+  const actual = await vi.importActual<typeof import("../subagent/index.js")>(
+    "../subagent/index.js",
+  );
   return {
-    AcpxBackend: vi.fn(() => mockBackend),
-    collectResult: vi.fn(),
-    ACPX_AGENTS: new Set([
-      "claude",
-      "codex",
-      "gemini",
-      "cursor",
-      "copilot",
-      "opencode",
-      "kimi",
-      "qwen",
-    ]),
+    ...actual,
+    SubagentBackend: vi.fn().mockImplementation(() => ({
+      spawn: spawnMock,
+      cancel: cancelMock,
+      cancelAll: cancelAllMock,
+      get activeCount() {
+        return 0;
+      },
+    })),
   };
 });
 
-describe("subagent tool", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+async function* eventGen(...events: SubagentEvent[]): AsyncGenerator<SubagentEvent> {
+  for (const e of events) yield e;
+}
+
+beforeEach(() => {
+  spawnMock.mockReset();
+  cancelMock.mockReset();
+  cancelAllMock.mockReset();
+});
+
+describe("initSubagentBackend / getSubagentBackend", () => {
+  it("returns undefined when not initialized", async () => {
+    vi.resetModules();
+    const { getSubagentBackend } = await import("./subagent.js");
+    expect(getSubagentBackend()).toBeUndefined();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+  it("returns backend after init", async () => {
+    vi.resetModules();
+    const { initSubagentBackend, getSubagentBackend } = await import("./subagent.js");
+    initSubagentBackend({ permissionMode: "allowlist", allowedTools: ["Read"] });
+    expect(getSubagentBackend()).toBeDefined();
   });
 
-  describe("getSupportedAgents", () => {
-    it("returns all supported agent names", () => {
-      const agents = getSupportedAgents();
-      expect(agents).toContain("claude");
-      expect(agents).toContain("codex");
-      expect(agents).toContain("gemini");
-      expect(agents.length).toBe(8);
-    });
+  it("caches backend per workspace key", async () => {
+    vi.resetModules();
+    const { initSubagentBackend, getSubagentBackend } = await import("./subagent.js");
+    initSubagentBackend({ permissionMode: "allowlist" });
+    const a = getSubagentBackend(["/w1"]);
+    const b = getSubagentBackend(["/w1"]);
+    expect(a).toBe(b);
+    const c = getSubagentBackend(["/w2"]);
+    expect(c).not.toBe(a);
+  });
+});
+
+describe("spawnSubagent", () => {
+  it("returns success result with collected output", async () => {
+    vi.resetModules();
+    const { initSubagentBackend, spawnSubagent } = await import("./subagent.js");
+    initSubagentBackend({ permissionMode: "allowlist" });
+    spawnMock.mockReturnValue(
+      eventGen(
+        { type: "start" },
+        { type: "message", content: "hello" },
+        { type: "done", exitCode: 0 },
+      ),
+    );
+
+    const result = await spawnSubagent("task", { agent: "claude", cwd: process.cwd() });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain("hello");
+    expect(result.exitCode).toBe(0);
+    expect(result.eventCount).toBe(3);
   });
 
-  describe("spawnSubagent", () => {
-    it("spawns a sub-agent with default options", async () => {
-      const { AcpxBackend } = await import("../subagent/index.js");
-      const mockBackend = new AcpxBackend();
-
-      // Mock spawn to return an async generator
-      (mockBackend.spawn as ReturnType<typeof vi.fn>).mockImplementation(
-        async function* () {
-          yield { type: "start" };
-          yield { type: "message", content: "Hello from sub-agent" };
-          yield { type: "done", exitCode: 0 };
-        },
-      );
-
-      const result = await spawnSubagent("Do something", { cwd: "/tmp" });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toBe("Hello from sub-agent");
-      expect(result.exitCode).toBe(0);
-      expect(result.eventCount).toBe(3);
+  it("returns failure when spawn throws", async () => {
+    vi.resetModules();
+    const { initSubagentBackend, spawnSubagent } = await import("./subagent.js");
+    initSubagentBackend({ permissionMode: "allowlist" });
+    spawnMock.mockImplementation(() => {
+      throw new Error("boom");
     });
-
-    it("handles sub-agent errors", async () => {
-      const { AcpxBackend } = await import("../subagent/index.js");
-      const mockBackend = new AcpxBackend();
-
-      (mockBackend.spawn as ReturnType<typeof vi.fn>).mockImplementation(
-        async function* () {
-          yield { type: "start" };
-          yield { type: "error", error: "Something went wrong" };
-          yield { type: "done", exitCode: 1 };
-        },
-      );
-
-      const result = await spawnSubagent("Do something", { cwd: "/tmp" });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Something went wrong");
-      expect(result.exitCode).toBe(1);
-    });
-
-    it("calls onEvent callback for each event", async () => {
-      const { AcpxBackend } = await import("../subagent/index.js");
-      const mockBackend = new AcpxBackend();
-
-      (mockBackend.spawn as ReturnType<typeof vi.fn>).mockImplementation(
-        async function* () {
-          yield { type: "start" };
-          yield { type: "message", content: "Test" };
-          yield { type: "done", exitCode: 0 };
-        },
-      );
-
-      const events: unknown[] = [];
-      await spawnSubagent("Test", {
-        cwd: "/tmp",
-        onEvent: (e) => events.push(e),
-      });
-
-      expect(events.length).toBe(3);
-      expect(events[0]).toEqual({ type: "start" });
-    });
-
-    it("handles spawn exceptions", async () => {
-      const { AcpxBackend } = await import("../subagent/index.js");
-      const mockBackend = new AcpxBackend();
-
-      (mockBackend.spawn as ReturnType<typeof vi.fn>).mockImplementation(
-        // eslint-disable-next-line require-yield
-        async function* () {
-          throw new Error("Spawn failed");
-        },
-      );
-
-      const result = await spawnSubagent("Test", { cwd: "/tmp" });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Spawn failed");
-      expect(result.exitCode).toBe(1);
-    });
+    const result = await spawnSubagent("task", { agent: "claude", cwd: process.cwd() });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("boom");
   });
 
-  describe("cancelSubagent", () => {
-    it("cancels a specific task", async () => {
-      const { AcpxBackend } = await import("../subagent/index.js");
-      const mockBackend = new AcpxBackend();
-      (mockBackend.cancel as ReturnType<typeof vi.fn>).mockReturnValue(true);
-
-      const result = cancelSubagent("task-123");
-
-      expect(result).toBe(true);
-      expect(mockBackend.cancel).toHaveBeenCalledWith("task-123");
+  it("streams events to onEvent callback", async () => {
+    vi.resetModules();
+    const { initSubagentBackend, spawnSubagent } = await import("./subagent.js");
+    initSubagentBackend({ permissionMode: "allowlist" });
+    spawnMock.mockReturnValue(
+      eventGen(
+        { type: "start" },
+        { type: "tool_use", toolName: "Read" },
+        { type: "done", exitCode: 0 },
+      ),
+    );
+    const events: SubagentEvent[] = [];
+    await spawnSubagent("t", {
+      agent: "claude",
+      cwd: process.cwd(),
+      onEvent: (e) => {
+        events.push(e);
+      },
     });
-
-    it("cancels all tasks when no pattern", async () => {
-      const { AcpxBackend } = await import("../subagent/index.js");
-      const mockBackend = new AcpxBackend();
-
-      const result = cancelSubagent();
-
-      expect(result).toBe(true);
-      expect(mockBackend.cancelAll).toHaveBeenCalled();
-    });
+    expect(events).toHaveLength(3);
+    expect(events[1]).toEqual({ type: "tool_use", toolName: "Read" });
   });
+});
 
-  describe("hasRunningSubagents", () => {
-    it("returns true when agents are running", async () => {
-      const { AcpxBackend } = await import("../subagent/index.js");
-      const mockBackend = new AcpxBackend();
-      Object.defineProperty(mockBackend, "activeCount", { value: 2, writable: true });
-
-      const result = hasRunningSubagents();
-
-      expect(result).toBe(true);
-    });
-
-    it("returns false when no agents running", async () => {
-      const { AcpxBackend } = await import("../subagent/index.js");
-      const mockBackend = new AcpxBackend();
-      Object.defineProperty(mockBackend, "activeCount", { value: 0, writable: true });
-
-      const result = hasRunningSubagents();
-
-      expect(result).toBe(false);
-    });
-  });
-
-  describe("getActiveSubagentCount", () => {
-    it("returns the active count", async () => {
-      const { AcpxBackend } = await import("../subagent/index.js");
-      const mockBackend = new AcpxBackend();
-      Object.defineProperty(mockBackend, "activeCount", { value: 3, writable: true });
-
-      const count = getActiveSubagentCount();
-
-      expect(count).toBe(3);
-    });
+describe("getSupportedAgents", () => {
+  it("returns claude only (MVP)", async () => {
+    const { getSupportedAgents } = await import("./subagent.js");
+    expect(getSupportedAgents()).toEqual(["claude"]);
   });
 });

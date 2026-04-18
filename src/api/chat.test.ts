@@ -19,7 +19,6 @@ import type { AgentManager, SessionStore } from "../core/types.js";
 function makeSessionManager(): AcpSessionManager {
   return new AcpSessionManager({
     enabled: true,
-    backend: "acpx",
     defaultAgent: "claude",
     allowedAgents: ["claude", "codex"],
   });

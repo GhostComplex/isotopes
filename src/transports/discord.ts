@@ -546,7 +546,7 @@ export class DiscordTransport implements Transport {
     }
 
     // For now, other messages in subagent threads are acknowledged but not forwarded
-    // (acpx stdin is closed after initial prompt — true steering requires acpx changes)
+    // (sub-agent prompt is one-shot — true steering would require SDK support)
     log.debug(`Subagent thread message ignored (steering not supported)`, {
       taskId: task.taskId,
       content: content.slice(0, 50),

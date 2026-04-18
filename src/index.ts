@@ -124,7 +124,6 @@ export type { ThreadBindingCallback } from "./core/thread-bindings.js";
 export { AcpSessionManager } from "./acp/index.js";
 export type {
   AcpConfig,
-  AcpBackend,
   AcpSession,
   AcpSessionStatus,
   AcpMessage,
@@ -339,31 +338,31 @@ export type {
 } from "./sandbox/index.js";
 
 // ---------------------------------------------------------------------------
-// Sub-agent (acpx)
+// Sub-agent
 // ---------------------------------------------------------------------------
 
 export {
-  AcpxBackend,
-  parseJsonLine,
+  SubagentBackend,
+  mapSdkMessage,
   collectResult,
   DiscordSink,
   truncate,
   formatEvent,
   formatSummary,
   SubagentManager,
-  ACPX_AGENTS,
+  SUBAGENT_AGENTS,
 } from "./subagent/index.js";
 export type {
-  AcpxAgent,
-  AcpxSpawnOptions,
-  AcpxEventType,
-  AcpxEvent,
-  AcpxResult,
+  SubagentAgent,
+  SubagentSpawnOptions,
+  SubagentEventType,
+  SubagentEvent,
+  SubagentResult,
   DiscordSinkConfig,
   SubagentTask,
   SendMessageFn,
   CreateThreadFn,
-  AcpxBackendOptions,
+  SubagentBackendOptions,
 } from "./subagent/index.js";
 
 // ---------------------------------------------------------------------------

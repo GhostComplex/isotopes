@@ -641,22 +641,11 @@ session:
       const config = resolveAcpConfig({
         enabled: true,
         defaultAgent: "major",
-        backend: "acpx",
       });
 
       expect(config).toBeDefined();
       expect(config!.enabled).toBe(true);
       expect(config!.defaultAgent).toBe("major");
-      expect(config!.backend).toBe("acpx");
-    });
-
-    it("defaults backend to 'acpx' when not specified", () => {
-      const config = resolveAcpConfig({
-        enabled: true,
-        defaultAgent: "major",
-      });
-
-      expect(config!.backend).toBe("acpx");
     });
 
     it("passes through allowedAgents", () => {
@@ -667,16 +656,6 @@ session:
       });
 
       expect(config!.allowedAgents).toEqual(["major", "sac"]);
-    });
-
-    it("throws on invalid backend", () => {
-      expect(() =>
-        resolveAcpConfig({
-          enabled: true,
-          defaultAgent: "major",
-          backend: "invalid" as "acpx",
-        }),
-      ).toThrow('Invalid acp.backend "invalid"');
     });
 
     it("throws when defaultAgent is missing", () => {

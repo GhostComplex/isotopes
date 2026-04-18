@@ -1,8 +1,8 @@
 // src/subagent/discord-sink.ts — Stream sub-agent events to Discord
-// Formats AcpxEvents and sends them to a Discord channel or thread.
+// Formats SubagentEvents and sends them to a Discord channel or thread.
 
 import { createLogger } from "../core/logger.js";
-import type { AcpxEvent, AcpxResult, DiscordSinkConfig } from "./types.js";
+import type { SubagentEvent, SubagentResult, DiscordSinkConfig } from "./types.js";
 
 const log = createLogger("subagent:discord-sink");
 
@@ -39,12 +39,12 @@ export function truncate(content: string, maxLen: number = MAX_MESSAGE_LENGTH): 
 }
 
 /**
- * Format an AcpxEvent for display in Discord.
+ * Format an SubagentEvent for display in Discord.
  *
  * Returns undefined if the event should not be displayed (e.g.,
  * tool calls when showToolCalls is false).
  */
-export function formatEvent(event: AcpxEvent, config: DiscordSinkConfig): string | undefined {
+export function formatEvent(event: SubagentEvent, config: DiscordSinkConfig): string | undefined {
   switch (event.type) {
     case "start":
       return undefined; // handled separately by DiscordSink.start()
@@ -96,12 +96,12 @@ function getExitCodeExplanation(exitCode: number | undefined): string {
 }
 
 /**
- * Format an AcpxResult summary for the completion message.
+ * Format a SubagentResult summary for the completion message.
  *
  * @param result - The result to format
  * @param threadId - Optional thread ID to include as a link
  */
-export function formatSummary(result: AcpxResult, threadId?: string): string {
+export function formatSummary(result: SubagentResult, threadId?: string): string {
   const status = result.success ? "✅ Completed" : "❌ Failed";
   const messageCount = result.events.filter((e) => e.type === "message").length;
   const toolCount = result.events.filter((e) => e.type === "tool_use").length;
@@ -200,7 +200,7 @@ export class DiscordSink {
    *
    * Events that produce no display content (per config) are skipped.
    */
-  async sendEvent(event: AcpxEvent): Promise<void> {
+  async sendEvent(event: SubagentEvent): Promise<void> {
     const content = formatEvent(event, this.config);
     if (!content) return;
 
@@ -220,7 +220,7 @@ export class DiscordSink {
    *
    * The summary includes a link to the thread if one was created.
    */
-  async finish(result: AcpxResult): Promise<void> {
+  async finish(result: SubagentResult): Promise<void> {
     // Include thread link in summary when a thread was created
     const content = formatSummary(result, this.threadId);
 
@@ -238,7 +238,7 @@ export class DiscordSink {
    * Use this when you want to send the summary to the thread instead of
    * the main channel. If no thread was created, this is a no-op.
    */
-  async finishInThread(result: AcpxResult): Promise<void> {
+  async finishInThread(result: SubagentResult): Promise<void> {
     if (!this.threadId) return;
 
     const content = formatSummary(result);

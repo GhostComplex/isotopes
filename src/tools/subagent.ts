@@ -1,13 +1,13 @@
-// src/tools/subagent.ts — Subagent tool for spawning acpx agents
+// src/tools/subagent.ts — Subagent tool for spawning Claude as a sub-agent
 // Allows the main agent to delegate tasks to coding agents like Claude, Codex, etc.
 
 import { createLogger } from "../core/logger.js";
 import {
-  AcpxBackend,
-  ACPX_AGENTS,
-  type AcpxAgent,
-  type AcpxResult,
-  type AcpxEvent,
+  SubagentBackend,
+  SUBAGENT_AGENTS,
+  type SubagentAgent,
+  type SubagentResult,
+  type SubagentEvent,
 } from "../subagent/index.js";
 import { taskRegistry } from "../subagent/task-registry.js";
 import type { SubagentPermissionMode } from "../core/config.js";
@@ -29,7 +29,7 @@ export interface SubagentBackendConfig {
 /** Options for spawning a sub-agent */
 export interface SpawnSubagentOptions {
   /** Which agent to use (default: claude) */
-  agent?: AcpxAgent;
+  agent?: SubagentAgent;
   /** Working directory for the agent (required) */
   cwd: string;
   /** Model override */
@@ -38,12 +38,10 @@ export interface SpawnSubagentOptions {
   timeout?: number;
   /** Maximum turns (default: 50) */
   maxTurns?: number;
-  /** Auto-approve all tool calls (default: true) */
-  approveAll?: boolean;
   /** Allowed workspace roots for validation */
   allowedWorkspaces?: string[];
   /** Callback for streaming events */
-  onEvent?: (event: AcpxEvent) => void;
+  onEvent?: (event: SubagentEvent) => void;
   /** Session ID for task registry tracking */
   sessionId?: string;
   /** Channel ID for task registry tracking */
@@ -66,7 +64,7 @@ export interface SpawnSubagentResult {
 // ---------------------------------------------------------------------------
 
 /** Shared backend instance (lazy initialized) */
-let sharedBackend: AcpxBackend | undefined;
+let sharedBackend: SubagentBackend | undefined;
 
 /** Cache key for the shared backend (workspace roots joined by `:`) */
 let sharedBackendKey: string | undefined;
@@ -91,11 +89,11 @@ export function initSubagentBackend(config: SubagentBackendConfig): void {
   });
 }
 
-function getBackend(allowedWorkspaces?: string[]): AcpxBackend {
+function getBackend(allowedWorkspaces?: string[]): SubagentBackend {
   // Create new backend if workspaces changed or not initialized
   const key = allowedWorkspaces?.sort().join(":") ?? "";
   if (!sharedBackend || sharedBackendKey !== key) {
-    sharedBackend = new AcpxBackend({
+    sharedBackend = new SubagentBackend({
       allowedWorkspaceRoots: allowedWorkspaces,
       permissionMode: backendConfig.permissionMode,
       allowedTools: backendConfig.allowedTools,
@@ -109,10 +107,10 @@ function getBackend(allowedWorkspaces?: string[]): AcpxBackend {
 let taskCounter = 0;
 
 /**
- * Get the shared AcpxBackend instance for use by other modules (e.g. IterationExecutor).
+ * Get the shared SubagentBackend instance for use by other modules (e.g. IterationExecutor).
  * Returns undefined if the backend hasn't been initialized (no permissionMode set).
  */
-export function getSubagentBackend(allowedWorkspaces?: string[]): AcpxBackend | undefined {
+export function getSubagentBackend(allowedWorkspaces?: string[]): SubagentBackend | undefined {
   if (!backendConfig.permissionMode) {
     return undefined;
   }
@@ -167,11 +165,10 @@ export async function spawnSubagent(
       model: options.model,
       timeout: options.timeout ?? 300,
       maxTurns: options.maxTurns ?? 50,
-      approveAll: options.approveAll ?? true,
     });
 
     // Collect events, optionally streaming via callback
-    const collected: AcpxEvent[] = [];
+    const collected: SubagentEvent[] = [];
     for await (const event of events) {
       collected.push(event);
       options.onEvent?.(event);
@@ -245,14 +242,14 @@ export function getActiveSubagentCount(): number {
  * Get list of supported agent backends.
  */
 export function getSupportedAgents(): readonly string[] {
-  return [...ACPX_AGENTS];
+  return [...SUBAGENT_AGENTS];
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function collectResultFromEvents(events: AcpxEvent[]): Promise<AcpxResult> {
+async function collectResultFromEvents(events: SubagentEvent[]): Promise<SubagentResult> {
   let lastExitCode = 0;
 
   const messages = events

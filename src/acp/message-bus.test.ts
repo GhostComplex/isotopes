@@ -9,7 +9,6 @@ import type { AcpConfig } from "./types.js";
 function makeConfig(overrides?: Partial<AcpConfig>): AcpConfig {
   return {
     enabled: true,
-    backend: "acpx",
     defaultAgent: "claude",
     allowedAgents: ["claude", "codex", "agent-a", "agent-b", "agent-c"],
     ...overrides,

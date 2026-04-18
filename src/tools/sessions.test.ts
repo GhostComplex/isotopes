@@ -21,7 +21,6 @@ import type { AgentManager } from "../core/types.js";
 function createTestContext(overrides?: Partial<SessionsToolContext>): SessionsToolContext {
   const config: AcpConfig = {
     enabled: true,
-    backend: "acpx",
     defaultAgent: "agent-a",
     allowedAgents: ["agent-a", "agent-b", "agent-c"],
   };
@@ -564,7 +563,6 @@ describe("sessions_history", () => {
     // Use a manager with empty allowedAgents so no agent is "allowed"
     const mgr = new AcpSessionManager({
       enabled: true,
-      backend: "acpx",
       defaultAgent: "agent-a",
       allowedAgents: [],
     });
@@ -807,7 +805,6 @@ describe("sessions_yield", () => {
     // Create a restricted context with no allowed agents
     const mgr = new AcpSessionManager({
       enabled: true,
-      backend: "acpx",
       defaultAgent: "agent-a",
       allowedAgents: [],
     });
@@ -950,7 +947,6 @@ describe("sessions_kill", () => {
   it("rejects access to non-allowed agent's session", async () => {
     const mgr = new AcpSessionManager({
       enabled: true,
-      backend: "acpx",
       defaultAgent: "agent-a",
       allowedAgents: [],
     });
@@ -1097,7 +1093,6 @@ describe("session_status", () => {
   it("rejects access to non-allowed agent's session", async () => {
     const mgr = new AcpSessionManager({
       enabled: true,
-      backend: "acpx",
       defaultAgent: "agent-a",
       allowedAgents: [],
     });

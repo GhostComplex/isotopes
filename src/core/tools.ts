@@ -5,7 +5,7 @@ import path from "node:path";
 import type { AgentToolSettings, Tool } from "./types.js";
 import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import type { AcpxAgent, AcpxEvent, DiscordSinkConfig } from "../subagent/types.js";
+import type { SubagentAgent, SubagentEvent, DiscordSinkConfig } from "../subagent/types.js";
 import { DiscordSink } from "../subagent/discord-sink.js";
 import { getSubagentContext } from "./subagent-context.js";
 import { failureTracker } from "../subagent/failure-tracker.js";
@@ -225,10 +225,10 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
         let result: string;
         if (discordContext) {
           // Run with Discord streaming
-          result = await runSubagentWithDiscord(task, agent as AcpxAgent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns);
+          result = await runSubagentWithDiscord(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns);
         } else {
           // Run without Discord streaming (original behavior)
-          result = await runSubagentPlain(task, agent as AcpxAgent, cwd, timeout, allAllowedWorkspaces, maxTurns);
+          result = await runSubagentPlain(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, maxTurns);
         }
 
         // Record failure if result indicates failure
@@ -253,7 +253,7 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
  */
 async function runSubagentPlain(
   task: string,
-  agent: AcpxAgent,
+  agent: SubagentAgent,
   cwd: string,
   timeout: number,
   allowedWorkspaces: string[],
@@ -278,7 +278,7 @@ async function runSubagentPlain(
  */
 async function runSubagentWithDiscord(
   task: string,
-  agent: AcpxAgent,
+  agent: SubagentAgent,
   cwd: string,
   timeout: number,
   allowedWorkspaces: string[],
@@ -306,7 +306,7 @@ async function runSubagentWithDiscord(
   const startTime = Date.now();
 
   // Collect events for building result
-  const events: AcpxEvent[] = [];
+  const events: SubagentEvent[] = [];
   try {
     // Run subagent with event streaming
     const result = await spawnSubagent(task, {
@@ -327,8 +327,8 @@ async function runSubagentWithDiscord(
     const durationMs = Date.now() - startTime;
     const costUsd = events.find(e => e.costUsd !== undefined)?.costUsd;
 
-    // Build AcpxResult for finish message
-    const acpxResult = {
+    // Build SubagentResult for finish message
+    const subagentResult = {
       success: result.success,
       output: result.output,
       error: result.error,
@@ -338,7 +338,7 @@ async function runSubagentWithDiscord(
       costUsd,
     };
     // Send summary to main channel
-    await sink.finish(acpxResult);
+    await sink.finish(subagentResult);
     // Call onComplete callback for auto-unbind
     if (onComplete && threadId) {
       try {
@@ -361,7 +361,7 @@ async function runSubagentWithDiscord(
     const error = err instanceof Error ? err.message : String(err);
     log.error("Sub-agent with Discord streaming failed", { error });
     // Send error to Discord
-    const errorEvent: AcpxEvent = { type: "error", error };
+    const errorEvent: SubagentEvent = { type: "error", error };
     events.push(errorEvent);
     await sink.sendEvent(errorEvent);
     // Send failure summary with duration

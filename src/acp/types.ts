@@ -5,9 +5,6 @@
 // ACP configuration
 // ---------------------------------------------------------------------------
 
-/** Supported ACP backend types */
-export type AcpBackend = "acpx" | "claude-code" | "codex";
-
 /** ACP session persistence configuration */
 export interface AcpPersistenceConfig {
   /** Whether session persistence is enabled. Default: false */
@@ -24,8 +21,6 @@ export interface AcpPersistenceConfig {
 export interface AcpConfig {
   /** Whether ACP is enabled */
   enabled: boolean;
-  /** Backend type for agent communication */
-  backend: AcpBackend;
   /** Default agent ID to use when none is specified */
   defaultAgent: string;
   /** Agent IDs allowed to participate in ACP sessions */
