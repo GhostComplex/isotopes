@@ -104,12 +104,44 @@ discord:
 
 See [isotopes.example.yaml](isotopes.example.yaml) for all options.
 
+### API key & base URL resolution
+
+Isotopes has **two independent consumers** of credentials, each with its own
+lookup path:
+
+**Main agent (`PiMonoCore`)** — reads `provider.apiKey` / `provider.baseUrl`
+from yaml only. Yaml supports `${VAR}` interpolation against `process.env`:
+
+```yaml
+provider:
+  type: anthropic-proxy
+  apiKey: ${ANTHROPIC_API_KEY}      # or a literal string
+  baseUrl: ${ANTHROPIC_BASE_URL}    # optional, defaults to api.anthropic.com
+```
+
+**Subagent SDK (`@anthropic-ai/claude-agent-sdk`)** — reads `process.env`
+directly: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`,
+`ANTHROPIC_BASE_URL`. The backend does not pass them explicitly; the SDK looks
+them up itself.
+
+**`process.env` is populated in this order** (highest priority first):
+
+1. Shell exports / launchd `EnvironmentVariables` / systemd `Environment=`
+2. `.env.local` at the project root (auto-loaded on startup)
+3. `~/.claude/settings.json`'s `env` block (auto-loaded; only fills keys not
+   already set — override the path with `CLAUDE_SETTINGS_PATH=...`)
+
+Recommended setup: put the credential in env (any of the three sources above),
+then write `${ANTHROPIC_API_KEY}` / `${ANTHROPIC_BASE_URL}` in yaml. Both the
+main agent and the subagent will pick up the same value automatically.
+
+If you write the apiKey as a literal string in yaml, only the main agent gets
+it — the subagent will 401 unless the env var is also set.
+
 ### Reusing Claude Code's settings.json
 
-If you already use Claude Code, isotopes will auto-load the `env` block from
-`~/.claude/settings.json` at startup. This lets the subagent SDK pick up your
-existing `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / model overrides without
-duplicating them in `.env.local`.
+If you already use Claude Code, the auto-loader above lets isotopes inherit
+your existing endpoint and token without duplication:
 
 ```json
 // ~/.claude/settings.json
@@ -121,9 +153,6 @@ duplicating them in `.env.local`.
   }
 }
 ```
-
-Existing `process.env` values always win, so `.env.local` and shell exports
-keep priority. Override the path with `CLAUDE_SETTINGS_PATH=...`.
 
 ### Tool Guards
 
