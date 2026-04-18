@@ -35,7 +35,7 @@ export interface WorkspaceContext {
  * Load workspace context from a directory.
  * Reads standard workspace files and combines them for use in system prompt.
  */
-export async function loadWorkspaceContext(workspacePath: string, options?: { bundledPath?: string }): Promise<WorkspaceContext> {
+export async function loadWorkspaceContext(workspacePath: string): Promise<WorkspaceContext> {
   const additions: string[] = [];
 
   // Load standard workspace files
@@ -68,7 +68,7 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
   }
 
   // Load skills from workspace
-  const skillLoader = new SkillLoader({ workspacePath, bundledPath: options?.bundledPath });
+  const skillLoader = new SkillLoader({ workspacePath });
   const skillsPrompt = await skillLoader.generatePrompt();
 
   return {

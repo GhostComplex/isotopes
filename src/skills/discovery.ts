@@ -29,8 +29,6 @@ export interface DiscoveryOptions {
   workspacePath?: string;
   /** Additional paths to scan for skills */
   additionalPaths?: string[];
-  /** Bundled skills path (lowest priority, from package root) */
-  bundledPath?: string;
 }
 
 export interface DiscoveredSkill {
@@ -70,16 +68,11 @@ export async function discoverSkills(
     globalPath = getGlobalSkillsPath(),
     workspacePath,
     additionalPaths = [],
-    bundledPath,
   } = options;
 
   const pathsToScan: string[] = [];
 
-  // Add paths in discovery order (bundled first = lowest priority, last wins on dedup)
-  if (bundledPath) {
-    pathsToScan.push(bundledPath);
-  }
-
+  // Add paths in discovery order
   pathsToScan.push(globalPath);
 
   if (workspacePath) {

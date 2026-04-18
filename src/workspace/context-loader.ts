@@ -5,7 +5,6 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { createLogger } from "../core/logger.js";
 import { SkillLoader } from "../skills/index.js";
-import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 
 const log = createLogger("workspace:context-loader");
 
@@ -102,7 +101,7 @@ export class WorkspaceContextLoader {
     }
 
     // Load skills
-    const skillLoader = new SkillLoader({ workspacePath: this.workspacePath, bundledPath: resolveBundledSkillsDir() });
+    const skillLoader = new SkillLoader({ workspacePath: this.workspacePath });
     const skillsPrompt = await skillLoader.generatePrompt();
 
     this.context = {
