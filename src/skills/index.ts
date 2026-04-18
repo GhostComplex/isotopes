@@ -5,3 +5,4 @@ export * from "./discovery.js";
 export * from "./parser.js";
 export * from "./prompt.js";
 export * from "./skill-loader.js";
+export * from "./bundled-dir.js";

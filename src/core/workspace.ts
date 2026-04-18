@@ -4,6 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { SkillLoader } from "../skills/index.js";
+import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 
 /** Standard workspace files that contribute to system prompt */
 export const WORKSPACE_FILES = [
@@ -68,7 +69,7 @@ export async function loadWorkspaceContext(workspacePath: string): Promise<Works
   }
 
   // Load skills from workspace
-  const skillLoader = new SkillLoader({ workspacePath });
+  const skillLoader = new SkillLoader({ workspacePath, bundledPath: resolveBundledSkillsDir() });
   const skillsPrompt = await skillLoader.generatePrompt();
 
   return {
