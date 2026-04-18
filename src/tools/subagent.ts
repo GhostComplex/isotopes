@@ -18,7 +18,7 @@ const log = createLogger("tools:subagent");
 // Types
 // ---------------------------------------------------------------------------
 
-/** Configuration for the subagent backend (from acp.subagent in config) */
+/** Configuration for the subagent backend (from `subagent` in config) */
 export interface SubagentBackendConfig {
   /** Permission mode for tool execution */
   permissionMode?: SubagentPermissionMode;
@@ -74,7 +74,7 @@ let backendConfig: SubagentBackendConfig = {};
 
 /**
  * Initialize the subagent backend with configuration.
- * Should be called during app startup with config from acp.subagent.
+ * Should be called during app startup with config from `subagent`.
  * 
  * @param config - Configuration from resolveSubagentConfig()
  */

@@ -8,7 +8,7 @@
 
 **Isotopes** is a lightweight, self-hostable AI agent framework designed for multi-agent collaboration across chat platforms (Discord, Feishu).
 
-MVP scope: Multi-agent orchestration + Discord/Feishu transport + OpenAI/Anthropic proxy support + Tool system + ACP protocol.
+MVP scope: Multi-agent orchestration + Discord/Feishu transport + OpenAI/Anthropic proxy support + Tool system + Sub-agent (Claude Agent SDK).
 
 ## Target Use Case
 
@@ -113,10 +113,9 @@ channels:
       "oc_02d6d44d519f9c66dc7d311114a8a8a0":
         requireMention: false
 
-# ACP (Agent Communication Protocol)
-acp:
+# Subagent (Claude Agent SDK)
+subagent:
   enabled: true
-  backend: acpx
   defaultAgent: claude
   allowedAgents:
     - claude
@@ -175,11 +174,11 @@ Use cases:
 - **Discord**: Channels, threads, DMs
 - **Feishu**: Groups, P2P chats, WebSocket connection
 
-### 5. ACP Protocol
-Agent Communication Protocol for:
-- Thread bindings — spawn ACP sessions in Discord threads
-- Inter-agent messaging
-- External tool integration (Claude Code, Codex)
+### 5. Sub-agent (Claude Agent SDK)
+Spawn coding sub-agents from chat:
+- `spawn_subagent` tool wraps Claude Agent SDK
+- Discord thread streaming for sub-agent output
+- Configurable permission modes and tool allowlists
 
 ### 6. Tool System
 Built-in tools:
@@ -230,7 +229,6 @@ Agents modify their own configuration using generic file tools (`read_file`, `wr
 │                      Message Router                         │
 │   - Binding resolution (channel + account + peer)           │
 │   - Mention filtering (requireMention)                      │
-│   - ACP protocol handling                                   │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────┴──────────────────────────────────┐
@@ -284,7 +282,7 @@ Agents modify their own configuration using generic file tools (`read_file`, `wr
 | **M0** | Core Foundation | ✅ Done |
 | **M1** | Config & Routing Enhancements | ✅ Done |
 | **M2** | Feishu Transport | ✅ Done |
-| **M3** | ACP Protocol | ✅ Done |
+| **M3** | ACP Protocol | 🗑️ Removed (PR #374) |
 | **M4** | Automation & Git | ✅ Done |
 | **M5** | Daemon Mode + Web API | ✅ Done |
 | **M6** | Sandbox Execution | ✅ Done |

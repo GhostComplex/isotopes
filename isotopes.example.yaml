@@ -138,7 +138,6 @@ discord:
   #     tailChars: 1500
 
 # =============================================================================
-# =============================================================================
 # CHANNELS — per-guild / per-group runtime overrides
 # Discord guilds are nested under accounts.<accountId>.guilds.<guildId>.
 # Default requireMention is true (must @bot to respond).
@@ -196,11 +195,6 @@ subagent:
   #   enableShell: false              # appends Bash to allowedTools
   #   useThread: true                 # spawn Discord thread for subagent output
   #   showToolCalls: true
-  # persistence:                      # #195
-  #   enabled: false
-  #   dataDir: ${ISOTOPES_HOME}/acp-sessions
-  #   ttl: 86400
-  #   cleanupInterval: 3600
 
 # =============================================================================
 # CRON — channel-level scheduled jobs (per-agent cron lives under agents.<id>.cron)

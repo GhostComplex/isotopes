@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Isotopes is a self-hostable AI agent framework for multi-agent collaboration across chat platforms (Discord, Feishu). Agents have self-evolving prompts (SOUL.md, MEMORY.md), binding-based message routing, ACP inter-agent messaging, cron automation, sandbox execution, and daemon mode.
+Isotopes is a self-hostable AI agent framework for multi-agent collaboration across chat platforms (Discord, Feishu). Agents have self-evolving prompts (SOUL.md, MEMORY.md), binding-based message routing, cron automation, sandbox execution, and daemon mode.
 
 ## Commands
 
