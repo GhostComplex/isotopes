@@ -428,7 +428,9 @@ export class DiscordTransport implements Transport {
     const sessionKey = this.getSessionKey(msg, agentId);
     const session = await this.findOrCreateSession(sessionStore, sessionKey, agentId, msg);
 
-    // 6.5. If session is currently active (in a prompt turn), buffer this message instead
+    // 6.5. If session is currently active (in a prompt turn), buffer this message instead.
+    // The buffer is drained at turn_end via onToolComplete, where each message is
+    // also persisted to SessionStore so future prompt() invocations replay them.
     if (this.activeSessions.has(session.id)) {
       log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
       const pending = this.pendingMessages.get(session.id) ?? [];
@@ -438,16 +440,9 @@ export class DiscordTransport implements Transport {
         timestamp: msg.createdTimestamp,
       });
       this.pendingMessages.set(session.id, pending);
-
-      // Still record to channel history for context
-      if (this.config.context?.channelHistory !== false && msg.guild) {
-        this.channelHistory.append(msg.channelId, {
-          sender: msg.author.username,
-          body: content,
-          timestamp: msg.createdTimestamp,
-          messageId: msg.id,
-        });
-      }
+      // Note: do not also append to channelHistory — onToolComplete persists to
+      // SessionStore, and channelHistory injection on the next trigger would
+      // re-surface the same message a second time.
       return;
     }
 
@@ -737,6 +732,21 @@ export class DiscordTransport implements Transport {
             if (!pending?.length) return null;
 
             const messages = pending.splice(0); // drain buffer
+
+            // Persist each buffered message to SessionStore so history reflects
+            // what the model actually saw via steer(). Without this, replayed
+            // history (clearMessages + getMessages on next prompt) loses these
+            // messages, leaving the assistant reply referencing user input that
+            // appears never to have been sent.
+            for (const m of messages) {
+              await sessionStore.addMessage(sessionId, {
+                role: "user",
+                content: textContent(m.content),
+                timestamp: m.timestamp,
+                metadata: { sender: m.sender, buffered: true },
+              });
+            }
+
             const formatted = messages.map(m => `${m.sender}: ${m.content}`).join("\n");
             return `[Messages arrived while you were working]\n${formatted}`;
           },

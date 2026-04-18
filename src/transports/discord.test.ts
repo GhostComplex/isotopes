@@ -1201,6 +1201,76 @@ describe("DiscordTransport", () => {
       await handleMessagePromise;
     });
 
+    it("persists drained pending messages to SessionStore (issue #371)", async () => {
+      const localAgentManager = createMockAgentManager();
+      const localSessionStore = createMockSessionStore();
+
+      let resolveAgent: () => void;
+      const agentWait = new Promise<void>((resolve) => { resolveAgent = resolve; });
+
+      // Agent: emits text, waits, then turn_end (drain happens here) + agent_end
+      const agent = {
+        prompt: vi.fn(async function* () {
+          yield { type: "text_delta" as const, text: "thinking..." };
+          await agentWait;
+          yield { type: "turn_end" as const, usage: undefined };
+          yield { type: "agent_end" as const, messages: [] };
+        }),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        followUp: vi.fn(),
+      };
+      localAgentManager.get = vi.fn().mockReturnValue(agent);
+
+      const localTransport = new DiscordTransport({
+        token: "test-token",
+        agentManager: localAgentManager,
+        sessionStore: localSessionStore,
+        defaultAgentId: "default",
+      });
+      await localTransport.start();
+
+      // msg1 triggers the agent (also persisted via the normal addMessage path)
+      const t1 = 1700000000000;
+      const msg1 = makeMsg({ content: "<@bot-123> hello", id: "msg-1", createdTimestamp: t1 });
+      const inFlight = (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // msg2 and msg3 arrive while agent is busy → should be buffered
+      const msg2 = makeMsg({
+        content: "<@bot-123> follow-up two",
+        id: "msg-2",
+        createdTimestamp: t1 + 1000,
+        author: { bot: false, username: "bob", id: "user-2" },
+      });
+      const msg3 = makeMsg({
+        content: "<@bot-123> follow-up three",
+        id: "msg-3",
+        createdTimestamp: t1 + 2000,
+        author: { bot: false, username: "carol", id: "user-3" },
+      });
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg2);
+      await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg3);
+
+      // Release the agent — turn_end fires onToolComplete which should persist msg2, msg3
+      resolveAgent!();
+      await inFlight;
+
+      const calls = (localSessionStore.addMessage as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const userCalls = calls.filter((c) => (c[1] as { role: string }).role === "user");
+      // Expect: msg1 (initial), msg2, msg3
+      expect(userCalls.length).toBeGreaterThanOrEqual(3);
+
+      const buffered = userCalls.filter((c) => (c[1] as { metadata?: { buffered?: boolean } }).metadata?.buffered);
+      expect(buffered).toHaveLength(2);
+
+      const senders = buffered.map((c) => (c[1] as { metadata: { sender: string } }).metadata.sender).sort();
+      expect(senders).toEqual(["bob", "carol"]);
+
+      const timestamps = buffered.map((c) => (c[1] as { timestamp: number }).timestamp).sort();
+      expect(timestamps).toEqual([t1 + 1000, t1 + 2000]);
+    });
+
     it("clears active session and pending buffer after agent completes", async () => {
       const localAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
