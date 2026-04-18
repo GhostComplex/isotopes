@@ -13,6 +13,11 @@ import { fileURLToPath } from "node:url";
 export function resolveBundledSkillsDir(
   moduleUrl?: string,
 ): string | undefined {
+  // Skip in tests or when explicitly disabled
+  if (process.env.ISOTOPES_SKIP_BUNDLED_SKILLS === "1") {
+    return undefined;
+  }
+
   // Allow env override
   const override = process.env.ISOTOPES_BUNDLED_SKILLS_DIR?.trim();
   if (override) {
