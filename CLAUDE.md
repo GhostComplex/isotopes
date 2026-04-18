@@ -51,7 +51,6 @@ pnpm test:integration
 
 ### Tools (`src/tools/`)
 - `git.ts` / `github.ts` — Git and `gh` CLI wrappers.
-- `self-iteration.ts` — Agents modify their own SOUL.md/MEMORY.md.
 - `subagent.ts` — Subagent spawning and management.
 
 ### Other modules

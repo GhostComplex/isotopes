@@ -32,7 +32,6 @@ import {
   resolveToolGuards,
   applyToolPolicy,
 } from "./core/tools.js";
-import { createSelfIterationTools } from "./tools/self-iteration.js";
 import { createIterateCodebaseTool } from "./tools/iterate-codebase.js";
 import { createReplyReactTools, LazyTransportContext } from "./tools/reply-react.js";
 import { createSessionTools } from "./tools/sessions.js";
@@ -871,16 +870,6 @@ async function main() {
 
     // Register self-iteration tools if enabled (M10.6)
     if (agentFile.selfIteration?.enabled) {
-      const selfIterationTools = createSelfIterationTools({
-        workspacePath,
-        allowedFiles: agentFile.selfIteration.allowedFiles,
-        backup: agentFile.selfIteration.backup ?? true,
-      });
-      for (const { tool, handler } of selfIterationTools) {
-        toolRegistry.register(tool, handler);
-      }
-      logger.info(`Self-iteration tools enabled for ${agentConfig.id}`);
-
       // Register iterate_codebase tool alongside self-iteration
       const { tool: iterTool, handler: iterHandler } = createIterateCodebaseTool({
         workspacePath,

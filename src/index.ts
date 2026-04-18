@@ -245,11 +245,6 @@ export {
   closeIssue,
   commentIssue,
   getRepo,
-  createSelfIterationTools,
-  ITERATE_SELF_TOOL,
-  CREATE_SKILL_TOOL,
-  APPEND_MEMORY_TOOL,
-  DEFAULT_SELF_ITERATION_FILES,
   createSessionsSpawnTool,
   createSessionsAnnounceTool,
   createSessionTools,
@@ -266,7 +261,6 @@ export type {
   CreatePROptions,
   CreateIssueOptions,
   ReviewPROptions,
-  SelfIterationConfig,
   SessionsToolContext,
 } from "./tools/index.js";
 
