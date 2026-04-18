@@ -186,7 +186,6 @@ Built-in tools:
 - `shell` — Execute shell commands
 - `read_file`, `write_file`, `list_dir` — File operations
 - `get_current_time` — Current timestamp
-- `iterate_self`, `create_skill`, `append_memory` — Self-iteration tools
 
 Extensible via tool registration.
 
@@ -197,11 +196,11 @@ On-demand loading of task-specific instructions:
 - Progressive disclosure — only descriptions in system prompt, full content loaded on-demand
 - Compatible with [AgentSkills spec](https://agentskills.io/specification)
 
-### 8. Self-Iteration
-Agents can modify their own configuration:
-- Update SOUL.md, MEMORY.md, TOOLS.md via `iterate_self` tool
-- Create new skills via `create_skill` tool
-- Append learnings via `append_memory` tool
+### 8. Workspace Self-Evolution
+Agents modify their own configuration using generic file tools (`read_file`, `write_file`, `edit`):
+- Update SOUL.md, MEMORY.md, TOOLS.md, IDENTITY.md as they learn
+- Create new skills under `skills/{name}/SKILL.md`
+- Append to MEMORY.md or daily notes in `memory/YYYY-MM-DD.md`
 - Hot-reload system applies changes without restart
 
 ---
@@ -311,7 +310,7 @@ Agents can modify their own configuration:
 | `AgentManager` | `DefaultAgentManager` | — |
 | `SessionStore` | `DefaultSessionStore` | `SqliteSessionStore` |
 | `Transport` | `DiscordTransport`, `FeishuTransport` | `WebTransport` |
-| `Tool` | `ToolRegistry` (shell, file, git, github, self-iteration) | `WebSearchTool` |
+| `Tool` | `ToolRegistry` (shell, file, git, github) | `WebSearchTool` |
 
 ---
 
