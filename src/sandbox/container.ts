@@ -64,8 +64,9 @@ export class ContainerManager {
     name: string,
     workspacePath: string,
     access: WorkspaceAccess,
+    allowedWorkspaces: string[] = [],
   ): Promise<ContainerInfo> {
-    const args = this.buildCreateArgs(name, workspacePath, access);
+    const args = this.buildCreateArgs(name, workspacePath, access, allowedWorkspaces);
 
     const { stdout } = await execFileAsync("docker", args);
     const containerId = stdout.trim();
@@ -202,6 +203,7 @@ export class ContainerManager {
     name: string,
     workspacePath: string,
     access: WorkspaceAccess,
+    allowedWorkspaces: string[],
   ): string[] {
     const args: string[] = ["create", "--name", name, "--init"];
 
@@ -209,6 +211,14 @@ export class ContainerManager {
     const mountSuffix = access === "ro" ? ":ro" : "";
     args.push("-v", `${workspacePath}:/workspace${mountSuffix}`);
     args.push("-w", "/workspace");
+
+    // Additional read-only workspace mounts (parity with allowedWorkspaces
+    // file-tool access). Mounted at the same host path inside the container
+    // so absolute paths from the host resolve identically.
+    for (const ws of allowedWorkspaces) {
+      if (ws === workspacePath) continue;
+      args.push("-v", `${ws}:${ws}:ro`);
+    }
 
     // Network mode
     if (this.config.network) {

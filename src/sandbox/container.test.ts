@@ -142,6 +142,26 @@ describe("ContainerManager", () => {
       expect(args).toContain("--memory");
       expect(args).toContain("512m");
     });
+
+    it("mounts allowedWorkspaces as read-only at host path", async () => {
+      mockExecFile.mockResolvedValue({ stdout: "abc\n", stderr: "" });
+
+      await manager.create("test", "/workspace", "rw", ["/extra/foo", "/another/bar"]);
+
+      const args = mockExecFile.mock.calls[0][1] as string[];
+      expect(args).toContain("/extra/foo:/extra/foo:ro");
+      expect(args).toContain("/another/bar:/another/bar:ro");
+    });
+
+    it("does not duplicate workspace mount when included in allowedWorkspaces", async () => {
+      mockExecFile.mockResolvedValue({ stdout: "abc\n", stderr: "" });
+
+      await manager.create("test", "/workspace", "rw", ["/workspace", "/extra"]);
+
+      const args = mockExecFile.mock.calls[0][1] as string[];
+      expect(args).not.toContain("/workspace:/workspace:ro");
+      expect(args).toContain("/extra:/extra:ro");
+    });
   });
 
   describe("start", () => {

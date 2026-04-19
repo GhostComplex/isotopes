@@ -893,6 +893,7 @@ async function main() {
         agentId: agentConfig.id,
         isMainAgent: false,
         agentSandboxConfig: agentConfig.sandbox,
+        allowedWorkspaces: agentAllowedWorkspaces,
       });
       const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
       for (const { tool, handler } of filteredExecTools) {

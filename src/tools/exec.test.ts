@@ -478,7 +478,7 @@ describe("exec tool sandbox routing", () => {
     expect(executor.execute).toHaveBeenCalledWith(
       "agent-1",
       ["sh", "-c", "echo hi"],
-      { workspacePath: "/ws", timeout: expect.any(Number) },
+      { workspacePath: "/ws", timeout: expect.any(Number), allowedWorkspaces: undefined },
     );
     expect(result.stdout).toBe("sandboxed-out");
     expect(result.exit_code).toBe(0);
@@ -537,13 +537,42 @@ describe("exec tool sandbox routing", () => {
     expect(executor.buildExecArgv).toHaveBeenCalledWith(
       "agent-1",
       ["sh", "-c", "sleep 3"],
-      { workspacePath: "/ws" },
+      { workspacePath: "/ws", allowedWorkspaces: undefined },
     );
     expect(spawnSpy).toHaveBeenCalledWith("sleep 3", "/ws", {
       argv: ["docker", "exec", "-i", "ctr-1", "sh", "-c", "sleep 3"],
     });
     expect(result.process_id).toBe("proc_1");
     expect(result.status).toBe("running");
+
+    registry.clear();
+  });
+
+  it("threads allowedWorkspaces through to SandboxExecutor (foreground + background)", async () => {
+    const executor = makeMockSandboxExecutor();
+    const registry = new ProcessRegistry();
+    const { handler } = createExecTool({
+      cwd: "/ws",
+      registry,
+      sandboxExecutor: executor,
+      agentId: "agent-1",
+      agentSandboxConfig: sandboxConfig,
+      allowedWorkspaces: ["/extra/foo", "/extra/bar"],
+    });
+
+    await handler({ command: "ls" });
+    expect(executor.execute).toHaveBeenCalledWith(
+      "agent-1",
+      ["sh", "-c", "ls"],
+      { workspacePath: "/ws", timeout: expect.any(Number), allowedWorkspaces: ["/extra/foo", "/extra/bar"] },
+    );
+
+    await handler({ command: "sleep 3", background: true });
+    expect(executor.buildExecArgv).toHaveBeenCalledWith(
+      "agent-1",
+      ["sh", "-c", "sleep 3"],
+      { workspacePath: "/ws", allowedWorkspaces: ["/extra/foo", "/extra/bar"] },
+    );
 
     registry.clear();
   });

@@ -232,6 +232,8 @@ export interface ExecToolOptions {
   isMainAgent?: boolean;
   /** Resolved sandbox config for this agent. Required for sandbox routing. */
   agentSandboxConfig?: SandboxConfig;
+  /** Additional host workspaces to mount read-only inside the sandbox container. */
+  allowedWorkspaces?: string[];
 }
 
 /**
@@ -245,7 +247,7 @@ export function createExecTool(
 ): { tool: Tool; handler: ToolHandler } {
   const { cwd = process.cwd() } = options;
   const registry = options.registry ?? new ProcessRegistry();
-  const { sandboxExecutor, agentId, agentSandboxConfig, isMainAgent } = options;
+  const { sandboxExecutor, agentId, agentSandboxConfig, isMainAgent, allowedWorkspaces } = options;
 
   const useSandbox = (): boolean =>
     !!(sandboxExecutor && agentId && agentSandboxConfig &&
@@ -299,7 +301,7 @@ export function createExecTool(
         let argv: string[] | undefined;
         if (useSandbox()) {
           try {
-            argv = await sandboxExecutor!.buildExecArgv(agentId!, ["sh", "-c", command], { workspacePath: cwd });
+            argv = await sandboxExecutor!.buildExecArgv(agentId!, ["sh", "-c", command], { workspacePath: cwd, allowedWorkspaces });
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             log.warn("Sandbox container creation failed for background exec", { command, error: msg });
@@ -341,7 +343,7 @@ export function createExecTool(
           const result = await sandboxExecutor!.execute(
             agentId!,
             ["sh", "-c", command],
-            { workspacePath: cwd, timeout: timeoutMs },
+            { workspacePath: cwd, timeout: timeoutMs, allowedWorkspaces },
           );
 
           log.info("Command executed (sandbox)", { command, cwd, exitCode: result.exitCode });

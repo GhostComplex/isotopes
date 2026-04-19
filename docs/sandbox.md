@@ -65,6 +65,14 @@ The agent's workspace directory (`~/.isotopes/workspace-<id>/` or whatever
 the changes persist to the host. With `ro` they cannot — but most agents
 need `rw` to maintain their own state.
 
+Any directories listed in the agent's `allowedWorkspaces` (granted to host
+file tools like `read_file` / `edit`) are also bind-mounted into the
+container, **read-only**, at the same host path. This keeps `exec cat
+/some/allowed/path` and `read_file /some/allowed/path` consistent. Write
+access through `exec` to those paths is intentionally not supported — use
+the workspace mount or a dedicated rw-allowed directory if writes are
+needed.
+
 ## Background processes
 
 `exec` with `background: true` works in sandbox mode: the host spawns a

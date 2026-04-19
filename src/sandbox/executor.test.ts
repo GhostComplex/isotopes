@@ -70,6 +70,7 @@ describe("SandboxExecutor", () => {
         "isotopes-sandbox-agent-1",
         "/home/user/workspace",
         "rw",
+        [],
       );
       expect(mockManager.start).toHaveBeenCalledWith("container-123");
       expect(mockManager.exec).toHaveBeenCalledWith("container-123", [
@@ -154,6 +155,21 @@ describe("SandboxExecutor", () => {
         "isotopes-sandbox-agent-1",
         "/tmp",
         "rw",
+        [],
+      );
+    });
+
+    it("passes allowedWorkspaces through to ContainerManager.create", async () => {
+      await executor.execute("agent-1", ["ls"], {
+        workspacePath: "/ws",
+        allowedWorkspaces: ["/extra/dir", "/another"],
+      });
+
+      expect(mockManager.create).toHaveBeenCalledWith(
+        "isotopes-sandbox-agent-1",
+        "/ws",
+        "rw",
+        ["/extra/dir", "/another"],
       );
     });
 
@@ -179,6 +195,7 @@ describe("SandboxExecutor", () => {
         "isotopes-sandbox-agent-1",
         "/ws",
         "rw",
+        [],
       );
       expect(mockManager.start).toHaveBeenCalled();
       expect(mockManager.buildExecArgv).toHaveBeenCalledWith("container-123", [

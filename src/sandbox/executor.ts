@@ -18,6 +18,8 @@ export interface SandboxExecOptions {
   workspacePath?: string;
   /** Execution timeout in milliseconds */
   timeout?: number;
+  /** Additional host paths to mount read-only inside the container */
+  allowedWorkspaces?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -55,7 +57,7 @@ export class SandboxExecutor {
     command: string[],
     options?: SandboxExecOptions,
   ): Promise<ExecResult> {
-    const container = await this.ensureContainer(agentId, options?.workspacePath);
+    const container = await this.ensureContainer(agentId, options?.workspacePath, options?.allowedWorkspaces);
 
     if (options?.timeout) {
       return this.execWithTimeout(container.id, command, options.timeout);
@@ -78,7 +80,7 @@ export class SandboxExecutor {
     command: string[],
     options?: SandboxExecOptions,
   ): Promise<string[]> {
-    const container = await this.ensureContainer(agentId, options?.workspacePath);
+    const container = await this.ensureContainer(agentId, options?.workspacePath, options?.allowedWorkspaces);
     return this.containerManager.buildExecArgv(container.id, command);
   }
 
@@ -138,6 +140,7 @@ export class SandboxExecutor {
   private async ensureContainer(
     agentId: string,
     workspacePath?: string,
+    allowedWorkspaces?: string[],
   ): Promise<ContainerInfo> {
     const existing = this.containers.get(agentId);
 
@@ -171,6 +174,7 @@ export class SandboxExecutor {
       containerName,
       workspace,
       access,
+      allowedWorkspaces ?? [],
     );
 
     await this.containerManager.start(container.id);
