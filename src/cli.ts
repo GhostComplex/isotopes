@@ -6,7 +6,6 @@
 // before anything else loads (SDK auth, model overrides). Existing env wins,
 // so .env.local and shell exports stay authoritative.
 import { resolveBundledSkillsDir } from "./skills/bundled-dir.js";
-import "./core/claude-settings-init.js";
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { VERSION } from "./version.js";
