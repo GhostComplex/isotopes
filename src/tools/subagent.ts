@@ -10,6 +10,8 @@ import {
   type SubagentEvent,
 } from "../subagent/index.js";
 import { taskRegistry } from "../subagent/task-registry.js";
+import { createSubagentRecorder } from "../subagent/persistence.js";
+import type { SessionStore } from "../core/types.js";
 import type { SubagentPermissionMode } from "../core/config.js";
 
 const log = createLogger("tools:subagent");
@@ -48,6 +50,8 @@ export interface SpawnSubagentOptions {
   channelId?: string;
   /** Thread ID where subagent streams output (for /stop support) */
   threadId?: string;
+  /** Parent agent id, used as the owner of the persisted subagent session. */
+  parentAgentId?: string;
 }
 
 /** Result from spawning a sub-agent */
@@ -71,6 +75,18 @@ let sharedBackendKey: string | undefined;
 
 /** Cached backend config */
 let backendConfig: SubagentBackendConfig = {};
+
+/** Optional SessionStore for persisting subagent runs (set by app startup). */
+let subagentSessionStore: SessionStore | undefined;
+
+/**
+ * Register the SessionStore used to persist subagent run transcripts.
+ * Pass `undefined` to disable persistence (default). Calling without
+ * a store leaves spawnSubagent() functionally unchanged.
+ */
+export function setSubagentSessionStore(store: SessionStore | undefined): void {
+  subagentSessionStore = store;
+}
 
 /**
  * Initialize the subagent backend with configuration.
@@ -157,6 +173,21 @@ export async function spawnSubagent(
     taskRegistry.setThreadId(taskId, options.threadId);
   }
 
+  // Bind to SessionStore (no-op when no store has been registered).
+  const recorder = await createSubagentRecorder({
+    store: subagentSessionStore,
+    parentAgentId: options.parentAgentId ?? "unknown",
+    parentSessionId: options.sessionId,
+    taskId,
+    backend: agent,
+    cwd: options.cwd,
+    prompt,
+    channelId: options.channelId,
+    threadId: options.threadId,
+  });
+
+  const startedAt = Date.now();
+
   try {
     const events = backend.spawn(taskId, {
       agent,
@@ -172,6 +203,7 @@ export async function spawnSubagent(
     for await (const event of events) {
       collected.push(event);
       options.onEvent?.(event);
+      await recorder.record(event);
     }
 
     // Build result from collected events
@@ -181,6 +213,13 @@ export async function spawnSubagent(
       taskId,
       success: result.success,
       exitCode: result.exitCode,
+    });
+
+    await recorder.patchMetadata({
+      exitCode: result.exitCode,
+      costUsd: collected.find((e) => e.costUsd !== undefined)?.costUsd,
+      durationMs: Date.now() - startedAt,
+      ...(result.error ? { error: result.error } : {}),
     });
 
     taskRegistry.unregister(taskId);
@@ -195,6 +234,12 @@ export async function spawnSubagent(
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     log.error("Sub-agent failed", { taskId, error });
+
+    await recorder.patchMetadata({
+      exitCode: 1,
+      error,
+      durationMs: Date.now() - startedAt,
+    });
 
     taskRegistry.unregister(taskId);
 

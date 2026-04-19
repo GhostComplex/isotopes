@@ -58,6 +58,15 @@ export function getSessionsDir(agentId: string): string {
   return path.join(getWorkspacePath(agentId), "sessions");
 }
 
+/**
+ * Get the directory holding subagent run transcripts.
+ * One JSONL per run lives under here (keyed by virtual agentId =
+ * `subagent:<parentAgentId>:<taskId>`). See docs/subagent-persistence.md.
+ */
+export function getSubagentSessionsDir(): string {
+  return path.join(getIsotopesHome(), "subagent-sessions");
+}
+
 // ---------------------------------------------------------------------------
 // Config paths
 // ---------------------------------------------------------------------------

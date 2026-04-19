@@ -17,7 +17,7 @@ import {
   resolveSubagentConfig,
   resolveSandboxConfigFromFile,
 } from "./core/config.js";
-import { initSubagentBackend } from "./tools/subagent.js";
+import { initSubagentBackend, setSubagentSessionStore } from "./tools/subagent.js";
 import { PiMonoCore } from "./core/pi-mono.js";
 import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
@@ -43,6 +43,7 @@ import {
   ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
   getSessionsDir,
+  getSubagentSessionsDir,
   getThreadBindingsPath,
   resolveExplicitWorkspacePath,
 } from "./core/paths.js";
@@ -779,6 +780,7 @@ async function main() {
   logger.info(`Loaded ${config.agents.length} agent(s)`);
 
   // Initialize subagent backend with config (M8)
+  let subagentRunStore: DefaultSessionStore | undefined;
   if (config.subagent?.enabled) {
     const subagentConfig = resolveSubagentConfig(config.subagent);
     initSubagentBackend({
@@ -786,6 +788,17 @@ async function main() {
       allowedTools: subagentConfig.allowedTools,
     });
     logger.info(`Subagent backend initialized (permissionMode: ${subagentConfig.permissionMode})`);
+
+    // Persist subagent run transcripts to ~/.isotopes/subagent-sessions.
+    // The store is shared across all parent agents — each run is keyed by
+    // a virtual agentId (`subagent:<parentAgentId>:<taskId>`).
+    const subagentSessionStore = new DefaultSessionStore({
+      dataDir: getSubagentSessionsDir(),
+    });
+    await subagentSessionStore.init();
+    setSubagentSessionStore(subagentSessionStore);
+    subagentRunStore = subagentSessionStore;
+    logger.info(`Subagent session transcripts → ${getSubagentSessionsDir()}`);
   }
 
   // Initialize core with tool registry
@@ -888,6 +901,7 @@ async function main() {
       agentConfig.codingMode,
       config.subagent?.maxTurns,
       fsImpl,
+      agentConfig.id,
     );
 
     // Apply tool policy (allow/deny) before registration
@@ -1170,6 +1184,7 @@ async function main() {
         store.destroy();
       }
     }
+    subagentRunStore?.destroy();
 
     // Kill orphaned background processes (#286, #289)
     for (const registry of processRegistries.values()) {
@@ -1203,6 +1218,7 @@ async function main() {
         store.destroy();
       }
     }
+    subagentRunStore?.destroy();
 
     // Kill orphaned background processes (#286, #289)
     for (const registry of processRegistries.values()) {

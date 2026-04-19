@@ -154,6 +154,8 @@ export interface SubagentToolOptions {
   timeout?: number;
   /** Maximum number of turns for the sub-agent (default: 50) */
   maxTurns?: number;
+  /** Parent agent id, used as the owner of the persisted subagent run. */
+  parentAgentId?: string;
 }
 /**
  * Create a sub-agent spawning tool.
@@ -164,7 +166,7 @@ export interface SubagentToolOptions {
  * posted to the main channel when complete.
  */
 export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; handler: ToolHandler } {
-  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns } = options;
+  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId } = options;
   const supportedAgents = getSupportedAgents();
   const agents = allowedAgents ?? [...supportedAgents];
   // Combine workspace path with additional allowed workspaces
@@ -226,10 +228,10 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
         let result: string;
         if (discordContext) {
           // Run with Discord streaming
-          result = await runSubagentWithDiscord(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns);
+          result = await runSubagentWithDiscord(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId);
         } else {
           // Run without Discord streaming (original behavior)
-          result = await runSubagentPlain(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, maxTurns);
+          result = await runSubagentPlain(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, maxTurns, parentAgentId);
         }
 
         // Record failure if result indicates failure
@@ -259,6 +261,7 @@ async function runSubagentPlain(
   timeout: number | undefined,
   allowedWorkspaces: string[],
   maxTurns?: number,
+  parentAgentId?: string,
 ): Promise<string> {
   const result = await spawnSubagent(task, {
     agent,
@@ -266,6 +269,7 @@ async function runSubagentPlain(
     timeout,
     allowedWorkspaces,
     maxTurns,
+    parentAgentId,
   });
   if (result.success) {
     return result.output ?? "[sub-agent completed with no output]";
@@ -285,6 +289,7 @@ async function runSubagentWithDiscord(
   allowedWorkspaces: string[],
   context: NonNullable<ReturnType<typeof getSubagentContext>>,
   maxTurns?: number,
+  parentAgentId?: string,
 ): Promise<string> {
   const { sendMessage, createThread, channelId, showToolCalls = true, onComplete } = context;
   // Create Discord sink with thread enabled
@@ -318,6 +323,7 @@ async function runSubagentWithDiscord(
       allowedWorkspaces,
       channelId,
       threadId, // Pass threadId for /stop support in threads
+      parentAgentId,
       onEvent: async (event) => {
         events.push(event);
         await sink.sendEvent(event);
@@ -818,6 +824,7 @@ export function createWorkspaceToolsWithGuards(
   codingMode: "subagent" | "direct" | "auto" = "auto",
   subagentMaxTurns?: number,
   fsImpl?: FsLike,
+  parentAgentId?: string,
 ): { tool: Tool; handler: ToolHandler }[] {
   const guards = resolveToolGuards(settings);
   // Always use workspacePath as base for relative path resolution.
@@ -835,7 +842,7 @@ export function createWorkspaceToolsWithGuards(
     createTimeTool(),
   ];
   if (subagentEnabled) {
-    tools.push(createSubagentTool({ workspacePath, allowedWorkspaces, maxTurns: subagentMaxTurns }));
+    tools.push(createSubagentTool({ workspacePath, allowedWorkspaces, maxTurns: subagentMaxTurns, parentAgentId }));
   }
   // Web fetch tool
   if (settings?.web) {

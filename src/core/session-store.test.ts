@@ -580,4 +580,53 @@ describe("DefaultSessionStore", () => {
     });
   });
 
+  describe("setMetadata", () => {
+    it("merges patch into existing metadata and persists to index", async () => {
+      const session = await store.create("subagent:dev:task-1", {
+        transport: "subagent",
+        subagent: {
+          parentAgentId: "dev",
+          taskId: "task-1",
+          backend: "claude",
+        },
+      });
+
+      await store.setMetadata(session.id, {
+        subagent: {
+          parentAgentId: "dev",
+          taskId: "task-1",
+          backend: "claude",
+          exitCode: 0,
+          costUsd: 0.42,
+          durationMs: 1234,
+        },
+      });
+
+      const got = await store.get(session.id);
+      expect(got?.metadata?.subagent?.exitCode).toBe(0);
+      expect(got?.metadata?.subagent?.costUsd).toBe(0.42);
+
+      // Reopen the store to confirm the patch survived persistence.
+      const reopened = new DefaultSessionStore({ dataDir: tempDir });
+      await reopened.init();
+      const reloaded = await reopened.get(session.id);
+      expect(reloaded?.metadata?.subagent?.exitCode).toBe(0);
+      expect(reloaded?.metadata?.subagent?.durationMs).toBe(1234);
+      reopened.destroy();
+    });
+
+    it("rejects dropping the required transport field", async () => {
+      const session = await store.create("agent-1");
+      await expect(
+        store.setMetadata(session.id, { transport: undefined }),
+      ).rejects.toThrow(/transport/);
+    });
+
+    it("throws on unknown sessionId", async () => {
+      await expect(store.setMetadata("nope", { transport: "discord" })).rejects.toThrow(
+        /not found/,
+      );
+    });
+  });
+
 });

@@ -217,6 +217,34 @@ export class DefaultSessionStore implements SessionStore {
     this.debouncedPersistIndex();
   }
 
+  async setMetadata(sessionId: string, patch: Partial<SessionMetadata>): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session "${sessionId}" not found`);
+    }
+
+    const prevKey = session.metadata?.key;
+    const merged = { ...(session.metadata ?? {}), ...patch } as SessionMetadata;
+    if (!merged.transport) {
+      throw new Error(`setMetadata: cannot drop required "transport" field on session "${sessionId}"`);
+    }
+
+    // Maintain key index if the key changed.
+    if (prevKey && prevKey !== merged.key) {
+      this.keyIndex.delete(prevKey);
+    }
+    if (merged.key && merged.key !== prevKey) {
+      const existing = this.keyIndex.get(merged.key);
+      if (existing && existing !== sessionId) {
+        throw new Error(`Session with key already exists: ${merged.key}`);
+      }
+      this.keyIndex.set(merged.key, sessionId);
+    }
+
+    session.metadata = merged;
+    await this.persistIndex();
+  }
+
   // -------------------------------------------------------------------------
   // TTL & cleanup
   // -------------------------------------------------------------------------
