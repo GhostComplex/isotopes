@@ -42,7 +42,15 @@
     "discord",
     "openai"
   ],
-  "author": "",
+  "author": "Steins.Z",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GhostComplex/isotopes.git"
+  },
+  "bugs": {
+    "url": "https://github.com/GhostComplex/isotopes/issues"
+  },
+  "homepage": "https://github.com/GhostComplex/isotopes#readme",
   "license": "MIT",
   "engines": {
     "node": ">=20"
