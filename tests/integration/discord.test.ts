@@ -24,12 +24,10 @@
  */
 
 import { Client, GatewayIntentBits, TextChannel, Events } from "discord.js";
-import {
-  PiMonoCore,
-  DefaultAgentManager,
-  DefaultSessionStore,
-  DiscordTransport,
-} from "../../src/index.js";
+import { PiMonoCore } from "../../src/core/pi-mono.js";
+import { DefaultAgentManager } from "../../src/core/agent-manager.js";
+import { DefaultSessionStore } from "../../src/core/session-store.js";
+import { DiscordTransport } from "../../src/transports/discord.js";
 import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
