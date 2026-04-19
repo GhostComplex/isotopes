@@ -29,9 +29,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Non-root user; uid 1000 matches typical host dev user, avoiding most
-# bind-mount permission issues. Override at build/run time if your host
-# user uses a different uid.
-RUN useradd -m -u 1000 -s /bin/bash agent
+# bind-mount permission issues. The base image ships a `node` user on
+# uid 1000 — remove it first. Override at build time if your host user
+# uses a different uid.
+RUN userdel -r node 2>/dev/null || true \
+ && useradd -m -u 1000 -s /bin/bash agent
 
 WORKDIR /workspace
 USER agent
