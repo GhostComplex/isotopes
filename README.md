@@ -97,3 +97,8 @@ channels:
 ```
 
 See [isotopes.example.yaml](isotopes.example.yaml) for all options.
+
+## License
+
+MIT
+
