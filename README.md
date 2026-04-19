@@ -17,31 +17,39 @@ A lightweight, self-hostable AI agent framework for multi-agent collaboration ac
 - **Workspace hot-reload** — Auto-reload agent config and prompts on file changes
 - **Local-first** — Everything runs on your machine
 
-## Quick Start (from source)
+## Quick Start
 
 ```bash
-# Clone the repo
-git clone https://github.com/GhostComplex/isotopes.git
-cd isotopes
-
-# Install dependencies
-pnpm install
-
-# Build
-pnpm build
+# Install globally from npm
+npm install -g @ghostcomplex/isotopes
 
 # Create config
 mkdir -p ~/.isotopes
-cp isotopes.example.yaml ~/.isotopes/isotopes.yaml
+curl -fsSL https://raw.githubusercontent.com/GhostComplex/isotopes/main/isotopes.example.yaml \
+  -o ~/.isotopes/isotopes.yaml
 # Edit ~/.isotopes/isotopes.yaml with your settings
 
 # Run in foreground
-node dist/cli.js
+isotopes
 
 # Or run as daemon
-node dist/cli.js start
-node dist/cli.js status
-node dist/cli.js stop
+isotopes start
+isotopes status
+isotopes stop
+```
+
+### From source
+
+```bash
+git clone https://github.com/GhostComplex/isotopes.git
+cd isotopes
+pnpm install
+pnpm build
+
+mkdir -p ~/.isotopes
+cp isotopes.example.yaml ~/.isotopes/isotopes.yaml
+
+node dist/cli.js
 ```
 
 ## CLI
