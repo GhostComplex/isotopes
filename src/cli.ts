@@ -10,7 +10,6 @@ import "./core/claude-settings-init.js";
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { VERSION } from "./version.js";
-import type { Message } from "./core/types.js";
 import {
   loadConfig,
   toAgentConfig,
@@ -116,6 +115,7 @@ const { values, positionals } = parseArgs({
     config: { type: "string", short: "c" },
     agent: { type: "string" },
     json: { type: "boolean" },
+    message: { type: "string" },
     lines: { type: "string" },
     level: { type: "string" },
     follow: { type: "boolean", short: "f" },
@@ -138,8 +138,8 @@ Usage:
   isotopes restart [--config path]   Restart the daemon
   isotopes reload [agentId]          Reload workspace (hot-reload)
 
-  isotopes chat "prompt" [--agent id] [--json]
-                                     One-shot chat with an agent
+  isotopes tui [--agent id] [--message "text"]
+                                     Interactive TUI chat with an agent
 
   isotopes sessions list             List all sessions
   isotopes sessions show <id>        Show session details
@@ -165,8 +165,9 @@ Options:
   -h, --help       Show this help
   -v, --version    Show version
   -c, --config     Path to config file
-  --agent          Agent ID for chat command
-  --json           Output chat response as JSON
+  --agent          Agent ID for tui command
+  --message        Send an initial message in TUI mode
+  --json           Output as JSON (sessions, cron commands)
   --lines          Number of log lines (default: 50)
   --level          Filter logs by level (debug/info/warn/error)
   -f, --follow     Follow log output
@@ -336,93 +337,6 @@ async function handleServiceCommand(): Promise<void> {
           `Usage: isotopes service install|uninstall|enable|disable`,
       );
       process.exit(1);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Chat command — one-shot chat with an agent
-// ---------------------------------------------------------------------------
-
-async function handleChatCommand(): Promise<void> {
-  const prompt = positionals[0];
-
-  if (!prompt) {
-    console.error("Usage: isotopes chat \"your prompt here\" [--agent id] [--json]");
-    process.exit(1);
-  }
-
-  // Load config
-  const configPath = values.config ?? getConfigPath();
-  const config = await loadConfig(configPath);
-
-  if (config.agents.length === 0) {
-    console.error("No agents configured");
-    process.exit(1);
-  }
-
-  // Determine which agent to use
-  const agentId = values.agent ?? config.agents[0]?.id;
-  const agentFile = config.agents.find((a) => a.id === agentId);
-
-  if (!agentFile) {
-    console.error(`Agent not found: ${agentId}`);
-    console.error(`Available agents: ${config.agents.map((a) => a.id).join(", ")}`);
-    process.exit(1);
-  }
-
-  // Convert to agent config and load workspace
-  const agentConfig = toAgentConfig(agentFile, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
-
-  // Resolve workspace path
-  let workspacePath: string;
-  if (agentFile.workspace) {
-    const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
-    workspacePath = await ensureExplicitWorkspaceDir(resolved);
-  } else {
-    const isSingleAgent = config.agents.length === 1;
-    const workspaceKey = isSingleAgent ? "default" : agentFile.id;
-    workspacePath = await ensureWorkspaceDir(workspaceKey);
-  }
-
-  await ensureWorkspaceStructure(workspacePath);
-  const workspaceContext = await loadWorkspaceContext(workspacePath, { bundledPath: resolveBundledSkillsDir() });
-
-  // Build system prompt (no extra options needed for CLI chat)
-  const agentSystemPrompt = buildSystemPrompt(agentConfig.systemPrompt, workspaceContext);
-
-  // Create agent via PiMonoCore
-  const core = new PiMonoCore();
-  const agentManager = new DefaultAgentManager(core);
-
-  const agent = await agentManager.create({
-    ...agentConfig,
-    systemPrompt: agentSystemPrompt,
-  });
-
-  // Stream the response
-  let responseText = "";
-  const userMessage: Message = {
-    role: "user",
-    content: [{ type: "text", text: prompt }],
-  };
-  const events = agent.prompt([userMessage]);
-
-  for await (const event of events) {
-    if (event.type === "text_delta") {
-      if (!values.json) {
-        process.stdout.write(event.text);
-      }
-      responseText += event.text;
-    }
-  }
-
-  if (values.json) {
-    console.log(JSON.stringify({ agent: agentId, prompt, response: responseText }));
-  } else {
-    // Ensure newline at end
-    if (!responseText.endsWith("\n")) {
-      console.log();
-    }
   }
 }
 
@@ -1241,9 +1155,11 @@ async function run(): Promise<void> {
       await handleServiceCommand();
       break;
 
-    case "chat":
-      await handleChatCommand();
+    case "tui": {
+      const { launchTui } = await import("./tui/index.js");
+      await launchTui({ agent: values.agent, config: values.config, message: values.message });
       break;
+    }
 
     case "sessions":
       await handleSessionsCommand();
