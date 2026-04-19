@@ -164,6 +164,10 @@ subagent:
   defaultAgent: main
   allowedAgents:
     - main
+  # claude:                           # Claude Code SDK credentials
+  #   authToken: ${ANTHROPIC_AUTH_TOKEN}     # → ANTHROPIC_AUTH_TOKEN for spawned process
+  #   baseUrl: ${ANTHROPIC_BASE_URL}         # → ANTHROPIC_BASE_URL for spawned process
+  #   pathToClaudeCodeExecutable: /custom/path/to/claude
   # subagent:                         # M7/M8 subagent execution
   #   defaultAgent: main
   #   allowedAgents: [main]

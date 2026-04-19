@@ -12,7 +12,7 @@ import {
 import { taskRegistry } from "../subagent/task-registry.js";
 import { createSubagentRecorder } from "../subagent/persistence.js";
 import type { SessionStore } from "../core/types.js";
-import type { SubagentPermissionMode } from "../core/config.js";
+import type { SubagentClaudeConfigFile, SubagentPermissionMode } from "../core/config.js";
 
 const log = createLogger("tools:subagent");
 
@@ -26,6 +26,8 @@ export interface SubagentBackendConfig {
   permissionMode?: SubagentPermissionMode;
   /** Allowed tools for allowlist mode */
   allowedTools?: string[];
+  /** Claude-specific settings (auth, base URL, executable path) */
+  claude?: SubagentClaudeConfigFile;
 }
 
 /** Options for spawning a sub-agent */
@@ -113,6 +115,7 @@ function getBackend(allowedWorkspaces?: string[]): SubagentBackend {
       allowedWorkspaceRoots: allowedWorkspaces,
       permissionMode: backendConfig.permissionMode,
       allowedTools: backendConfig.allowedTools,
+      claude: backendConfig.claude,
     });
     sharedBackendKey = key;
   }

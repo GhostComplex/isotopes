@@ -195,10 +195,28 @@ export type SubagentPermissionMode = "skip" | "allowlist" | "default";
 /** Default allowed tools for subagent execution (M8) */
 export const DEFAULT_SUBAGENT_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "LS"];
 
+/**
+ * Claude-specific settings for the subagent backend.
+ *
+ * Replaces the previous behavior of reading `~/.claude/settings.json`. Values
+ * here are passed *explicitly* to the spawned Claude Code process via the
+ * SDK's `env` option — they do NOT mutate the parent's `process.env`.
+ */
+export interface SubagentClaudeConfigFile {
+  /** Auth token (sets ANTHROPIC_AUTH_TOKEN for the spawned process) */
+  authToken?: string;
+  /** Base URL (sets ANTHROPIC_BASE_URL for the spawned process) */
+  baseUrl?: string;
+  /** Override the Claude Code executable path */
+  pathToClaudeCodeExecutable?: string;
+}
+
 /** Sub-agent execution configuration in config file (M7/M8) */
 export interface SubagentConfigFile {
   /** Whether subagent backend is enabled. Default: false */
   enabled?: boolean;
+  /** Claude-specific settings (auth, base URL, executable path) */
+  claude?: SubagentClaudeConfigFile;
   /** Default sub-agent to use when spawning sub-agents */
   defaultAgent?: string;
   /** Agents allowed to be spawned as sub-agents */
@@ -244,6 +262,7 @@ export interface ResolvedSubagentConfig {
   allowedTools: string[];
   useThread: boolean;
   showToolCalls: boolean;
+  claude?: SubagentClaudeConfigFile;
 }
 
 /** Cron job configuration in config file */
@@ -410,6 +429,7 @@ export function resolveSubagentConfig(
     allowedTools,
     useThread: subagentConfig?.useThread ?? true,
     showToolCalls: subagentConfig?.showToolCalls ?? true,
+    ...(subagentConfig?.claude && { claude: subagentConfig.claude }),
   };
 }
 

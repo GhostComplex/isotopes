@@ -12,7 +12,7 @@ import {
   type SubagentResult,
   type SubagentSpawnOptions,
 } from "./types.js";
-import type { SubagentPermissionMode } from "../core/config.js";
+import type { SubagentClaudeConfigFile, SubagentPermissionMode } from "../core/config.js";
 import { DEFAULT_SUBAGENT_ALLOWED_TOOLS } from "../core/config.js";
 
 const log = createLogger("subagent:backend");
@@ -148,6 +148,8 @@ export interface SubagentBackendOptions {
   permissionMode?: SubagentPermissionMode;
   /** Tool allowlist for "allowlist" mode. Default: DEFAULT_SUBAGENT_ALLOWED_TOOLS */
   allowedTools?: string[];
+  /** Claude-specific settings (auth, base URL, executable path) */
+  claude?: SubagentClaudeConfigFile;
 }
 
 /**
@@ -160,6 +162,7 @@ export class SubagentBackend {
   private allowedRoots: string[];
   private permissionMode: SubagentPermissionMode;
   private allowedTools: string[];
+  private claude?: SubagentClaudeConfigFile;
   /** Workspace key for singleton comparison (used by getBackend cache) */
   public workspacesKey: string;
 
@@ -172,6 +175,7 @@ export class SubagentBackend {
       this.allowedRoots = options.allowedWorkspaceRoots ?? [];
       this.permissionMode = options.permissionMode ?? "allowlist";
       this.allowedTools = options.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
+      this.claude = options.claude;
     }
     this.workspacesKey = this.allowedRoots.slice().sort().join(":");
   }
@@ -239,6 +243,20 @@ export class SubagentBackend {
     if (translated.allowedTools) sdkOptions.allowedTools = translated.allowedTools;
     if (options.model) sdkOptions.model = options.model;
     if (options.maxTurns !== undefined) sdkOptions.maxTurns = options.maxTurns;
+    if (this.claude?.pathToClaudeCodeExecutable) {
+      sdkOptions.pathToClaudeCodeExecutable = this.claude.pathToClaudeCodeExecutable;
+    }
+
+    // Inject Claude credentials into the spawned process's env without
+    // mutating the parent's process.env. Only set when configured — if
+    // unset, the SDK falls back to its normal process.env defaults.
+    const envOverrides: Record<string, string> = {};
+    if (this.claude?.authToken) envOverrides.ANTHROPIC_AUTH_TOKEN = this.claude.authToken;
+    if (this.claude?.baseUrl) envOverrides.ANTHROPIC_BASE_URL = this.claude.baseUrl;
+    if (Object.keys(envOverrides).length > 0) {
+      sdkOptions.env = { ...process.env, ...envOverrides };
+    }
+
     return sdkOptions;
   }
 

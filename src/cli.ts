@@ -785,6 +785,7 @@ async function main() {
     initSubagentBackend({
       permissionMode: subagentConfig.permissionMode,
       allowedTools: subagentConfig.allowedTools,
+      claude: subagentConfig.claude,
     });
     logger.info(`Subagent backend initialized (permissionMode: ${subagentConfig.permissionMode})`);
 
