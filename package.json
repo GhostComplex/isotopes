@@ -12,7 +12,6 @@
     "isotopes.example.yaml",
     "README.md",
     "LICENSE",
-    "!dist/**/*.map",
     "!dist/**/*.test.js",
     "!dist/**/*.test.d.ts",
     "!dist/**/test-helpers.js",
