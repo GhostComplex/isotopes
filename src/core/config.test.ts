@@ -632,8 +632,8 @@ session:
       expect(resolveSandboxConfigFromFile("test-agent")).toBeUndefined();
     });
 
-    it("resolves agent-level sandbox config", () => {
-      const config = resolveSandboxConfigFromFile("test-agent", {
+    it("resolves an agents-level sandbox config (no per-agent override)", () => {
+      const config = resolveSandboxConfigFromFile("test-agent", undefined, {
         mode: "all",
         docker: { image: "custom:latest" },
       });
@@ -654,14 +654,45 @@ session:
       expect(config!.mode).toBe("non-main");
     });
 
-    it("agent config overrides default config", () => {
+    it("per-agent { mode: 'off' } turns off sandbox while inheriting docker from defaults", () => {
       const config = resolveSandboxConfigFromFile(
         "test-agent",
         { mode: "off" },
-        { mode: "all" },
+        { mode: "all", docker: { image: "team:latest" } },
       );
 
       expect(config!.mode).toBe("off");
+      // Docker config still resolved from defaults — even though sandbox is
+      // off here, downstream code can still read the resolved shape uniformly.
+      expect(config!.docker?.image).toBe("team:latest");
+    });
+
+    it("rejects per-agent sandbox.docker with a clear error", () => {
+      expect(() =>
+        resolveSandboxConfigFromFile(
+          "test-agent",
+          { mode: "all", docker: { image: "agent-specific:latest" } },
+          { mode: "all", docker: { image: "team:latest" } },
+        ),
+      ).toThrow(/sandbox\.docker is not supported at the per-agent level/);
+    });
+
+    it("propagates pidsLimit / capDrop / capAdd / noNewPrivileges from file", () => {
+      const config = resolveSandboxConfigFromFile("test-agent", undefined, {
+        mode: "all",
+        docker: {
+          image: "x:latest",
+          pidsLimit: 512,
+          capDrop: ["ALL"],
+          capAdd: ["NET_ADMIN"],
+          noNewPrivileges: false,
+        },
+      });
+
+      expect(config!.docker?.pidsLimit).toBe(512);
+      expect(config!.docker?.capDrop).toEqual(["ALL"]);
+      expect(config!.docker?.capAdd).toEqual(["NET_ADMIN"]);
+      expect(config!.docker?.noNewPrivileges).toBe(false);
     });
   });
 

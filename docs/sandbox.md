@@ -24,25 +24,40 @@ non-root `agent` user with uid 1000.
 
 ## Configure
 
-In `~/.isotopes/isotopes.yaml`:
+Sandbox config is layered openclaw-style: an **agents-level** block (under
+`agents.defaults.sandbox` or top-level `sandbox`) supplies docker / mount
+defaults; each agent may overlay a partial **per-agent** override (typically
+just `mode: "off"` to opt one agent out).
 
 ```yaml
-sandbox:
-  mode: all              # off | non-main | all
-  workspaceAccess: rw    # rw | ro
-  docker:
-    image: isotopes-sandbox:latest
-    network: bridge      # bridge | host | none
-    cpuLimit: 1.5
-    memoryLimit: 1g
-    pidsLimit: 256       # 0 disables
-    capDrop: ["ALL"]
-    capAdd: ["DAC_OVERRIDE", "CHOWN", "FOWNER"]
-    noNewPrivileges: true
+# Agents-level (top-level `sandbox` is also accepted).
+agents:
+  defaults:
+    sandbox:
+      mode: all              # off | non-main | all
+      workspaceAccess: rw    # rw | ro
+      docker:
+        image: isotopes-sandbox:latest
+        network: bridge      # bridge | host | none
+        cpuLimit: 1.5
+        memoryLimit: 1g
+        pidsLimit: 256       # 0 disables
+        capDrop: ["ALL"]
+        capAdd: []           # opt-in only; defaults to none. Caps like
+                             # DAC_OVERRIDE are kernel-ignored for the
+                             # non-root container user anyway.
+        noNewPrivileges: true
+  list:
+    - id: trusted-bot
+      sandbox:
+        mode: off            # this single agent runs on the host
+    - id: untrusted-bot
+      # inherits agents.defaults.sandbox
 ```
 
-Per-agent overrides are supported via the same shape under an agent's `sandbox`
-key.
+Per-agent `sandbox.docker` is **rejected at config load** — there is one
+`ContainerManager` per process, so the docker block lives at the agents-level.
+Per-agent `sandbox` may only override `mode` and `workspaceAccess`.
 
 ## Modes
 

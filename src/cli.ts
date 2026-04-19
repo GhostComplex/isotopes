@@ -15,6 +15,7 @@ import {
   loadConfig,
   toAgentConfig,
   resolveSubagentConfig,
+  resolveSandboxConfigFromFile,
 } from "./core/config.js";
 import { initSubagentBackend } from "./tools/subagent.js";
 import { PiMonoCore } from "./core/pi-mono.js";
@@ -797,29 +798,38 @@ async function main() {
   const processRegistries = new Map<string, ProcessRegistry>();
   const isSingleAgent = config.agents.length === 1;
 
-  // Build a single SandboxExecutor if any agent has sandbox enabled.
-  // Per-agent containers are lazy-created on first exec call.
+  // Build a single SandboxExecutor when sandboxing is enabled anywhere.
+  // The agents-level sandbox config (agents.defaults.sandbox or top-level
+  // sandbox) supplies docker/workspaceAccess; per-agent `sandbox` is a
+  // partial override (typically `mode: "off"`). The runtime maintains one
+  // global ContainerManager — per-agent docker overrides are rejected at
+  // config-load time.
   let sandboxExecutor: SandboxExecutor | undefined;
-  const anySandboxed = config.agents.some((a) => {
-    const cfg = toAgentConfig(a, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
-    return cfg.sandbox && cfg.sandbox.mode !== "off";
-  });
+  const baseSandboxFile = config.agentDefaults?.sandbox ?? config.sandbox;
+  const resolvedAgentConfigs = config.agents.map((a) =>
+    toAgentConfig(a, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox),
+  );
+  const anySandboxed = resolvedAgentConfigs.some((c) => c.sandbox && c.sandbox.mode !== "off");
   if (anySandboxed) {
-    // Pick a docker config: prefer global, otherwise first sandboxed agent's resolved docker.
-    const firstSandboxed = config.agents
-      .map((a) => toAgentConfig(a, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox))
-      .find((c) => c.sandbox && c.sandbox.mode !== "off" && c.sandbox.docker);
-    const dockerConfig = firstSandboxed?.sandbox?.docker;
+    if (!baseSandboxFile) {
+      throw new Error(
+        "Sandbox is enabled for at least one agent but no agents-level sandbox config was found. " +
+          "Define `agents.defaults.sandbox` or top-level `sandbox` with a docker config.",
+      );
+    }
+    const baseSandbox = resolveSandboxConfigFromFile("<agents-defaults>", undefined, baseSandboxFile);
+    const dockerConfig = baseSandbox?.docker;
     if (!dockerConfig) {
       throw new Error("Sandbox is enabled but no docker config could be resolved");
     }
     const containerManager = new ContainerManager(dockerConfig);
-    sandboxExecutor = new SandboxExecutor(containerManager, firstSandboxed!.sandbox!);
+    sandboxExecutor = new SandboxExecutor(containerManager, baseSandbox!);
     logger.info(`Sandbox executor initialized (image: ${dockerConfig.image})`);
   }
 
-  for (const agentFile of config.agents) {
-    const agentConfig = toAgentConfig(agentFile, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
+  for (let agentIdx = 0; agentIdx < config.agents.length; agentIdx++) {
+    const agentFile = config.agents[agentIdx];
+    const agentConfig = resolvedAgentConfigs[agentIdx];
 
     // Create per-agent ProcessRegistry for CLI tool isolation (#289)
     const processRegistry = new ProcessRegistry();

@@ -27,7 +27,7 @@ export interface DockerConfig {
   pidsLimit?: number;
   /** Linux capabilities to drop. Default: ["ALL"]. */
   capDrop?: string[];
-  /** Linux capabilities to add back after capDrop. Default: ["DAC_OVERRIDE","CHOWN","FOWNER"]. */
+  /** Linux capabilities to add back after capDrop. Default: [] (none). Opt-in only — caps like DAC_OVERRIDE are ignored by the kernel for non-root container users anyway. */
   capAdd?: string[];
   /** Apply --security-opt=no-new-privileges. Default: true. */
   noNewPrivileges?: boolean;
@@ -125,7 +125,7 @@ const DEFAULT_DOCKER_CONFIG: DockerConfig = {
   network: "bridge",
   pidsLimit: 256,
   capDrop: ["ALL"],
-  capAdd: ["DAC_OVERRIDE", "CHOWN", "FOWNER"],
+  capAdd: [],
   noNewPrivileges: true,
 };
 

@@ -110,9 +110,10 @@ export class SandboxFs implements FsLike {
     if (typeof file !== "string") {
       throw new FsError("EUNKNOWN", "SandboxFs.writeFile only supports string paths");
     }
-    const content = typeof data === "string" ? data : Buffer.isBuffer(data) ? data.toString("utf-8") : String(data);
-    // Content via stdin avoids ARG_MAX and shell-quoting bugs.
-    await this.execWithStdin(["sh", "-c", `cat > ${shQuote(file)}`], content, `writeFile ${file}`);
+    const buf = toWritePayload(data);
+    // Content via stdin avoids ARG_MAX and shell-quoting bugs. Pipe as Buffer
+    // (no encoding) so binary data round-trips intact.
+    await this.execWithStdin(["sh", "-c", `cat > ${shQuote(file)}`], buf, `writeFile ${file}`);
   }) as FsLike["writeFile"];
 
   mkdir: FsLike["mkdir"] = (async (
@@ -161,7 +162,7 @@ export class SandboxFs implements FsLike {
     }
   }
 
-  private async execWithStdin(command: string[], stdin: string, opLabel: string): Promise<void> {
+  private async execWithStdin(command: string[], stdin: Buffer, opLabel: string): Promise<void> {
     const argv = await this.executor.buildExecArgv(this.agentId, command);
     const [bin, ...rest] = argv;
 
@@ -184,6 +185,39 @@ export class SandboxFs implements FsLike {
       child.stdin?.end(stdin);
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Payload normalisation
+// ---------------------------------------------------------------------------
+
+/**
+ * Coerce a writeFile data argument into a Buffer.
+ *
+ * Accepts the same input shapes as node:fs/promises.writeFile:
+ *   - string                       → utf8 bytes
+ *   - Buffer / Uint8Array / typed array → wrapped without copy when possible
+ *   - ArrayBuffer / SharedArrayBuffer → wrapped as a view
+ *
+ * Anything else throws EUNKNOWN rather than silently corrupting data via
+ * `String(data)` or `toString("utf-8")` round-trips.
+ */
+function toWritePayload(data: unknown): Buffer {
+  if (typeof data === "string") return Buffer.from(data, "utf8");
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof Uint8Array) return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (typeof SharedArrayBuffer !== "undefined" && data instanceof SharedArrayBuffer) {
+    return Buffer.from(data);
+  }
+  if (ArrayBuffer.isView(data)) {
+    const view = data as ArrayBufferView;
+    return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
+  }
+  throw new FsError(
+    "EUNKNOWN",
+    `SandboxFs.writeFile: unsupported data type ${typeof data === "object" ? (data?.constructor?.name ?? "object") : typeof data}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

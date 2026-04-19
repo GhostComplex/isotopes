@@ -217,7 +217,7 @@ describe("Sandbox Config", () => {
       });
       expect(cfg.docker?.pidsLimit).toBe(256);
       expect(cfg.docker?.capDrop).toEqual(["ALL"]);
-      expect(cfg.docker?.capAdd).toEqual(["DAC_OVERRIDE", "CHOWN", "FOWNER"]);
+      expect(cfg.docker?.capAdd).toEqual([]);
       expect(cfg.docker?.noNewPrivileges).toBe(true);
     });
 

@@ -26,13 +26,16 @@ function makeExecutor(): SandboxExecutor {
 }
 
 /** Build a fake ChildProcess that exits with the given code/stderr after stdin.end. */
-function fakeChild(opts: { code: number; stderr?: string }): ChildProcess {
+function fakeChild(opts: { code: number; stderr?: string; capture?: { chunks: Buffer[] } }): ChildProcess {
   const ee = new EventEmitter() as ChildProcess;
   const stderrStream = Readable.from(opts.stderr ? [Buffer.from(opts.stderr)] : []);
   const stdoutStream = Readable.from([]);
   let stdinEnded = false;
   const stdinStream = new Writable({
-    write(_chunk, _enc, cb) { cb(); },
+    write(chunk, _enc, cb) {
+      if (opts.capture) opts.capture.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
+      cb();
+    },
     final(cb) {
       stdinEnded = true;
       // Defer close until after stdin closes, mimicking docker exec behavior.
@@ -90,6 +93,48 @@ describe("SandboxFs", () => {
       expect(executor.buildExecArgv).toHaveBeenCalledWith("agent-1", [
         "sh", "-c", `cat > '/tmp/o'\\''brien.txt'`,
       ]);
+    });
+
+    it("pipes raw bytes for Buffer input (no utf-8 round-trip corruption)", async () => {
+      const capture = { chunks: [] as Buffer[] };
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, capture }));
+
+      // Bytes that are NOT valid utf-8 — would be mangled by toString("utf-8")
+      const payload = Buffer.from([0xff, 0xfe, 0x00, 0x80, 0x81]);
+      await fs.writeFile("/abs/path", payload);
+
+      const written = Buffer.concat(capture.chunks);
+      expect(Array.from(written)).toEqual([0xff, 0xfe, 0x00, 0x80, 0x81]);
+    });
+
+    it("pipes raw bytes for Uint8Array input", async () => {
+      const capture = { chunks: [] as Buffer[] };
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, capture }));
+
+      const payload = new Uint8Array([1, 2, 3, 4, 0xff]);
+      await fs.writeFile("/abs/path", payload);
+
+      const written = Buffer.concat(capture.chunks);
+      expect(Array.from(written)).toEqual([1, 2, 3, 4, 0xff]);
+    });
+
+    it("encodes string input as utf-8", async () => {
+      const capture = { chunks: [] as Buffer[] };
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, capture }));
+
+      await fs.writeFile("/abs/path", "héllo 😀");
+
+      const written = Buffer.concat(capture.chunks);
+      expect(written.toString("utf8")).toBe("héllo 😀");
+    });
+
+    it("rejects unsupported data types with FsError", async () => {
+      mockSpawn.mockReturnValue(fakeChild({ code: 0 }));
+
+      await expect(fs.writeFile("/abs/path", 42 as unknown as string)).rejects.toMatchObject({
+        name: "FsError",
+        code: "EUNKNOWN",
+      });
     });
   });
 

@@ -128,6 +128,10 @@ export interface SandboxDockerConfigFile {
   extraHosts?: string[];
   cpuLimit?: number;
   memoryLimit?: string;
+  pidsLimit?: number;
+  capDrop?: string[];
+  capAdd?: string[];
+  noNewPrivileges?: boolean;
 }
 
 /** Sandbox execution configuration in config file */
@@ -465,8 +469,14 @@ export function resolveSubagentConfig(
 
 /**
  * Resolve sandbox config from config file types.
- * Delegates to the sandbox module's resolveSandboxConfig for validation and merging.
- * Returns undefined if no sandbox config is provided at all.
+ *
+ * Layered resolution (openclaw-style): an agents-level config (from
+ * `agents.defaults.sandbox` or top-level `sandbox`) provides image / docker /
+ * workspaceAccess. Per-agent `sandbox` is a partial override — typically just
+ * `{ mode: "off" }` to opt a single agent out. Per-agent `sandbox.docker` is
+ * rejected because the runtime maintains a single global ContainerManager.
+ *
+ * Returns undefined if no sandbox config is provided at any layer.
  */
 export function resolveSandboxConfigFromFile(
   agentId: string,
@@ -474,6 +484,14 @@ export function resolveSandboxConfigFromFile(
   defaultSandbox?: SandboxConfigFile,
 ): SandboxConfig | undefined {
   if (!agentSandbox && !defaultSandbox) return undefined;
+
+  if (agentSandbox?.docker) {
+    throw new Error(
+      `agent "${agentId}": sandbox.docker is not supported at the per-agent level. ` +
+        `Move docker config to the agents-level (agents.defaults.sandbox.docker or top-level sandbox.docker); ` +
+        `each agent may only override sandbox.mode and sandbox.workspaceAccess.`,
+    );
+  }
 
   const defaults = defaultSandbox
     ? toSandboxConfig(defaultSandbox)
@@ -503,6 +521,10 @@ function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
         ...(file.docker.extraHosts && { extraHosts: file.docker.extraHosts }),
         ...(file.docker.cpuLimit !== undefined && { cpuLimit: file.docker.cpuLimit }),
         ...(file.docker.memoryLimit !== undefined && { memoryLimit: file.docker.memoryLimit }),
+        ...(file.docker.pidsLimit !== undefined && { pidsLimit: file.docker.pidsLimit }),
+        ...(file.docker.capDrop !== undefined && { capDrop: file.docker.capDrop }),
+        ...(file.docker.capAdd !== undefined && { capAdd: file.docker.capAdd }),
+        ...(file.docker.noNewPrivileges !== undefined && { noNewPrivileges: file.docker.noNewPrivileges }),
       },
     }),
   };
@@ -642,12 +664,16 @@ export function toAgentConfig(
   const provider = agent.provider ?? agentDefaults?.provider ?? globalProvider;
   const tools = agent.tools ?? agentDefaults?.tools ?? globalTools;
   const agentCompaction = agent.compaction ?? agentDefaults?.compaction ?? globalCompaction;
-  const agentSandboxFile = agent.sandbox ?? agentDefaults?.sandbox ?? globalSandbox;
+  // Sandbox: agents-level (defaults > global) is the base; per-agent overlays
+  // partial overrides (typically just `mode: "off"`). The merge happens inside
+  // resolveSandboxConfigFromFile so per-agent need not repeat docker config.
+  const baseSandbox = agentDefaults?.sandbox ?? globalSandbox;
 
   const compaction = resolveCompactionConfigFromFile(agentCompaction);
-  const sandbox = agentSandboxFile
-    ? resolveSandboxConfigFromFile(agent.id, agentSandboxFile)
-    : undefined;
+  const sandbox =
+    agent.sandbox || baseSandbox
+      ? resolveSandboxConfigFromFile(agent.id, agent.sandbox, baseSandbox)
+      : undefined;
 
   return {
     id: agent.id,
