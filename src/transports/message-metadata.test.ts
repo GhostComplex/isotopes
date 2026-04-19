@@ -1,7 +1,7 @@
 // src/transports/message-metadata.test.ts — Tests for message metadata extraction
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { extractDiscordMetadata, extractCliMetadata, formatInboundMeta, type MessageMetadata } from "./message-metadata.js";
+import { extractDiscordMetadata, formatInboundMeta, type MessageMetadata } from "./message-metadata.js";
 
 // ---------------------------------------------------------------------------
 // Mock discord.js message factory
@@ -173,31 +173,6 @@ describe("extractDiscordMetadata", () => {
     const metadata = extractDiscordMetadata(msg as any);
 
     expect(metadata.sender.displayName).toBeUndefined();
-  });
-});
-
-describe("extractCliMetadata", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1700000010000);
-  });
-
-  it("returns CLI-specific metadata", () => {
-    const metadata = extractCliMetadata();
-
-    expect(metadata.sender).toEqual({
-      id: "cli-user",
-      username: "cli",
-      isBot: false,
-    });
-    expect(metadata.timestamps.sent).toBe(1700000010000);
-    expect(metadata.timestamps.received).toBe(1700000010000);
-    expect(metadata.channel).toEqual({
-      id: "cli",
-      name: "cli",
-      type: "dm",
-    });
-    expect(metadata.replyTo).toBeUndefined();
   });
 });
 

@@ -394,14 +394,6 @@ export interface CompactionConfig {
 // Thread bindings — auto-bind Discord threads to agent sessions
 // ---------------------------------------------------------------------------
 
-/** Per-agent thread control configuration */
-export interface ThreadControlConfig {
-  /** Whether to respond to messages in threads. Default: true */
-  respond?: boolean;
-  /** Whether to include thread messages in channel history context. Default: true */
-  observe?: boolean;
-}
-
 /** Configuration for automatic thread-to-session binding */
 export interface ThreadBindingConfig {
   /** Whether thread binding is enabled */

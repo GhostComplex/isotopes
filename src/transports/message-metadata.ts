@@ -88,32 +88,6 @@ export function extractDiscordMetadata(msg: DiscordMessage): MessageMetadata {
 }
 
 // ---------------------------------------------------------------------------
-// CLI extraction
-// ---------------------------------------------------------------------------
-
-/**
- * Create metadata for a CLI (local) message.
- */
-export function extractCliMetadata(): MessageMetadata {
-  return {
-    sender: {
-      id: "cli-user",
-      username: "cli",
-      isBot: false,
-    },
-    timestamps: {
-      sent: Date.now(),
-      received: Date.now(),
-    },
-    channel: {
-      id: "cli",
-      name: "cli",
-      type: "dm",
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Inbound metadata formatting (untrusted context block)
 // ---------------------------------------------------------------------------
 
