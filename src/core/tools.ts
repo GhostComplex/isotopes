@@ -3,6 +3,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolSettings, Tool } from "./types.js";
+import type { FsLike } from "../sandbox/fs-bridge.js";
 import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import type { SubagentAgent, SubagentEvent, DiscordSinkConfig } from "../subagent/types.js";
@@ -404,6 +405,12 @@ export interface FileToolOptions {
    * when constrainToWorkspace is true.
    */
   allowedWorkspaces?: string[];
+  /**
+   * Filesystem implementation. Defaults to node:fs/promises (host fs).
+   * cli.ts injects a SandboxFs instance instead when the agent runs sandboxed,
+   * so tool handlers themselves never branch on host vs. sandbox.
+   */
+  fsImpl?: FsLike;
 }
 export interface ResolvedToolGuards {
   cli: boolean;
@@ -441,6 +448,7 @@ async function resolveWorkspaceConstrainedPath(
   mode: "read" | "write" | "list",
   constrainToWorkspace = true,
   allowedWorkspaces: string[] = [],
+  fsImpl: FsLike = fs,
 ): Promise<string> {
   if (!basePath) {
     return path.resolve(targetPath);
@@ -451,7 +459,7 @@ async function resolveWorkspaceConstrainedPath(
     : path.resolve(workspaceRoot, targetPath);
   if (mode === "write") {
     const parentDir = path.dirname(resolvedPath);
-    await fs.mkdir(parentDir, { recursive: true });
+    await fsImpl.mkdir(parentDir, { recursive: true });
     const realParentDir = await fs.realpath(parentDir).catch(() => path.resolve(parentDir));
     const finalPath = path.join(realParentDir, path.basename(resolvedPath));
     if (constrainToWorkspace && !(await isPathAllowed(finalPath, workspaceRoot, allowedWorkspaces))) {
@@ -485,6 +493,7 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
     maxReadSize = DEFAULT_MAX_READ_SIZE,
     constrainToWorkspace = true,
     allowedWorkspaces = [],
+    fsImpl = fs,
   } = options;
   return {
     tool: {
@@ -523,13 +532,14 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
           "read",
           constrainToWorkspace,
           allowedWorkspaces,
+          fsImpl,
         );
-        const stats = await fs.stat(resolvedPath);
+        const stats = await fsImpl.stat(resolvedPath);
 
         // Image files — return base64
         const ext = path.extname(resolvedPath).toLowerCase();
         if (IMAGE_EXTENSIONS.has(ext)) {
-          const buf = await fs.readFile(resolvedPath);
+          const buf = await fsImpl.readFile(resolvedPath);
           const mimeType = ext === ".svg" ? "image/svg+xml" : `image/${ext.slice(1).replace("jpg", "jpeg")}`;
           return JSON.stringify({
             type: "image",
@@ -543,7 +553,7 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
         if (stats.size > maxReadSize && offset == null && limit == null) {
           return `[error] File too large (${stats.size} bytes, max ${maxReadSize}). Use offset and limit to read in chunks.`;
         }
-        const content = await fs.readFile(resolvedPath, "utf-8");
+        const content = await fsImpl.readFile(resolvedPath, "utf-8");
         const allLines = content.split("\n");
         const totalLines = allLines.length;
 
@@ -573,7 +583,7 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
  * Create a file write tool.
  */
 export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
+  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [], fsImpl = fs } = options;
   return {
     tool: {
       name: "write_file",
@@ -596,8 +606,8 @@ export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool
     handler: async (args) => {
       const { path: filePath, content } = args as { path: string; content: string };
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace, allowedWorkspaces);
-        await fs.writeFile(resolvedPath, content, "utf-8");
+        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace, allowedWorkspaces, fsImpl);
+        await fsImpl.writeFile(resolvedPath, content, "utf-8");
         return `Successfully wrote ${content.length} bytes to ${filePath}`;
       } catch (error) {
         const err = error as { message?: string };
@@ -610,7 +620,7 @@ export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool
  * Create a directory listing tool.
  */
 export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
+  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [], fsImpl = fs } = options;
   return {
     tool: {
       name: "list_dir",
@@ -628,8 +638,8 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
     handler: async (args) => {
       const { path: dirPath = "." } = args as { path?: string };
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(dirPath, basePath, "list", constrainToWorkspace, allowedWorkspaces);
-        const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
+        const resolvedPath = await resolveWorkspaceConstrainedPath(dirPath, basePath, "list", constrainToWorkspace, allowedWorkspaces, fsImpl);
+        const entries = await fsImpl.readdir(resolvedPath, { withFileTypes: true });
         const lines = entries.map((entry) => {
           const prefix = entry.isDirectory() ? "[dir] " : "      ";
           return `${prefix}${entry.name}`;
@@ -649,7 +659,7 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
  * Create a file edit tool (search & replace).
  */
 export function createEditFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [] } = options;
+  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [], fsImpl = fs } = options;
   return {
     tool: {
       name: "edit",
@@ -689,8 +699,8 @@ export function createEditFileTool(options: FileToolOptions = {}): { tool: Tool;
         if (!old_text) {
           return "[error] old_text must not be empty";
         }
-        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace, allowedWorkspaces);
-        const content = await fs.readFile(resolvedPath, "utf-8");
+        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace, allowedWorkspaces, fsImpl);
+        const content = await fsImpl.readFile(resolvedPath, "utf-8");
         // Count occurrences
         let matches = 0;
         let searchFrom = 0;
@@ -714,7 +724,7 @@ export function createEditFileTool(options: FileToolOptions = {}): { tool: Tool;
           return JSON.stringify({ success: true, matches });
         }
         const updated = content.split(old_text).join(new_text);
-        await fs.writeFile(resolvedPath, updated, "utf-8");
+        await fsImpl.writeFile(resolvedPath, updated, "utf-8");
         return JSON.stringify({ success: true, matches });
       } catch (error) {
         const err = error as { code?: string; message?: string };
@@ -794,8 +804,8 @@ export function applyToolPolicy(
 /**
  * Create a standard set of tools for an agent workspace.
  */
-export function createWorkspaceTools(workspacePath: string): { tool: Tool; handler: ToolHandler }[] {
-  return createWorkspaceToolsWithGuards(workspacePath);
+export function createWorkspaceTools(workspacePath: string, fsImpl?: FsLike): { tool: Tool; handler: ToolHandler }[] {
+  return createWorkspaceToolsWithGuards(workspacePath, undefined, false, [], "auto", undefined, fsImpl);
 }
 /** Tools that modify files - excluded when codingMode is 'subagent' */
 export const FILE_WRITING_TOOLS = ["write_file", "edit"];
@@ -807,6 +817,7 @@ export function createWorkspaceToolsWithGuards(
   allowedWorkspaces: string[] = [],
   codingMode: "subagent" | "direct" | "auto" = "auto",
   subagentMaxTurns?: number,
+  fsImpl?: FsLike,
 ): { tool: Tool; handler: ToolHandler }[] {
   const guards = resolveToolGuards(settings);
   // Always use workspacePath as base for relative path resolution.
@@ -817,10 +828,10 @@ export function createWorkspaceToolsWithGuards(
   const fileBasePath = workspacePath;
   const constrainToWorkspace = guards.fs.workspaceOnly;
   let tools = [
-    createReadFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
-    createWriteFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
-    createEditFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
-    createListDirTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces }),
+    createReadFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces, fsImpl }),
+    createWriteFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces, fsImpl }),
+    createEditFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces, fsImpl }),
+    createListDirTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces, fsImpl }),
     createTimeTool(),
   ];
   if (subagentEnabled) {

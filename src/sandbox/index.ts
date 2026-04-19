@@ -23,3 +23,7 @@ export { ContainerManager } from "./container.js";
 export type { SandboxExecOptions } from "./executor.js";
 
 export { SandboxExecutor } from "./executor.js";
+
+export type { FsLike, FsErrorCode } from "./fs-bridge.js";
+
+export { SandboxFs, FsError, mapStderrToCode } from "./fs-bridge.js";

@@ -56,7 +56,8 @@ export class ContainerManager {
    * Create a new container with the workspace mounted.
    *
    * @param name - Container name (must be unique)
-   * @param workspacePath - Host path to mount as /workspace
+   * @param workspacePath - Host path to mount; mounted at the same path
+   *   inside the container so absolute host paths resolve identically.
    * @param access - Mount access level (rw or ro)
    * @returns ContainerInfo for the created container
    */
@@ -207,14 +208,15 @@ export class ContainerManager {
   ): string[] {
     const args: string[] = ["create", "--name", name, "--init"];
 
-    // Workspace volume mount
+    // Workspace volume mount — mounted at the same host path inside the
+    // container so that absolute paths from the host resolve identically
+    // (no /workspace ↔ host path translation needed in the fs bridge).
     const mountSuffix = access === "ro" ? ":ro" : "";
-    args.push("-v", `${workspacePath}:/workspace${mountSuffix}`);
-    args.push("-w", "/workspace");
+    args.push("-v", `${workspacePath}:${workspacePath}${mountSuffix}`);
+    args.push("-w", workspacePath);
 
     // Additional read-only workspace mounts (parity with allowedWorkspaces
-    // file-tool access). Mounted at the same host path inside the container
-    // so absolute paths from the host resolve identically.
+    // file-tool access).
     for (const ws of allowedWorkspaces) {
       if (ws === workspacePath) continue;
       args.push("-v", `${ws}:${ws}:ro`);

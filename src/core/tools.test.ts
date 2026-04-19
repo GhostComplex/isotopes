@@ -609,6 +609,40 @@ describe("Built-in tools", () => {
       expect(names).toContain("read_file");
     });
 
+    it("routes write/read through injected fsImpl when provided", async () => {
+      const calls: string[] = [];
+      const fakeFs = {
+        readFile: vi.fn(async () => "fake-content"),
+        writeFile: vi.fn(async (_p: string, _c: string) => { calls.push("writeFile"); }),
+        mkdir: vi.fn(async () => undefined),
+        unlink: vi.fn(async () => undefined),
+        rename: vi.fn(async () => undefined),
+        stat: vi.fn(async () => ({ size: 12, isFile: () => true })),
+        readdir: vi.fn(async () => []),
+      };
+
+      const tools = createWorkspaceToolsWithGuards(
+        "/tmp/workspace",
+        undefined,
+        false,
+        [],
+        "auto",
+        undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        fakeFs as any,
+      );
+      const writeTool = tools.find((t) => t.tool.name === "write_file");
+      expect(writeTool).toBeDefined();
+
+      // Disable workspace constraint by passing absolute path under basePath
+      // (the resolver will still call fakeFs.mkdir for the parent dir).
+      await writeTool!.handler({ path: "/tmp/workspace/x.txt", content: "hello" });
+
+      expect(fakeFs.writeFile).toHaveBeenCalled();
+      expect(fakeFs.mkdir).toHaveBeenCalled();
+      expect(calls).toContain("writeFile");
+    });
+
     it("excludes file writing tools when codingMode is 'subagent'", () => {
       const tools = createWorkspaceToolsWithGuards(
         "/tmp/workspace",

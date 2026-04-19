@@ -32,7 +32,8 @@ import {
 } from "./core/tools.js";
 import { createReplyReactTools, LazyTransportContext } from "./tools/reply-react.js";
 import { createExecTools, ProcessRegistry } from "./tools/exec.js";
-import { ContainerManager, SandboxExecutor } from "./sandbox/index.js";
+import { ContainerManager, SandboxExecutor, SandboxFs, shouldSandbox, type FsLike } from "./sandbox/index.js";
+import * as nodeFs from "node:fs/promises";
 import {
   getConfigPath,
   getIsotopesHome,
@@ -862,6 +863,13 @@ async function main() {
     const toolRegistry = new ToolRegistry();
     const subagentEnabled = config.subagent?.enabled === true;
     const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];
+
+    // fsImpl is the single decision point for "host fs" vs. "sandbox fs".
+    // Tools depend only on the FsLike type and never branch on sandbox state.
+    const fsImpl: FsLike = sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false)
+      ? new SandboxFs(sandboxExecutor, agentConfig.id)
+      : nodeFs;
+
     const workspaceTools = createWorkspaceToolsWithGuards(
       workspacePath,
       agentConfig.toolSettings,
@@ -869,6 +877,7 @@ async function main() {
       agentAllowedWorkspaces,
       agentConfig.codingMode,
       config.subagent?.maxTurns,
+      fsImpl,
     );
 
     // Apply tool policy (allow/deny) before registration
