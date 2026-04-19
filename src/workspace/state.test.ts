@@ -7,7 +7,6 @@ import os from "node:os";
 import {
   readWorkspaceState,
   writeWorkspaceState,
-  isSetupComplete,
   reconcileWorkspaceState,
 } from "./state.js";
 
@@ -74,21 +73,6 @@ describe("Workspace State", () => {
       const read = await readWorkspaceState(tempDir);
 
       expect(read).toEqual(state);
-    });
-  });
-
-  describe("isSetupComplete", () => {
-    it("returns false when setupCompletedAt is not set", () => {
-      expect(isSetupComplete({ version: 1 })).toBe(false);
-    });
-
-    it("returns true when setupCompletedAt is set", () => {
-      expect(
-        isSetupComplete({
-          version: 1,
-          setupCompletedAt: "2026-04-10T00:00:00.000Z",
-        }),
-      ).toBe(true);
     });
   });
 

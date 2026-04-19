@@ -254,7 +254,6 @@ export {
   getWorkspaceTemplates,
   readWorkspaceState,
   writeWorkspaceState,
-  isSetupComplete,
   reconcileWorkspaceState,
   WorkspaceContextLoader,
   CONTEXT_FILES,

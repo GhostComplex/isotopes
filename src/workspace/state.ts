@@ -70,11 +70,6 @@ export async function writeWorkspaceState(
   log.debug(`Wrote workspace state: ${statePath}`);
 }
 
-/** Check if workspace setup (hatch) is complete. */
-export function isSetupComplete(state: WorkspaceState): boolean {
-  return !!state.setupCompletedAt;
-}
-
 /**
  * Reconcile workspace state with the current filesystem.
  *

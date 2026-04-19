@@ -31,7 +31,6 @@ export type { WorkspaceTemplate } from "./templates.js";
 export {
   readWorkspaceState,
   writeWorkspaceState,
-  isSetupComplete,
   reconcileWorkspaceState,
 } from "./state.js";
 export type { WorkspaceState } from "./state.js";
