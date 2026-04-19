@@ -60,7 +60,10 @@ the distinction.
 ## What's mounted
 
 The agent's workspace directory (`~/.isotopes/workspace-<id>/` or whatever
-`agent.workspace` resolves to) is bind-mounted at `/workspace`. With
+`agent.workspace` resolves to) is bind-mounted at the **same host path**
+inside the container. Absolute paths from the host therefore resolve
+identically inside and outside the container — no `/workspace` ↔ host path
+translation is needed in the fs bridge or in user-facing log output. With
 `workspaceAccess: rw` the agent can edit `SOUL.md`, `MEMORY.md`, etc., and
 the changes persist to the host. With `ro` they cannot — but most agents
 need `rw` to maintain their own state.
@@ -72,6 +75,27 @@ container, **read-only**, at the same host path. This keeps `exec cat
 access through `exec` to those paths is intentionally not supported — use
 the workspace mount or a dedicated rw-allowed directory if writes are
 needed.
+
+## What's sandboxed
+
+When `sandbox.mode` is `all` or `non-main`:
+
+- **Shell commands** (`exec`, background processes) run as `docker exec` on
+  the agent's container.
+- **File mutations** (`write_file`, `edit`) are routed through `docker exec`
+  via `SandboxFs` (see `src/sandbox/fs-bridge.ts`). They land inside the
+  container's mount view, so any path that isn't bind-mounted (`/etc/passwd`,
+  `~/.ssh/...`, etc.) cannot be written even if the JS path validator could
+  be tricked into accepting it.
+- **File reads** (`read_file`, `list_dir`) pass through to host fs directly.
+  The bind mount makes the container's writes immediately visible on the
+  host, so a `docker exec` round-trip would add latency without confining
+  anything (reads have no side effect).
+
+The mechanism is a duck-typed `FsLike` interface that both `node:fs/promises`
+and `SandboxFs` satisfy. Tools take `fsImpl: FsLike` and call its methods —
+they have no awareness of host vs. sandbox. `cli.ts` is the single place
+that picks the implementation per agent.
 
 ## Background processes
 

@@ -35,8 +35,10 @@ RUN apt-get update \
 RUN userdel -r node 2>/dev/null || true \
  && useradd -m -u 1000 -s /bin/bash agent
 
-WORKDIR /workspace
 USER agent
+
+# No WORKDIR — ContainerManager mounts the workspace at its host path and
+# passes `-w <hostPath>` per-call, so cwd matches what the host expects.
 
 # Container is kept alive by the orchestrator via `tail -f /dev/null`
 # (set by ContainerManager.buildCreateArgs). Commands are injected via
