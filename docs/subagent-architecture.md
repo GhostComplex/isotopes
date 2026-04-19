@@ -176,7 +176,71 @@ BuiltinRunner.run(taskId, opts, signals):
 
 ## 4. 与 SessionStore 的关系
 
-SessionStore 是**完全 backend-agnostic** 的旁路。Recorder 只看 `SubagentEvent`，根本不知道事件来自 SDK 还是 PiMonoCore：
+### 4.1 主 agent 的 session 是怎么存的
+
+主 agent 落盘走 transport 层（不是 recorder）。以 Discord 为例：
+
+```
+DiscordTransport.handleMessage(msg)
+  │
+  ├─► sessionStore = getSessionStore(agentId)              // 每个 agent 一个 store
+  ├─► session = findOrCreateSession(sessionStore, key, ...)
+  │
+  ├─► sessionStore.addMessage(session.id, userMessage)     // 用户消息进 transcript
+  │
+  ├─► messages = sessionStore.getMessages(session.id)      // 把历史拼回 prompt
+  ├─► agent.prompt(messages)                               // PiMonoCore 跑一轮
+  │
+  └─► for await (event of agent.prompt(...)) {
+        on text_delta → 累积
+        on agent_end  → sessionStore.addMessage(session.id, assistantMessage)
+      }
+```
+
+代码位置：`src/transports/discord.ts:457-517` / `:721-817`，`src/cli.ts:1070-1119` 给每个 agent 建一个 `DefaultSessionStore`，按 agentId 路由（`discordSessionStores: Map<string, DefaultSessionStore>`）。
+
+### 4.2 主 agent vs subagent 的存储对照
+
+```
+┌────────────────────────┐                  ┌──────────────────────────────┐
+│ DiscordTransport       │                  │ spawnSubagent → Recorder     │
+│ (transport-side write) │                  │ (sidecar write)              │
+└──────────┬─────────────┘                  └──────────────┬───────────────┘
+           │ addMessage                                    │ addMessage
+           ▼                                               ▼
+  ┌────────────────────┐                          ┌────────────────────┐
+  │ DefaultSessionStore│                          │ DefaultSessionStore│
+  │  (主 agent 实例)   │                          │  (subagent 实例)   │
+  │  per-agent map     │                          │  全局单例          │
+  └────────┬───────────┘                          └────────┬───────────┘
+           │                                                │
+           ▼                                                ▼
+  ~/.isotopes/sessions/<agentId>/             ~/.isotopes/subagent-sessions/
+  或 <workspace>/sessions/                      <virtualSid>.jsonl
+  <sessionId>.jsonl                            (sessions.json 索引)
+  (sessions.json 索引)
+```
+
+| 维度 | 主 agent | subagent |
+|---|---|---|
+| 存储类 | `DefaultSessionStore` | **同** `DefaultSessionStore` |
+| Message schema | `Message` (text / tool_result blocks) | **同** `Message` |
+| 文件格式 | 每 session 一个 JSONL + 共享 `sessions.json` 索引 | **同** |
+| 实例数量 | 每个 agent 一个 store | 一个全局 store |
+| 写入入口 | transport 层（discord.ts / feishu.ts） | recorder（persistence.ts） |
+| dataDir | `<workspace>/sessions/` 或 `~/.isotopes/sessions/<agentId>/` | `~/.isotopes/subagent-sessions/` |
+| sessionId | UUID | UUID（agentId 是虚拟的 `subagent:<parent>:<task>`） |
+| 拼回历史给 LLM | `getMessages(sid)` 拼成 prompt | **不拼** — subagent 每次都是新对话，transcript 只读不喂 |
+
+要点：
+
+1. **同一段存储代码、同一份数据结构**——`DefaultSessionStore` 类、`Message` 接口、JSONL 格式没分叉。任何对存储格式的演进（schema 升级、压缩、TTL）一次改两边都受益。
+2. **不同的实例和不同的写入侧**——transport 在用户消息进来的边界写入；recorder 在 SubagentEvent 流里写入。两条路径都只是 `addMessage` 的客户端。
+3. **dataDir 分开是有意的**——主 agent transcript 是"对话上下文"，会被读回去拼 prompt；subagent transcript 是"运行回放"，只供事后审计/调试，不参与下一轮 prompt。两边混在一起会让 `getMessages(sid)` 的语义混乱。
+
+### 4.3 Recorder 是 backend-agnostic 旁路
+
+Recorder 只看 `SubagentEvent`，根本不知道事件来自 SDK 还是 PiMonoCore：
 
 ```
                                            ┌──────────────┐
