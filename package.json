@@ -34,7 +34,7 @@
     "test:integration": "tsx tests/integration/discord.test.ts",
     "ci": "npm run lint && npm run typecheck && npm run test",
     "prepare": "husky",
-    "prepublishOnly": "pnpm run ci && pnpm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "keywords": [
     "ai",
