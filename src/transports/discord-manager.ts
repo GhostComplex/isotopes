@@ -4,10 +4,9 @@
 import type {
   AgentManager,
   ChannelsConfig,
+  DiscordAccountConfig,
   SessionStore,
-  ThreadBindingConfig,
 } from "../core/types.js";
-import type { ContextConfigFile, DiscordAccountConfigFile } from "../core/config.js";
 import { getDiscordToken } from "../core/config.js";
 import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
@@ -16,26 +15,20 @@ import { createLogger } from "../core/logger.js";
 
 const log = createLogger("discord-manager");
 
-/** Shared settings inherited by all Discord accounts */
+/** Shared infrastructure injected into every Discord account transport. */
 export interface DiscordSharedConfig {
   agentManager: AgentManager;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
+  /** Full channels block — passed through for per-guild lookups (e.g. requireMention). */
   channels?: ChannelsConfig;
-  threadBindings?: ThreadBindingConfig;
   threadBindingManager?: ThreadBindingManager;
-  enableSubagentStreaming?: boolean;
-  subagentShowToolCalls?: boolean;
-  allowBots?: boolean;
-  context?: ContextConfigFile;
   usageTracker?: UsageTracker;
-  /** Discord user IDs allowed to execute slash commands */
-  adminUsers?: string[];
 }
 
 /** Configuration for the DiscordTransportManager */
 export interface DiscordTransportManagerConfig {
-  accounts: Record<string, DiscordAccountConfigFile>;
+  accounts: Record<string, DiscordAccountConfig>;
   shared: DiscordSharedConfig;
 }
 
@@ -43,8 +36,8 @@ export interface DiscordTransportManagerConfig {
  * DiscordTransportManager — creates and manages multiple DiscordTransport instances.
  *
  * Each account in the config gets its own transport with an independent Client,
- * token, and identity. Account-level overrides (allowDMs, channelAllowlist,
- * defaultAgentId, agentBindings) take precedence over shared settings.
+ * token, and identity. All per-account behavior (allowDMs, allowBots, threadBindings,
+ * subagentStreaming, context, adminUsers, etc.) is read from the account config.
  */
 export class DiscordTransportManager {
   private transports: Map<string, DiscordTransport> = new Map();
@@ -69,18 +62,18 @@ export class DiscordTransportManager {
         sessionStoreForAgent: shared.sessionStoreForAgent,
         defaultAgentId: account.defaultAgentId,
         agentBindings: account.agentBindings,
-        allowDMs: account.allowDMs ?? shared.allowBots,
+        allowDMs: account.allowDMs,
         channelAllowlist: account.channelAllowlist,
         channels: shared.channels,
         accountId,
-        threadBindings: shared.threadBindings,
+        threadBindings: account.threadBindings,
         threadBindingManager: shared.threadBindingManager,
-        enableSubagentStreaming: shared.enableSubagentStreaming,
-        subagentShowToolCalls: shared.subagentShowToolCalls,
-        allowBots: shared.allowBots,
-        context: shared.context,
+        enableSubagentStreaming: account.subagentStreaming?.enabled,
+        subagentShowToolCalls: account.subagentStreaming?.showToolCalls,
+        allowBots: account.allowBots,
+        context: account.context,
         usageTracker: shared.usageTracker,
-        adminUsers: shared.adminUsers,
+        adminUsers: account.adminUsers,
       });
 
       this.transports.set(accountId, transport);

@@ -13,6 +13,7 @@ import type {
   CompactionConfig,
   CompactionMode,
   CronActionConfig,
+  DiscordAccountConfig,
   PeerKind,
   ProviderConfig,
   SessionConfig,
@@ -184,54 +185,6 @@ export interface ContextConfigFile {
   };
 }
 
-/** Per-account Discord bot configuration */
-export interface DiscordAccountConfigFile {
-  token?: string;
-  tokenEnv?: string;
-  defaultAgentId?: string;
-  agentBindings?: Record<string, string>;
-  /** Per-account overrides (optional) */
-  allowDMs?: boolean;
-  channelAllowlist?: string[];
-}
-
-/** Discord transport configuration */
-export interface DiscordConfigFile {
-  /** Multi-bot: keyed by account ID */
-  accounts?: Record<string, DiscordAccountConfigFile>;
-  /** Legacy single-bot fields (backward compat) */
-  token?: string;
-  tokenEnv?: string;
-  defaultAgentId?: string;
-  agentBindings?: Record<string, string>;
-  allowDMs?: boolean;
-  channelAllowlist?: string[];
-  /** Thread binding configuration for auto-binding threads to agent sessions */
-  threadBindings?: ThreadBindingConfigFile;
-  /** Subagent Discord streaming configuration (M8) */
-  subagentStreaming?: SubagentStreamingConfigFile;
-  /** Whether to respond to messages from other bots. Default: false */
-  allowBots?: boolean;
-  /** Context management configuration */
-  context?: ContextConfigFile;
-  /** Discord user IDs allowed to execute slash commands */
-  adminUsers?: string[];
-}
-
-/** Thread binding configuration in config file */
-export interface ThreadBindingConfigFile {
-  /** Whether thread binding is enabled */
-  enabled?: boolean;
-}
-
-/** Subagent Discord streaming configuration (M8) */
-export interface SubagentStreamingConfigFile {
-  /** Whether subagent streaming to Discord is enabled. Default: true */
-  enabled?: boolean;
-  /** Whether to show tool call details in Discord. Default: true */
-  showToolCalls?: boolean;
-}
-
 /** Permission mode for subagent tool execution (M8) */
 export type SubagentPermissionMode = "skip" | "allowlist" | "default";
 
@@ -322,19 +275,12 @@ export interface IsotopesConfigFileRaw {
   agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[] };
   /** Agent ↔ Channel bindings */
   bindings?: BindingConfigFile[];
-  /** Discord transport config */
-  discord?: DiscordConfigFile;
-  /** Channel configurations (per-guild/group settings) */
+  /** Channel configurations (Discord/Feishu accounts, per-guild settings) */
   channels?: ChannelsConfig;
   /** Sub-agent (Claude Agent SDK) configuration */
   subagent?: SubagentConfigFile;
   /** Channel-level cron job definitions */
   cron?: CronJobConfigFile[];
-  /**
-   * @deprecated Moved to discord.threadBindings in M8.
-   * Thread binding configuration for auto-binding threads to agent sessions.
-   */
-  threadBindings?: ThreadBindingConfigFile;
 }
 
 /** Normalized config — agents is always an array, agentDefaults extracted */
@@ -513,51 +459,6 @@ function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
 // ---------------------------------------------------------------------------
 
 /**
- * Normalize Discord config: if legacy single-bot fields (token/tokenEnv) are present
- * without an explicit `accounts` map, wrap them into `accounts: { default: {...} }`.
- * This ensures downstream code always deals with the multi-account shape.
- */
-export function normalizeDiscordAccounts(config: IsotopesConfigFile): void {
-  if (!config.discord) return;
-
-  // If accounts already defined, nothing to normalize
-  if (config.discord.accounts && Object.keys(config.discord.accounts).length > 0) return;
-
-  // If legacy token/tokenEnv exists, wrap into accounts.default
-  if (config.discord.token || config.discord.tokenEnv) {
-    config.discord.accounts = {
-      default: {
-        token: config.discord.token,
-        tokenEnv: config.discord.tokenEnv,
-        defaultAgentId: config.discord.defaultAgentId,
-        agentBindings: config.discord.agentBindings,
-        allowDMs: config.discord.allowDMs,
-        channelAllowlist: config.discord.channelAllowlist,
-      },
-    };
-    log.debug("Normalized legacy discord.token into discord.accounts.default");
-  }
-}
-
-/**
- * Migrate deprecated top-level threadBindings to discord.threadBindings (M8).
- * Logs a deprecation warning if migration occurs.
- */
-function migrateThreadBindings(config: IsotopesConfigFile): void {
-  if (config.threadBindings && !config.discord?.threadBindings) {
-    log.warn(
-      "⚠️  DEPRECATION WARNING: Top-level 'threadBindings' configuration is deprecated. " +
-      "Please move it to 'discord.threadBindings'. Auto-migrating for this session.",
-    );
-    
-    if (!config.discord) {
-      config.discord = {};
-    }
-    config.discord.threadBindings = config.threadBindings;
-  }
-}
-
-/**
  * Load configuration from a file (YAML or JSON).
  * Supports environment variable substitution in string values.
  * Normalizes the agents union type so downstream always sees agents as an array.
@@ -616,12 +517,6 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
 
   // Process environment variables
   config = processEnvVars(config);
-
-  // Normalize discord accounts (legacy single-bot → multi-account)
-  normalizeDiscordAccounts(config);
-
-  // M8: Migrate deprecated threadBindings
-  migrateThreadBindings(config);
 
   return config;
 }
@@ -720,21 +615,20 @@ export function toBindings(
 }
 
 /**
- * Get Discord token from config (supports env var reference).
- * Accepts either a DiscordConfigFile (legacy) or a DiscordAccountConfigFile (multi-bot).
+ * Get Discord token from a per-account config (literal token or env-var reference).
  */
-export function getDiscordToken(discord: DiscordConfigFile | DiscordAccountConfigFile): string {
-  if (discord.token) {
-    return discord.token;
+export function getDiscordToken(account: DiscordAccountConfig): string {
+  if (account.token) {
+    return account.token;
   }
-  if (discord.tokenEnv) {
-    const token = process.env[discord.tokenEnv];
+  if (account.tokenEnv) {
+    const token = process.env[account.tokenEnv];
     if (!token) {
-      throw new Error(`Environment variable ${discord.tokenEnv} is not set`);
+      throw new Error(`Environment variable ${account.tokenEnv} is not set`);
     }
     return token;
   }
-  throw new Error("Discord config must have either 'token' or 'tokenEnv'");
+  throw new Error("Discord account config must have either 'token' or 'tokenEnv'");
 }
 
 // ---------------------------------------------------------------------------

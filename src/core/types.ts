@@ -307,17 +307,55 @@ export interface GuildConfig {
   };
 }
 
+/** Per-account Discord context configuration */
+export interface DiscordAccountContextConfig {
+  historyTurns?: number;
+  channelHistory?: boolean;
+  channelHistoryLimit?: number;
+  dedupe?: boolean;
+  debounce?: boolean;
+  debounceWindowMs?: number;
+  pruning?: {
+    protectRecent?: number;
+    headChars?: number;
+    tailChars?: number;
+  };
+}
+
+/** Per-account Discord subagent streaming configuration */
+export interface DiscordAccountSubagentStreamingConfig {
+  enabled?: boolean;
+  showToolCalls?: boolean;
+}
+
 /** Discord account configuration within the channels section */
 export interface DiscordAccountConfig {
+  /** Bot token (literal). Prefer `tokenEnv` for secrets. */
   token?: string;
+  /** Env var name to read the bot token from. */
   tokenEnv?: string;
+  /** Default agent ID for messages on this account. */
+  defaultAgentId?: string;
+  /** Channel/guild ID -> agent ID overrides. */
+  agentBindings?: Record<string, string>;
+  /** Whether to accept DMs. Default: true */
+  allowDMs?: boolean;
+  /** Restrict the bot to a list of channel IDs. */
+  channelAllowlist?: string[];
+  /** Group join policy (allowlist/denylist semantics, transport-defined). */
   groupPolicy?: string;
   /** Per-guild configuration keyed by guild ID */
   guilds?: Record<string, GuildConfig>;
   /** Thread binding configuration for auto-binding threads to agent sessions */
   threadBindings?: ThreadBindingConfig;
+  /** Subagent streaming behavior for this account. */
+  subagentStreaming?: DiscordAccountSubagentStreamingConfig;
   /** Whether to respond to messages from other bots. Default: false */
   allowBots?: boolean;
+  /** Context management configuration for this account. */
+  context?: DiscordAccountContextConfig;
+  /** Discord user IDs allowed to execute slash commands on this account. */
+  adminUsers?: string[];
 }
 
 /** Channels section of the configuration */

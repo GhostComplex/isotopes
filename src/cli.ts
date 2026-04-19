@@ -1006,12 +1006,11 @@ async function main() {
   let discordManager: DiscordTransportManager | undefined;
   let discordSessionStores: Map<string, DefaultSessionStore> | undefined;
 
-  if (config.discord) {
-    // Accounts are always normalized by loadConfig (legacy token → accounts.default)
-    const accounts = config.discord.accounts ?? {};
+  if (config.channels?.discord) {
+    const accounts = config.channels.discord.accounts ?? {};
 
     if (Object.keys(accounts).length === 0) {
-      logger.warn("Discord config present but no accounts or token configured — skipping");
+      logger.warn("channels.discord present but no accounts configured — skipping");
     } else {
       // Create session store per agent (sessions live in workspace)
       const sessionStores = new Map<string, DefaultSessionStore>();
@@ -1025,8 +1024,9 @@ async function main() {
       await Promise.all([...sessionStores.values()].map((store) => store.init()));
       discordSessionStores = sessionStores;
 
-      // Use first agent's session store as default
-      const defaultAgentId = config.discord.defaultAgentId || config.agents[0]?.id;
+      // Pick a default session store: first account's defaultAgentId, else first agent
+      const firstAccount = Object.values(accounts)[0];
+      const defaultAgentId = firstAccount?.defaultAgentId || config.agents[0]?.id;
       let defaultSessionStore = sessionStores.get(defaultAgentId);
       if (!defaultSessionStore) {
         const fallbackWorkspace = agentWorkspaces.get(defaultAgentId || "default");
@@ -1039,13 +1039,7 @@ async function main() {
         await defaultSessionStore.init();
       }
 
-      const threadBindings = config.discord.threadBindings
-        ? {
-            enabled: config.discord.threadBindings.enabled ?? false,
-          }
-        : undefined;
-
-      // Create and load persistent thread binding manager
+      // Create and load persistent thread binding manager (shared across accounts)
       const threadBindingManager = new ThreadBindingManager({
         persistPath: getThreadBindingsPath(),
       });
@@ -1061,18 +1055,13 @@ async function main() {
           sessionStore: defaultSessionStore,
           sessionStoreForAgent: (agentId) => sessionStores.get(agentId) || defaultSessionStore,
           channels: config.channels,
-          threadBindings,
           threadBindingManager,
-          enableSubagentStreaming: config.discord.subagentStreaming?.enabled,
-          subagentShowToolCalls: config.discord.subagentStreaming?.showToolCalls,
-          allowBots: config.discord.allowBots,
-          context: config.discord.context,
           usageTracker,
-          adminUsers: config.discord.adminUsers,
         },
       });
 
-      if (threadBindings?.enabled) {
+      const anyThreadBindings = Object.values(accounts).some((a) => a.threadBindings?.enabled);
+      if (anyThreadBindings) {
         logger.info("Discord thread bindings enabled");
       }
 

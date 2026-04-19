@@ -84,79 +84,64 @@ compaction:
 #   cleanupInterval: 3600            # 1h sweep
 
 # =============================================================================
-# DISCORD — Discord transport
-# Two forms supported:
-#   - Single-bot (legacy): top-level token/tokenEnv/defaultAgentId, auto-wrapped
-#     into discord.accounts.default at load time.
-#   - Multi-bot: explicit discord.accounts map (preferred for >1 bot).
+# CHANNELS — Discord / Feishu transports + per-guild settings
+# All Discord configuration lives under channels.discord.accounts.<accountId>.
+# Multi-bot is supported by listing multiple accounts.
 # =============================================================================
-discord:
-  # Single-bot legacy form:
-  tokenEnv: DISCORD_TOKEN            # or `token: <literal>`
-  defaultAgentId: main
-  allowDMs: true
-  # allowBots: false                 # respond to messages from other bots
-  # channelAllowlist:
-  #   - "channel-id"
-  # agentBindings:                   # bot user id → agent id
-  #   "bot-user-id": main
-  # adminUsers:                      # discord user ids allowed to run /slash commands
-  #   - "user-id"
+channels:
+  discord:
+    accounts:
+      main:                              # accountId — referenced by bindings, etc.
+        tokenEnv: DISCORD_TOKEN          # or `token: <literal>`
+        defaultAgentId: main
+        allowDMs: true
+        # allowBots: false               # respond to messages from other bots
+        # channelAllowlist:
+        #   - "channel-id"
+        # agentBindings:                 # bot user id → agent id
+        #   "bot-user-id": main
+        # adminUsers:                    # discord user ids allowed to run /slash commands
+        #   - "user-id"
 
-  # Multi-bot form (mutually exclusive with the legacy fields above):
-  # accounts:
-  #   main:
-  #     tokenEnv: DISCORD_TOKEN_MAIN
-  #     defaultAgentId: main
-  #     allowDMs: true
-  #     channelAllowlist: []
-  #     agentBindings: {}
-  #   helper:
-  #     tokenEnv: DISCORD_TOKEN_HELPER
-  #     defaultAgentId: helper
+        threadBindings:
+          enabled: true
+          # autoUnbindOnComplete: true
+          # sendFarewell: false
+          # farewellMessage: "Bye!"
 
-  threadBindings:
-    enabled: true
-    # autoUnbindOnComplete: true
-    # sendFarewell: false
-    # farewellMessage: "Bye!"
+        # subagentStreaming:             # M8: stream subagent output to Discord
+        #   enabled: true
+        #   showToolCalls: true
 
-  # subagentStreaming:               # M8: stream subagent output to Discord
-  #   enabled: true
-  #   showToolCalls: true
+        # context:                       # all fields optional, defaults shown
+        #   historyTurns: 20
+        #   channelHistory: true
+        #   channelHistoryLimit: 20
+        #   dedupe: true
+        #   debounce: false
+        #   debounceWindowMs: 1500
+        #   pruning:
+        #     protectRecent: 3
+        #     headChars: 1500
+        #     tailChars: 1500
 
-  # context:                         # all fields optional, defaults shown
-  #   historyTurns: 20
-  #   channelHistory: true
-  #   channelHistoryLimit: 20
-  #   dedupe: true
-  #   debounce: false
-  #   debounceWindowMs: 1500
-  #   pruning:
-  #     protectRecent: 3
-  #     headChars: 1500
-  #     tailChars: 1500
+        # guilds:                        # per-guild runtime overrides
+        #   "1480866703880487034":       # guild id
+        #     requireMention: false      # respond to all messages in this guild
+        #     context:                   # per-guild context overrides
+        #       historyTurns: 30
+        #       channelHistory: true
+        #       channelHistoryLimit: 50
 
-# =============================================================================
-# CHANNELS — per-guild / per-group runtime overrides
-# Discord guilds are nested under accounts.<accountId>.guilds.<guildId>.
-# Default requireMention is true (must @bot to respond).
-# =============================================================================
-# channels:
-#   discord:
-#     accounts:
-#       main:                              # accountId from discord.accounts (or "default" for legacy)
-#         guilds:
-#           "1480866703880487034":         # guild id
-#             requireMention: false        # respond to all messages in this guild
-#             context:                     # per-guild context overrides
-#               historyTurns: 30
-#               channelHistory: true
-#               channelHistoryLimit: 50
-#   feishu:
-#     groups:
-#       "oc_xxx":
-#         requireMention: false
+      # Add additional bots as siblings under accounts:
+      # helper:
+      #   tokenEnv: DISCORD_TOKEN_HELPER
+      #   defaultAgentId: helper
+
+  # feishu:
+  #   groups:
+  #     "oc_xxx":
+  #       requireMention: false
 
 # =============================================================================
 # BINDINGS — agent ↔ channel routing

@@ -1,5 +1,7 @@
 # PRD-154: Multi-Bot Discord Support
 
+> **Note (2026-04, #392):** Discord configuration moved from a top-level `discord:` block to `channels.discord.accounts.<id>`. The yaml examples below show the old shape; the multi-account model itself is unchanged. See `isotopes.example.yaml` for the current shape.
+
 ## Summary
 
 Support multiple Discord bot tokens so each agent can have an independent bot identity.

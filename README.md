@@ -89,9 +89,12 @@ agents:
     # sandbox:
     #   mode: non-main              # off | non-main | all
 
-discord:
-  tokenEnv: DISCORD_TOKEN
-  defaultAgentId: assistant
+channels:
+  discord:
+    accounts:
+      main:
+        tokenEnv: DISCORD_TOKEN
+        defaultAgentId: assistant
 
 # See isotopes.example.yaml for full options including:
 # - Agent bindings (channel + account + peer routing)

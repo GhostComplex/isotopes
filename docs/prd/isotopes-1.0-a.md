@@ -1,5 +1,7 @@
 # PRD：将 Major 与 Tachikoma 从 OpenClaw 迁移到 Isotopes
 
+> **Note (2026-04, #392):** Discord 配置已从顶层 `discord:` 块合并到 `channels.discord.accounts.<id>` 下。下文的 yaml 示例为旧 shape，仅作历史参考；当前 shape 见 `isotopes.example.yaml`。
+
 ## 1. 文档概述
 
 ### 1.1 背景

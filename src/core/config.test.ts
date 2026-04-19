@@ -8,13 +8,11 @@ import {
   loadConfig,
   toAgentConfig,
   getDiscordToken,
-  normalizeDiscordAccounts,
   resolveToolSettings,
   resolveCompactionConfigFromFile,
   resolveSessionConfig,
   resolveSandboxConfigFromFile,
 } from "./config.js";
-import type { IsotopesConfigFile } from "./config.js";
 
 describe("Config", () => {
   let tempDir: string;
@@ -122,12 +120,15 @@ agents:
       type: openai
       model: gpt-4o
 
-discord:
-  tokenEnv: DISCORD_TOKEN
-  defaultAgentId: assistant
-  agentBindings:
-    "123456": assistant
-  allowDMs: true
+channels:
+  discord:
+    accounts:
+      main:
+        tokenEnv: DISCORD_TOKEN
+        defaultAgentId: assistant
+        agentBindings:
+          "123456": assistant
+        allowDMs: true
 `,
       );
 
@@ -135,8 +136,8 @@ discord:
 
       expect(config.provider?.type).toBe("anthropic");
       expect(config.agents[0].provider?.type).toBe("openai");
-      expect(config.discord?.defaultAgentId).toBe("assistant");
-      expect(config.discord?.agentBindings?.["123456"]).toBe("assistant");
+      expect(config.channels?.discord?.accounts?.main?.defaultAgentId).toBe("assistant");
+      expect(config.channels?.discord?.accounts?.main?.agentBindings?.["123456"]).toBe("assistant");
     });
 
     it("loads global and agent tool settings from the same config file", async () => {
@@ -548,7 +549,7 @@ agents:
 
     it("throws when neither token nor tokenEnv", () => {
       expect(() => getDiscordToken({})).toThrow(
-        "Discord config must have either 'token' or 'tokenEnv'",
+        "Discord account config must have either 'token' or 'tokenEnv'",
       );
     });
   });
@@ -699,108 +700,8 @@ agents:
     });
   });
 
-  describe("normalizeDiscordAccounts", () => {
-    it("wraps legacy token into accounts.default", () => {
-      const config: IsotopesConfigFile = {
-        agents: [{ id: "fairy" }],
-        discord: {
-          token: "my-token",
-          defaultAgentId: "fairy",
-          agentBindings: { "123": "fairy" },
-          allowDMs: true,
-          channelAllowlist: ["ch-1"],
-        },
-      };
-
-      normalizeDiscordAccounts(config);
-
-      expect(config.discord!.accounts).toBeDefined();
-      expect(config.discord!.accounts!.default).toBeDefined();
-      expect(config.discord!.accounts!.default.token).toBe("my-token");
-      expect(config.discord!.accounts!.default.defaultAgentId).toBe("fairy");
-      expect(config.discord!.accounts!.default.agentBindings).toEqual({ "123": "fairy" });
-      expect(config.discord!.accounts!.default.allowDMs).toBe(true);
-      expect(config.discord!.accounts!.default.channelAllowlist).toEqual(["ch-1"]);
-    });
-
-    it("wraps legacy tokenEnv into accounts.default", () => {
-      const config: IsotopesConfigFile = {
-        agents: [{ id: "test" }],
-        discord: {
-          tokenEnv: "DISCORD_TOKEN",
-        },
-      };
-
-      normalizeDiscordAccounts(config);
-
-      expect(config.discord!.accounts!.default.tokenEnv).toBe("DISCORD_TOKEN");
-    });
-
-    it("does not normalize when accounts already defined", () => {
-      const config: IsotopesConfigFile = {
-        agents: [{ id: "major" }],
-        discord: {
-          accounts: {
-            major: { token: "tok-major", defaultAgentId: "major" },
-          },
-          token: "should-be-ignored",
-        },
-      };
-
-      normalizeDiscordAccounts(config);
-
-      // Should keep the explicit accounts, not create a new default
-      expect(Object.keys(config.discord!.accounts!)).toEqual(["major"]);
-    });
-
-    it("does nothing when discord is undefined", () => {
-      const config: IsotopesConfigFile = {
-        agents: [{ id: "test" }],
-      };
-
-      normalizeDiscordAccounts(config);
-
-      expect(config.discord).toBeUndefined();
-    });
-
-    it("does nothing when no token or accounts present", () => {
-      const config: IsotopesConfigFile = {
-        agents: [{ id: "test" }],
-        discord: {
-          allowBots: true,
-        },
-      };
-
-      normalizeDiscordAccounts(config);
-
-      expect(config.discord!.accounts).toBeUndefined();
-    });
-  });
-
-  describe("loadConfig — multi-account Discord normalization", () => {
-    it("normalizes legacy discord.token to accounts.default via loadConfig", async () => {
-      vi.stubEnv("MY_DISCORD_TOKEN", "env-token-123");
-
-      const configPath = path.join(tempDir, "legacy-discord.yaml");
-      await fs.writeFile(
-        configPath,
-        `
-agents:
-  - id: fairy
-discord:
-  token: \${MY_DISCORD_TOKEN}
-  defaultAgentId: fairy
-`,
-      );
-
-      const config = await loadConfig(configPath);
-
-      expect(config.discord!.accounts).toBeDefined();
-      expect(config.discord!.accounts!.default.token).toBe("env-token-123");
-      expect(config.discord!.accounts!.default.defaultAgentId).toBe("fairy");
-    });
-
-    it("loads multi-account Discord config as-is", async () => {
+  describe("loadConfig — multi-account Discord", () => {
+    it("loads multi-account Discord config from channels.discord.accounts", async () => {
       const configPath = path.join(tempDir, "multi-discord.yaml");
       await fs.writeFile(
         configPath,
@@ -808,26 +709,27 @@ discord:
 agents:
   - id: major
   - id: tachikoma
-discord:
-  accounts:
-    major:
-      token: tok-major
-      defaultAgentId: major
-    tachikoma:
-      token: tok-tachi
-      defaultAgentId: tachikoma
-  context:
-    historyTurns: 10
+channels:
+  discord:
+    accounts:
+      major:
+        token: tok-major
+        defaultAgentId: major
+        context:
+          historyTurns: 10
+      tachikoma:
+        token: tok-tachi
+        defaultAgentId: tachikoma
 `,
       );
 
       const config = await loadConfig(configPath);
 
-      expect(Object.keys(config.discord!.accounts!)).toEqual(["major", "tachikoma"]);
-      expect(config.discord!.accounts!.major.token).toBe("tok-major");
-      expect(config.discord!.accounts!.tachikoma.defaultAgentId).toBe("tachikoma");
-      // Shared settings should still be present
-      expect(config.discord!.context?.historyTurns).toBe(10);
+      const accounts = config.channels?.discord?.accounts ?? {};
+      expect(Object.keys(accounts)).toEqual(["major", "tachikoma"]);
+      expect(accounts.major.token).toBe("tok-major");
+      expect(accounts.tachikoma.defaultAgentId).toBe("tachikoma");
+      expect(accounts.major.context?.historyTurns).toBe(10);
     });
   });
 });
