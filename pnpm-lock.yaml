@@ -10,25 +10,22 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.1.9
-        version: 0.1.77(zod@3.24.4)
+        version: 0.1.77(zod@4.3.6)
       '@larksuiteoapi/node-sdk':
         specifier: ^1.60.0
         version: 1.60.0
       '@mariozechner/pi-agent-core':
         specifier: ^0.64.0
-        version: 0.64.0(ws@8.20.0)(zod@3.24.4)
+        version: 0.64.0(ws@8.20.0)(zod@4.3.6)
       '@mariozechner/pi-ai':
         specifier: ^0.64.0
-        version: 0.64.0(ws@8.20.0)(zod@3.24.4)
+        version: 0.64.0(ws@8.20.0)(zod@4.3.6)
       discord.js:
         specifier: ^14.18.0
         version: 14.26.2
       yaml:
         specifier: 2.7.1
         version: 2.7.1
-      zod:
-        specifier: 3.24.4
-        version: 3.24.4
     devDependencies:
       '@eslint/js':
         specifier: 9.27.0
@@ -2309,9 +2306,6 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@3.24.4:
-    resolution: {integrity: sha512-OdqJE9UDRPwWsrHjLN2F8bPxvwJBK22EHLWtanu0LSYr5YqzsaaW3RMgmjwr8Rypg5k+meEJdSPXJZXE/yqOMg==}
-
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
@@ -2322,9 +2316,9 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@anthropic-ai/claude-agent-sdk@0.1.77(zod@3.24.4)':
+  '@anthropic-ai/claude-agent-sdk@0.1.77(zod@4.3.6)':
     dependencies:
-      zod: 3.24.4
+      zod: 4.3.6
     optionalDependencies:
       '@img/sharp-darwin-arm64': 0.33.5
       '@img/sharp-darwin-x64': 0.33.5
@@ -2335,11 +2329,11 @@ snapshots:
       '@img/sharp-linuxmusl-x64': 0.33.5
       '@img/sharp-win32-x64': 0.33.5
 
-  '@anthropic-ai/sdk@0.73.0(zod@3.24.4)':
+  '@anthropic-ai/sdk@0.73.0(zod@4.3.6)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 3.24.4
+      zod: 4.3.6
 
   '@aws-crypto/crc32@5.2.0':
     dependencies:
@@ -3041,9 +3035,9 @@ snapshots:
       - debug
       - utf-8-validate
 
-  '@mariozechner/pi-agent-core@0.64.0(ws@8.20.0)(zod@3.24.4)':
+  '@mariozechner/pi-agent-core@0.64.0(ws@8.20.0)(zod@4.3.6)':
     dependencies:
-      '@mariozechner/pi-ai': 0.64.0(ws@8.20.0)(zod@3.24.4)
+      '@mariozechner/pi-ai': 0.64.0(ws@8.20.0)(zod@4.3.6)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - aws-crt
@@ -3053,9 +3047,9 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-ai@0.64.0(ws@8.20.0)(zod@3.24.4)':
+  '@mariozechner/pi-ai@0.64.0(ws@8.20.0)(zod@4.3.6)':
     dependencies:
-      '@anthropic-ai/sdk': 0.73.0(zod@3.24.4)
+      '@anthropic-ai/sdk': 0.73.0(zod@4.3.6)
       '@aws-sdk/client-bedrock-runtime': 3.1024.0
       '@google/genai': 1.48.0
       '@mistralai/mistralai': 1.14.1
@@ -3063,11 +3057,11 @@ snapshots:
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
       chalk: 5.6.2
-      openai: 6.26.0(ws@8.20.0)(zod@3.24.4)
+      openai: 6.26.0(ws@8.20.0)(zod@4.3.6)
       partial-json: 0.1.7
       proxy-agent: 6.5.0
       undici: 7.24.7
-      zod-to-json-schema: 3.25.2(zod@3.24.4)
+      zod-to-json-schema: 3.25.2(zod@4.3.6)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - aws-crt
@@ -4426,10 +4420,10 @@ snapshots:
     dependencies:
       mimic-function: 5.0.1
 
-  openai@6.26.0(ws@8.20.0)(zod@3.24.4):
+  openai@6.26.0(ws@8.20.0)(zod@4.3.6):
     optionalDependencies:
       ws: 8.20.0
-      zod: 3.24.4
+      zod: 4.3.6
 
   optionator@0.9.4:
     dependencies:
@@ -4898,14 +4892,8 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod-to-json-schema@3.25.2(zod@3.24.4):
-    dependencies:
-      zod: 3.24.4
-
   zod-to-json-schema@3.25.2(zod@4.3.6):
     dependencies:
       zod: 4.3.6
-
-  zod@3.24.4: {}
 
   zod@4.3.6: {}
