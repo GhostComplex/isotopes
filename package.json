@@ -1,6 +1,6 @@
 {
   "name": "@ghostcomplex/isotopes",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Lightweight, self-hostable AI agent framework",
   "type": "module",
   "bin": {
