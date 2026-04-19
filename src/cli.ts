@@ -9,7 +9,7 @@ import { resolveBundledSkillsDir } from "./skills/bundled-dir.js";
 import "./core/claude-settings-init.js";
 import { parseArgs } from "node:util";
 import path from "node:path";
-import { VERSION } from "./index.js";
+import { VERSION } from "./version.js";
 import type { Message } from "./core/types.js";
 import {
   loadConfig,

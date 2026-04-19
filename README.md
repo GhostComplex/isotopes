@@ -175,102 +175,10 @@ agents:
 
 ## Programmatic API
 
-Isotopes exports a full TypeScript API for building custom integrations:
-
-### Create and prompt an agent
-
-```typescript
-import {
-  PiMonoCore,
-  DefaultAgentManager,
-  DefaultSessionStore,
-  ToolRegistry,
-  createTimeTool,
-} from "isotopes";
-
-// Set up core + manager
-const core = new PiMonoCore();
-const manager = new DefaultAgentManager(core);
-
-// Register tools
-const tools = new ToolRegistry();
-tools.register(...createTimeTool());
-core.setToolRegistry("my-agent", tools);
-
-// Create an agent
-const agent = await manager.create({
-  id: "my-agent",
-  name: "My Agent",
-  systemPrompt: "You are a helpful assistant.",
-  provider: {
-    type: "anthropic",
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    model: "claude-sonnet-4-20250514",
-  },
-});
-
-// Stream a response
-for await (const event of agent.prompt("What time is it?")) {
-  if (event.type === "text_delta") process.stdout.write(event.text);
-}
-```
-
-### Session management
-
-```typescript
-import { DefaultSessionStore } from "isotopes";
-
-const store = new DefaultSessionStore({ dataDir: "./sessions" });
-await store.init();
-
-// Create a session and add messages
-const session = await store.create("my-agent", {
-  transport: "web",
-  key: "user:123",
-});
-await store.addMessage(session.id, {
-  role: "user",
-  content: [{ type: "text", text: "Hello" }],
-});
-
-// Retrieve by key
-const found = await store.findByKey("user:123");
-```
-
-### Git/GitHub tools
-
-```typescript
-import { gitStatus, gitLog, createPR, listIssues } from "isotopes";
-
-const status = await gitStatus({ cwd: "/path/to/repo" });
-const log = await gitLog({ cwd: "/path/to/repo", maxCount: 5 });
-
-const pr = await createPR({
-  title: "Add feature",
-  body: "Description here",
-  head: "feat/my-feature",
-  base: "main",
-});
-
-const issues = await listIssues({ state: "open" });
-```
-
-### Cron scheduling
-
-```typescript
-import { CronScheduler, parseCronExpression } from "isotopes";
-
-const scheduler = new CronScheduler();
-
-scheduler.add({
-  id: "daily-standup",
-  schedule: parseCronExpression("0 9 * * 1-5"),
-  action: { type: "message", content: "Time for standup!" },
-  callback: (job) => console.log(`Fired: ${job.id}`),
-});
-
-scheduler.start();
-```
+Isotopes is currently shipped as a CLI binary, not a library. There is no
+stable public API for `import { ... } from "isotopes"`. Internal modules
+under `src/` may change without notice. If you need to embed Isotopes
+programmatically, open an issue describing the use case.
 
 ## Directory Layout
 

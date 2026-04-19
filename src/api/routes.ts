@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import path from "node:path";
 
-import { VERSION } from "../index.js";
+import { VERSION } from "../version.js";
 import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { AgentManager, SessionStore } from "../core/types.js";
