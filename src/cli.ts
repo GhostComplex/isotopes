@@ -1128,28 +1128,16 @@ async function main() {
     }
   }
 
-  // Start API server (dashboard + REST API + WebChat)
-  // Create a session store for web chat (uses first agent's workspace)
-  const defaultChatAgentId = config.agents[0]?.id ?? "default";
-  const chatWorkspacePath = agentWorkspaces.get(defaultChatAgentId);
-  const chatSessionsDir = chatWorkspacePath
-    ? path.join(chatWorkspacePath, "chat-sessions")
-    : getSessionsDir(defaultChatAgentId);
-  const chatSessionStore = new DefaultSessionStore({ dataDir: chatSessionsDir });
-  await chatSessionStore.init();
-
+  // Start API server (REST API)
   const apiServer = new ApiServer(
     { port: getApiPort() },
     cronScheduler,
     undefined,       // configReloader
     agentManager,
-    chatSessionStore,
     usageTracker,
     discordSessionStores,
   );
   await apiServer.start();
-  logger.info(`Dashboard available at http://127.0.0.1:${getApiPort()}/dashboard`);
-  logger.info(`WebChat available at http://127.0.0.1:${getApiPort()}/chat`);
 
   // Keep process alive
   logger.info("Running... Press Ctrl+C to stop");
@@ -1164,7 +1152,6 @@ async function main() {
     await apiServer.stop();
 
     // Clean up session stores (#286)
-    chatSessionStore.destroy();
     if (discordSessionStores) {
       for (const store of discordSessionStores.values()) {
         store.destroy();
@@ -1197,7 +1184,6 @@ async function main() {
     await apiServer.stop();
 
     // Clean up session stores (#286)
-    chatSessionStore.destroy();
     if (discordSessionStores) {
       for (const store of discordSessionStores.values()) {
         store.destroy();

@@ -22,10 +22,7 @@ import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middle
 export interface RouteDeps {
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
-  /** Agent manager for WebChat routes */
   agentManager?: AgentManager;
-  /** Session store for WebChat routes */
-  chatSessionStore?: SessionStore;
   /** Per-agent session stores for Discord sessions */
   discordSessionStores?: Map<string, SessionStore>;
   /** Usage tracker for token/cost accumulation */
@@ -109,8 +106,7 @@ addRoute("GET", "/api/status", (_req, res, deps) => {
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/sessions", async (_req, res, deps) => {
-  // Chat sessions (file-persisted)
-  let chatSessions: Array<{
+  const discordSessions: Array<{
     id: string;
     key?: string;
     agentId: string;
@@ -123,23 +119,6 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
     messageCount: number;
     source: string;
   }> = [];
-  if (deps.chatSessionStore) {
-    const sessions = await deps.chatSessionStore.list();
-    chatSessions = sessions.map((s) => ({
-      id: s.id,
-      key: s.metadata?.key,
-      agentId: s.agentId,
-      threadId: s.metadata?.threadId,
-      status: "active" as const,
-      createdAt: s.lastActiveAt.toISOString(),
-      lastActivityAt: s.lastActiveAt.toISOString(),
-      messageCount: 0,
-      source: "chat" as const,
-    }));
-  }
-
-  // Discord sessions (per-agent file-persisted stores)
-  const discordSessions: typeof chatSessions = [];
   if (deps.discordSessionStores) {
     for (const [agentId, store] of deps.discordSessionStores) {
       const sessions = await store.list();
@@ -161,7 +140,7 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
     }
   }
 
-  sendJson(res, 200, [...chatSessions, ...discordSessions]);
+  sendJson(res, 200, discordSessions);
 });
 
 // ---------------------------------------------------------------------------
@@ -169,32 +148,6 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/sessions/:id", async (req, res, deps) => {
-  // Try chat session store
-  if (deps.chatSessionStore) {
-    const chatSession = await deps.chatSessionStore.get(req.params.id);
-    if (chatSession) {
-      const messages = await deps.chatSessionStore.getMessages(req.params.id);
-      sendJson(res, 200, {
-        id: chatSession.id,
-        agentId: chatSession.agentId,
-        threadId: chatSession.metadata?.threadId,
-        status: "active",
-        createdAt: chatSession.lastActiveAt.toISOString(),
-        lastActivityAt: chatSession.lastActiveAt.toISOString(),
-        source: "chat",
-        history: messages.map((m) => ({
-          role: m.role,
-          content: Array.isArray(m.content)
-            ? m.content.map((b) => (typeof b === "string" ? b : (b as { text?: string }).text ?? JSON.stringify(b))).join("")
-            : String(m.content),
-          timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
-        })),
-      });
-      return;
-    }
-  }
-
-  // Try Discord per-agent session stores
   if (deps.discordSessionStores) {
     for (const store of deps.discordSessionStores.values()) {
       const discordSession = await store.get(req.params.id);
@@ -229,25 +182,6 @@ addRoute("GET", "/api/sessions/:id", async (req, res, deps) => {
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/sessions/:id/messages", async (req, res, deps) => {
-  // Try chat session store
-  if (deps.chatSessionStore) {
-    const chatSession = await deps.chatSessionStore.get(req.params.id);
-    if (chatSession) {
-      const messages = await deps.chatSessionStore.getMessages(req.params.id);
-      sendJson(res, 200, {
-        messages: messages.map((m) => ({
-          role: m.role,
-          content: Array.isArray(m.content)
-            ? m.content.map((b) => (typeof b === "string" ? b : (b as { text?: string }).text ?? JSON.stringify(b))).join("")
-            : String(m.content),
-          timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
-        })),
-      });
-      return;
-    }
-  }
-
-  // Try Discord per-agent session stores
   if (deps.discordSessionStores) {
     for (const store of deps.discordSessionStores.values()) {
       const discordSession = await store.get(req.params.id);

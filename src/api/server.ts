@@ -16,10 +16,6 @@ import {
   type ApiRequest,
 } from "./middleware.js";
 import { matchRoute, type RouteDeps } from "./routes.js";
-import { serveDashboard, serveChat } from "./static.js";
-
-// Register chat routes (side-effect import)
-import "./chat.js";
 
 // Register subagent routes (side-effect import)
 import "./subagents.js";
@@ -47,7 +43,7 @@ export interface ApiServerConfig {
 /**
  * ApiServer — minimal HTTP REST API built on Node.js built-in `http` module.
  *
- * Exposes endpoints for managing chat / Discord sessions, cron jobs, config, and
+ * Exposes endpoints for managing Discord sessions, cron jobs, config, and
  * daemon status. Supports CORS, JSON body parsing, and parameterized routes.
  */
 export class ApiServer {
@@ -59,11 +55,10 @@ export class ApiServer {
     cronScheduler: CronScheduler,
     configReloader?: ConfigReloader,
     agentManager?: AgentManager,
-    chatSessionStore?: SessionStore,
     usageTracker?: UsageTracker,
     discordSessionStores?: Map<string, SessionStore>,
   ) {
-    this.deps = { cronScheduler, configReloader, agentManager, chatSessionStore, usageTracker, discordSessionStores };
+    this.deps = { cronScheduler, configReloader, agentManager, usageTracker, discordSessionStores };
   }
 
   /**
@@ -97,16 +92,6 @@ export class ApiServer {
       const bodyError = await parseJsonBody(req);
       if (bodyError) {
         sendError(res, 400, bodyError);
-        return;
-      }
-
-      // Static dashboard files (before API route matching)
-      if (await serveDashboard(req, res)) {
-        return;
-      }
-
-      // Static chat files (before API route matching)
-      if (await serveChat(req, res)) {
         return;
       }
 

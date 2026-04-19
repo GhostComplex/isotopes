@@ -15,5 +15,3 @@ export {
   logRequest,
 } from "./middleware.js";
 export type { ApiRequest, ApiError } from "./middleware.js";
-
-export { serveDashboard, serveChat } from "./static.js";
