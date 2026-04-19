@@ -2,21 +2,6 @@
 
 A lightweight, self-hostable AI agent framework for multi-agent collaboration across chat platforms.
 
-## Features
-
-- **Multi-agent orchestration** — Multiple agents with distinct personas, each with its own workspace
-- **Self-evolving prompts** — Agents can update their own system prompts via `SOUL.md` and `MEMORY.md`
-- **Binding-based routing** — Route messages to agents by channel, account, and peer with priority resolution
-- **Transports** — Discord (channels, threads, DMs) and Feishu (groups, P2P, WebSocket)
-- **Git/GitHub tools** — Built-in `gh` CLI wrapper for PRs, issues, and repo management
-- **Cron automation** — Scheduled tasks with cron expressions (daily standups, periodic prompts)
-- **Daemon mode** — Background process with `start`/`stop`/`status`, plus launchd/systemd service install
-- **Web API** — REST endpoints for status, sessions, config, and cron management
-- **Sandbox execution** — Isolate tool execution in Docker containers with workspace mounting
-- **Context compaction** — LLM-based summarization to manage context window size
-- **Workspace hot-reload** — Auto-reload agent config and prompts on file changes
-- **Local-first** — Everything runs on your machine
-
 ## Quick Start
 
 ```bash
