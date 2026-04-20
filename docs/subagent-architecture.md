@@ -264,7 +264,24 @@ cli.ts  init
 
 ### 4.4 目标布局：对齐 openclaw（计划项）
 
-**现状的两个根**（§4.2 表里那两条 dataDir）和"主 agent / subagent 各自一套 store 实例"是历史遗留。计划在独立 PR 里把整个存储层对齐 openclaw，主 + sub 共用一个根目录、一个 manager。**不做向后兼容**——切换后旧路径下的 transcript 文件物理上还在，但代码不再读，等同于失忆。
+**现状的两个根**（§4.2 表里那两条 dataDir）和"主 agent / subagent 各自一套 store 实例"是历史遗留。计划在独立 PR 里把整个存储层对齐 openclaw：主 + sub 共用一个根目录、一个 manager、一种 agentId 体系。**不做向后兼容**——切换后旧路径下的 transcript 文件物理上还在，但代码不再读，等同于失忆。
+
+#### 核心原则（直接抄 openclaw）
+
+1. **agentId 永远是真实的**——主 agent 用它配置里的真实 ID，命名 subagent（比如 `code-reviewer`）用自己的真名，**没有"虚拟 agentId"概念**（不再有 `subagent:<parent>:<task>` 这种合成 ID）。
+2. **匿名/动态 subagent fallback 到父 agent 的 ID**——没指定 `targetAgentId` 时，session 直接落在父 agent 目录下。
+3. **"这是 subagent run" 的信息塞进 sessionKey，不进 agentId**——key 形如 `agent:<targetAgentId>:subagent:<uuid>`。
+4. **目录由真实 agentId 决定**——`agents/<normalizedAgentId>/sessions/`。同一个 agent 当主 agent 跑 / 被 spawn 当 subagent 跑，落在同一个目录，sessionId 不同。
+
+为什么这样不会污染：`getMessages(sessionId)` 是按 sessionId 拉单个 session 文件，不是按目录扫。同一目录下放 N 个 session 互不影响，主 agent 拼 prompt 时只读自己那个 session，碰不到 subagent 的。
+
+#### 三种调用场景的落点
+
+| 场景 | 用什么 agentId | 落在哪 | session 连续性 |
+|---|---|---|---|
+| 主 agent (`alice`) 处理 user 消息 | `alice` | `agents/alice/sessions/<sid>.jsonl` | 按 binding key 复用同一 sessionId |
+| 主 agent 调命名 subagent (`code-reviewer`) | `code-reviewer` | `agents/code-reviewer/sessions/<sid>.jsonl` | 默认每次新 sessionId；想连续就在 sessionKey 里编码上下文 |
+| 主 agent 起匿名/动态 subagent (claude/builtin) | **父 agent** (`alice`) | `agents/alice/sessions/<sid>.jsonl` | 不复用，每次新 sessionId |
 
 #### 目标架构 ASCII
 
@@ -286,13 +303,17 @@ cli.ts  init
    │ DiscordTransport       │              │ spawnSubagent            │
    │   (主 agent 写入侧)    │              │   (subagent 写入侧)       │
    │                        │              │                          │
-   │ store = manager        │              │ vid = subagentAgentId(   │
-   │   .getOrCreate(agentId)│              │       parent, taskId)    │
-   │                        │              │ store = manager          │
-   │ store.addMessage(      │              │   .getOrCreate(vid)      │
-   │   sid, userMsg)        │              │                          │
-   │ store.addMessage(      │              │ recorder = createRecord( │
-   │   sid, assistantMsg)   │              │   { store, ... })        │
+   │ targetId = agentId     │              │ targetId =               │
+   │ key = bindingSessionKey│              │   opts.targetAgentId     │
+   │                        │              │   ?? parentAgentId        │
+   │ store = manager        │              │ key = `agent:${targetId}:│
+   │   .getOrCreate(        │              │       subagent:${uuid}`  │
+   │      targetId)         │              │ store = manager          │
+   │                        │              │   .getOrCreate(targetId) │
+   │ store.addMessage(      │              │                          │
+   │   sid, userMsg)        │              │ recorder = createRecord( │
+   │ store.addMessage(      │              │   { store, sessionKey })  │
+   │   sid, assistantMsg)   │              │                          │
    └──────────┬─────────────┘              └─────────┬────────────────┘
               │                                       │
               │ addMessage / setMetadata              │ addMessage / setMetadata
@@ -305,52 +326,68 @@ cli.ts  init
                        │ 文件操作
                        ▼
 
-  磁盘布局 — 主 / sub 同根，各自 normalizedId 子目录：
+  磁盘布局 — 主 / 命名 sub / 匿名 sub 全按真实 agentId 分目录：
 
   ~/.isotopes/
     agents/
-      ├── alice/                        ← 主 agent ID = "alice"
+      ├── alice/                           ← 主 agent ID = "alice"
       │     └── sessions/
-      │           ├── sessions.json     ← 索引
-      │           └── <sid>.jsonl       ← transcript（user+assistant）
+      │           ├── sessions.json        ← 索引
+      │           ├── <sid-1>.jsonl        ← user ↔ alice 对话
+      │           ├── <sid-2>.jsonl        ← alice 起的匿名 subagent
+      │           └── <sid-3>.jsonl        ← alice 起的另一个匿名 subagent
+      │                                       (sessionKey 里有 :subagent:uuid)
       │
-      ├── bob/                          ← 主 agent ID = "bob"
-      │     └── sessions/
-      │           ├── sessions.json
-      │           └── <sid>.jsonl
+      ├── bob/                             ← 主 agent ID = "bob"
+      │     └── sessions/...
       │
-      ├── subagent-alice-task-42/       ← 虚拟 ID (冒号被 normalize 成 -)
-      │     └── sessions/
-      │           ├── sessions.json
-      │           └── <sid>.jsonl       ← SubagentEvent → Message
-      │
-      └── subagent-bob-task-77/
+      └── code-reviewer/                   ← 命名 subagent，被 alice / bob 都调用过
             └── sessions/
                   ├── sessions.json
-                  └── <sid>.jsonl
+                  ├── <sid-a>.jsonl        ← 给 alice 审过的一次
+                  └── <sid-b>.jsonl        ← 给 bob 审过的一次
 ```
 
 #### 写入侧分工（调用栈对照）
 
 ```
-  主 agent path                          subagent path
-  ─────────────                          ─────────────
-  user msg arrives in Discord            LLM 决定 spawn_subagent
+  主 agent path                          subagent path (named or anon)
+  ─────────────                          ─────────────────────────────
+  user msg arrives in Discord            主 agent 决定 spawn_subagent
         │                                      │
   DiscordTransport.handleMessage         ToolRegistry → spawn_subagent
         │                                      │
-  manager.getOrCreate("alice")           manager.getOrCreate(
-        │                                  "subagent:alice:task-42")
-  store.addMessage(sid, userMsg)               │
-        │                                createSubagentRecorder({store, ...})
+  targetId = agentId                     targetId = opts.targetAgentId
+        │                                          ?? parentAgentId
+        │                                      │
+  manager.getOrCreate(targetId)          manager.getOrCreate(targetId)
+        │                                      │
+  key = bindingSessionKey(channel,...)   key = `agent:${targetId}:
+        │                                       subagent:${uuid}`
+  session = store.findByKey(key)               │
+            ?? store.create(targetId, ...)  session = store.create(
+        │                                       targetId,
+  store.addMessage(sid, userMsg)               { ...metadata,
+        │                                         sessionKey: key })
   agent.prompt(messages)                       │
-        │                                backend.spawn(taskId, opts)
-  on agent_end:                                │
-  store.addMessage(sid, assistantMsg)    for await (event):
+        │                                createSubagentRecorder(
+  on agent_end:                            { store, sessionId, ... })
+  store.addMessage(sid, assistantMsg)          │
+                                         backend.spawn(taskId, opts)
+                                               │
+                                         for await (event):
                                            recorder.record(event)
                                               ↓
                                            store.addMessage(sid, msg)
 ```
+
+#### sessionKey 形态
+
+| 调用类型 | sessionKey 格式 | 复用规则 |
+|---|---|---|
+| 主 agent 来自 transport | `discord:<botId>:channel:<cid>:<agentId>` | 同一 (channel × agent) 复用 |
+| 命名 subagent | `agent:<targetAgentId>:subagent:<uuid>` | 默认每次新；自定义 key 可达成连续性 |
+| 匿名 subagent | `agent:<parentAgentId>:subagent:<uuid>` | 默认每次新 |
 
 #### 共用 / 各自一览
 
@@ -362,22 +399,27 @@ cli.ts  init
   setMetadata 路径     │ 同一份                │
   Manager              │ SessionStoreManager  │
   根目录               │ ~/.isotopes/agents/  │
+  agentId 体系         │ 都是真实 agentId      │
                                                 │ store 实例 │ per-agentId
                                                 │ 写入触发器 │ transport vs recorder
-                                                │ getMessages│ 主回喂 prompt /
-                                                │ 用法       │ sub 仅审计读
+                                                │ sessionKey │ binding key vs
+                                                │  生成规则  │  agent:...:subagent:uuid
+                                                │ 复用粒度   │ 主连续 / sub 默认一次性
 ```
 
 #### 与 openclaw 对照
 
 ```
-  openclaw                              我们 (对齐后)
-  ──────────                            ─────────────
-  <stateDir>/agents/<id>/sessions/      ~/.isotopes/agents/<id>/sessions/
-  normalizeAgentId() 把 :,/ 替成 -      同
-  per-agentId store 实例                 同 (SessionStoreManager 提供)
-  主 agent + subagent 同根              同
-  无 workspace-local                    同 (砍掉旧分支)
+  openclaw                                我们 (对齐后)
+  ──────────                              ─────────────
+  <stateDir>/agents/<id>/sessions/        ~/.isotopes/agents/<id>/sessions/
+  normalizeAgentId() 把 :,/ 替成 -        同
+  per-agentId store 实例                   同 (SessionStoreManager 提供)
+  agentId 永远真实，无合成 ID              同
+  匿名 sub 落父 agent 目录                 同
+  sessionKey: agent:<id>:subagent:<uuid>  同
+  主 agent + 命名 sub + 匿名 sub 同根     同
+  无 workspace-local                      同 (砍掉旧分支)
 ```
 
 #### 改动清单
@@ -385,10 +427,15 @@ cli.ts  init
 - `paths.ts`：加 `normalizeAgentId()`（小写 + `[^a-z0-9_-]+ → -`）和 `getAgentSessionsDir(agentId)`。
 - 新建 `SessionStoreManager`（或 cli.ts 内联 `Map<normalizedId, DefaultSessionStore>`），主 + sub 都从这里取。
 - `cli.ts`：主 agent store 创建走 manager，去掉 workspace-local 分支；删掉 `setSubagentSessionStore` 单例调用。
-- `tools/subagent.ts`：spawn 时 `manager.getOrCreate(virtualAgentId)` 注入 recorder，不再依赖单例 setter。
-- 测试 dataDir 全更新；明确不写迁移代码。
+- `tools/subagent.ts`：
+  - 接受可选 `targetAgentId`；没传就 fallback 到 `parentAgentId`
+  - sessionKey 用 `agent:${targetId}:subagent:${randomUUID()}`
+  - 拿 `manager.getOrCreate(targetId)` 注入 recorder
+- `subagent/persistence.ts`：删掉 `subagentAgentId()` / vid 概念；recorder 接收外部传入的 `targetAgentId` + `sessionKey`。
+- `core/types.ts`：`SubagentSessionMetadata.parentSessionId` 保留；考虑把 `transport: 'subagent'` 这条挪走（subagent 不是 transport，应作为 session metadata 的 `kind` 字段）。
+- 测试 dataDir / sessionKey 全更新；明确不写迁移代码。
 
-不在范围内：旧数据迁移、向后兼容 fallback、workspace-local sessions。
+不在范围内：旧数据迁移、向后兼容 fallback、workspace-local sessions、命名 subagent 的"上下文连续性"高级机制（基础设施留好接口，具体策略另开 issue）。
 
 ## 5. 共享 vs 隔离
 
