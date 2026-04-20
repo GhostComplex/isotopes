@@ -16,11 +16,10 @@ export type SubagentAgent = "claude" | "builtin";
 export const SUBAGENT_AGENTS: ReadonlySet<string> = new Set<string>(["claude", "builtin"]);
 
 /**
- * Role of a builtin subagent run. Drives tool capabilities.
- * - "leaf"         — terminal worker; cannot spawn nested subagents.
- * - "orchestrator" — reserved for future nesting; currently unused in v1.
+ * Role of a builtin subagent run. Subagents are always leaf workers
+ * that cannot spawn further subagents (single-level nesting only).
  */
-export type SubagentRole = "leaf" | "orchestrator";
+export type SubagentRole = "leaf";
 
 /** Builtin-backend-specific spawn options. */
 export interface BuiltinSubagentOptions {

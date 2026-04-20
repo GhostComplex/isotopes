@@ -3,7 +3,6 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import os from "node:os";
 import { getIsotopesHome } from "../core/paths.js";
 
 // Directories to skip during recursive scanning
@@ -167,14 +166,4 @@ async function scanDirectory(dirPath: string): Promise<DiscoveredSkill[]> {
   }
 
   return skills;
-}
-
-/**
- * Expand ~ to home directory in a path.
- */
-export function expandTilde(p: string): string {
-  if (p.startsWith("~/")) {
-    return path.join(os.homedir(), p.slice(2));
-  }
-  return p;
 }

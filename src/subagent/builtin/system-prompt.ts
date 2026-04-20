@@ -28,18 +28,11 @@ export function buildBuiltinSubagentSystemPrompt(options: BuildPromptOptions): s
     "You are a focused subagent spawned to complete a single task and then exit.",
   );
 
-  if (role === "leaf") {
-    sections.push(
-      "Capabilities: read-only inspection plus shell. You cannot spawn further subagents, " +
-        "write or edit files, or fetch from the web. If the task requires those, return a " +
-        "concise explanation of what is needed and stop.",
-    );
-  } else {
-    sections.push(
-      "Capabilities: you may delegate sub-tasks to further subagents. Prefer doing the work " +
-        "yourself when reasonable; nest only when a sub-task is genuinely independent.",
-    );
-  }
+  sections.push(
+    "Capabilities: read-only inspection plus shell. You cannot spawn further subagents, " +
+      "write or edit files, or fetch from the web. If the task requires those, return a " +
+      "concise explanation of what is needed and stop.",
+  );
 
   sections.push(
     "Be terse. Report findings or completion in plain text. Do not narrate plans before acting; " +

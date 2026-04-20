@@ -14,7 +14,6 @@ import {
   loadWorkspaceContext,
   type WorkspaceContext,
 } from "./workspace.js";
-import { WorkspaceContextLoader } from "../workspace/context-loader.js";
 
 /** Options for creating an agent with workspace awareness. */
 export interface AgentCreateOptions {
@@ -24,8 +23,6 @@ export interface AgentCreateOptions {
   toolGuardPrompt?: string;
   /** Base system prompt before workspace assembly (for hot-reload rebuild) */
   baseSystemPrompt?: string;
-  /** Class-based context loader for hot-reload (if provided, used instead of functional API) */
-  contextLoader?: WorkspaceContextLoader;
 }
 
 /** Internal entry combining config, instance, and workspace */
@@ -39,8 +36,6 @@ interface AgentEntry {
   workspacePath?: string;
   /** Tool guard prompt section (re-appended on hot-reload) */
   toolGuardPrompt?: string;
-  /** Class-based context loader (for hot-reload via refresh) */
-  contextLoader?: WorkspaceContextLoader;
 }
 
 /**
@@ -76,7 +71,6 @@ export class DefaultAgentManager implements AgentManager {
       baseSystemPrompt: options?.baseSystemPrompt ?? config.systemPrompt,
       workspacePath: options?.workspacePath,
       toolGuardPrompt: options?.toolGuardPrompt,
-      contextLoader: options?.contextLoader,
     });
     return instance;
   }
@@ -139,9 +133,6 @@ export class DefaultAgentManager implements AgentManager {
   /**
    * Reload workspace context for an agent (hot-reload support).
    *
-   * If a {@link WorkspaceContextLoader} was provided at creation, uses its
-   * refresh() method. Otherwise falls back to the functional API.
-   *
    * Re-reads workspace files from disk, rebuilds the system prompt from
    * the base prompt + fresh workspace context + stored tool guard prompt.
    */
@@ -152,29 +143,14 @@ export class DefaultAgentManager implements AgentManager {
     }
 
     if (!entry.workspacePath) {
-      return; // No workspace to reload
+      return;
     }
 
     await ensureWorkspaceStructure(entry.workspacePath);
 
-    // Use class-based loader if available, otherwise functional API
-    let systemPrompt: string;
-    if (entry.contextLoader) {
-      const ctx = await entry.contextLoader.refresh();
-      systemPrompt = entry.contextLoader.buildSystemPrompt(entry.baseSystemPrompt);
-
-      // Store workspace reference as a WorkspaceContext-compatible shape
-      entry.workspace = {
-        systemPromptAdditions: ctx.systemPromptAdditions,
-        memory: ctx.memory,
-        workspacePath: ctx.workspacePath,
-        skillsPrompt: ctx.skillsPrompt,
-      };
-    } else {
-      const workspace = await loadWorkspaceContext(entry.workspacePath, { bundledPath: resolveBundledSkillsDir() });
-      systemPrompt = buildSystemPrompt(entry.baseSystemPrompt, workspace);
-      entry.workspace = workspace;
-    }
+    const workspace = await loadWorkspaceContext(entry.workspacePath, { bundledPath: resolveBundledSkillsDir() });
+    let systemPrompt = buildSystemPrompt(entry.baseSystemPrompt, workspace);
+    entry.workspace = workspace;
 
     if (entry.toolGuardPrompt) {
       systemPrompt = [systemPrompt, entry.toolGuardPrompt].filter(Boolean).join("\n\n---\n\n");

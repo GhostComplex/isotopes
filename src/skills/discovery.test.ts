@@ -8,7 +8,6 @@ import {
   discoverSkills,
   getGlobalSkillsPath,
   getWorkspaceSkillsPath,
-  expandTilde,
 } from "./discovery.js";
 
 describe("Skill Discovery", () => {
@@ -237,23 +236,6 @@ describe("Skill Discovery", () => {
     it("returns skills subdirectory of workspace", () => {
       const result = getWorkspaceSkillsPath("/path/to/workspace");
       expect(result).toBe("/path/to/workspace/skills");
-    });
-  });
-
-  describe("expandTilde", () => {
-    it("expands ~ to home directory", () => {
-      const result = expandTilde("~/test/path");
-      expect(result).toBe(path.join(os.homedir(), "test/path"));
-    });
-
-    it("leaves absolute paths unchanged", () => {
-      const result = expandTilde("/absolute/path");
-      expect(result).toBe("/absolute/path");
-    });
-
-    it("leaves relative paths unchanged", () => {
-      const result = expandTilde("relative/path");
-      expect(result).toBe("relative/path");
     });
   });
 });

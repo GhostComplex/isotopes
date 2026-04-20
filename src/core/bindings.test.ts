@@ -1,7 +1,7 @@
 // src/core/bindings.test.ts — Unit tests for binding resolution
 
 import { describe, it, expect } from "vitest";
-import { resolveBinding, resolveAllBindings } from "./bindings.js";
+import { resolveBinding } from "./bindings.js";
 import type { Binding } from "./types.js";
 import { toBindings } from "./config.js";
 
@@ -332,47 +332,6 @@ describe("resolveBinding", () => {
       accountId: "acct",
     });
     expect(result?.agentId).toBe("agent-a");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// resolveAllBindings
-// ---------------------------------------------------------------------------
-
-describe("resolveAllBindings", () => {
-  it("returns empty array when no bindings match", () => {
-    const result = resolveAllBindings([], { channel: "discord" });
-    expect(result).toEqual([]);
-  });
-
-  it("returns all matching bindings sorted by specificity", () => {
-    const bindings = [
-      binding("fallback", "discord"),
-      binding("major", "discord", "major"),
-      binding("specific", "discord", "major", { kind: "group", id: "123" }),
-    ];
-    const result = resolveAllBindings(bindings, {
-      channel: "discord",
-      accountId: "major",
-      peer: { kind: "group", id: "123" },
-    });
-    expect(result).toHaveLength(3);
-    expect(result[0].agentId).toBe("specific");
-    expect(result[1].agentId).toBe("major");
-    expect(result[2].agentId).toBe("fallback");
-  });
-
-  it("excludes non-matching bindings", () => {
-    const bindings = [
-      binding("discord-agent", "discord", "major"),
-      binding("feishu-agent", "feishu", "major"),
-    ];
-    const result = resolveAllBindings(bindings, {
-      channel: "discord",
-      accountId: "major",
-    });
-    expect(result).toHaveLength(1);
-    expect(result[0].agentId).toBe("discord-agent");
   });
 });
 

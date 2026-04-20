@@ -1,20 +1,15 @@
 // src/subagent/builtin/tool-policy.ts — Role-based tool capability policy
-// Decides which tools a builtin subagent may use, based on its role.
+// Decides which tools a builtin subagent may use.
 
 import { ToolRegistry, type ToolHandler } from "../../core/tools.js";
 import type { SubagentRole } from "../types.js";
 
-/** Tools never exposed to a builtin subagent regardless of role. */
+/** Tools never exposed to a builtin subagent. */
 export const DENY_ALWAYS: ReadonlySet<string> = new Set<string>([
   "write_file",
   "edit",
   "web_fetch",
   "web_search",
-]);
-
-/** Additional tools denied for "leaf" subagents (no nested spawning). */
-export const DENY_LEAF: ReadonlySet<string> = new Set<string>([
-  ...DENY_ALWAYS,
   "spawn_subagent",
 ]);
 
@@ -25,13 +20,8 @@ export interface BuiltinToolPolicy {
 }
 
 /** Resolve the deny-list for a subagent role. */
-export function resolveBuiltinToolPolicy(role: SubagentRole): BuiltinToolPolicy {
-  switch (role) {
-    case "leaf":
-      return { deny: DENY_LEAF };
-    case "orchestrator":
-      return { deny: DENY_ALWAYS };
-  }
+export function resolveBuiltinToolPolicy(_role: SubagentRole): BuiltinToolPolicy {
+  return { deny: DENY_ALWAYS };
 }
 
 /**

@@ -98,15 +98,4 @@ export function resolveBinding(
   return best;
 }
 
-/**
- * Resolve ALL matching bindings, sorted by specificity (most specific first).
- * Useful when multiple agents can be bound to the same route.
- */
-export function resolveAllBindings(
-  bindings: readonly Binding[],
-  query: BindingQuery,
-): Binding[] {
-  return bindings
-    .filter((b) => matches(b, query))
-    .sort((a, b) => specificityScore(b) - specificityScore(a));
-}
+

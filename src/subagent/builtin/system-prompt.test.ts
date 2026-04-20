@@ -16,12 +16,6 @@ describe("buildBuiltinSubagentSystemPrompt", () => {
     expect(out).toContain("cannot spawn further subagents");
   });
 
-  it("frames orchestrator role with delegation language", () => {
-    const out = buildBuiltinSubagentSystemPrompt({ task: "x", role: "orchestrator" });
-    expect(out).toContain("delegate");
-    expect(out).not.toContain("cannot spawn further subagents");
-  });
-
   it("appends extra system prompt when provided", () => {
     const out = buildBuiltinSubagentSystemPrompt({
       task: "x",
