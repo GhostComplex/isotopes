@@ -165,11 +165,6 @@ export interface DiscordTransportConfig {
     channelAllowlist?: string[];
     guildAllowlist?: string[];
   };
-  /**
-   * Channel IDs to listen to (empty = all).
-   * @deprecated Use `group.channelAllowlist` with `group.policy: "allowlist"`.
-   */
-  channelAllowlist?: string[];
   /** Channels config for per-guild/group settings (e.g. requireMention) */
   channels?: ChannelsConfig;
   /** The account ID this bot is running as (for guild config lookup) */
@@ -573,7 +568,7 @@ export class DiscordTransport implements Transport {
     return false;
   }
 
-  /** Resolve the effective group config, honoring legacy `channelAllowlist` for back-compat. Default policy is fail-closed `"allowlist"`. */
+  /** Resolve the effective group config. Default policy is fail-closed `"allowlist"`. */
   private resolveGroup(): {
     policy: "disabled" | "allowlist" | "open";
     channelAllowlist?: string[];
@@ -586,11 +581,6 @@ export class DiscordTransport implements Transport {
         channelAllowlist: g.channelAllowlist,
         guildAllowlist: g.guildAllowlist,
       };
-    }
-    // Legacy: top-level channelAllowlist implies allowlist policy on channels.
-    const legacy = this.config.channelAllowlist;
-    if (legacy?.length) {
-      return { policy: "allowlist", channelAllowlist: legacy };
     }
     return { policy: "allowlist" };
   }

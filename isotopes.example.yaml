@@ -20,10 +20,16 @@ provider:
 #   2) object form with shared defaults:
 #        agents:
 #          defaults:
-#            provider: { ... }
-#            tools: { ... }
-#            compaction: { ... }
-#            sandbox: { ... }
+#            provider:
+#              type: anthropic
+#              model: claude-opus-4.6
+#              apiKey: ${ANTHROPIC_API_KEY}
+#            tools:
+#              cli: false
+#            compaction:
+#              mode: safeguard
+#            sandbox:
+#              mode: off
 #          list:
 #            - id: main
 #            - id: helper
@@ -34,6 +40,9 @@ agents:
     # allowedWorkspaces:                    # extra dirs subagents may cwd into
     #   - /path/to/repo
     # codingMode: auto                      # subagent | direct | auto
+    #                                       #   subagent = force code edits through spawn_subagent
+    #                                       #   direct   = agent edits files directly
+    #                                       #   auto     = agent chooses (default)
     # heartbeatInterval: 0                  # ms; 0 = disabled (legacy field)
     # heartbeatPrompt: "what's next?"       # custom heartbeat prompt
     # heartbeat:                            # periodic wake-up (#191)
@@ -84,7 +93,7 @@ compaction:
 #   cleanupInterval: 3600            # 1h sweep
 
 # =============================================================================
-# CHANNELS — Discord / Feishu transports + per-guild settings
+# CHANNELS — Discord transport + per-guild settings
 # All Discord configuration lives under channels.discord.accounts.<accountId>.
 # Multi-bot is supported by listing multiple accounts.
 # =============================================================================
@@ -94,20 +103,17 @@ channels:
       main:                              # accountId — referenced by bindings, etc.
         tokenEnv: DISCORD_TOKEN          # or `token: <literal>`
         defaultAgentId: main
-        # allowDMs: true                  # deprecated — use dm.policy instead
         dm:
           policy: disabled               # disabled (default) | allowlist
           # allowlist:                   # Discord user IDs (only when policy=allowlist)
           #   - "123456789012345678"
         group:
-          policy: allowlist              # disabled | allowlist (default) | open
+          policy: allowlist              # allowlist (default) | disabled | open
           # channelAllowlist:            # channel IDs (only when policy=allowlist)
           #   - "channel-id"
           # guildAllowlist:              # guild/server IDs (only when policy=allowlist)
           #   - "guild-id"
         # allowBots: false               # respond to messages from other bots
-        # channelAllowlist:              # deprecated — use group.channelAllowlist
-        #   - "channel-id"
         # agentBindings:                 # bot user id → agent id
         #   "bot-user-id": main
         # adminUsers:                    # discord user ids allowed to run /slash commands
@@ -148,11 +154,6 @@ channels:
       #   tokenEnv: DISCORD_TOKEN_HELPER
       #   defaultAgentId: helper
 
-  # feishu:
-  #   groups:
-  #     "oc_xxx":
-  #       requireMention: false
-
 # =============================================================================
 # BINDINGS — agent ↔ channel routing
 # More specific match wins (channel + accountId + peer > channel + accountId > channel)
@@ -178,22 +179,19 @@ subagent:
   #   authToken: ${ANTHROPIC_AUTH_TOKEN}     # → ANTHROPIC_AUTH_TOKEN for spawned process
   #   baseUrl: ${ANTHROPIC_BASE_URL}         # → ANTHROPIC_BASE_URL for spawned process
   #   pathToClaudeCodeExecutable: /custom/path/to/claude
-  # subagent:                         # M7/M8 subagent execution
-  #   defaultAgent: main
-  #   allowedAgents: [main]
-  #   timeout: 900                    # seconds; backend default 15min
-  #   maxTurns: 50
-  #   permissionMode: allowlist       # skip | allowlist | default
-  #   allowedTools:                   # used when permissionMode=allowlist
-  #     - Read
-  #     - Write
-  #     - Edit
-  #     - Glob
-  #     - Grep
-  #     - LS
-  #   enableShell: false              # appends Bash to allowedTools
-  #   useThread: true                 # spawn Discord thread for subagent output
-  #   showToolCalls: true
+  # timeout: 900                      # seconds; backend default 15min
+  # maxTurns: 50
+  # permissionMode: allowlist         # skip | allowlist | default
+  # allowedTools:                     # used when permissionMode=allowlist
+  #   - Read
+  #   - Write
+  #   - Edit
+  #   - Glob
+  #   - Grep
+  #   - LS
+  # enableShell: false                # appends Bash to allowedTools
+  # useThread: true                   # spawn Discord thread for subagent output
+  # showToolCalls: true
 
 # =============================================================================
 # CRON — channel-level scheduled jobs (per-agent cron lives under agents.<id>.cron)
@@ -223,13 +221,10 @@ subagent:
 #     memoryLimit: 512m
 
 # =============================================================================
-# FEISHU — Feishu / Lark transport
-# NOTE: FeishuTransport is exported from the library but NOT yet wired into the
-# CLI/daemon. Configuring it here has no effect until CLI integration lands.
-# Schema below reflects FeishuTransportConfig in src/transports/feishu.ts.
+# PLUGINS — optional plugin configurations (keyed by plugin id)
 # =============================================================================
-# feishu:
-#   appId: ${FEISHU_APP_ID}
-#   appSecret: ${FEISHU_APP_SECRET}
-#   defaultAgentId: main
-#   # agentBindings: {}
+# plugins:
+#   my-plugin:
+#     enabled: true
+#     config:
+#       apiKey: ${MY_PLUGIN_KEY}

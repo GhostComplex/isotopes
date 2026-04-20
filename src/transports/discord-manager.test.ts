@@ -122,7 +122,7 @@ describe("DiscordTransportManager", () => {
           token: "tok-major",
           defaultAgentId: "major",
           dm: { policy: "allowlist", allowlist: ["user-1"] },
-          channelAllowlist: ["ch-1"],
+          group: { policy: "allowlist", channelAllowlist: ["ch-1"] },
         },
         tachikoma: {
           token: "tok-tachi",

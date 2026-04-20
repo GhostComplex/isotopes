@@ -378,16 +378,6 @@ export interface DiscordAccountConfig {
     /** Guild (server) IDs allowed when policy is "allowlist". */
     guildAllowlist?: string[];
   };
-  /**
-   * Restrict the bot to a list of channel IDs.
-   * @deprecated Use `group.channelAllowlist` with `group.policy: "allowlist"`.
-   */
-  channelAllowlist?: string[];
-  /**
-   * Group join policy (allowlist/denylist semantics, transport-defined).
-   * @deprecated Use `group.policy`.
-   */
-  groupPolicy?: string;
   /** Per-guild configuration keyed by guild ID */
   guilds?: Record<string, GuildConfig>;
   /** Thread binding configuration for auto-binding threads to agent sessions */

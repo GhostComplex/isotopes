@@ -530,7 +530,7 @@ describe("DiscordTransport", () => {
       expect(bindingManager.size).toBe(0);
     });
 
-    it("respects channelAllowlist — only binds threads in allowed channels", async () => {
+    it("respects group.channelAllowlist — only binds threads in allowed channels", async () => {
       const bindingManager = new ThreadBindingManager();
       const transportWithThreads = new DiscordTransport({
         token: "test-token",
@@ -539,7 +539,7 @@ describe("DiscordTransport", () => {
         defaultAgentId: "test-agent",
         threadBindings: { enabled: true },
         threadBindingManager: bindingManager,
-        channelAllowlist: ["channel-allowed"],
+        group: { policy: "allowlist", channelAllowlist: ["channel-allowed"] },
       });
 
       await transportWithThreads.start();
