@@ -262,6 +262,134 @@ cli.ts  init
 
 新增 builtin backend **不需要改 cli.ts**，也不需要改 recorder。`metadata.subagent.backend` 字段在创建 session 时由 `spawnSubagent` 写入（值为 `"claude"` / `"builtin"`），落盘后可按 backend 过滤。
 
+### 4.4 目标布局：对齐 openclaw（计划项）
+
+**现状的两个根**（§4.2 表里那两条 dataDir）和"主 agent / subagent 各自一套 store 实例"是历史遗留。计划在独立 PR 里把整个存储层对齐 openclaw，主 + sub 共用一个根目录、一个 manager。**不做向后兼容**——切换后旧路径下的 transcript 文件物理上还在，但代码不再读，等同于失忆。
+
+#### 目标架构 ASCII
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│                              cli.ts (startup)                              │
+│                                                                            │
+│   sessionStoreManager = new SessionStoreManager()                          │
+│                                                                            │
+│       getOrCreate(agentId): DefaultSessionStore                            │
+│         ├─ normalized = normalizeAgentId(agentId)                          │
+│         ├─ dataDir   = ~/.isotopes/agents/<normalized>/sessions/           │
+│         └─ memoize in Map<normalizedId, store>                             │
+└─────────────────────────────────┬─────────────────────────────────────────┘
+                                  │ inject
+              ┌───────────────────┴────────────────────┐
+              ▼                                        ▼
+   ┌────────────────────────┐              ┌──────────────────────────┐
+   │ DiscordTransport       │              │ spawnSubagent            │
+   │   (主 agent 写入侧)    │              │   (subagent 写入侧)       │
+   │                        │              │                          │
+   │ store = manager        │              │ vid = subagentAgentId(   │
+   │   .getOrCreate(agentId)│              │       parent, taskId)    │
+   │                        │              │ store = manager          │
+   │ store.addMessage(      │              │   .getOrCreate(vid)      │
+   │   sid, userMsg)        │              │                          │
+   │ store.addMessage(      │              │ recorder = createRecord( │
+   │   sid, assistantMsg)   │              │   { store, ... })        │
+   └──────────┬─────────────┘              └─────────┬────────────────┘
+              │                                       │
+              │ addMessage / setMetadata              │ addMessage / setMetadata
+              ▼                                       ▼
+        ┌──────────────────────────────────────────────────────┐
+        │            DefaultSessionStore (一种类)              │
+        │   - addMessage / getMessages / setMetadata / ...     │
+        │   - 同一份 JSONL 落盘逻辑                            │
+        └──────────────┬───────────────────────────────────────┘
+                       │ 文件操作
+                       ▼
+
+  磁盘布局 — 主 / sub 同根，各自 normalizedId 子目录：
+
+  ~/.isotopes/
+    agents/
+      ├── alice/                        ← 主 agent ID = "alice"
+      │     └── sessions/
+      │           ├── sessions.json     ← 索引
+      │           └── <sid>.jsonl       ← transcript（user+assistant）
+      │
+      ├── bob/                          ← 主 agent ID = "bob"
+      │     └── sessions/
+      │           ├── sessions.json
+      │           └── <sid>.jsonl
+      │
+      ├── subagent-alice-task-42/       ← 虚拟 ID (冒号被 normalize 成 -)
+      │     └── sessions/
+      │           ├── sessions.json
+      │           └── <sid>.jsonl       ← SubagentEvent → Message
+      │
+      └── subagent-bob-task-77/
+            └── sessions/
+                  ├── sessions.json
+                  └── <sid>.jsonl
+```
+
+#### 写入侧分工（调用栈对照）
+
+```
+  主 agent path                          subagent path
+  ─────────────                          ─────────────
+  user msg arrives in Discord            LLM 决定 spawn_subagent
+        │                                      │
+  DiscordTransport.handleMessage         ToolRegistry → spawn_subagent
+        │                                      │
+  manager.getOrCreate("alice")           manager.getOrCreate(
+        │                                  "subagent:alice:task-42")
+  store.addMessage(sid, userMsg)               │
+        │                                createSubagentRecorder({store, ...})
+  agent.prompt(messages)                       │
+        │                                backend.spawn(taskId, opts)
+  on agent_end:                                │
+  store.addMessage(sid, assistantMsg)    for await (event):
+                                           recorder.record(event)
+                                              ↓
+                                           store.addMessage(sid, msg)
+```
+
+#### 共用 / 各自一览
+
+```
+                       ┌──────── 共用 ────────┐  ┌── 各自 ──┐
+  存储类               │ DefaultSessionStore  │
+  Message schema       │ 同一份                │
+  JSONL 格式           │ 同一份                │
+  setMetadata 路径     │ 同一份                │
+  Manager              │ SessionStoreManager  │
+  根目录               │ ~/.isotopes/agents/  │
+                                                │ store 实例 │ per-agentId
+                                                │ 写入触发器 │ transport vs recorder
+                                                │ getMessages│ 主回喂 prompt /
+                                                │ 用法       │ sub 仅审计读
+```
+
+#### 与 openclaw 对照
+
+```
+  openclaw                              我们 (对齐后)
+  ──────────                            ─────────────
+  <stateDir>/agents/<id>/sessions/      ~/.isotopes/agents/<id>/sessions/
+  normalizeAgentId() 把 :,/ 替成 -      同
+  per-agentId store 实例                 同 (SessionStoreManager 提供)
+  主 agent + subagent 同根              同
+  无 workspace-local                    同 (砍掉旧分支)
+```
+
+#### 改动清单
+
+- `paths.ts`：加 `normalizeAgentId()`（小写 + `[^a-z0-9_-]+ → -`）和 `getAgentSessionsDir(agentId)`。
+- 新建 `SessionStoreManager`（或 cli.ts 内联 `Map<normalizedId, DefaultSessionStore>`），主 + sub 都从这里取。
+- `cli.ts`：主 agent store 创建走 manager，去掉 workspace-local 分支；删掉 `setSubagentSessionStore` 单例调用。
+- `tools/subagent.ts`：spawn 时 `manager.getOrCreate(virtualAgentId)` 注入 recorder，不再依赖单例 setter。
+- 测试 dataDir 全更新；明确不写迁移代码。
+
+不在范围内：旧数据迁移、向后兼容 fallback、workspace-local sessions。
+
 ## 5. 共享 vs 隔离
 
 | 资源 | claude backend | builtin backend |
