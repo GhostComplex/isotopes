@@ -9,6 +9,7 @@ import { extractDiscordMetadata, formatInboundMeta, type MessageMetadata } from 
 
 function createMockDiscordMessage(overrides: Record<string, unknown> = {}) {
   return {
+    id: overrides.id ?? "msg-001",
     author: {
       id: "user-123",
       username: "testuser",
@@ -183,14 +184,16 @@ describe("extractDiscordMetadata", () => {
 describe("formatInboundMeta", () => {
   it("formats basic metadata for group chat", () => {
     const meta: MessageMetadata = {
+      messageId: "msg-001",
       sender: { id: "123", username: "testuser", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
       channel: { id: "456", name: "general", type: "text" },
     };
-    
+
     const result = formatInboundMeta(meta, "group");
-    
+
     expect(result).toContain('<inbound_meta type="untrusted">');
+    expect(result).toContain("<message_id>msg-001</message_id>");
     expect(result).toContain("<chat_type>group</chat_type>");
     expect(result).toContain("<channel_id>456</channel_id>");
     expect(result).toContain("<channel_name>general</channel_name>");
@@ -202,6 +205,7 @@ describe("formatInboundMeta", () => {
 
   it("formats metadata for direct chat", () => {
     const meta: MessageMetadata = {
+      messageId: "msg-002",
       sender: { id: "123", username: "testuser", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
       channel: { id: "789", type: "dm" },
@@ -215,6 +219,7 @@ describe("formatInboundMeta", () => {
 
   it("includes reply_to when present", () => {
     const meta: MessageMetadata = {
+      messageId: "msg-003",
       sender: { id: "123", username: "testuser", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
       channel: { id: "456", type: "text" },
@@ -228,18 +233,20 @@ describe("formatInboundMeta", () => {
 
   it("includes display name when present", () => {
     const meta: MessageMetadata = {
+      messageId: "msg-004",
       sender: { id: "123", username: "testuser", displayName: "Test User", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
       channel: { id: "456", type: "text" },
     };
-    
+
     const result = formatInboundMeta(meta, "group");
-    
+
     expect(result).toContain("<sender_display_name>Test User</sender_display_name>");
   });
 
   it("escapes XML special characters", () => {
     const meta: MessageMetadata = {
+      messageId: "msg-005",
       sender: { id: "123", username: "test<user>", displayName: "Test & User", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
       channel: { id: "456", name: "chat\"room'1", type: "text" },

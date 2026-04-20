@@ -15,6 +15,9 @@ export type ChannelType = "text" | "dm" | "thread" | "voice" | "news" | "unknown
 
 /** Structured metadata extracted from an incoming transport message. */
 export interface MessageMetadata {
+  /** The message's own ID (snowflake) */
+  messageId: string;
+
   /** Sender information */
   sender: {
     id: string;
@@ -67,6 +70,7 @@ function resolveDiscordChannelType(channelType: number): ChannelType {
  */
 export function extractDiscordMetadata(msg: DiscordMessage): MessageMetadata {
   return {
+    messageId: msg.id,
     sender: {
       id: msg.author.id,
       username: msg.author.username,
@@ -95,6 +99,7 @@ export function extractDiscordMetadata(msg: DiscordMessage): MessageMetadata {
 export function formatInboundMeta(meta: MessageMetadata, chatType: "direct" | "group"): string {
   const lines: string[] = [
     `<inbound_meta type="untrusted">`,
+    `  <message_id>${meta.messageId}</message_id>`,
     `  <chat_type>${chatType}</chat_type>`,
     `  <channel_id>${meta.channel.id}</channel_id>`,
   ];
