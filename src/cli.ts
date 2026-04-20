@@ -12,10 +12,11 @@ import {
   resolveSubagentConfig,
   resolveSandboxConfigFromFile,
 } from "./core/config.js";
-import { initSubagentBackend, setSubagentSessionStore } from "./tools/subagent.js";
+import { initSubagentBackend, setSubagentSessionStoreFactory } from "./tools/subagent.js";
 import { PiMonoCore } from "./core/pi-mono.js";
 import { DefaultAgentManager } from "./core/agent-manager.js";
 import { DefaultSessionStore } from "./core/session-store.js";
+import { SessionStoreManager } from "./core/session-store-manager.js";
 import { DiscordTransportManager } from "./transports/discord-manager.js";
 import { ThreadBindingManager } from "./core/thread-bindings.js";
 import { logger } from "./core/logger.js";
@@ -37,8 +38,6 @@ import {
   ensureDirectories,
   ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
-  getSessionsDir,
-  getSubagentSessionsDir,
   getThreadBindingsPath,
   resolveExplicitWorkspacePath,
 } from "./core/paths.js";
@@ -689,8 +688,13 @@ async function main() {
   const config = await loadConfig(configPath);
   logger.info(`Loaded ${config.agents.length} agent(s)`);
 
+  // Single SessionStoreManager backs both main-agent transcripts and
+  // subagent run transcripts. Each store lives at
+  // ~/.isotopes/agents/<normalizedAgentId>/sessions/. See
+  // docs/subagent-architecture.md §4.4.
+  const sessionStoreManager = new SessionStoreManager();
+
   // Initialize subagent backend with config (M8)
-  let subagentRunStore: DefaultSessionStore | undefined;
   if (config.subagent?.enabled) {
     const subagentConfig = resolveSubagentConfig(config.subagent);
     initSubagentBackend({
@@ -700,16 +704,10 @@ async function main() {
     });
     logger.info(`Subagent backend initialized (permissionMode: ${subagentConfig.permissionMode})`);
 
-    // Persist subagent run transcripts to ~/.isotopes/subagent-sessions.
-    // The store is shared across all parent agents — each run is keyed by
-    // a virtual agentId (`subagent:<parentAgentId>:<taskId>`).
-    const subagentSessionStore = new DefaultSessionStore({
-      dataDir: getSubagentSessionsDir(),
-    });
-    await subagentSessionStore.init();
-    setSubagentSessionStore(subagentSessionStore);
-    subagentRunStore = subagentSessionStore;
-    logger.info(`Subagent session transcripts → ${getSubagentSessionsDir()}`);
+    // Subagent runs are persisted in their target agent's sessions dir;
+    // the factory resolves the right store on each spawn.
+    setSubagentSessionStoreFactory((agentId) => sessionStoreManager.getOrCreate(agentId));
+    logger.info("Subagent session transcripts → ~/.isotopes/agents/<targetAgentId>/sessions/");
   }
 
   // Initialize core with tool registry
@@ -986,32 +984,19 @@ async function main() {
     if (Object.keys(accounts).length === 0) {
       logger.warn("channels.discord present but no accounts configured — skipping");
     } else {
-      // Create session store per agent (sessions live in workspace)
+      // Pre-warm one store per configured agent via the manager so the
+      // sync sessionStoreForAgent callback always finds a store.
       const sessionStores = new Map<string, DefaultSessionStore>();
-
       for (const agentFile of config.agents) {
-        const workspacePath = agentWorkspaces.get(agentFile.id);
-        const sessionsDir = workspacePath ? path.join(workspacePath, "sessions") : getSessionsDir(agentFile.id);
-        sessionStores.set(agentFile.id, new DefaultSessionStore({ dataDir: sessionsDir }));
+        sessionStores.set(agentFile.id, await sessionStoreManager.getOrCreate(agentFile.id));
       }
-
-      await Promise.all([...sessionStores.values()].map((store) => store.init()));
       discordSessionStores = sessionStores;
 
       // Pick a default session store: first account's defaultAgentId, else first agent
       const firstAccount = Object.values(accounts)[0];
-      const defaultAgentId = firstAccount?.defaultAgentId || config.agents[0]?.id;
-      let defaultSessionStore = sessionStores.get(defaultAgentId);
-      if (!defaultSessionStore) {
-        const fallbackWorkspace = agentWorkspaces.get(defaultAgentId || "default");
-        const fallbackSessionsDir = fallbackWorkspace
-          ? path.join(fallbackWorkspace, "sessions")
-          : getSessionsDir(defaultAgentId || "default");
-        defaultSessionStore = new DefaultSessionStore({
-          dataDir: fallbackSessionsDir,
-        });
-        await defaultSessionStore.init();
-      }
+      const defaultAgentId = firstAccount?.defaultAgentId || config.agents[0]?.id || "default";
+      const defaultSessionStore =
+        sessionStores.get(defaultAgentId) ?? (await sessionStoreManager.getOrCreate(defaultAgentId));
 
       // Create and load persistent thread binding manager (shared across accounts)
       const threadBindingManager = new ThreadBindingManager({
@@ -1027,7 +1012,8 @@ async function main() {
         shared: {
           agentManager,
           sessionStore: defaultSessionStore,
-          sessionStoreForAgent: (agentId) => sessionStores.get(agentId) || defaultSessionStore,
+          sessionStoreForAgent: (agentId) =>
+            sessionStoreManager.peek(agentId) ?? sessionStores.get(agentId) ?? defaultSessionStore,
           channels: config.channels,
           threadBindingManager,
           usageTracker,
@@ -1077,12 +1063,7 @@ async function main() {
     await apiServer.stop();
 
     // Clean up session stores (#286)
-    if (discordSessionStores) {
-      for (const store of discordSessionStores.values()) {
-        store.destroy();
-      }
-    }
-    subagentRunStore?.destroy();
+    sessionStoreManager.destroyAll();
 
     // Kill orphaned background processes (#286, #289)
     for (const registry of processRegistries.values()) {
@@ -1110,12 +1091,7 @@ async function main() {
     await apiServer.stop();
 
     // Clean up session stores (#286)
-    if (discordSessionStores) {
-      for (const store of discordSessionStores.values()) {
-        store.destroy();
-      }
-    }
-    subagentRunStore?.destroy();
+    sessionStoreManager.destroyAll();
 
     // Kill orphaned background processes (#286, #289)
     for (const registry of processRegistries.values()) {

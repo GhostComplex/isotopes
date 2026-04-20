@@ -8,12 +8,14 @@ import {
   getIsotopesHome,
   getLogsDir,
   getWorkspacePath,
-  getSessionsDir,
+  getAgentSessionsDir,
+  normalizeAgentId,
   getConfigPath,
   getThreadBindingsPath,
   ensureDirectories,
   ensureWorkspaceDir,
   ensureExplicitWorkspaceDir,
+  ensureAgentSessionsDir,
   resolveExplicitWorkspacePath,
 } from "./paths.js";
 
@@ -57,15 +59,22 @@ describe("paths", () => {
     });
   });
 
-  describe("getSessionsDir", () => {
-    it("returns sessions dir inside default workspace", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "workspace", "sessions");
-      expect(getSessionsDir("default")).toBe(expected);
+  describe("normalizeAgentId", () => {
+    it("lowercases and replaces unsafe chars", () => {
+      expect(normalizeAgentId("Alice")).toBe("alice");
+      expect(normalizeAgentId("a/b:c")).toBe("a-b-c");
+    });
+  });
+
+  describe("getAgentSessionsDir", () => {
+    it("returns ~/.isotopes/agents/<id>/sessions", () => {
+      const expected = path.join(os.homedir(), ".isotopes", "agents", "alice", "sessions");
+      expect(getAgentSessionsDir("alice")).toBe(expected);
     });
 
-    it("returns sessions dir inside named workspace", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "workspace-assistant", "sessions");
-      expect(getSessionsDir("assistant")).toBe(expected);
+    it("normalizes the agent id segment", () => {
+      const expected = path.join(os.homedir(), ".isotopes", "agents", "code-reviewer-v2", "sessions");
+      expect(getAgentSessionsDir("Code:Reviewer/v2")).toBe(expected);
     });
   });
 
@@ -145,7 +154,7 @@ describe("paths", () => {
   });
 
   describe("ensureWorkspaceDir", () => {
-    it("creates workspace and sessions dirs for default agent and returns workspace path", async () => {
+    it("creates workspace dir for default agent and returns its path", async () => {
       const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-paths-"));
       const home = path.join(tmp, "home");
       vi.stubEnv("ISOTOPES_HOME", home);
@@ -153,7 +162,6 @@ describe("paths", () => {
         const ws = await ensureWorkspaceDir("default");
         expect(ws).toBe(path.join(home, "workspace"));
         await expect(fs.stat(ws)).resolves.toMatchObject({});
-        await expect(fs.stat(path.join(ws, "sessions"))).resolves.toMatchObject({});
       } finally {
         await fs.rm(tmp, { recursive: true, force: true });
       }
@@ -166,7 +174,7 @@ describe("paths", () => {
       try {
         const ws = await ensureWorkspaceDir("assistant");
         expect(ws).toBe(path.join(home, "workspace-assistant"));
-        await expect(fs.stat(path.join(ws, "sessions"))).resolves.toMatchObject({});
+        await expect(fs.stat(ws)).resolves.toMatchObject({});
       } finally {
         await fs.rm(tmp, { recursive: true, force: true });
       }
@@ -174,14 +182,28 @@ describe("paths", () => {
   });
 
   describe("ensureExplicitWorkspaceDir", () => {
-    it("creates the resolved path and a sessions/ subdirectory", async () => {
+    it("creates the resolved path", async () => {
       const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-paths-"));
       const ws = path.join(tmp, "explicit-ws");
       try {
         const result = await ensureExplicitWorkspaceDir(ws);
         expect(result).toBe(ws);
         await expect(fs.stat(ws)).resolves.toMatchObject({});
-        await expect(fs.stat(path.join(ws, "sessions"))).resolves.toMatchObject({});
+      } finally {
+        await fs.rm(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("ensureAgentSessionsDir", () => {
+    it("creates ~/.isotopes/agents/<id>/sessions and returns it", async () => {
+      const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-paths-"));
+      const home = path.join(tmp, "home");
+      vi.stubEnv("ISOTOPES_HOME", home);
+      try {
+        const dir = await ensureAgentSessionsDir("alice");
+        expect(dir).toBe(path.join(home, "agents", "alice", "sessions"));
+        await expect(fs.stat(dir)).resolves.toMatchObject({});
       } finally {
         await fs.rm(tmp, { recursive: true, force: true });
       }

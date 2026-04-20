@@ -1,8 +1,12 @@
 // src/subagent/persistence.ts — Subagent run persistence helpers.
 //
 // Bridges the subagent event stream into the shared SessionStore so that
-// each run is recorded as a session keyed by a virtual agentId. See
-// docs/subagent-persistence.md for the design and conventions.
+// each run is recorded as a session under the **target agent's** sessions
+// directory (real agentId, not a synthetic one). The "this is a subagent
+// run" signal lives in `sessionKey` (`agent:<targetId>:subagent:<uuid>`)
+// and in `metadata.subagent`. See docs/subagent-architecture.md §4.4.
+
+import { randomUUID } from "node:crypto";
 
 import { createLogger } from "../core/logger.js";
 import type {
@@ -16,9 +20,9 @@ import type { SubagentEvent } from "./types.js";
 
 const log = createLogger("subagent:persistence");
 
-/** Build the virtual agentId used to key a subagent run's session. */
-export function subagentAgentId(parentAgentId: string, taskId: string): string {
-  return `subagent:${parentAgentId}:${taskId}`;
+/** Build the default sessionKey for a subagent run. */
+export function buildSubagentSessionKey(targetAgentId: string): string {
+  return `agent:${targetAgentId}:subagent:${randomUUID()}`;
 }
 
 /** Maximum length of inlined tool input/output before truncation. */
@@ -149,7 +153,23 @@ const NOOP_RECORDER: SubagentRunRecorder = {
 };
 
 export interface CreateRecorderOptions {
+  /**
+   * Pre-resolved SessionStore for `targetAgentId`. Caller is responsible for
+   * obtaining this from the SessionStoreManager. Pass undefined to disable
+   * persistence for this run.
+   */
   store?: SessionStore;
+  /**
+   * Real agentId the run is recorded against. For named subagents this is
+   * the subagent's own id (e.g. `code-reviewer`); for anonymous/dynamic
+   * subagents the caller falls back to the parent agentId.
+   */
+  targetAgentId: string;
+  /**
+   * sessionKey to assign to the persisted session. Defaults to
+   * `agent:<targetAgentId>:subagent:<uuid>`.
+   */
+  sessionKey?: string;
   parentAgentId: string;
   parentSessionId?: string;
   taskId: string;
@@ -175,7 +195,7 @@ export async function createSubagentRecorder(
     prompt: options.prompt,
   };
   const metadata: SessionMetadata = {
-    transport: "subagent",
+    key: options.sessionKey ?? buildSubagentSessionKey(options.targetAgentId),
     subagent: subagentMeta,
     channelId: options.channelId,
     threadId: options.threadId,
@@ -183,10 +203,11 @@ export async function createSubagentRecorder(
 
   let session: Session;
   try {
-    session = await store.create(subagentAgentId(options.parentAgentId, options.taskId), metadata);
+    session = await store.create(options.targetAgentId, metadata);
   } catch (err) {
     log.warn("Failed to create subagent session, persistence disabled for this run", {
       taskId: options.taskId,
+      targetAgentId: options.targetAgentId,
       error: err instanceof Error ? err.message : String(err),
     });
     return NOOP_RECORDER;

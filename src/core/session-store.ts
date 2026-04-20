@@ -225,9 +225,6 @@ export class DefaultSessionStore implements SessionStore {
 
     const prevKey = session.metadata?.key;
     const merged = { ...(session.metadata ?? {}), ...patch } as SessionMetadata;
-    if (!merged.transport) {
-      throw new Error(`setMetadata: cannot drop required "transport" field on session "${sessionId}"`);
-    }
 
     // Maintain key index if the key changed.
     if (prevKey && prevKey !== merged.key) {

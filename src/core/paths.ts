@@ -52,19 +52,29 @@ export function getWorkspacePath(agentId: string): string {
 }
 
 /**
- * Get the sessions directory for an agent (inside workspace).
+ * Normalize an agentId for use as a filesystem directory name.
+ * Lowercases and replaces any character outside `[a-z0-9_-]` with `-`.
  */
-export function getSessionsDir(agentId: string): string {
-  return path.join(getWorkspacePath(agentId), "sessions");
+export function normalizeAgentId(agentId: string): string {
+  return agentId.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
 }
 
 /**
- * Get the directory holding subagent run transcripts.
- * One JSONL per run lives under here (keyed by virtual agentId =
- * `subagent:<parentAgentId>:<taskId>`). See docs/subagent-persistence.md.
+ * Get the sessions directory for an agent.
+ *
+ * All transcripts (main agent + subagent runs targeting this agent) live
+ * under `~/.isotopes/agents/<normalizedAgentId>/sessions/`. See
+ * docs/subagent-architecture.md §4.4.
  */
-export function getSubagentSessionsDir(): string {
-  return path.join(getIsotopesHome(), "subagent-sessions");
+export function getAgentSessionsDir(agentId: string): string {
+  return path.join(getIsotopesHome(), "agents", normalizeAgentId(agentId), "sessions");
+}
+
+/** Ensure an agent's sessions directory exists, returning its absolute path. */
+export async function ensureAgentSessionsDir(agentId: string): Promise<string> {
+  const dir = getAgentSessionsDir(agentId);
+  await fs.mkdir(dir, { recursive: true });
+  return dir;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,17 +126,14 @@ export function resolveExplicitWorkspacePath(workspacePath: string): string {
 export async function ensureWorkspaceDir(agentId: string): Promise<string> {
   const workspacePath = getWorkspacePath(agentId);
   await fs.mkdir(workspacePath, { recursive: true });
-  await fs.mkdir(getSessionsDir(agentId), { recursive: true });
   return workspacePath;
 }
 
 /**
  * Ensure an explicit workspace directory exists (#214).
- * Creates the workspace and a sessions/ subdirectory.
  */
 export async function ensureExplicitWorkspaceDir(resolvedPath: string): Promise<string> {
   await fs.mkdir(resolvedPath, { recursive: true });
-  await fs.mkdir(path.join(resolvedPath, "sessions"), { recursive: true });
   return resolvedPath;
 }
 

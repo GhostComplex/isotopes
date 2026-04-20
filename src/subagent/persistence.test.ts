@@ -4,14 +4,22 @@ import {
   eventToMessage,
   terminalEventPatch,
   createSubagentRecorder,
-  subagentAgentId,
+  buildSubagentSessionKey,
 } from "./persistence.js";
 import type { SubagentEvent } from "./types.js";
 import type { SessionStore, Message, Session } from "../core/types.js";
 
-describe("subagentAgentId", () => {
-  it("namespaces virtual agentId by parent + task", () => {
-    expect(subagentAgentId("dev", "subagent-1-12345")).toBe("subagent:dev:subagent-1-12345");
+describe("buildSubagentSessionKey", () => {
+  it("produces the openclaw-style sessionKey", () => {
+    const key = buildSubagentSessionKey("code-reviewer");
+    expect(key.startsWith("agent:code-reviewer:subagent:")).toBe(true);
+    // suffix should be a UUID-shaped string (8-4-4-4-12)
+    const uuid = key.slice("agent:code-reviewer:subagent:".length);
+    expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  it("produces a fresh uuid each call", () => {
+    expect(buildSubagentSessionKey("alice")).not.toBe(buildSubagentSessionKey("alice"));
   });
 });
 
@@ -98,8 +106,8 @@ function fakeStore(): SessionStore & {
 } {
   const session: Session = {
     id: "sess-1",
-    agentId: "subagent:dev:task-1",
-    metadata: { transport: "subagent" },
+    agentId: "dev",
+    metadata: {},
     lastActiveAt: new Date(),
   };
   const messages: Message[] = [];
@@ -127,7 +135,7 @@ function fakeStore(): SessionStore & {
       messages.push(...msgs);
     }),
     setMetadata: vi.fn(async (_id, patch) => {
-      session.metadata = { ...(session.metadata ?? { transport: "subagent" }), ...patch };
+      session.metadata = { ...(session.metadata ?? {}), ...patch };
     }),
   };
 }
@@ -135,6 +143,7 @@ function fakeStore(): SessionStore & {
 describe("createSubagentRecorder", () => {
   it("is a no-op when no store is provided", async () => {
     const r = await createSubagentRecorder({
+      targetAgentId: "dev",
       parentAgentId: "dev",
       taskId: "task-1",
       backend: "claude",
@@ -144,10 +153,11 @@ describe("createSubagentRecorder", () => {
     await r.patchMetadata({ exitCode: 0 });
   });
 
-  it("creates session with subagent metadata and persists events", async () => {
+  it("creates session under the target agentId with subagent metadata", async () => {
     const store = fakeStore();
     const r = await createSubagentRecorder({
       store,
+      targetAgentId: "code-reviewer",
       parentAgentId: "dev",
       parentSessionId: "parent-sess",
       taskId: "task-1",
@@ -159,9 +169,9 @@ describe("createSubagentRecorder", () => {
     });
     expect(r.sessionId).toBe("sess-1");
     expect(store.create).toHaveBeenCalledWith(
-      "subagent:dev:task-1",
+      "code-reviewer",
       expect.objectContaining({
-        transport: "subagent",
+        key: expect.stringMatching(/^agent:code-reviewer:subagent:/),
         channelId: "C1",
         threadId: "T1",
         subagent: expect.objectContaining({
@@ -172,6 +182,7 @@ describe("createSubagentRecorder", () => {
         }),
       }),
     );
+    expect(store.__session.metadata?.transport).toBeUndefined();
 
     const events: SubagentEvent[] = [
       { type: "start" }, // skipped
@@ -187,10 +198,27 @@ describe("createSubagentRecorder", () => {
     expect(store.__messages[2]?.role).toBe("tool_result");
   });
 
+  it("respects a caller-provided sessionKey", async () => {
+    const store = fakeStore();
+    await createSubagentRecorder({
+      store,
+      targetAgentId: "alice",
+      parentAgentId: "alice",
+      taskId: "task-2",
+      backend: "claude",
+      sessionKey: "agent:alice:subagent:fixed-key",
+    });
+    expect(store.create).toHaveBeenCalledWith(
+      "alice",
+      expect.objectContaining({ key: "agent:alice:subagent:fixed-key" }),
+    );
+  });
+
   it("merges terminal metadata under subagent and computes durationMs", async () => {
     const store = fakeStore();
     const r = await createSubagentRecorder({
       store,
+      targetAgentId: "dev",
       parentAgentId: "dev",
       taskId: "task-9",
       backend: "claude",
@@ -211,6 +239,7 @@ describe("createSubagentRecorder", () => {
     (store.setMetadata as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("disk full"));
     const r = await createSubagentRecorder({
       store,
+      targetAgentId: "dev",
       parentAgentId: "dev",
       taskId: "task-x",
       backend: "claude",
@@ -224,6 +253,7 @@ describe("createSubagentRecorder", () => {
     (store.create as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("nope"));
     const r = await createSubagentRecorder({
       store,
+      targetAgentId: "dev",
       parentAgentId: "dev",
       taskId: "task-x",
       backend: "claude",

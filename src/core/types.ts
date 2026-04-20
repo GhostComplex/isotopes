@@ -215,7 +215,7 @@ export interface Session {
   lastActiveAt: Date;
 }
 
-/** Per-run metadata for a subagent session (only set when transport === 'subagent'). */
+/** Per-run metadata for a subagent session (presence flags this as a subagent run). */
 export interface SubagentSessionMetadata {
   parentAgentId: string;
   parentSessionId?: string;
@@ -230,17 +230,22 @@ export interface SubagentSessionMetadata {
   error?: string;
 }
 
-/** Transport-specific metadata attached to a session (channel, thread, etc.). */
+/**
+ * Session metadata. `transport` is set for sessions originating from a chat
+ * transport (discord/feishu/web). Subagent runs have `subagent` populated
+ * and no `transport` — use `metadata.subagent !== undefined` as the
+ * discriminator.
+ */
 export interface SessionMetadata {
   key?: string;                        // Unique key for session lookup (e.g., discord:{botId}:channel:{id}:{agentId})
-  transport: 'discord' | 'feishu' | 'web' | 'subagent';
+  transport?: 'discord' | 'feishu' | 'web';
   channelId?: string;
   channelName?: string;
   guildName?: string;
   threadId?: string;
   /** If true, session is exempt from TTL-based cleanup */
   persistent?: boolean;
-  /** Subagent run metadata (only present when transport === 'subagent'). */
+  /** Subagent run metadata; presence indicates the session backs a subagent run. */
   subagent?: SubagentSessionMetadata;
 }
 

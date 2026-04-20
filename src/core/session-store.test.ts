@@ -582,8 +582,7 @@ describe("DefaultSessionStore", () => {
 
   describe("setMetadata", () => {
     it("merges patch into existing metadata and persists to index", async () => {
-      const session = await store.create("subagent:dev:task-1", {
-        transport: "subagent",
+      const session = await store.create("dev", {
         subagent: {
           parentAgentId: "dev",
           taskId: "task-1",
@@ -613,13 +612,6 @@ describe("DefaultSessionStore", () => {
       expect(reloaded?.metadata?.subagent?.exitCode).toBe(0);
       expect(reloaded?.metadata?.subagent?.durationMs).toBe(1234);
       reopened.destroy();
-    });
-
-    it("rejects dropping the required transport field", async () => {
-      const session = await store.create("agent-1");
-      await expect(
-        store.setMetadata(session.id, { transport: undefined }),
-      ).rejects.toThrow(/transport/);
     });
 
     it("throws on unknown sessionId", async () => {

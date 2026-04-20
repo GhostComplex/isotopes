@@ -54,6 +54,13 @@ export interface SpawnSubagentOptions {
   threadId?: string;
   /** Parent agent id, used as the owner of the persisted subagent session. */
   parentAgentId?: string;
+  /**
+   * Real agentId to record this run under. Named subagents pass their own
+   * id (e.g. `code-reviewer`); anonymous/dynamic subagents leave this
+   * unset and the recorder falls back to `parentAgentId`. See
+   * docs/subagent-architecture.md §4.4.
+   */
+  targetAgentId?: string;
 }
 
 /** Result from spawning a sub-agent */
@@ -78,16 +85,20 @@ let sharedBackendKey: string | undefined;
 /** Cached backend config */
 let backendConfig: SubagentBackendConfig = {};
 
-/** Optional SessionStore for persisting subagent runs (set by app startup). */
-let subagentSessionStore: SessionStore | undefined;
+/** Optional factory for resolving the SessionStore to use for a given target agentId. */
+let subagentStoreFactory: ((agentId: string) => Promise<SessionStore | undefined> | SessionStore | undefined) | undefined;
 
 /**
- * Register the SessionStore used to persist subagent run transcripts.
- * Pass `undefined` to disable persistence (default). Calling without
- * a store leaves spawnSubagent() functionally unchanged.
+ * Register a factory that resolves the SessionStore for a target agent's
+ * subagent runs. The factory is called once per spawn with the resolved
+ * `targetAgentId` (defaulted to `parentAgentId` for anonymous runs).
+ *
+ * Pass `undefined` to disable persistence (default).
  */
-export function setSubagentSessionStore(store: SessionStore | undefined): void {
-  subagentSessionStore = store;
+export function setSubagentSessionStoreFactory(
+  factory: ((agentId: string) => Promise<SessionStore | undefined> | SessionStore | undefined) | undefined,
+): void {
+  subagentStoreFactory = factory;
 }
 
 /**
@@ -176,10 +187,15 @@ export async function spawnSubagent(
     taskRegistry.setThreadId(taskId, options.threadId);
   }
 
-  // Bind to SessionStore (no-op when no store has been registered).
+  // Bind to SessionStore (no-op when no factory has been registered).
+  const parentAgentId = options.parentAgentId ?? "unknown";
+  const targetAgentId = options.targetAgentId ?? parentAgentId;
+  const store = subagentStoreFactory ? await subagentStoreFactory(targetAgentId) : undefined;
+
   const recorder = await createSubagentRecorder({
-    store: subagentSessionStore,
-    parentAgentId: options.parentAgentId ?? "unknown",
+    store,
+    targetAgentId,
+    parentAgentId,
     parentSessionId: options.sessionId,
     taskId,
     backend: agent,
