@@ -96,7 +96,7 @@ channels:
         defaultAgentId: main
         # allowDMs: true                  # deprecated — use dm.policy instead
         dm:
-          policy: disabled               # disabled (default) | open | allowlist
+          policy: disabled               # disabled (default) | allowlist
           # allowlist:                   # Discord user IDs (only when policy=allowlist)
           #   - "123456789012345678"
         group:

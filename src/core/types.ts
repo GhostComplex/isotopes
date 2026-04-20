@@ -364,8 +364,8 @@ export interface DiscordAccountConfig {
   agentBindings?: Record<string, string>;
   /** DM access control. */
   dm?: {
-    /** "disabled" (default) = ignore all DMs, "open" = accept all, "allowlist" = only from listed user IDs. */
-    policy?: "disabled" | "open" | "allowlist";
+    /** "disabled" (default) = ignore all DMs, "allowlist" = only from listed user IDs. */
+    policy?: "disabled" | "allowlist";
     /** Discord user IDs allowed to DM when policy is "allowlist". */
     allowlist?: string[];
   };

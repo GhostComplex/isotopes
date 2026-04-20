@@ -156,7 +156,7 @@ export interface DiscordTransportConfig {
   agentBindings?: Record<string, string>;
   /** DM access control policy. */
   dm?: {
-    policy?: "disabled" | "open" | "allowlist";
+    policy?: "disabled" | "allowlist";
     allowlist?: string[];
   };
   /** Group (guild) access control — parallel to `dm`. Default policy is `"allowlist"`. */
@@ -567,7 +567,6 @@ export class DiscordTransport implements Transport {
     if (dm?.policy) {
       switch (dm.policy) {
         case "disabled": return false;
-        case "open": return true;
         case "allowlist": return dm.allowlist?.includes(userId) ?? false;
       }
     }
