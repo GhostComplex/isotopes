@@ -37,8 +37,9 @@ const AGENTS = `agents:
 
 function renderChannels(answers: InitAnswers): string {
   if (answers.channel !== "discord" || !answers.discord) return "";
-  const { token, dmUserId } = answers.discord;
-  const dmBlock = dmUserId
+  const { token, dmPolicy, dmUserId, groupPolicy, groupAllowlist } = answers.discord;
+
+  const dmBlock = dmPolicy === "allowlist" && dmUserId
     ? `        dm:
           policy: allowlist
           allowlist:
@@ -47,13 +48,34 @@ function renderChannels(answers: InitAnswers): string {
     : `        dm:
           policy: disabled
 `;
-  const groupBlock = `        group:
-          policy: open                   # default is "allowlist" (fail-closed); set to "open" here so the bot works out-of-the-box
-          # channelAllowlist:            # uncomment and switch policy to "allowlist" once you know your IDs
-          #   - "channel-id"
-          # guildAllowlist:
-          #   - "guild-id"
+
+  let groupBlock: string;
+  if (groupPolicy === "allowlist" && groupAllowlist?.length) {
+    const guildIds = new Set<string>();
+    const channelIds: string[] = [];
+    for (const entry of groupAllowlist) {
+      const [guildId, channelId] = entry.split("/");
+      guildIds.add(guildId);
+      if (channelId) channelIds.push(channelId);
+    }
+    const guildLines = [...guildIds].map((id) => `            - "${id}"`).join("\n");
+    const channelLines = channelIds.map((id) => `            - "${id}"`).join("\n");
+    groupBlock = `        group:
+          policy: allowlist
+          guildAllowlist:
+${guildLines}
 `;
+    if (channelLines.length > 0) {
+      groupBlock += `          channelAllowlist:
+${channelLines}
+`;
+    }
+  } else {
+    groupBlock = `        group:
+          policy: ${groupPolicy}
+`;
+  }
+
   return `
 channels:
   discord:

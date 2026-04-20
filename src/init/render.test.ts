@@ -22,15 +22,56 @@ describe("renderConfig", () => {
     expect(yaml).toContain("model: claude-opus-4.7");
   });
 
-  it("emits a discord channel block when discord token is provided", () => {
+  it("emits discord with dm disabled and group allowlist by default", () => {
     const yaml = renderConfig({
       llm: "skip",
       channel: "discord",
-      discord: { token: "bot-token-abc" },
+      discord: { token: "bot-token-abc", dmPolicy: "disabled", groupPolicy: "allowlist" },
     });
     expect(yaml).toContain("channels:");
     expect(yaml).toContain("token: bot-token-abc");
     expect(yaml).toContain("defaultAgentId: main");
+    expect(yaml).toContain("policy: disabled");
+    expect(yaml).toContain("policy: allowlist");
+  });
+
+  it("emits dm allowlist with user ID", () => {
+    const yaml = renderConfig({
+      llm: "skip",
+      channel: "discord",
+      discord: { token: "tok", dmPolicy: "allowlist", dmUserId: "111222333", groupPolicy: "open" },
+    });
+    expect(yaml).toContain('- "111222333"');
+    expect(yaml).toMatch(/dm:\s+policy: allowlist/);
+  });
+
+  it("emits group allowlist with guild and channel IDs", () => {
+    const yaml = renderConfig({
+      llm: "skip",
+      channel: "discord",
+      discord: {
+        token: "tok",
+        dmPolicy: "disabled",
+        groupPolicy: "allowlist",
+        groupAllowlist: ["111222333", "444555666/777888999"],
+      },
+    });
+    expect(yaml).toMatch(/group:\s+policy: allowlist/);
+    expect(yaml).toContain('- "111222333"');
+    expect(yaml).toContain('- "444555666"');
+    expect(yaml).toContain('- "777888999"');
+    expect(yaml).toContain("guildAllowlist:");
+    expect(yaml).toContain("channelAllowlist:");
+  });
+
+  it("emits group open without allowlist entries", () => {
+    const yaml = renderConfig({
+      llm: "skip",
+      channel: "discord",
+      discord: { token: "tok", dmPolicy: "disabled", groupPolicy: "open" },
+    });
+    expect(yaml).toMatch(/group:\s+policy: open/);
+    expect(yaml).not.toContain("guildAllowlist:");
   });
 
   it("emits both provider and channel when both selected", () => {
@@ -38,7 +79,7 @@ describe("renderConfig", () => {
       llm: "ghc-proxy",
       ghcProxy: { baseUrl: "https://api.example.com", apiKey: "sk-test", model: "claude-opus-4.7" },
       channel: "discord",
-      discord: { token: "bot-token-abc" },
+      discord: { token: "bot-token-abc", dmPolicy: "disabled", groupPolicy: "allowlist" },
     });
     expect(yaml).toContain("type: anthropic-proxy");
     expect(yaml).toContain("token: bot-token-abc");
