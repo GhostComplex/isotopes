@@ -13,10 +13,33 @@ interface ChatSession {
   id: string;
   agentId: string;
   createdAt: Date;
+  lastActivity: number;
   abortController?: AbortController;
 }
 
 const chatSessions = new Map<string, ChatSession>();
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_SESSIONS = 100;
+
+function evictStaleSessions() {
+  const now = Date.now();
+  for (const [id, session] of chatSessions) {
+    if (now - session.lastActivity > SESSION_TTL_MS) {
+      session.abortController?.abort();
+      chatSessions.delete(id);
+      log.debug(`Evicted stale chat session: ${id}`);
+    }
+  }
+  if (chatSessions.size > MAX_SESSIONS) {
+    const sorted = [...chatSessions.entries()].sort((a, b) => a[1].lastActivity - b[1].lastActivity);
+    const toRemove = sorted.slice(0, chatSessions.size - MAX_SESSIONS);
+    for (const [id, session] of toRemove) {
+      session.abortController?.abort();
+      chatSessions.delete(id);
+      log.debug(`Evicted chat session (capacity): ${id}`);
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // POST /api/chat/sessions — create a chat session
@@ -51,7 +74,8 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
     sessionId = randomUUID();
   }
 
-  chatSessions.set(sessionId, { id: sessionId, agentId, createdAt: new Date() });
+  evictStaleSessions();
+  chatSessions.set(sessionId, { id: sessionId, agentId, createdAt: new Date(), lastActivity: Date.now() });
 
   log.info(`Chat session created: ${sessionId} (agent: ${agentId})`);
   sendJson(res, 201, { sessionId, agentId });
@@ -68,6 +92,7 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
     sendError(res, 404, `Chat session "${sessionId}" not found`);
     return;
   }
+  session.lastActivity = Date.now();
 
   const body = req.body as { message?: string } | undefined;
   if (!body?.message) {
