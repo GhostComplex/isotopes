@@ -21,7 +21,7 @@ export interface BuildPromptOptions {
  * of the parent persona.
  */
 export function buildBuiltinSubagentSystemPrompt(options: BuildPromptOptions): string {
-  const { task, role, extraSystemPrompt } = options;
+  const { task, extraSystemPrompt } = options;
   const sections: string[] = [];
 
   sections.push(
