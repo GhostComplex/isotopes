@@ -8,6 +8,7 @@ import {
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
+import path from "node:path";
 import { initSubagentBackend, setSubagentSessionStoreFactory } from "../tools/subagent.js";
 import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";
@@ -29,6 +30,8 @@ import { ApiServer } from "../api/server.js";
 import { CronScheduler } from "../automation/cron-job.js";
 import { HeartbeatManager } from "../automation/heartbeat.js";
 import { UsageTracker } from "./usage-tracker.js";
+import { PluginManager } from "../plugins/manager.js";
+import { getIsotopesHome } from "./paths.js";
 
 const log = createLogger("runtime");
 
@@ -46,6 +49,7 @@ export interface Runtime {
   agentWorkspaces: Map<string, string>;
   cronScheduler: CronScheduler;
   usageTracker: UsageTracker;
+  pluginManager: PluginManager;
   discordManager?: DiscordTransportManager;
   apiServer: ApiServer;
   shutdown: () => Promise<void>;
@@ -139,6 +143,16 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   // Hot-reload workspace files
   const hotReload = new HotReloadManager(agentManager, { enabled: true, debounceMs: 500 });
+
+  // Plugin system
+  const pluginManager = new PluginManager();
+  const pluginDirs = [
+    path.join(import.meta.dirname, "../../plugins"),
+    path.join(getIsotopesHome(), "plugins"),
+    ...[...agentWorkspaces.values()].map((w) => path.join(w, "plugins")),
+  ];
+  await pluginManager.discoverAndLoad(pluginDirs, config.plugins);
+
   for (const [agentId, workspacePath] of agentWorkspaces) {
     hotReload.register(agentId, workspacePath);
   }
@@ -303,6 +317,19 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     }
   }
 
+  // Plugin transports
+  const pluginTransports: import("./types.js").Transport[] = [];
+  for (const [id, factory] of pluginManager.getTransportFactories()) {
+    try {
+      const transport = await factory({ agentManager, sessionStoreManager, config });
+      await transport.start();
+      pluginTransports.push(transport);
+      log.info(`Plugin transport "${id}" started`);
+    } catch (err) {
+      log.error(`Failed to start plugin transport "${id}": ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // API server
   const apiServer = new ApiServer(
     { port: apiPort ?? 2712 },
@@ -310,6 +337,9 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     undefined,
     agentManager,
     usageTracker,
+    undefined,
+    pluginManager.getUIRegistry(),
+    sessionStoreManager,
   );
   await apiServer.start();
 
@@ -322,6 +352,10 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     for (const hb of heartbeatManagers) hb.stop();
     hotReload.stop();
     if (discordManager) await discordManager.stop();
+    for (const t of pluginTransports) {
+      try { await t.stop(); } catch { /* ignore */ }
+    }
+    await pluginManager.shutdown();
     await apiServer.stop();
     sessionStoreManager.destroyAll();
 
@@ -343,6 +377,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     agentWorkspaces,
     cronScheduler,
     usageTracker,
+    pluginManager,
     discordManager,
     apiServer,
     shutdown,

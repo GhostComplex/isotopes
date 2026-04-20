@@ -3,6 +3,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolSettings, ProviderConfig, Tool } from "./types.js";
+import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
 import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
@@ -27,6 +28,13 @@ export interface ToolEntry {
  */
 export class ToolRegistry {
   private tools = new Map<string, ToolEntry>();
+  private hooks?: HookRegistry;
+  private agentId?: string;
+
+  setHooks(hooks: HookRegistry, agentId: string): void {
+    this.hooks = hooks;
+    this.agentId = agentId;
+  }
   /**
    * Register a tool with its handler.
    * @throws if tool name already registered
@@ -65,7 +73,15 @@ export class ToolRegistry {
     if (!entry) {
       throw new Error(`Tool "${name}" not found`);
     }
-    return entry.handler(args);
+    const agentId = this.agentId ?? "unknown";
+    if (this.hooks) {
+      await this.hooks.emit("before_tool_call", { agentId, toolName: name, args });
+    }
+    const result = await entry.handler(args);
+    if (this.hooks) {
+      await this.hooks.emit("after_tool_call", { agentId, toolName: name, args, result });
+    }
+    return result;
   }
   /**
    * Unregister a tool.

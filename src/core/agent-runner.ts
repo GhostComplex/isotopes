@@ -4,6 +4,7 @@
 import { textContent, type AgentInstance, type Message, type SessionStore } from "./types.js";
 import type { Logger } from "./logger.js";
 import type { UsageTracker } from "./usage-tracker.js";
+import type { HookRegistry } from "../plugins/hooks.js";
 
 /** Result of running an agent prompt to completion */
 export interface AgentRunResult {
@@ -27,12 +28,11 @@ export interface RunAgentOptions {
   sessionId: string;
   sessionStore: SessionStore;
   log: Logger;
-  /** Optional callback fired after each text_delta */
   onTextDelta?: OnTextDelta;
-  /** Optional usage tracker for per-session/global accumulation */
   usageTracker?: UsageTracker;
-  /** Called after turn_end events to check for pending messages */
   onToolComplete?: () => Promise<string | null>;
+  agentId?: string;
+  hooks?: HookRegistry;
 }
 
 /**
@@ -49,7 +49,17 @@ export interface RunAgentOptions {
  * stay in the transport layer via the onTextDelta callback.
  */
 export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
-  const { agent, input, sessionId, sessionStore, log, onTextDelta, usageTracker, onToolComplete } = opts;
+  const { agent, input, sessionId, sessionStore, log, onTextDelta, usageTracker, onToolComplete, agentId, hooks } = opts;
+
+  if (hooks && agentId) {
+    await hooks.emit("message_received", {
+      agentId,
+      sessionId,
+      message: typeof input === "string"
+        ? { role: "user", content: textContent(input) }
+        : input[input.length - 1],
+    });
+  }
 
   let responseText = "";
   let errorMessage: string | null = null;
@@ -74,6 +84,14 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
         }
       }
     } else if (event.type === "agent_end") {
+      if (hooks && agentId && responseText) {
+        await hooks.emit("message_sending", {
+          agentId,
+          sessionId,
+          message: { role: "assistant", content: textContent(responseText) },
+        });
+      }
+
       // Store final assistant message
       if (responseText) {
         await sessionStore.addMessage(sessionId, {
@@ -87,6 +105,10 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
         const msg = event.errorMessage ?? "Unknown agent error";
         log.error(`Agent ended with error: ${msg}`);
         errorMessage = msg;
+      }
+
+      if (hooks && agentId) {
+        await hooks.emit("agent_end", { agentId, stopReason: event.stopReason });
       }
     }
   }

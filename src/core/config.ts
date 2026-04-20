@@ -19,6 +19,7 @@ import type {
   SessionConfig,
 } from "./types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "../sandbox/config.js";
+import type { PluginConfigEntry } from "../plugins/types.js";
 import { createLogger } from "./logger.js";
 
 const log = createLogger("config");
@@ -304,6 +305,8 @@ export interface IsotopesConfigFileRaw {
   subagent?: SubagentConfigFile;
   /** Channel-level cron job definitions */
   cron?: CronJobConfigFile[];
+  /** Plugin configurations */
+  plugins?: Record<string, PluginConfigEntry>;
 }
 
 /** Normalized config — agents is always an array, agentDefaults extracted */

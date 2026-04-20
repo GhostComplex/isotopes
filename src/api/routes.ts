@@ -11,6 +11,7 @@ import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { AgentManager, SessionStore } from "../core/types.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
+import type { SessionStoreManager } from "../core/session-store-manager.js";
 import { getIsotopesHome, getLogsDir } from "../core/paths.js";
 import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middleware.js";
 
@@ -23,10 +24,9 @@ export interface RouteDeps {
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
   agentManager?: AgentManager;
-  /** Per-agent session stores for Discord sessions */
   discordSessionStores?: Map<string, SessionStore>;
-  /** Usage tracker for token/cost accumulation */
   usageTracker?: UsageTracker;
+  sessionStoreManager?: SessionStoreManager;
 }
 
 /** Handler function for a matched API route. */
