@@ -48,8 +48,8 @@ function renderChannels(answers: InitAnswers): string {
           policy: disabled
 `;
   const groupBlock = `        group:
-          policy: open                   # disabled | allowlist | open — narrow this once you know your channel/guild IDs
-          # channelAllowlist:
+          policy: open                   # default is "allowlist" (fail-closed); set to "open" here so the bot works out-of-the-box
+          # channelAllowlist:            # uncomment and switch policy to "allowlist" once you know your IDs
           #   - "channel-id"
           # guildAllowlist:
           #   - "guild-id"
