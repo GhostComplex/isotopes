@@ -116,8 +116,8 @@ describe("spawnSubagent", () => {
 });
 
 describe("getSupportedAgents", () => {
-  it("returns claude only (MVP)", async () => {
+  it("returns claude and builtin", async () => {
     const { getSupportedAgents } = await import("./subagent.js");
-    expect(getSupportedAgents()).toEqual(["claude"]);
+    expect(getSupportedAgents()).toEqual(["claude", "builtin"]);
   });
 });
