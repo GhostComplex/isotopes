@@ -44,7 +44,7 @@ export interface InitAnswers {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_GHC_BASE_URL = "https://api.ghccoder.com";
-const DEFAULT_GHC_MODEL = "claude-opus-4.7";
+const DEFAULT_GHC_MODEL = "claude-opus-4.6";
 
 // ---------------------------------------------------------------------------
 // Wizard

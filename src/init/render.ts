@@ -10,7 +10,7 @@ const HEADER = `# ~/.isotopes/isotopes.yaml
 
 const PROVIDER_SKIP = `# provider:
 #   type: anthropic
-#   model: claude-sonnet-4-5-20250929
+#   model: claude-opus-4.6
 #   apiKey: \${ANTHROPIC_API_KEY}
 `;
 
