@@ -323,8 +323,8 @@ export class DiscordTransport implements Transport {
     }
     if (group.policy === "allowlist") {
       const channelOk = group.channelAllowlist?.includes(thread.parentId) ?? false;
-      // For thread parents we only check the channel list; guild-level allow is handled at message time.
-      if (!channelOk && !group.guildAllowlist?.length) {
+      const guildOk = group.guildAllowlist?.includes(thread.guildId) ?? false;
+      if (!channelOk && !guildOk) {
         log.debug(`Ignoring thread ${thread.id} — parent ${thread.parentId} not in allowlist`);
         return;
       }
