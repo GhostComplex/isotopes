@@ -68,7 +68,7 @@ describe("workspace context", () => {
 
 describe("read_file tool", () => {
   it("reads a file from the workspace", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
     const { tool, handler } = createReadFileTool({ basePath: tmpDir });
     registry.register(tool, handler);
 
@@ -77,7 +77,7 @@ describe("read_file tool", () => {
   });
 
   it("returns error for nonexistent file", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
     const { tool, handler } = createReadFileTool({ basePath: tmpDir });
     registry.register(tool, handler);
 
@@ -97,7 +97,7 @@ describe("edit tool", () => {
     const editFile = path.join(tmpDir, "editable.txt");
     await fs.writeFile(editFile, "foo bar baz\n");
 
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
     const { tool, handler } = createEditFileTool({ basePath: tmpDir });
     registry.register(tool, handler);
 
@@ -120,7 +120,7 @@ describe("edit tool", () => {
 
 describe("exec tool", () => {
   it("runs a shell command and returns stdout", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
     const execTools = createExecTools({ cwd: tmpDir });
     for (const { tool, handler } of execTools) {
       registry.register(tool, handler);
@@ -133,7 +133,7 @@ describe("exec tool", () => {
   });
 
   it("reports non-zero exit codes", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
     const execTools = createExecTools({ cwd: tmpDir });
     for (const { tool, handler } of execTools) {
       registry.register(tool, handler);
@@ -151,7 +151,7 @@ describe("exec tool", () => {
 
 describe("web_fetch tool", () => {
   it("fetches a URL and returns content", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
     const { tool, handler } = createWebFetchTool();
     registry.register(tool, handler);
 
@@ -162,7 +162,7 @@ describe("web_fetch tool", () => {
   }, 15_000);
 
   it("returns error for invalid URL", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
     const { tool, handler } = createWebFetchTool();
     registry.register(tool, handler);
 
@@ -212,7 +212,7 @@ describe("tool policy deny", () => {
     const tools = createWorkspaceToolsWithGuards(tmpDir, { cli: true });
     const filtered = applyToolPolicy(tools, { deny: ["read_file"] });
 
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
     for (const { tool, handler } of filtered) {
       registry.register(tool, handler);
     }
@@ -226,7 +226,7 @@ describe("tool policy deny", () => {
     const execTools = createExecTools({ cwd: tmpDir });
     const filtered = applyToolPolicy(execTools, { deny: ["exec"] });
 
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
     for (const { tool, handler } of filtered) {
       registry.register(tool, handler);
     }
@@ -264,7 +264,7 @@ describe("tool policy deny", () => {
 
 describe("full tool wiring", () => {
   it("registers all core tools without conflict", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry("test");
 
     // Workspace tools (read, write, edit, list_dir, time)
     const workspaceTools = createWorkspaceToolsWithGuards(tmpDir, {

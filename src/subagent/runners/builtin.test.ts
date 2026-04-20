@@ -7,7 +7,7 @@ import type { SubagentEvent } from "../types.js";
 import { BuiltinRunner, type BuiltinAgentCore } from "./builtin.js";
 
 function makeRegistry(names: string[]): ToolRegistry {
-  const r = new ToolRegistry();
+  const r = new ToolRegistry("test");
   for (const name of names) {
     r.register(
       { name, description: name, parameters: { type: "object", properties: {} } },

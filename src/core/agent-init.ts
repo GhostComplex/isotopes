@@ -138,7 +138,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
 
   // 7. Create tool registry and process registry
   const resolvedToolGuards = resolveToolGuards(agentConfig.toolSettings);
-  const toolRegistry = new ToolRegistry();
+  const toolRegistry = new ToolRegistry(agentConfig.id);
   const processRegistry = new ProcessRegistry();
   const subagentEnabled = subagent?.enabled === true;
   const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];

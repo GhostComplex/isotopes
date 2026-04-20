@@ -25,7 +25,7 @@ describe("ToolRegistry", () => {
   let registry: ToolRegistry;
 
   beforeEach(() => {
-    registry = new ToolRegistry();
+    registry = new ToolRegistry("test");
   });
 
   describe("register", () => {

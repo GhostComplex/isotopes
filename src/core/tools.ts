@@ -29,11 +29,14 @@ export interface ToolEntry {
 export class ToolRegistry {
   private tools = new Map<string, ToolEntry>();
   private hooks?: HookRegistry;
-  private agentId?: string;
+  private readonly agentId: string;
 
-  setHooks(hooks: HookRegistry, agentId: string): void {
-    this.hooks = hooks;
+  constructor(agentId: string) {
     this.agentId = agentId;
+  }
+
+  setHooks(hooks: HookRegistry): void {
+    this.hooks = hooks;
   }
   /**
    * Register a tool with its handler.
@@ -73,7 +76,7 @@ export class ToolRegistry {
     if (!entry) {
       throw new Error(`Tool "${name}" not found`);
     }
-    const agentId = this.agentId ?? "unknown";
+    const agentId = this.agentId;
     if (this.hooks) {
       await this.hooks.emit("before_tool_call", { agentId, toolName: name, args });
     }

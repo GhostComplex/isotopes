@@ -198,13 +198,13 @@ describe("PiMonoCore.createAgent", () => {
   it("binds tool registries per agent instead of reusing the last one globally", () => {
     const core = new PiMonoCore();
 
-    const registryA = new ToolRegistry();
+    const registryA = new ToolRegistry("test");
     registryA.register(
       { name: "read_file", description: "Read file", parameters: {} },
       async () => "a",
     );
 
-    const registryB = new ToolRegistry();
+    const registryB = new ToolRegistry("test");
     registryB.register(
       { name: "list_dir", description: "List dir", parameters: {} },
       async () => "b",

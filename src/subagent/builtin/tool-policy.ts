@@ -41,8 +41,9 @@ export function resolveBuiltinToolPolicy(role: SubagentRole): BuiltinToolPolicy 
 export function filterToolRegistry(
   parent: ToolRegistry,
   policy: BuiltinToolPolicy,
+  agentId = "subagent",
 ): ToolRegistry {
-  const filtered = new ToolRegistry();
+  const filtered = new ToolRegistry(agentId);
   for (const tool of parent.list()) {
     if (policy.deny.has(tool.name)) continue;
     const entry = parent.get(tool.name);

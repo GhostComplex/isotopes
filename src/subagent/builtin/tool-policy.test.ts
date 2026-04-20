@@ -10,7 +10,7 @@ import {
 } from "./tool-policy.js";
 
 function makeRegistry(names: string[]): ToolRegistry {
-  const r = new ToolRegistry();
+  const r = new ToolRegistry("test");
   for (const name of names) {
     r.register(
       { name, description: name, parameters: { type: "object", properties: {} } },
