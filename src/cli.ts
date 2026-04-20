@@ -4,6 +4,7 @@
 
 import { parseArgs } from "node:util";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import { VERSION } from "./version.js";
 import { loadConfig } from "./core/config.js";
@@ -47,7 +48,7 @@ function makeServiceConfig(): ServiceConfig {
     description: SERVICE_DESCRIPTION,
     execPath: process.argv[0],
     cliPath: path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
+      path.dirname(fileURLToPath(import.meta.url)),
       "cli.js",
     ),
     configPath: getConfigPath(),

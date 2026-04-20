@@ -3,7 +3,9 @@
 
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("daemon:process");
@@ -133,7 +135,7 @@ export class DaemonProcess {
     // the CLI file as its first argument so that `tsx` works transparently
     // during development.
     const cliEntry = path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
+      path.dirname(fileURLToPath(import.meta.url)),
       "..",
       "cli.js",
     );
@@ -145,7 +147,7 @@ export class DaemonProcess {
       // Without this, file tools with workspaceOnly=false resolve relative
       // paths against the caller's cwd, which may be another agent's workspace,
       // causing identity contamination (#92).
-      cwd: process.env.HOME || "/",
+      cwd: os.homedir(),
       env: {
         ...process.env,
         ISOTOPES_DAEMON: "1",
