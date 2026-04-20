@@ -1,21 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import type { Message, AgentInstance } from "../core/types.js";
-import { loadConfig, toAgentConfig } from "../core/config.js";
+import { loadConfig } from "../core/config.js";
 import { PiMonoCore } from "../core/pi-mono.js";
 import { DefaultAgentManager } from "../core/agent-manager.js";
-import {
-  getConfigPath,
-  ensureExplicitWorkspaceDir,
-  ensureWorkspaceDir,
-  resolveExplicitWorkspacePath,
-} from "../core/paths.js";
-import {
-  loadWorkspaceContext,
-  buildSystemPrompt,
-  ensureWorkspaceStructure,
-} from "../core/workspace.js";
-import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
+import { getConfigPath } from "../core/paths.js";
+import { initializeAgent } from "../core/agent-init.js";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, ToolCallEntry, TuiOptions, Screen } from "./types.js";
 
@@ -55,20 +45,23 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         return;
       }
       setAgentId(agentFile.id);
-      const agentConfig = toAgentConfig(agentFile, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox);
-      let workspacePath: string;
-      if (agentFile.workspace) {
-        workspacePath = await ensureExplicitWorkspaceDir(resolveExplicitWorkspacePath(agentFile.workspace));
-      } else {
-        const key = config.agents.length === 1 ? "default" : agentFile.id;
-        workspacePath = await ensureWorkspaceDir(key);
-      }
-      await ensureWorkspaceStructure(workspacePath);
-      const wsCtx = await loadWorkspaceContext(workspacePath, { bundledPath: resolveBundledSkillsDir() });
-      const systemPrompt = buildSystemPrompt(agentConfig.systemPrompt, wsCtx);
+
       const core = new PiMonoCore();
       const mgr = new DefaultAgentManager(core);
-      agentRef.current = await mgr.create({ ...agentConfig, systemPrompt });
+      const result = await initializeAgent({
+        agentFile,
+        agentDefaults: config.agentDefaults,
+        provider: config.provider,
+        globalTools: config.tools,
+        compaction: config.compaction,
+        sandbox: config.sandbox,
+        subagent: config.subagent,
+        core,
+        agentManager: mgr,
+        isSingleAgent: config.agents.length === 1,
+      });
+
+      agentRef.current = result.instance;
       historyRef.current = [];
       setAgentReady(true);
     } catch (err) {

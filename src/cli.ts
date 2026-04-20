@@ -2,7 +2,6 @@
 // src/cli.ts — Isotopes CLI entry point
 // Start agents from configuration file, with daemon lifecycle commands.
 
-import { resolveBundledSkillsDir } from "./skills/bundled-dir.js";
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { VERSION } from "./version.js";
@@ -20,35 +19,18 @@ import { SessionStoreManager } from "./core/session-store-manager.js";
 import { DiscordTransportManager } from "./transports/discord-manager.js";
 import { ThreadBindingManager } from "./core/thread-bindings.js";
 import { logger } from "./core/logger.js";
-import {
-  ToolRegistry,
-  buildToolGuardPrompt,
-  createWorkspaceToolsWithGuards,
-  resolveToolGuards,
-  applyToolPolicy,
-} from "./core/tools.js";
-import { createReplyReactTools, LazyTransportContext } from "./tools/reply-react.js";
-import { createExecTools, ProcessRegistry } from "./tools/exec.js";
-import { ContainerManager, SandboxExecutor, SandboxFs, shouldSandbox, type FsLike } from "./sandbox/index.js";
-import * as nodeFs from "node:fs/promises";
+import { LazyTransportContext } from "./tools/reply-react.js";
+import { ProcessRegistry } from "./tools/exec.js";
+import { ContainerManager, SandboxExecutor } from "./sandbox/index.js";
+import { initializeAgent } from "./core/agent-init.js";
 import {
   getConfigPath,
   getIsotopesHome,
   getLogsDir,
   ensureDirectories,
-  ensureExplicitWorkspaceDir,
-  ensureWorkspaceDir,
   getThreadBindingsPath,
-  resolveExplicitWorkspacePath,
 } from "./core/paths.js";
-import {
-  loadWorkspaceContext,
-  buildSystemPrompt,
-  ensureWorkspaceStructure,
-} from "./core/workspace.js";
 import { HotReloadManager } from "./workspace/index.js";
-import { seedWorkspaceTemplates } from "./workspace/templates.js";
-import { reconcileWorkspaceState } from "./workspace/state.js";
 import { DaemonProcess } from "./daemon/process.js";
 import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
 import { ApiServer } from "./api/server.js";
@@ -751,108 +733,28 @@ async function main() {
 
   for (let agentIdx = 0; agentIdx < config.agents.length; agentIdx++) {
     const agentFile = config.agents[agentIdx];
-    const agentConfig = resolvedAgentConfigs[agentIdx];
 
-    // Create per-agent ProcessRegistry for CLI tool isolation (#289)
-    const processRegistry = new ProcessRegistry();
-    processRegistries.set(agentConfig.id, processRegistry);
-
-    // Workspace layout:
-    //   Explicit config:  agent.workspace (absolute or relative to ISOTOPES_HOME)
-    //   Single agent:     ~/.isotopes/workspace/
-    //   Multiple agents:  ~/.isotopes/workspace-{agentId}/
-    let workspacePath: string;
-    if (agentFile.workspace) {
-      const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
-      workspacePath = await ensureExplicitWorkspaceDir(resolved);
-      logger.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
-    } else {
-      const workspaceKey = isSingleAgent ? "default" : agentConfig.id;
-      workspacePath = await ensureWorkspaceDir(workspaceKey);
-    }
-    agentWorkspaces.set(agentConfig.id, workspacePath);
-
-    // Seed workspace templates on first creation (M11.2)
-    const seededFiles = await seedWorkspaceTemplates(workspacePath);
-    if (seededFiles.length > 0) {
-      logger.info(`Seeded ${seededFiles.length} template file(s) for ${agentConfig.id}: ${seededFiles.join(", ")}`);
-    }
-
-    // Reconcile workspace state (M11.3)
-    await reconcileWorkspaceState(workspacePath);
-
-    // Ensure workspace directory structure exists (sessions/, memory/)
-    await ensureWorkspaceStructure(workspacePath);
-
-    // Load workspace context (SOUL.md, TOOLS.md, MEMORY.md, BOOTSTRAP.md, etc.)
-    const workspaceContext = await loadWorkspaceContext(workspacePath, { bundledPath: resolveBundledSkillsDir() });
-    const baseSystemPrompt = agentConfig.systemPrompt; // Store before workspace assembly
-    agentConfig.systemPrompt = buildSystemPrompt(agentConfig.systemPrompt, workspaceContext);
-    logger.debug(`Loaded workspace context for ${agentConfig.id}: systemPrompt=${workspaceContext.systemPromptAdditions.length > 0}, memory=${workspaceContext.memory !== null}`);
-
-    // Register workspace tools for this agent
-    const resolvedToolGuards = resolveToolGuards(agentConfig.toolSettings);
-    const toolRegistry = new ToolRegistry();
-    const subagentEnabled = config.subagent?.enabled === true;
-    const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];
-
-    // fsImpl is the single decision point for "host fs" vs. "sandbox fs".
-    // Tools depend only on the FsLike type and never branch on sandbox state.
-    const fsImpl: FsLike = sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false)
-      ? new SandboxFs(sandboxExecutor, agentConfig.id)
-      : nodeFs;
-
-    const workspaceTools = createWorkspaceToolsWithGuards(
-      workspacePath,
-      agentConfig.toolSettings,
-      subagentEnabled,
-      agentAllowedWorkspaces,
-      agentConfig.codingMode,
-      config.subagent?.maxTurns,
-      fsImpl,
-      agentConfig.id,
-    );
-
-    // Apply tool policy (allow/deny) before registration
-    const filteredTools = applyToolPolicy(workspaceTools, agentConfig.toolSettings);
-    for (const { tool, handler } of filteredTools) {
-      toolRegistry.register(tool, handler);
-    }
-
-    // Register reply/react tools (transport is bound lazily after Discord starts)
+    // Transport context needs to live in cli.ts for Discord binding
     const transportCtx = new LazyTransportContext();
-    transportContexts.set(agentConfig.id, transportCtx);
-    for (const { tool, handler } of createReplyReactTools(transportCtx)) {
-      toolRegistry.register(tool, handler);
-    }
 
-    // Register exec/process tools (shared registry across agents)
-    if (resolvedToolGuards.cli) {
-      const execTools = createExecTools({
-        cwd: workspacePath,
-        registry: processRegistry,
-        sandboxExecutor,
-        agentId: agentConfig.id,
-        isMainAgent: false,
-        agentSandboxConfig: agentConfig.sandbox,
-        allowedWorkspaces: agentAllowedWorkspaces,
-      });
-      const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
-      for (const { tool, handler } of filteredExecTools) {
-        toolRegistry.register(tool, handler);
-      }
-    }
+    const result = await initializeAgent({
+      agentFile,
+      agentDefaults: config.agentDefaults,
+      provider: config.provider,
+      globalTools: config.tools,
+      compaction: config.compaction,
+      sandbox: config.sandbox,
+      subagent: config.subagent,
+      core,
+      agentManager,
+      isSingleAgent,
+      sandboxExecutor,
+      transportContext: transportCtx,
+    });
 
-    // Build tool guard prompt and store it for hot-reload persistence (M11.4)
-    const toolGuardPrompt = buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, workspacePath, agentAllowedWorkspaces);
-    agentConfig.systemPrompt = [
-      agentConfig.systemPrompt,
-      toolGuardPrompt,
-    ].filter(Boolean).join("\n\n---\n\n");
-    core.setToolRegistry(agentConfig.id, toolRegistry);
-
-    await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, baseSystemPrompt });
-    logger.info(`Created agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${toolRegistry.list().length})`);
+    agentWorkspaces.set(result.agentConfig.id, result.workspacePath);
+    transportContexts.set(result.agentConfig.id, transportCtx);
+    processRegistries.set(result.agentConfig.id, result.processRegistry);
   }
 
   // Initialize hot-reload for workspace files (M10.5)
