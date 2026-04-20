@@ -158,6 +158,8 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     subagent?.maxTurns,
     fsImpl,
     agentConfig.id,
+    agentConfig.provider,
+    toolRegistry,
   );
   const filteredTools = applyToolPolicy(workspaceTools, agentConfig.toolSettings);
   for (const { tool, handler } of filteredTools) {

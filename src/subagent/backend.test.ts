@@ -12,6 +12,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 import { SubagentBackend, mapSdkMessage, collectResult, MAX_CONCURRENT_AGENTS } from "./backend.js";
+import { ClaudeRunner } from "./runners/claude.js";
 import type { SubagentEvent } from "./types.js";
 
 describe("mapSdkMessage", () => {
@@ -177,10 +178,10 @@ describe("SubagentBackend", () => {
   });
 });
 
-describe("SubagentBackend.buildSdkOptions claude env", () => {
+describe("ClaudeRunner.buildSdkOptions claude env", () => {
   it("does not set env when no claude config given", () => {
-    const backend = new SubagentBackend({});
-    const opts = backend.buildSdkOptions(
+    const runner = new ClaudeRunner({});
+    const opts = runner.buildSdkOptions(
       { agent: "claude", cwd: "/tmp", prompt: "hi" },
       new AbortController(),
     );
@@ -190,24 +191,23 @@ describe("SubagentBackend.buildSdkOptions claude env", () => {
 
   it("injects ANTHROPIC_AUTH_TOKEN/BASE_URL via Options.env without mutating process.env", () => {
     const before = process.env.ANTHROPIC_AUTH_TOKEN;
-    const backend = new SubagentBackend({
+    const runner = new ClaudeRunner({
       claude: { authToken: "sk-test-123", baseUrl: "https://proxy.example/v1" },
     });
-    const opts = backend.buildSdkOptions(
+    const opts = runner.buildSdkOptions(
       { agent: "claude", cwd: "/tmp", prompt: "hi" },
       new AbortController(),
     );
     expect(opts.env?.ANTHROPIC_AUTH_TOKEN).toBe("sk-test-123");
     expect(opts.env?.ANTHROPIC_BASE_URL).toBe("https://proxy.example/v1");
-    // process.env is NOT mutated
     expect(process.env.ANTHROPIC_AUTH_TOKEN).toBe(before);
   });
 
   it("forwards pathToClaudeCodeExecutable", () => {
-    const backend = new SubagentBackend({
+    const runner = new ClaudeRunner({
       claude: { pathToClaudeCodeExecutable: "/custom/claude" },
     });
-    const opts = backend.buildSdkOptions(
+    const opts = runner.buildSdkOptions(
       { agent: "claude", cwd: "/tmp", prompt: "hi" },
       new AbortController(),
     );

@@ -2,16 +2,37 @@
 // Defines agent types, spawn options, event types, and result structures.
 
 import type { SubagentPermissionMode } from "../core/config.js";
+import type { ProviderConfig } from "../core/types.js";
+import type { ToolRegistry } from "../core/tools.js";
 
 // ---------------------------------------------------------------------------
 // Agent types
 // ---------------------------------------------------------------------------
 
-/** Supported subagent backends. MVP: claude only. */
-export type SubagentAgent = "claude";
+/** Supported subagent backends. */
+export type SubagentAgent = "claude" | "builtin";
 
 /** All known subagent values for validation */
-export const SUBAGENT_AGENTS: ReadonlySet<string> = new Set<string>(["claude"]);
+export const SUBAGENT_AGENTS: ReadonlySet<string> = new Set<string>(["claude", "builtin"]);
+
+/**
+ * Role of a builtin subagent run. Drives tool capabilities.
+ * - "leaf"         — terminal worker; cannot spawn nested subagents.
+ * - "orchestrator" — reserved for future nesting; currently unused in v1.
+ */
+export type SubagentRole = "leaf" | "orchestrator";
+
+/** Builtin-backend-specific spawn options. */
+export interface BuiltinSubagentOptions {
+  /** Provider config inherited from the parent agent. */
+  provider: ProviderConfig;
+  /** Parent agent's tool registry; the runner filters this by role. */
+  tools: ToolRegistry;
+  /** Role for capability gating. Default: "leaf". */
+  role?: SubagentRole;
+  /** Optional extra system prompt fragment appended after the base subagent prompt. */
+  extraSystemPrompt?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Spawn options
@@ -40,6 +61,8 @@ export interface SubagentSpawnOptions {
   timeout?: number;
   /** Maximum number of agent turns */
   maxTurns?: number;
+  /** Builtin-backend-specific options. Required when agent === "builtin". */
+  builtin?: BuiltinSubagentOptions;
 }
 
 // ---------------------------------------------------------------------------

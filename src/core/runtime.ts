@@ -63,6 +63,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   // SessionStoreManager backs both main-agent transcripts and subagent runs.
   const sessionStoreManager = new SessionStoreManager();
 
+  // Initialize core first — the builtin subagent backend hosts subagents
+  // in-process via this same core.
+  const core = new PiMonoCore();
+  const agentManager = new DefaultAgentManager(core);
+
   // Initialize subagent backend
   if (config.subagent?.enabled) {
     const subagentConfig = resolveSubagentConfig(config.subagent);
@@ -70,16 +75,13 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       permissionMode: subagentConfig.permissionMode,
       allowedTools: subagentConfig.allowedTools,
       claude: subagentConfig.claude,
+      core,
     });
     log.info(`Subagent backend initialized (permissionMode: ${subagentConfig.permissionMode})`);
 
     setSubagentSessionStoreFactory((agentId) => sessionStoreManager.getOrCreate(agentId));
     log.info("Subagent session store factory → shared SessionStoreManager");
   }
-
-  // Initialize core
-  const core = new PiMonoCore();
-  const agentManager = new DefaultAgentManager(core);
 
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();

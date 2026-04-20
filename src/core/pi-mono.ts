@@ -323,6 +323,14 @@ export class PiMonoCore implements AgentCore {
     this.toolRegistries.set(agentId, registry);
   }
 
+  /**
+   * Drop the tool registry binding for an agent id. Used by short-lived
+   * subagent runs to release per-spawn registries after the agent exits.
+   */
+  clearToolRegistry(agentId: string): void {
+    this.toolRegistries.delete(agentId);
+  }
+
   createAgent(config: AgentConfig): AgentInstance {
     const model = resolveModel(config);
 

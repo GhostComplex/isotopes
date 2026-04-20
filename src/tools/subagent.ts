@@ -9,6 +9,8 @@ import {
   type SubagentAgent,
   type SubagentEvent,
 } from "../subagent/index.js";
+import type { BuiltinSubagentOptions } from "../subagent/types.js";
+import type { BuiltinAgentCore } from "../subagent/runners/builtin.js";
 import { taskRegistry } from "../subagent/task-registry.js";
 import { createSubagentRecorder } from "../subagent/persistence.js";
 import type { SessionStore } from "../core/types.js";
@@ -28,6 +30,8 @@ export interface SubagentBackendConfig {
   allowedTools?: string[];
   /** Claude-specific settings (auth, base URL, executable path) */
   claude?: SubagentClaudeConfigFile;
+  /** AgentCore used to host in-process builtin subagents. */
+  core?: BuiltinAgentCore;
 }
 
 /** Options for spawning a sub-agent */
@@ -61,6 +65,8 @@ export interface SpawnSubagentOptions {
    * docs/subagent-architecture.md §4.4.
    */
   targetAgentId?: string;
+  /** Builtin-backend-specific options. Required when agent === "builtin". */
+  builtin?: BuiltinSubagentOptions;
 }
 
 /** Result from spawning a sub-agent */
@@ -127,6 +133,7 @@ function getBackend(allowedWorkspaces?: string[]): SubagentBackend {
       permissionMode: backendConfig.permissionMode,
       allowedTools: backendConfig.allowedTools,
       claude: backendConfig.claude,
+      core: backendConfig.core,
     });
     sharedBackendKey = key;
   }
@@ -215,6 +222,7 @@ export async function spawnSubagent(
       model: options.model,
       timeout: options.timeout,
       maxTurns: options.maxTurns ?? 50,
+      ...(options.builtin ? { builtin: options.builtin } : {}),
     });
 
     // Collect events, optionally streaming via callback
