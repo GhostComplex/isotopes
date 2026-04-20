@@ -48,14 +48,13 @@ describe("paths", () => {
   });
 
   describe("getWorkspacePath", () => {
-    it("returns ~/.isotopes/workspace for default agent", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "workspace");
-      expect(getWorkspacePath("default")).toBe(expected);
-    });
-
-    it("returns ~/.isotopes/workspace-{id} for named agent", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "workspace-assistant");
-      expect(getWorkspacePath("assistant")).toBe(expected);
+    it("returns ~/.isotopes/workspace-{id} for any agent", () => {
+      expect(getWorkspacePath("default")).toBe(
+        path.join(os.homedir(), ".isotopes", "workspace-default"),
+      );
+      expect(getWorkspacePath("main")).toBe(
+        path.join(os.homedir(), ".isotopes", "workspace-main"),
+      );
     });
   });
 
@@ -154,13 +153,13 @@ describe("paths", () => {
   });
 
   describe("ensureWorkspaceDir", () => {
-    it("creates workspace dir for default agent and returns its path", async () => {
+    it("creates workspace-{id} dir and returns its path", async () => {
       const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-paths-"));
       const home = path.join(tmp, "home");
       vi.stubEnv("ISOTOPES_HOME", home);
       try {
         const ws = await ensureWorkspaceDir("default");
-        expect(ws).toBe(path.join(home, "workspace"));
+        expect(ws).toBe(path.join(home, "workspace-default"));
         await expect(fs.stat(ws)).resolves.toMatchObject({});
       } finally {
         await fs.rm(tmp, { recursive: true, force: true });

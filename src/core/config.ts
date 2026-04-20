@@ -78,7 +78,7 @@ export interface AgentConfigFile {
   /**
    * Explicit workspace directory for this agent (#214).
    * Absolute paths are used as-is; relative paths resolve from ISOTOPES_HOME.
-   * When omitted, the default derivation (single → "workspace/", multi → "workspace-{id}/") is used.
+   * When omitted, defaults to "workspace-{id}/".
    */
   workspace?: string;
   tools?: AgentToolsConfigFile;

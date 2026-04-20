@@ -66,8 +66,6 @@ export interface InitAgentOptions {
   core: PiMonoCore;
   /** Agent manager */
   agentManager: DefaultAgentManager;
-  /** Whether this is the only agent (affects workspace naming) */
-  isSingleAgent?: boolean;
   /** Pre-built sandbox executor (optional — no sandbox if omitted) */
   sandboxExecutor?: SandboxExecutor;
   /** Transport context for reply/react tools (optional — skipped if omitted) */
@@ -102,7 +100,6 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     subagent,
     core,
     agentManager,
-    isSingleAgent = true,
     sandboxExecutor,
     transportContext,
   } = opts;
@@ -117,8 +114,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     workspacePath = await ensureExplicitWorkspaceDir(resolved);
     log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
   } else {
-    const workspaceKey = isSingleAgent ? "default" : agentConfig.id;
-    workspacePath = await ensureWorkspaceDir(workspaceKey);
+    workspacePath = await ensureWorkspaceDir(agentConfig.id);
   }
 
   // 3. Seed workspace templates on first creation

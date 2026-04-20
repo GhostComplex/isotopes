@@ -369,9 +369,24 @@ export interface DiscordAccountConfig {
     /** Discord user IDs allowed to DM when policy is "allowlist". */
     allowlist?: string[];
   };
-  /** Restrict the bot to a list of channel IDs. */
+  /** Group (guild) access control — parallel to `dm`. */
+  group?: {
+    /** "allowlist" (default) = only listed channels/guilds, "disabled" = ignore all guild messages, "open" = accept all guild channels. */
+    policy?: "disabled" | "allowlist" | "open";
+    /** Channel IDs allowed when policy is "allowlist". */
+    channelAllowlist?: string[];
+    /** Guild (server) IDs allowed when policy is "allowlist". */
+    guildAllowlist?: string[];
+  };
+  /**
+   * Restrict the bot to a list of channel IDs.
+   * @deprecated Use `group.channelAllowlist` with `group.policy: "allowlist"`.
+   */
   channelAllowlist?: string[];
-  /** Group join policy (allowlist/denylist semantics, transport-defined). */
+  /**
+   * Group join policy (allowlist/denylist semantics, transport-defined).
+   * @deprecated Use `group.policy`.
+   */
   groupPolicy?: string;
   /** Per-guild configuration keyed by guild ID */
   guilds?: Record<string, GuildConfig>;

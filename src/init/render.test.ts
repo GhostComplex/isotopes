@@ -6,7 +6,7 @@ describe("renderConfig", () => {
     const yaml = renderConfig({ llm: "skip", channel: "skip" });
     expect(yaml).toMatch(/^# provider:/m);
     expect(yaml).toContain("agents:");
-    expect(yaml).toContain("- id: assistant");
+    expect(yaml).toContain("- id: main");
     expect(yaml).not.toContain("channels:");
   });
 
@@ -30,7 +30,7 @@ describe("renderConfig", () => {
     });
     expect(yaml).toContain("channels:");
     expect(yaml).toContain("token: bot-token-abc");
-    expect(yaml).toContain("defaultAgentId: assistant");
+    expect(yaml).toContain("defaultAgentId: main");
   });
 
   it("emits both provider and channel when both selected", () => {

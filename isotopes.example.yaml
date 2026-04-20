@@ -99,8 +99,14 @@ channels:
           policy: disabled               # disabled (default) | open | allowlist
           # allowlist:                   # Discord user IDs (only when policy=allowlist)
           #   - "123456789012345678"
+        group:
+          policy: allowlist              # disabled | allowlist (default) | open
+          # channelAllowlist:            # channel IDs (only when policy=allowlist)
+          #   - "channel-id"
+          # guildAllowlist:              # guild/server IDs (only when policy=allowlist)
+          #   - "guild-id"
         # allowBots: false               # respond to messages from other bots
-        # channelAllowlist:
+        # channelAllowlist:              # deprecated — use group.channelAllowlist
         #   - "channel-id"
         # agentBindings:                 # bot user id → agent id
         #   "bot-user-id": main

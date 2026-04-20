@@ -58,7 +58,6 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         subagent: config.subagent,
         core,
         agentManager: mgr,
-        isSingleAgent: config.agents.length === 1,
       });
 
       agentRef.current = result.instance;

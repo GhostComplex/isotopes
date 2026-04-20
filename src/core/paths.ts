@@ -9,9 +9,6 @@ import fs from "node:fs/promises";
 // Constants
 // ---------------------------------------------------------------------------
 
-/** The default agent ID used for single-agent setups. */
-const DEFAULT_AGENT_ID = "default";
-
 // ---------------------------------------------------------------------------
 // Base directories
 // ---------------------------------------------------------------------------
@@ -40,14 +37,9 @@ export function getLogsDir(): string {
 /**
  * Get the workspace directory for an agent.
  *
- * Layout mirrors OpenClaw:
- * - Default agent: ~/.isotopes/workspace/
- * - Named agent:   ~/.isotopes/workspace-{agentId}/
+ * All agents use: ~/.isotopes/workspace-{agentId}/
  */
 export function getWorkspacePath(agentId: string): string {
-  if (agentId === DEFAULT_AGENT_ID) {
-    return path.join(getIsotopesHome(), "workspace");
-  }
   return path.join(getIsotopesHome(), `workspace-${agentId}`);
 }
 

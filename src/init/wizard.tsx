@@ -23,6 +23,7 @@ export interface GhcProxyAnswers {
 
 export interface DiscordAnswers {
   token: string;
+  dmUserId?: string;
 }
 
 export interface InitAnswers {
@@ -49,7 +50,9 @@ type Step =
   | { kind: "ghc-apiKey" }
   | { kind: "ghc-model" }
   | { kind: "channel" }
-  | { kind: "discord-token" };
+  | { kind: "discord-token" }
+  | { kind: "discord-dm-choice" }
+  | { kind: "discord-dm-userId" };
 
 interface Props {
   onDone: (answers: InitAnswers) => void;
@@ -66,6 +69,7 @@ function InitWizard({ onDone }: Props) {
 
   const [channel, setChannel] = useState<ChannelChoice>("skip");
   const [discordToken, setDiscordToken] = useState("");
+  const [discordDmUserId, setDiscordDmUserId] = useState("");
 
   useInput((_input, key) => {
     if (key.ctrl && _input === "c") {
@@ -81,7 +85,14 @@ function InitWizard({ onDone }: Props) {
       ...(llm === "ghc-proxy"
         ? { ghcProxy: { baseUrl: ghcBaseUrl, apiKey: ghcApiKey, model: ghcModel } }
         : {}),
-      ...(channel === "discord" ? { discord: { token: discordToken } } : {}),
+      ...(channel === "discord"
+        ? {
+            discord: {
+              token: discordToken,
+              ...(discordDmUserId.trim().length > 0 ? { dmUserId: discordDmUserId.trim() } : {}),
+            },
+          }
+        : {}),
       ...overrides,
     };
     onDone(answers);
@@ -190,12 +201,47 @@ function InitWizard({ onDone }: Props) {
               value={discordToken}
               onChange={setDiscordToken}
               onSubmit={() => {
-                if (discordToken.trim().length > 0) finish();
+                if (discordToken.trim().length > 0) setStep({ kind: "discord-dm-choice" });
               }}
             />
           </Box>
           {discordToken.trim().length === 0 && (
             <Text color="yellow">  token is required</Text>
+          )}
+        </Box>
+      )}
+
+      {step.kind === "discord-dm-choice" && (
+        <Box flexDirection="column">
+          <Text>Configure DM (direct message) access?</Text>
+          <SelectInput
+            items={[
+              { label: "yes (allowlist your Discord user ID)", value: "yes" as const },
+              { label: "no (DMs disabled, configure later)", value: "no" as const },
+            ]}
+            onSelect={(item) => {
+              if (item.value === "yes") setStep({ kind: "discord-dm-userId" });
+              else finish();
+            }}
+          />
+        </Box>
+      )}
+
+      {step.kind === "discord-dm-userId" && (
+        <Box flexDirection="column">
+          <Text>Your Discord user ID (numeric, e.g. 123456789012345678):</Text>
+          <Box>
+            <Text color="cyan">› </Text>
+            <TextInput
+              value={discordDmUserId}
+              onChange={setDiscordDmUserId}
+              onSubmit={() => {
+                if (/^\d+$/.test(discordDmUserId.trim())) finish();
+              }}
+            />
+          </Box>
+          {discordDmUserId.trim().length > 0 && !/^\d+$/.test(discordDmUserId.trim()) && (
+            <Text color="yellow">  must be a numeric Discord user ID</Text>
           )}
         </Box>
       )}

@@ -92,7 +92,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
   const processRegistries = new Map<string, ProcessRegistry>();
-  const isSingleAgent = config.agents.length === 1;
 
   // Build sandbox executor if any agent uses sandboxing
   let sandboxExecutor: SandboxExecutor | undefined;
@@ -133,7 +132,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       subagent: config.subagent,
       core,
       agentManager,
-      isSingleAgent,
       sandboxExecutor,
       transportContext: transportCtx,
       hooks: pluginManager.getHooks(),

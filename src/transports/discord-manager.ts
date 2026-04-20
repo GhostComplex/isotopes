@@ -63,6 +63,7 @@ export class DiscordTransportManager {
         defaultAgentId: account.defaultAgentId,
         agentBindings: account.agentBindings,
         dm: account.dm,
+        group: account.group,
         channelAllowlist: account.channelAllowlist,
         channels: shared.channels,
         accountId,

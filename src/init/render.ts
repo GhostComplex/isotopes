@@ -32,25 +32,36 @@ const TOOLS = `tools:
 `;
 
 const AGENTS = `agents:
-  - id: assistant
-    name: Assistant
-    systemPrompt: |
-      You are a helpful assistant running locally via Isotopes.
+  - id: main
 `;
 
 function renderChannels(answers: InitAnswers): string {
   if (answers.channel !== "discord" || !answers.discord) return "";
-  const { token } = answers.discord;
+  const { token, dmUserId } = answers.discord;
+  const dmBlock = dmUserId
+    ? `        dm:
+          policy: allowlist
+          allowlist:
+            - "${dmUserId}"
+`
+    : `        dm:
+          policy: disabled
+`;
+  const groupBlock = `        group:
+          policy: open                   # disabled | allowlist | open — narrow this once you know your channel/guild IDs
+          # channelAllowlist:
+          #   - "channel-id"
+          # guildAllowlist:
+          #   - "guild-id"
+`;
   return `
 channels:
   discord:
     accounts:
       main:
         token: ${token}
-        defaultAgentId: assistant
-        dm:
-          policy: disabled
-        threadBindings:
+        defaultAgentId: main
+${dmBlock}${groupBlock}        threadBindings:
           enabled: true
 `;
 }

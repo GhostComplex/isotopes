@@ -73,6 +73,7 @@ describe("DiscordTransport", () => {
     agentManager = createMockAgentManager();
     sessionStore = createMockSessionStore();
     transport = new DiscordTransport({
+      group: { policy: "open" },
       token: "test-token",
       agentManager,
       sessionStore,
@@ -268,6 +269,7 @@ describe("DiscordTransport", () => {
       };
 
       const transportWithMention = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -305,6 +307,7 @@ describe("DiscordTransport", () => {
       };
 
       const transportWithMention = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -342,6 +345,7 @@ describe("DiscordTransport", () => {
       };
 
       const transportWithMention = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -389,6 +393,7 @@ describe("DiscordTransport", () => {
   describe("thread bindings", () => {
     it("registers threadCreate handler when threadBindings.enabled is true", async () => {
       const transportWithThreads = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -409,6 +414,7 @@ describe("DiscordTransport", () => {
 
     it("does NOT register threadCreate handler when threadBindings.enabled is false", async () => {
       const transportNoThreads = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -443,6 +449,7 @@ describe("DiscordTransport", () => {
     it("creates a binding when a thread is created", async () => {
       const bindingManager = new ThreadBindingManager();
       const transportWithThreads = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -475,6 +482,7 @@ describe("DiscordTransport", () => {
     it("uses 'default' agentId when defaultAgentId is not configured", async () => {
       const bindingManager = new ThreadBindingManager();
       const transportWithThreads = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -499,6 +507,7 @@ describe("DiscordTransport", () => {
     it("ignores threads without a parent channel", async () => {
       const bindingManager = new ThreadBindingManager();
       const transportWithThreads = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -553,6 +562,7 @@ describe("DiscordTransport", () => {
     it("exposes thread binding manager via getThreadBindingManager()", () => {
       const bindingManager = new ThreadBindingManager();
       const transportWithThreads = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -565,6 +575,7 @@ describe("DiscordTransport", () => {
 
     it("creates a default ThreadBindingManager when none is provided", () => {
       const transportWithThreads = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -605,6 +616,7 @@ describe("DiscordTransport", () => {
 
     it("routes /status to command handler and sends response", async () => {
       const transportWithAdmin = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -633,6 +645,7 @@ describe("DiscordTransport", () => {
       (agentManager.reloadWorkspace as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
       const transportWithAdmin = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -660,6 +673,7 @@ describe("DiscordTransport", () => {
       ]);
 
       const transportWithAdmin = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -683,6 +697,7 @@ describe("DiscordTransport", () => {
 
     it("rejects non-admin users with authorization error", async () => {
       const transportWithAdmin = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -706,6 +721,7 @@ describe("DiscordTransport", () => {
 
     it("passes non-command messages through to agent", async () => {
       const transportWithAdmin = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -729,6 +745,7 @@ describe("DiscordTransport", () => {
 
     it("ignores unknown slash commands and passes them to agent", async () => {
       const transportWithAdmin = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -791,6 +808,7 @@ describe("DiscordTransport", () => {
       };
 
       const transportCtx = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -814,6 +832,7 @@ describe("DiscordTransport", () => {
 
     it("injects channel history into user message when bot is triggered", async () => {
       const transportMention = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -858,6 +877,7 @@ describe("DiscordTransport", () => {
 
     it("deduplicates messages with the same ID", async () => {
       const transportCtx = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -892,6 +912,7 @@ describe("DiscordTransport", () => {
       ]);
 
       const transportCtx = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -938,6 +959,7 @@ describe("DiscordTransport", () => {
 
       // Need to set up bindings via config
       const testTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -982,6 +1004,7 @@ describe("DiscordTransport", () => {
       sessionStore.getMessages = vi.fn().mockResolvedValue([]);
 
       const testTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
@@ -1043,6 +1066,7 @@ describe("DiscordTransport", () => {
       const localAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1063,6 +1087,7 @@ describe("DiscordTransport", () => {
       const localAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1084,6 +1109,7 @@ describe("DiscordTransport", () => {
       const localAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1105,6 +1131,7 @@ describe("DiscordTransport", () => {
       const localAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1174,6 +1201,7 @@ describe("DiscordTransport", () => {
       localAgentManager.get = vi.fn().mockReturnValue(hangingAgent);
 
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1223,6 +1251,7 @@ describe("DiscordTransport", () => {
       localAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1283,6 +1312,7 @@ describe("DiscordTransport", () => {
       localAgentManager.get = vi.fn().mockReturnValue(completingAgent);
 
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1364,6 +1394,7 @@ describe("DiscordTransport", () => {
       localAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1394,6 +1425,7 @@ describe("DiscordTransport", () => {
       localAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1428,6 +1460,7 @@ describe("DiscordTransport", () => {
       localAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1452,6 +1485,7 @@ describe("DiscordTransport", () => {
       localAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1482,6 +1516,7 @@ describe("DiscordTransport", () => {
       localAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
@@ -1512,6 +1547,7 @@ describe("DiscordTransport", () => {
       localAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
+      group: { policy: "open" },
         token: "test-token",
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
