@@ -8,13 +8,11 @@ A lightweight, self-hostable AI agent framework for multi-agent collaboration ac
 # Install globally from npm
 npm install -g @ghostcomplex/isotopes
 
-# Create config
-mkdir -p ~/.isotopes
-curl -fsSL https://raw.githubusercontent.com/GhostComplex/isotopes/main/isotopes.example.yaml \
-  -o ~/.isotopes/isotopes.yaml
-# Edit ~/.isotopes/isotopes.yaml with your settings
+# Generate a default ~/.isotopes/isotopes.yaml
+isotopes init
 
-# Run in foreground
+# Set your API key, then run
+export ANTHROPIC_API_KEY=sk-ant-...
 isotopes
 
 # Or run as daemon
@@ -31,9 +29,7 @@ cd isotopes
 pnpm install
 pnpm build
 
-mkdir -p ~/.isotopes
-cp isotopes.example.yaml ~/.isotopes/isotopes.yaml
-
+node dist/cli.js init
 node dist/cli.js
 ```
 
