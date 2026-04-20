@@ -19,6 +19,7 @@ import {
 } from "./middleware.js";
 import { matchRoute, type RouteDeps } from "./routes.js";
 import { serveStaticFile } from "./static.js";
+import type { HookRegistry } from "../plugins/hooks.js";
 import type { UIRegistry } from "../plugins/ui-registry.js";
 
 // Register subagent routes (side-effect import)
@@ -60,6 +61,7 @@ export interface ApiServerDeps {
   discordSessionStores?: Map<string, SessionStore>;
   uiRegistry?: UIRegistry;
   sessionStoreManager?: SessionStoreManager;
+  hooks?: HookRegistry;
 }
 
 export class ApiServer {
@@ -79,6 +81,7 @@ export class ApiServer {
       usageTracker: deps.usageTracker,
       discordSessionStores: deps.discordSessionStores,
       sessionStoreManager: deps.sessionStoreManager,
+      hooks: deps.hooks,
     };
   }
 
@@ -120,9 +123,10 @@ export class ApiServer {
       if (this.uiRegistry) {
         // Navigation shell
         if (req.pathname === "/ui" || req.pathname === "/ui/") {
+          const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
           const entries = this.uiRegistry.list();
           const links = entries
-            .map((e) => `<li><a href="${e.mountPath}">${e.label}</a></li>`)
+            .map((e) => `<li><a href="${escHtml(e.mountPath!)}">${escHtml(e.label)}</a></li>`)
             .join("\n");
           const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Isotopes UI</title></head><body><h1>Isotopes UI Plugins</h1><ul>${links}</ul></body></html>`;
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });

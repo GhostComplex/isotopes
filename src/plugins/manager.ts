@@ -1,6 +1,7 @@
 // src/plugins/manager.ts — Plugin lifecycle manager
 
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { createLogger } from "../core/logger.js";
 import { HookRegistry } from "./hooks.js";
 import { UIRegistry } from "./ui-registry.js";
@@ -60,7 +61,7 @@ export class PluginManager {
   ): Promise<void> {
     const entryPath = path.resolve(pluginDir, manifest.entry);
 
-    const mod = await import(entryPath);
+    const mod = await import(pathToFileURL(entryPath).href);
     const pluginModule: IsotopesPluginModule = mod.default ?? mod;
 
     const plugin: IsotopesPlugin =

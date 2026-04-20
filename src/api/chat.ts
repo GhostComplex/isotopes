@@ -111,14 +111,14 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
     return;
   }
 
-  // Store user message
+  // Store user message + emit hook
+  const userMessage = { role: "user" as const, content: textContent(body.message), timestamp: Date.now() };
   if (deps.sessionStoreManager) {
     const store = await deps.sessionStoreManager.getOrCreate(session.agentId);
-    await store.addMessage(sessionId, {
-      role: "user",
-      content: textContent(body.message),
-      timestamp: Date.now(),
-    });
+    await store.addMessage(sessionId, userMessage);
+  }
+  if (deps.hooks) {
+    await deps.hooks.emit("message_received", { agentId: session.agentId, sessionId, message: { role: "user", content: textContent(body.message) } });
   }
 
   // Set up SSE
@@ -159,21 +159,30 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
           writeEvent("turn_end", { usage: event.usage });
           break;
         case "agent_end":
-          // Persist assistant response
-          if (deps.sessionStoreManager && responseText) {
-            const store = await deps.sessionStoreManager.getOrCreate(session.agentId);
-            await store.addMessage(sessionId, {
-              role: "assistant",
-              content: textContent(responseText),
-              timestamp: Date.now(),
-            });
-          }
           writeEvent("agent_end", { stopReason: event.stopReason });
           break;
         case "error":
           writeEvent("error", { message: event.error.message });
           break;
       }
+    }
+
+    // Persist assistant response and emit hooks
+    if (responseText) {
+      if (deps.sessionStoreManager) {
+        const store = await deps.sessionStoreManager.getOrCreate(session.agentId);
+        await store.addMessage(sessionId, {
+          role: "assistant",
+          content: textContent(responseText),
+          timestamp: Date.now(),
+        });
+      }
+      if (deps.hooks) {
+        await deps.hooks.emit("message_sending", { agentId: session.agentId, sessionId, message: { role: "assistant", content: textContent(responseText) } });
+      }
+    }
+    if (deps.hooks) {
+      await deps.hooks.emit("agent_end", { agentId: session.agentId });
     }
   } catch (err) {
     writeEvent("error", { message: err instanceof Error ? err.message : String(err) });

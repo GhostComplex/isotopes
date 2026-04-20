@@ -12,6 +12,7 @@ import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { AgentManager, SessionStore } from "../core/types.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
+import type { HookRegistry } from "../plugins/hooks.js";
 import { getIsotopesHome, getLogsDir } from "../core/paths.js";
 import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middleware.js";
 
@@ -27,6 +28,7 @@ export interface RouteDeps {
   discordSessionStores?: Map<string, SessionStore>;
   usageTracker?: UsageTracker;
   sessionStoreManager?: SessionStoreManager;
+  hooks?: HookRegistry;
 }
 
 /** Handler function for a matched API route. */
