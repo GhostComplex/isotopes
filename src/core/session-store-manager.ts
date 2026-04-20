@@ -14,6 +14,7 @@ import {
 } from "./paths.js";
 import type { SessionConfig } from "./types.js";
 import { createLogger } from "./logger.js";
+import type { HookRegistry } from "../plugins/hooks.js";
 
 const log = createLogger("session-store-manager");
 
@@ -24,6 +25,8 @@ export interface SessionStoreManagerOptions {
   maxSessions?: number;
   /** Per-store maxTotalSizeMB cap (defaults to DefaultSessionStore default). */
   maxTotalSizeMB?: number;
+  /** Hook registry for lifecycle events. */
+  hooks?: HookRegistry;
 }
 
 /**
@@ -61,6 +64,9 @@ export class SessionStoreManager {
       this.stores.set(key, store);
       this.inits.delete(key);
       log.debug(`Initialized session store for agent ${agentId} at ${dataDir}`);
+      if (this.opts.hooks) {
+        await this.opts.hooks.emit("session_start", { agentId, sessionId: key });
+      }
       return store;
     })();
 
@@ -84,7 +90,10 @@ export class SessionStoreManager {
 
   /** Tear down every initialized store. Safe to call multiple times. */
   destroyAll(): void {
-    for (const store of this.stores.values()) {
+    for (const [key, store] of this.stores) {
+      if (this.opts.hooks) {
+        this.opts.hooks.emit("session_end", { agentId: key, sessionId: key }).catch(() => {});
+      }
       store.destroy();
     }
     this.stores.clear();

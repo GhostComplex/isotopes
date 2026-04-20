@@ -39,6 +39,7 @@ import type { PiMonoCore } from "./pi-mono.js";
 import type { DefaultAgentManager } from "./agent-manager.js";
 import type { AgentConfig, AgentInstance } from "./types.js";
 import { createLogger } from "./logger.js";
+import type { HookRegistry } from "../plugins/hooks.js";
 
 const log = createLogger("agent-init");
 
@@ -71,6 +72,8 @@ export interface InitAgentOptions {
   sandboxExecutor?: SandboxExecutor;
   /** Transport context for reply/react tools (optional — skipped if omitted) */
   transportContext?: LazyTransportContext;
+  /** Hook registry for lifecycle events (optional) */
+  hooks?: HookRegistry;
 }
 
 export interface InitAgentResult {
@@ -199,6 +202,10 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
 
   // 13. Wire up tool registry and create agent
   core.setToolRegistry(agentConfig.id, toolRegistry);
+  if (opts.hooks) {
+    toolRegistry.setHooks(opts.hooks);
+    await opts.hooks.emit("before_agent_start", { agentId: agentConfig.id });
+  }
   const instance = await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, baseSystemPrompt });
   log.info(`Created agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${toolRegistry.list().length})`);
 

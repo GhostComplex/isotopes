@@ -26,6 +26,7 @@ export async function serveStaticFile(
   res: http.ServerResponse,
   filePath: string,
   rootDir: string,
+  spaFallback = false,
 ): Promise<boolean> {
   const resolved = path.resolve(filePath);
   if (!resolved.startsWith(path.resolve(rootDir))) {
@@ -48,8 +49,7 @@ export async function serveStaticFile(
     res.end(data);
     return true;
   } catch {
-    // SPA fallback: if no extension, try index.html
-    if (!path.extname(resolved)) {
+    if (spaFallback && !path.extname(resolved)) {
       const indexPath = path.join(rootDir, "index.html");
       try {
         const data = await fs.readFile(indexPath);

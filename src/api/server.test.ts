@@ -60,7 +60,7 @@ describe("ApiServer", () => {
   beforeEach(async () => {
     cronScheduler = new CronScheduler();
     // Use port 0 so the OS assigns a free port
-    server = new ApiServer({ port: 0 }, cronScheduler);
+    server = new ApiServer({ port: 0 }, { cronScheduler });
     await server.start();
   });
 

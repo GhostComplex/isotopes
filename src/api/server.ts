@@ -52,21 +52,34 @@ export interface ApiServerConfig {
  * Exposes endpoints for managing Discord sessions, cron jobs, config, and
  * daemon status. Supports CORS, JSON body parsing, and parameterized routes.
  */
+export interface ApiServerDeps {
+  cronScheduler: CronScheduler;
+  configReloader?: ConfigReloader;
+  agentManager?: AgentManager;
+  usageTracker?: UsageTracker;
+  discordSessionStores?: Map<string, SessionStore>;
+  uiRegistry?: UIRegistry;
+  sessionStoreManager?: SessionStoreManager;
+}
+
 export class ApiServer {
   private server: http.Server | null = null;
   private deps: RouteDeps;
+  private uiRegistry?: UIRegistry;
 
   constructor(
     private config: ApiServerConfig,
-    cronScheduler: CronScheduler,
-    configReloader?: ConfigReloader,
-    agentManager?: AgentManager,
-    usageTracker?: UsageTracker,
-    discordSessionStores?: Map<string, SessionStore>,
-    private uiRegistry?: UIRegistry,
-    sessionStoreManager?: SessionStoreManager,
+    deps: ApiServerDeps,
   ) {
-    this.deps = { cronScheduler, configReloader, agentManager, usageTracker, discordSessionStores, sessionStoreManager };
+    this.uiRegistry = deps.uiRegistry;
+    this.deps = {
+      cronScheduler: deps.cronScheduler,
+      configReloader: deps.configReloader,
+      agentManager: deps.agentManager,
+      usageTracker: deps.usageTracker,
+      discordSessionStores: deps.discordSessionStores,
+      sessionStoreManager: deps.sessionStoreManager,
+    };
   }
 
   /**
@@ -122,7 +135,7 @@ export class ApiServer {
           const mount = uiMatch.mountPath!;
           const relativePath = req.pathname.slice(mount.length) || "/index.html";
           const filePath = path.join(uiMatch.staticDir, relativePath);
-          const served = await serveStaticFile(res, filePath, uiMatch.staticDir);
+          const served = await serveStaticFile(res, filePath, uiMatch.staticDir, uiMatch.spaFallback ?? false);
           if (served) return;
           sendError(res, 404, `Not found: ${req.pathname}`);
           return;

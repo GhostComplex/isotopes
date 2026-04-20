@@ -65,7 +65,9 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   await ensureDirectories();
 
   // SessionStoreManager backs both main-agent transcripts and subagent runs.
-  const sessionStoreManager = new SessionStoreManager();
+  // Plugin system — initialize early so hooks are available during agent init.
+  const pluginManager = new PluginManager();
+  const sessionStoreManager = new SessionStoreManager({ hooks: pluginManager.getHooks() });
 
   // Initialize core first — the builtin subagent backend hosts subagents
   // in-process via this same core.
@@ -134,6 +136,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       isSingleAgent,
       sandboxExecutor,
       transportContext: transportCtx,
+      hooks: pluginManager.getHooks(),
     });
 
     agentWorkspaces.set(result.agentConfig.id, result.workspacePath);
@@ -144,8 +147,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   // Hot-reload workspace files
   const hotReload = new HotReloadManager(agentManager, { enabled: true, debounceMs: 500 });
 
-  // Plugin system
-  const pluginManager = new PluginManager();
+  // Discover and load plugins (PluginManager created earlier for hooks)
   const pluginDirs = [
     path.join(import.meta.dirname, "../../plugins"),
     path.join(getIsotopesHome(), "plugins"),
@@ -333,13 +335,13 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   // API server
   const apiServer = new ApiServer(
     { port: apiPort ?? 2712 },
-    cronScheduler,
-    undefined,
-    agentManager,
-    usageTracker,
-    undefined,
-    pluginManager.getUIRegistry(),
-    sessionStoreManager,
+    {
+      cronScheduler,
+      agentManager,
+      usageTracker,
+      uiRegistry: pluginManager.getUIRegistry(),
+      sessionStoreManager,
+    },
   );
   await apiServer.start();
 

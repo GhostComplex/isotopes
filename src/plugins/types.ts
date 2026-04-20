@@ -65,6 +65,7 @@ export interface UIPluginConfig {
   label: string;
   staticDir: string;
   mountPath?: string;
+  spaFallback?: boolean;
 }
 
 // ---------------------------------------------------------------------------
