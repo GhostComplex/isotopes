@@ -89,7 +89,8 @@ channels:
     accounts:
       major:
         token: "..."
-        groupPolicy: allowlist
+        group:
+          policy: allowlist
         guilds:
           "1480866703880487034":
             requireMention: false  # Respond without @mention

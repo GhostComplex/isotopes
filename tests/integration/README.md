@@ -50,7 +50,7 @@ npx tsx tests/integration/discord.test.ts
 **Bot doesn't respond:**
 - Check bot is in the channel
 - Check Message Content Intent is enabled
-- Check channelAllowlist includes test channel
+- Check `group.channelAllowlist` includes test channel
 
 **API errors:**
 - Verify API key is valid

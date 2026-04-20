@@ -112,7 +112,7 @@ async function runTest() {
     agentManager,
     sessionStore,
     defaultAgentId: "test-agent",
-    channelAllowlist: [TEST_CHANNEL_ID!],
+    group: { policy: "allowlist", channelAllowlist: [TEST_CHANNEL_ID!] },
   });
 
   await transport.start();
