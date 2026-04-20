@@ -8,7 +8,7 @@ A lightweight, self-hostable AI agent framework for multi-agent collaboration ac
 # Install globally from npm
 npm install -g @ghostcomplex/isotopes
 
-# Generate a default ~/.isotopes/isotopes.yaml
+# Generate ~/.isotopes/isotopes.yaml (interactive: pick LLM provider + channel)
 isotopes init
 
 # Set your API key, then run
