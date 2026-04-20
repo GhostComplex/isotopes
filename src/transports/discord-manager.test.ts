@@ -121,13 +121,13 @@ describe("DiscordTransportManager", () => {
         major: {
           token: "tok-major",
           defaultAgentId: "major",
-          allowDMs: true,
+          dm: { policy: "open" },
           channelAllowlist: ["ch-1"],
         },
         tachikoma: {
           token: "tok-tachi",
           defaultAgentId: "tachikoma",
-          allowDMs: false,
+          dm: { policy: "disabled" },
         },
       },
       shared: { agentManager, sessionStore },

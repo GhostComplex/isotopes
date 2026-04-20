@@ -362,8 +362,13 @@ export interface DiscordAccountConfig {
   defaultAgentId?: string;
   /** Channel/guild ID -> agent ID overrides. */
   agentBindings?: Record<string, string>;
-  /** Whether to accept DMs. Default: true */
-  allowDMs?: boolean;
+  /** DM access control. */
+  dm?: {
+    /** "disabled" (default) = ignore all DMs, "open" = accept all, "allowlist" = only from listed user IDs. */
+    policy?: "disabled" | "open" | "allowlist";
+    /** Discord user IDs allowed to DM when policy is "allowlist". */
+    allowlist?: string[];
+  };
   /** Restrict the bot to a list of channel IDs. */
   channelAllowlist?: string[];
   /** Group join policy (allowlist/denylist semantics, transport-defined). */

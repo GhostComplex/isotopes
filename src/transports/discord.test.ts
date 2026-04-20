@@ -986,7 +986,7 @@ describe("DiscordTransport", () => {
         agentManager,
         sessionStore,
         defaultAgentId: "default",
-        allowDMs: true,
+        dm: { policy: "open" },
       });
 
       const msg: MockIncomingMessage = {
@@ -1516,6 +1516,7 @@ describe("DiscordTransport", () => {
         agentManager: localAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
+        dm: { policy: "open" },
       });
       await localTransport.start();
 

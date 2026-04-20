@@ -154,8 +154,11 @@ export interface DiscordTransportConfig {
   defaultAgentId?: string;
   /** Map of Discord bot user ID → agent ID for multi-agent routing */
   agentBindings?: Record<string, string>;
-  /** Whether to respond to DMs */
-  allowDMs?: boolean;
+  /** DM access control policy. */
+  dm?: {
+    policy?: "disabled" | "open" | "allowlist";
+    allowlist?: string[];
+  };
   /** Channel IDs to listen to (empty = all) */
   channelAllowlist?: string[];
   /** Channels config for per-guild/group settings (e.g. requireMention) */
@@ -230,7 +233,7 @@ export class DiscordTransport implements Transport {
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
       ],
-      partials: [Partials.Channel, Partials.Message],
+      partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember],
     });
   }
 
@@ -238,6 +241,32 @@ export class DiscordTransport implements Transport {
     this.client.on("ready", () => {
       log.info(`Logged in as ${this.client.user?.tag}`);
       this.ready = true;
+    });
+
+    this.client.on("error", (err) => {
+      log.error(`Discord client error: ${err.message}`);
+    });
+
+    // discord.js v14 doesn't reliably emit messageCreate for DMs even with
+    // Partials.Channel. Intercept raw gateway packets and manually fetch the
+    // Message object for DM MESSAGE_CREATE events.
+    this.client.on("raw", async (packet: { t: string; d: unknown }) => {
+      if (packet.t !== "MESSAGE_CREATE") return;
+      const data = packet.d as Record<string, unknown>;
+      if (data.guild_id) return;
+
+      const channelId = data.channel_id as string;
+      try {
+        const channel = await this.client.channels.fetch(channelId);
+        if (!channel?.isTextBased()) return;
+        const message = await channel.messages.fetch(data.id as string);
+        await this.handleMessage(message);
+      } catch (err) {
+        log.warn("Failed to fetch DM message", {
+          channelId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     });
 
     this.client.on("messageCreate", (msg) => this.handleMessage(msg));
@@ -517,10 +546,22 @@ export class DiscordTransport implements Transport {
     await this.runAgentAndRespond(agent, promptInput, msg.channel as SendableChannel, session.id, sessionStore);
   }
 
+  private isDmAllowed(userId: string): boolean {
+    const dm = this.config.dm;
+    if (dm?.policy) {
+      switch (dm.policy) {
+        case "disabled": return false;
+        case "open": return true;
+        case "allowlist": return dm.allowlist?.includes(userId) ?? false;
+      }
+    }
+    return false;
+  }
+
   private shouldRespond(msg: DiscordMessage): boolean {
     // DM handling
     if (!msg.guild) {
-      return this.config.allowDMs !== false;
+      return this.isDmAllowed(msg.author.id);
     }
 
     // Channel allowlist

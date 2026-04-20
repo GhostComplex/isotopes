@@ -48,7 +48,8 @@ channels:
       main:
         token: ${token}
         defaultAgentId: assistant
-        allowDMs: true
+        dm:
+          policy: disabled
         threadBindings:
           enabled: true
 `;

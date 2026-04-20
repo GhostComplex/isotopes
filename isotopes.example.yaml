@@ -94,7 +94,11 @@ channels:
       main:                              # accountId — referenced by bindings, etc.
         tokenEnv: DISCORD_TOKEN          # or `token: <literal>`
         defaultAgentId: main
-        allowDMs: true
+        # allowDMs: true                  # deprecated — use dm.policy instead
+        dm:
+          policy: disabled               # disabled (default) | open | allowlist
+          # allowlist:                   # Discord user IDs (only when policy=allowlist)
+          #   - "123456789012345678"
         # allowBots: false               # respond to messages from other bots
         # channelAllowlist:
         #   - "channel-id"

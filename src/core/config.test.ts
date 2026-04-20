@@ -128,7 +128,8 @@ channels:
         defaultAgentId: assistant
         agentBindings:
           "123456": assistant
-        allowDMs: true
+        dm:
+          policy: open
 `,
       );
 
