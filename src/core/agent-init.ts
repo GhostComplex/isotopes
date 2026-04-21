@@ -151,9 +151,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   const subagentEnabled = subagent?.enabled === true && !isSandboxed;
   if (subagent?.enabled === true && isSandboxed) {
     log.warn(
-      `Subagent tools disabled for ${agentConfig.id}: sandbox is active and ` +
-        `child runners cannot be confined. Use \`docker exec\` with a custom ` +
-        `image to run a coding CLI inside the sandbox.`,
+      `Subagent tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined. Use \`docker exec\` with a custom image to run a coding CLI inside the sandbox.`,
     );
   }
 

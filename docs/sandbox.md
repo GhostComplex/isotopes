@@ -129,10 +129,11 @@ RUN npm install -g @anthropic-ai/claude-code
 USER agent
 ```
 
-Then:
+Then exec into the running container (containers are named
+`isotopes-sandbox-<agent-id>` — see `src/sandbox/executor.ts`):
 
 ```bash
-docker exec -it $(docker ps -qf name=isotopes-sandbox-<agent>) claude
+docker exec -it isotopes-sandbox-<agent-id> claude
 ```
 
 Credentials must be mounted into the container (e.g. via `docker.binds`) —

@@ -7,8 +7,9 @@ import { createMockAgentInstance } from "./test-helpers.js";
 import type { SandboxExecutor } from "../sandbox/executor.js";
 
 function makeMockSandboxExecutor(): SandboxExecutor {
+  // Only fields touched by initializeAgent matter; sandbox gating uses
+  // shouldSandbox(agentConfig.sandbox) — not any executor method.
   return {
-    shouldExecuteInSandbox: vi.fn(() => true),
     execute: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
     buildExecArgv: vi.fn(async (_id: string, cmd: string[]) => ["docker", "exec", "ctr", ...cmd]),
     cleanup: vi.fn(async () => {}),
@@ -126,6 +127,8 @@ describe("initializeAgent", () => {
   });
 
   it("does not register spawn_subagent when sandbox is active (issue #440)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
     const result = await initializeAgent({
       agentFile: makeMinimalAgentFile({ sandbox: { mode: "all" } }),
       sandbox: { mode: "all", docker: { image: "isotopes-sandbox:latest" } },
@@ -137,5 +140,11 @@ describe("initializeAgent", () => {
 
     const toolNames = result.toolRegistry.list().map((t) => t.name);
     expect(toolNames).not.toContain("spawn_subagent");
+    // Warn fired — proves the sandboxed branch ran (test isn't passing for the wrong reason).
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Subagent tools disabled for test-agent"),
+    );
+
+    warnSpy.mockRestore();
   });
 });
