@@ -74,10 +74,11 @@ export class ProcessRegistry {
           stdio: ["ignore", "pipe", "pipe"],
           detached: false,
         })
-      : spawn("sh", ["-c", command], {
+      : spawn(command, [], {
           cwd,
           stdio: ["ignore", "pipe", "pipe"],
           detached: false,
+          shell: true,
         });
 
     const info: ProcessInfo = {

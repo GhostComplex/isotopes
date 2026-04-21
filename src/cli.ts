@@ -606,22 +606,29 @@ async function handleLogsCommand(): Promise<void> {
   };
 
   if (follow) {
-    // Follow mode: use tail -f
-    const { spawn } = await import("node:child_process");
-    const tail = spawn("tail", ["-f", logFile], { stdio: ["ignore", "pipe", "inherit"] });
+    // Follow mode: watch file for changes and stream new content
+    const { watch, createReadStream } = await import("node:fs");
+    let position = (await fsPromises.stat(logFile)).size;
 
-    tail.stdout.on("data", (chunk: Buffer) => {
-      const lines = chunk.toString().split("\n");
-      for (const line of lines) {
-        if (line && matchesLevel(line)) {
-          console.log(line);
+    const readNew = () => {
+      const stream = createReadStream(logFile, { start: position, encoding: "utf-8" });
+      let buf = "";
+      stream.on("data", (chunk: string | Buffer) => { buf += String(chunk); });
+      stream.on("end", () => {
+        position += Buffer.byteLength(buf);
+        const newLines = buf.split("\n");
+        for (const line of newLines) {
+          if (line && matchesLevel(line)) {
+            console.log(line);
+          }
         }
-      }
-    });
+      });
+    };
 
-    // Handle Ctrl+C gracefully
+    const watcher = watch(logFile, () => readNew());
+
     process.on("SIGINT", () => {
-      tail.kill();
+      watcher.close();
       process.exit(0);
     });
   } else {

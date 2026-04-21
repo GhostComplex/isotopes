@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { DaemonProcess } from "./process.js";
 import type { DaemonOptions } from "./process.js";
 
@@ -22,6 +22,7 @@ vi.mock("node:fs/promises", () => ({
 
 vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
+  execSync: vi.fn(),
 }));
 
 const mockFs = fs as unknown as {
@@ -33,6 +34,7 @@ const mockFs = fs as unknown as {
 };
 
 const mockSpawn = spawn as unknown as ReturnType<typeof vi.fn>;
+const mockExecSync = execSync as unknown as ReturnType<typeof vi.fn>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -179,26 +181,46 @@ describe("DaemonProcess.stop", () => {
       throw new Error("ENOENT");
     });
 
-    // Process is alive at first, then dies after SIGTERM
-    let alive = true;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    killSpy = vi.spyOn(process, "kill").mockImplementation(((_pid: any, signal: any) => {
-      if (signal === 0 || signal === undefined) {
-        if (!alive) throw new Error("ESRCH");
+    if (process.platform === "win32") {
+      // On Windows, killProcess uses execSync("taskkill ...") then checks
+      // process.kill(pid, 0) which should throw after the kill.
+      let alive = true;
+      killSpy = vi.spyOn(process, "kill").mockImplementation(((_pid: unknown, signal: unknown) => {
+        if (signal === 0 || signal === undefined) {
+          if (!alive) throw new Error("ESRCH");
+          return true;
+        }
         return true;
-      }
-      if (signal === "SIGTERM") {
-        alive = false;
-        return true;
-      }
-      return true;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any);
+      mockExecSync.mockImplementation(() => { alive = false; });
+
+      const d = makeDaemon();
+      await d.stop();
+
+      expect(mockExecSync).toHaveBeenCalledWith("taskkill /F /T /PID 12345", { stdio: "ignore" });
+    } else {
+      // On Unix, killProcess uses process.kill(pid, "SIGTERM")
+      let alive = true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }) as any);
+      killSpy = vi.spyOn(process, "kill").mockImplementation(((_pid: any, signal: any) => {
+        if (signal === 0 || signal === undefined) {
+          if (!alive) throw new Error("ESRCH");
+          return true;
+        }
+        if (signal === "SIGTERM") {
+          alive = false;
+          return true;
+        }
+        return true;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any);
 
-    const d = makeDaemon();
-    await d.stop();
+      const d = makeDaemon();
+      await d.stop();
 
-    expect(killSpy).toHaveBeenCalledWith(12345, "SIGTERM");
+      expect(killSpy).toHaveBeenCalledWith(12345, "SIGTERM");
+    }
     // pidfile removed
     expect(mockFs.unlink).toHaveBeenCalledWith(defaultOpts.pidFile);
   });
