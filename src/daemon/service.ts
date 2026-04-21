@@ -1,4 +1,4 @@
-// src/daemon/service.ts — System service integration (launchd / systemd)
+// src/daemon/service.ts — System service integration (launchd / systemd / schtasks)
 // Generates and installs service definitions so the daemon starts at boot.
 
 import fs from "node:fs/promises";
@@ -136,13 +136,31 @@ WantedBy=default.target
 // schtasks helpers (Windows)
 // ---------------------------------------------------------------------------
 
-const SCHTASKS_TASK_PREFIX = "\\";
+const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+$/;
+
+function assertSafeName(name: string): void {
+  if (!SAFE_NAME_RE.test(name)) {
+    throw new Error(
+      `Invalid service name "${name}" — only alphanumeric, dot, dash, and underscore are allowed`,
+    );
+  }
+}
+
+function assertSafePath(p: string): void {
+  if (/["&|<>^%]/.test(p)) {
+    throw new Error(
+      `Path contains unsafe characters for shell interpolation: ${p}`,
+    );
+  }
+}
 
 function schtasksTaskName(name: string): string {
-  return `${SCHTASKS_TASK_PREFIX}${name}`;
+  return `\\${name}`;
 }
 
 function buildCmdScript(config: ServiceConfig): string {
+  assertSafePath(config.execPath);
+  assertSafePath(config.cliPath);
   return `@echo off\r\nset ISOTOPES_DAEMON=1\r\n"${config.execPath}" "${config.cliPath}"\r\n`;
 }
 
@@ -173,6 +191,7 @@ export class ServiceManager {
   // -------------------------------------------------------------------------
 
   async install(config: ServiceConfig): Promise<void> {
+    assertSafeName(config.name);
     if (this.platform === "unsupported") {
       throw new Error(
         `Service installation is not supported on ${os.platform()}`,
@@ -222,6 +241,7 @@ export class ServiceManager {
   }
 
   async uninstall(name: string): Promise<void> {
+    assertSafeName(name);
     if (this.platform === "unsupported") {
       throw new Error(
         `Service management is not supported on ${os.platform()}`,

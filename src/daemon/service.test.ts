@@ -248,7 +248,7 @@ describe("ServiceManager (Windows)", () => {
 
     expect(mockFs.writeFile).toHaveBeenCalledWith(
       expect.stringContaining("ai.isotopes.daemon.cmd"),
-      expect.stringContaining("ISOTOPES_DAEMON=1"),
+      expect.stringMatching(/^set ISOTOPES_DAEMON=1$/m),
       "utf-8",
     );
     expect(mockExec).toHaveBeenCalledWith(
@@ -310,6 +310,24 @@ describe("ServiceManager (Windows)", () => {
 
     const svc = new ServiceManager();
     expect(await svc.isInstalled("ai.isotopes.daemon")).toBe(false);
+  });
+
+  it("install() falls back to Startup folder when schtasks fails", async () => {
+    // First call is writeFile for .cmd script (succeeds),
+    // then execAsync for schtasks /Create (fails),
+    // then writeFile for startup folder fallback
+    mockExec.mockRejectedValue(new Error("Access is denied"));
+
+    const svc = new ServiceManager();
+    await svc.install(sampleConfig);
+
+    // The fallback should write to the Startup folder
+    const fallbackCall = mockFs.writeFile.mock.calls.find(
+      (call: unknown[]) => (call[0] as string).includes("Startup"),
+    );
+    expect(fallbackCall).toBeDefined();
+    expect(fallbackCall![0]).toContain("ai.isotopes.daemon.cmd");
+    expect(fallbackCall![1]).toMatch(/^set ISOTOPES_DAEMON=1$/m);
   });
 });
 
