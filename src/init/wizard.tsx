@@ -32,11 +32,26 @@ export interface DiscordAnswers {
   groupAllowlist?: string[];
 }
 
+export type SubagentChoice = "enabled" | "skip";
+export type SubagentClaudeChoice = "configure" | "skip";
+
+export interface SubagentClaudeAnswers {
+  authToken: string;
+  baseUrl: string;
+  pathToClaudeCodeExecutable?: string;
+}
+
+export interface SubagentAnswers {
+  enabled: boolean;
+  claude?: SubagentClaudeAnswers;
+}
+
 export interface InitAnswers {
   llm: LlmChoice;
   ghcProxy?: GhcProxyAnswers;
   channel: ChannelChoice;
   discord?: DiscordAnswers;
+  subagent?: SubagentAnswers;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,7 +74,12 @@ type Step =
   | { kind: "discord-dm-policy" }
   | { kind: "discord-dm-userId" }
   | { kind: "discord-group-policy" }
-  | { kind: "discord-group-allowlist" };
+  | { kind: "discord-group-allowlist" }
+  | { kind: "subagent" }
+  | { kind: "subagent-claude" }
+  | { kind: "subagent-claude-authToken" }
+  | { kind: "subagent-claude-baseUrl" }
+  | { kind: "subagent-claude-execPath" };
 
 interface Props {
   onDone: (answers: InitAnswers) => void;
@@ -81,6 +101,12 @@ function InitWizard({ onDone }: Props) {
   const [groupPolicy, setGroupPolicy] = useState<GroupPolicyChoice>("allowlist");
   const [groupAllowlistInput, setGroupAllowlistInput] = useState("");
 
+  const [subagentEnabled, setSubagentEnabled] = useState(false);
+  const [subagentClaudeEnabled, setSubagentClaudeEnabled] = useState(false);
+  const [claudeAuthToken, setClaudeAuthToken] = useState("");
+  const [claudeBaseUrl, setClaudeBaseUrl] = useState("");
+  const [claudeExecPath, setClaudeExecPath] = useState("");
+
   useInput((_input, key) => {
     if (key.ctrl && _input === "c") {
       exit();
@@ -89,6 +115,23 @@ function InitWizard({ onDone }: Props) {
   });
 
   const finish = (overrides: Partial<InitAnswers> = {}) => {
+    const subagentAnswers: SubagentAnswers | undefined = subagentEnabled
+      ? {
+          enabled: true,
+          ...(subagentClaudeEnabled
+            ? {
+                claude: {
+                  authToken: claudeAuthToken,
+                  baseUrl: claudeBaseUrl,
+                  ...(claudeExecPath.trim().length > 0
+                    ? { pathToClaudeCodeExecutable: claudeExecPath.trim() }
+                    : {}),
+                },
+              }
+            : {}),
+        }
+      : undefined;
+
     const answers: InitAnswers = {
       llm,
       channel,
@@ -110,12 +153,14 @@ function InitWizard({ onDone }: Props) {
             },
           }
         : {}),
+      ...(subagentAnswers ? { subagent: subagentAnswers } : {}),
       ...overrides,
     };
     onDone(answers);
     exit();
   };
 
+  const goToSubagent = () => setStep({ kind: "subagent" });
   const goToChannel = () => setStep({ kind: "channel" });
 
   const handleLlmSelect = (item: { value: LlmChoice }) => {
@@ -127,7 +172,11 @@ function InitWizard({ onDone }: Props) {
   const handleChannelSelect = (item: { value: ChannelChoice }) => {
     setChannel(item.value);
     if (item.value === "discord") setStep({ kind: "discord-token" });
-    else finish({ channel: item.value });
+    else {
+      // Channel skipped — proceed to subagent step. Use functional update via overrides
+      // so the rendered answers reflect the just-selected value.
+      setStep({ kind: "subagent" });
+    }
   };
 
   return (
@@ -276,7 +325,7 @@ function InitWizard({ onDone }: Props) {
             onSelect={(item) => {
               setGroupPolicy(item.value);
               if (item.value === "allowlist") setStep({ kind: "discord-group-allowlist" });
-              else finish();
+              else goToSubagent();
             }}
           />
         </Box>
@@ -294,7 +343,7 @@ function InitWizard({ onDone }: Props) {
               onSubmit={() => {
                 const entries = groupAllowlistInput.trim().split(",").map((s) => s.trim()).filter(Boolean);
                 const valid = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
-                if (entries.length > 0 && valid) finish();
+                if (entries.length > 0 && valid) goToSubagent();
               }}
             />
           </Box>
@@ -303,6 +352,100 @@ function InitWizard({ onDone }: Props) {
             const valid = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
             return !valid ? <Text color="yellow">  each entry must be serverId or serverId/channelId (numeric)</Text> : null;
           })()}
+        </Box>
+      )}
+
+      {step.kind === "subagent" && (
+        <Box flexDirection="column">
+          <Text>3) Configure subagent (Claude Agent SDK)?</Text>
+          <SelectInput
+            items={[
+              { label: "yes (enable subagent backend)", value: "enabled" as const },
+              { label: "skip (configure later)", value: "skip" as const },
+            ]}
+            onSelect={(item: { value: SubagentChoice }) => {
+              if (item.value === "enabled") {
+                setSubagentEnabled(true);
+                setStep({ kind: "subagent-claude" });
+              } else {
+                setSubagentEnabled(false);
+                finish();
+              }
+            }}
+          />
+        </Box>
+      )}
+
+      {step.kind === "subagent-claude" && (
+        <Box flexDirection="column">
+          <Text>Configure Claude Code credentials for the subagent?</Text>
+          <SelectInput
+            items={[
+              { label: "yes (enter authToken / baseUrl / executable path)", value: "configure" as const },
+              { label: "skip (inherit Claude CLI defaults)", value: "skip" as const },
+            ]}
+            onSelect={(item: { value: SubagentClaudeChoice }) => {
+              if (item.value === "configure") {
+                setSubagentClaudeEnabled(true);
+                setStep({ kind: "subagent-claude-authToken" });
+              } else {
+                setSubagentClaudeEnabled(false);
+                finish();
+              }
+            }}
+          />
+        </Box>
+      )}
+
+      {step.kind === "subagent-claude-authToken" && (
+        <Box flexDirection="column">
+          <Text>Claude authToken (sets ANTHROPIC_AUTH_TOKEN for spawned process):</Text>
+          <Box>
+            <Text color="cyan">› </Text>
+            <TextInput
+              value={claudeAuthToken}
+              onChange={setClaudeAuthToken}
+              onSubmit={() => {
+                if (claudeAuthToken.trim().length > 0) setStep({ kind: "subagent-claude-baseUrl" });
+              }}
+            />
+          </Box>
+          {claudeAuthToken.trim().length === 0 && (
+            <Text color="yellow">  authToken is required</Text>
+          )}
+        </Box>
+      )}
+
+      {step.kind === "subagent-claude-baseUrl" && (
+        <Box flexDirection="column">
+          <Text>Claude baseUrl (sets ANTHROPIC_BASE_URL for spawned process):</Text>
+          <Box>
+            <Text color="cyan">› </Text>
+            <TextInput
+              value={claudeBaseUrl}
+              onChange={setClaudeBaseUrl}
+              onSubmit={() => {
+                if (claudeBaseUrl.trim().length > 0) setStep({ kind: "subagent-claude-execPath" });
+              }}
+            />
+          </Box>
+          {claudeBaseUrl.trim().length === 0 && (
+            <Text color="yellow">  baseUrl is required</Text>
+          )}
+        </Box>
+      )}
+
+      {step.kind === "subagent-claude-execPath" && (
+        <Box flexDirection="column">
+          <Text>Path to claude executable (optional — press enter to skip):</Text>
+          <Box>
+            <Text color="cyan">› </Text>
+            <TextInput
+              value={claudeExecPath}
+              onChange={setClaudeExecPath}
+              onSubmit={() => finish()}
+            />
+          </Box>
         </Box>
       )}
     </Box>

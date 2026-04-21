@@ -88,8 +88,29 @@ ${dmBlock}${groupBlock}        threadBindings:
 `;
 }
 
+function renderSubagent(answers: InitAnswers): string {
+  if (!answers.subagent?.enabled) return "";
+  const { claude } = answers.subagent;
+  const lines = [
+    "subagent:",
+    "  enabled: true",
+    "  defaultAgent: main",
+    "  allowedAgents:",
+    "    - main",
+  ];
+  if (claude) {
+    lines.push("  claude:");
+    lines.push(`    authToken: ${claude.authToken}`);
+    lines.push(`    baseUrl: ${claude.baseUrl}`);
+    if (claude.pathToClaudeCodeExecutable) {
+      lines.push(`    pathToClaudeCodeExecutable: ${claude.pathToClaudeCodeExecutable}`);
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
 export function renderConfig(answers: InitAnswers): string {
-  return [HEADER, renderProvider(answers), TOOLS, AGENTS, renderChannels(answers)]
+  return [HEADER, renderProvider(answers), TOOLS, AGENTS, renderChannels(answers), renderSubagent(answers)]
     .filter((s) => s.length > 0)
     .join("\n");
 }
