@@ -3,11 +3,6 @@
 // Recognizes two inline tags in agent output text:
 //   [[reply_to_current]]      — reply to the message that triggered this turn
 //   [[reply_to: <message-id>]] — reply to any specific message by ID
-//
-// The tag is stripped from the outbound text. A stateful resolver applies the
-// reply marker to at most one outbound chunk per response (single-use), the
-// same closure pattern openclaw uses to avoid attaching the marker to every
-// chunk of a multi-chunk reply.
 
 const REPLY_TAG_RE = /\[\[\s*(?:reply_to_current|reply_to\s*:\s*([^\]\n]+))\s*\]\]/gi;
 
