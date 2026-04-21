@@ -89,7 +89,7 @@ channels:
     accounts:
       major:
         token: "..."
-        group:
+        groupAccess:
           policy: allowlist
         guilds:
           "1480866703880487034":
