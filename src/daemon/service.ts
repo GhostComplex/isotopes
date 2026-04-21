@@ -16,7 +16,7 @@ const log = createLogger("daemon:service");
 // ---------------------------------------------------------------------------
 
 /** Detected operating system platform for service integration. */
-export type ServicePlatform = "macos" | "linux" | "unsupported";
+export type ServicePlatform = "macos" | "linux" | "windows" | "unsupported";
 
 /** Configuration for installing the daemon as a system service. */
 export interface ServiceConfig {
@@ -46,6 +46,8 @@ export function getPlatform(): ServicePlatform {
       return "macos";
     case "linux":
       return "linux";
+    case "win32":
+      return "windows";
     default:
       return "unsupported";
   }
@@ -131,14 +133,33 @@ WantedBy=default.target
 }
 
 // ---------------------------------------------------------------------------
+// schtasks helpers (Windows)
+// ---------------------------------------------------------------------------
+
+const SCHTASKS_TASK_PREFIX = "\\";
+
+function schtasksTaskName(name: string): string {
+  return `${SCHTASKS_TASK_PREFIX}${name}`;
+}
+
+function buildCmdScript(config: ServiceConfig): string {
+  return `@echo off\r\nset ISOTOPES_DAEMON=1\r\n"${config.execPath}" "${config.cliPath}"\r\n`;
+}
+
+function schtasksCmdScriptPath(name: string): string {
+  return path.join(os.homedir(), ".isotopes", `${name}.cmd`);
+}
+
+// ---------------------------------------------------------------------------
 // ServiceManager
 // ---------------------------------------------------------------------------
 
 /**
  * ServiceManager — installs and manages the daemon as a system service.
  *
- * Supports macOS launchd (plist) and Linux systemd (user unit). Provides
- * install, uninstall, enable, disable, and status-check operations.
+ * Supports macOS launchd (plist), Linux systemd (user unit), and Windows
+ * Task Scheduler (schtasks). Provides install, uninstall, enable, disable,
+ * and status-check operations.
  */
 export class ServiceManager {
   private platform: ServicePlatform;
@@ -163,12 +184,40 @@ export class ServiceManager {
       await fs.mkdir(path.dirname(plistPath), { recursive: true });
       await fs.writeFile(plistPath, buildPlist(config), "utf-8");
       log.info(`Wrote launchd plist to ${plistPath}`);
-    } else {
+    } else if (this.platform === "linux") {
       const unitPath = systemdUnitPath(config.name);
       await fs.mkdir(path.dirname(unitPath), { recursive: true });
       await fs.writeFile(unitPath, buildUnit(config), "utf-8");
       await execAsync("systemctl --user daemon-reload");
       log.info(`Wrote systemd unit to ${unitPath}`);
+    } else {
+      // Windows: write a .cmd launcher script, then register a scheduled task
+      const scriptPath = schtasksCmdScriptPath(config.name);
+      await fs.mkdir(path.dirname(scriptPath), { recursive: true });
+      await fs.writeFile(scriptPath, buildCmdScript(config), "utf-8");
+
+      const taskName = schtasksTaskName(config.name);
+      try {
+        await execAsync(
+          `schtasks /Create /F /SC ONLOGON /RL LIMITED /TN "${taskName}" /TR "\\"${scriptPath}\\""`,
+        );
+      } catch {
+        // Fallback: place script in Startup folder if schtasks fails (e.g. restricted env)
+        const startupDir = path.join(
+          process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+          "Microsoft", "Windows", "Start Menu", "Programs", "Startup",
+        );
+        const startupPath = path.join(startupDir, `${config.name}.cmd`);
+        await fs.mkdir(startupDir, { recursive: true });
+        await fs.writeFile(startupPath, buildCmdScript(config), "utf-8");
+        log.warn(`schtasks failed; placed startup script at ${startupPath}`);
+        return;
+      }
+
+      await execAsync(`schtasks /Run /TN "${taskName}"`).catch(() => {
+        log.debug("schtasks /Run failed — task will start at next logon");
+      });
+      log.info(`Registered scheduled task ${taskName}`);
     }
   }
 
@@ -190,11 +239,32 @@ export class ServiceManager {
       const plistPath = launchdPlistPath(name);
       await fs.unlink(plistPath);
       log.info(`Removed launchd plist ${plistPath}`);
-    } else {
+    } else if (this.platform === "linux") {
       const unitPath = systemdUnitPath(name);
       await fs.unlink(unitPath);
       await execAsync("systemctl --user daemon-reload");
       log.info(`Removed systemd unit ${unitPath}`);
+    } else {
+      const taskName = schtasksTaskName(name);
+      await execAsync(`schtasks /Delete /F /TN "${taskName}"`).catch(() => {
+        log.debug("schtasks /Delete failed — task may not exist");
+      });
+
+      // Remove .cmd script
+      try {
+        await fs.unlink(schtasksCmdScriptPath(name));
+      } catch { /* may not exist */ }
+
+      // Remove startup folder fallback if present
+      const startupDir = path.join(
+        process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+        "Microsoft", "Windows", "Start Menu", "Programs", "Startup",
+      );
+      try {
+        await fs.unlink(path.join(startupDir, `${name}.cmd`));
+      } catch { /* may not exist */ }
+
+      log.info(`Removed scheduled task ${taskName}`);
     }
   }
 
@@ -209,6 +279,10 @@ export class ServiceManager {
     } else if (this.platform === "linux") {
       await execAsync(`systemctl --user enable ${name}`);
       log.info(`Enabled systemd service ${name}`);
+    } else if (this.platform === "windows") {
+      const taskName = schtasksTaskName(name);
+      await execAsync(`schtasks /Change /TN "${taskName}" /ENABLE`);
+      log.info(`Enabled scheduled task ${taskName}`);
     } else {
       throw new Error(
         `Service management is not supported on ${os.platform()}`,
@@ -223,6 +297,10 @@ export class ServiceManager {
     } else if (this.platform === "linux") {
       await execAsync(`systemctl --user disable ${name}`);
       log.info(`Disabled systemd service ${name}`);
+    } else if (this.platform === "windows") {
+      const taskName = schtasksTaskName(name);
+      await execAsync(`schtasks /Change /TN "${taskName}" /DISABLE`);
+      log.info(`Disabled scheduled task ${taskName}`);
     } else {
       throw new Error(
         `Service management is not supported on ${os.platform()}`,
@@ -245,6 +323,13 @@ export class ServiceManager {
     } else if (this.platform === "linux") {
       try {
         await fs.access(systemdUnitPath(name));
+        return true;
+      } catch {
+        return false;
+      }
+    } else if (this.platform === "windows") {
+      try {
+        await execAsync(`schtasks /Query /TN "${schtasksTaskName(name)}"`);
         return true;
       } catch {
         return false;
