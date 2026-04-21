@@ -345,13 +345,21 @@ export class DiscordTransport implements Transport {
     // 1. Filter self and bot messages
     if (msg.author.id === this.client.user?.id) return;
     if (msg.author.bot && !this.config.allowBots) {
-      log.debug(`Ignoring bot message from ${msg.author.username} (allowBots=false)`);
+      log.debug(`discord: drop bot message (allowBots=false) from ${msg.author.username}`);
       return;
     }
 
+    const botId = this.client.user?.id;
+    const isMentioned = botId ? msg.mentions.has(botId) : false;
+    const inboundType = msg.channel.isThread() ? "thread" : msg.guild ? "guild" : "dm";
+    log.debug(
+      `discord: inbound id=${msg.id} guild=${msg.guild?.id ?? "dm"} channel=${msg.channelId} ` +
+      `mention=${isMentioned ? "yes" : "no"} type=${inboundType} content=${msg.content ? "yes" : "no"}`,
+    );
+
     // 2. Deduplication — prevent processing the same message twice (gateway replays)
-    const botId = this.client.user?.id ?? "unknown";
-    if (this.config.context?.dedupe !== false && this.dedupe.isDuplicate(`${botId}:${msg.channelId}:${msg.id}`)) {
+    const dedupeKey = `${botId ?? "unknown"}:${msg.channelId}:${msg.id}`;
+    if (this.config.context?.dedupe !== false && this.dedupe.isDuplicate(dedupeKey)) {
       log.debug(`Dedup: ignoring duplicate message ${msg.id}`);
       return;
     }
@@ -590,29 +598,49 @@ export class DiscordTransport implements Transport {
   private shouldRespond(msg: DiscordMessage): boolean {
     // DM handling
     if (!msg.guild) {
-      return this.isDmAllowed(msg.author.id);
+      const allowed = this.isDmAllowed(msg.author.id);
+      if (!allowed) {
+        log.debug(`discord: drop dm from ${msg.author.id} (dmAccess policy)`);
+      }
+      return allowed;
     }
 
     // Group (guild) policy
     const group = this.resolveGroup();
-    if (group.policy === "disabled") return false;
+    if (group.policy === "disabled") {
+      log.debug(`discord: drop guild message ${msg.id} (groupAccess.policy=disabled)`);
+      return false;
+    }
     if (group.policy === "allowlist") {
       const channelOk = group.channelAllowlist?.includes(msg.channelId) ?? false;
       const guildOk = group.guildAllowlist?.includes(msg.guild.id) ?? false;
-      if (!channelOk && !guildOk) return false;
+      if (!channelOk && !guildOk) {
+        log.debug(
+          `discord: drop guild message ${msg.id} (not in groupAccess allowlist, ` +
+          `guild=${msg.guild.id} channel=${msg.channelId})`,
+        );
+        return false;
+      }
     }
 
     // Check mention-based response using guild config
     const botId = this.client.user?.id;
     const isMentioned = botId ? msg.mentions.has(botId) : false;
 
-    return shouldRespondToMessage(this.config.channels, {
+    const ok = shouldRespondToMessage(this.config.channels, {
       botUserId: botId ?? "",
       guildId: msg.guild.id,
       accountId: this.config.accountId,
       isMentioned,
       isDM: false,
     });
+    if (!ok) {
+      log.debug(
+        `discord: drop guild message ${msg.id} (mention required, not mentioned; ` +
+        `guild=${msg.guild.id})`,
+      );
+    }
+    return ok;
   }
 
   /**
