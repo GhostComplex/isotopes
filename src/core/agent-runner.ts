@@ -70,6 +70,24 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
       if (onTextDelta) {
         await onTextDelta(responseText);
       }
+    } else if (event.type === "tool_call") {
+      // Log tool calls so outbound effects (e.g. Discord sends) can be traced.
+      // The pi-agent-core Agent retains tool_call/tool_result in its in-memory
+      // state for the rest of this prompt(); we don't persist to SessionStore
+      // here because the message types don't model tool_call blocks yet.
+      let argsPreview: string;
+      try {
+        argsPreview = JSON.stringify(event.args);
+      } catch {
+        argsPreview = String(event.args);
+      }
+      if (argsPreview.length > 500) argsPreview = argsPreview.slice(0, 500) + "…";
+      log.info(`Tool call: ${event.name}`, { id: event.id, args: argsPreview });
+    } else if (event.type === "tool_result") {
+      const truncated = event.output.length > 500
+        ? event.output.slice(0, 500) + "…"
+        : event.output;
+      log.debug(`Tool result: ${event.id}`, { isError: event.isError, output: truncated });
     } else if (event.type === "turn_end") {
       if (usageTracker && event.usage) {
         usageTracker.record(sessionId, event.usage);

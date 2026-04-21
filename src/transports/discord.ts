@@ -28,6 +28,7 @@ import { ThreadBindingManager } from "../core/thread-bindings.js";
 import { runAgentLoop } from "../core/agent-runner.js";
 import { isSilentReply } from "./silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
+import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey } from "../core/session-keys.js";
 import {
@@ -192,6 +193,17 @@ export interface DiscordTransportConfig {
     /** Whether to include thread messages in channel history context. Default: true */
     observe?: boolean;
   };
+  /**
+   * How to attach Discord reply markers to outbound messages.
+   *
+   * - `"off"` (default): never attach reply marker by default. Agent can still
+   *   opt in per-response via inline `[[reply_to_current]]` /
+   *   `[[reply_to: <id>]]` directives.
+   * - `"first"`: attach the trigger message as a reply marker on the first
+   *   outbound chunk only.
+   * - `"all"`: attach on every outbound chunk.
+   */
+  replyToMode?: ReplyToMode;
 }
 
 /**
@@ -554,7 +566,7 @@ export class DiscordTransport implements Transport {
 
     // 10. Clear agent internal state and run
     agent.clearMessages?.();
-    await this.runAgentAndRespond(agent, promptInput, msg.channel as SendableChannel, session.id, sessionStore);
+    await this.runAgentAndRespond(agent, promptInput, msg.channel as SendableChannel, session.id, sessionStore, msg.id);
   }
 
   private isDmAllowed(userId: string): boolean {
@@ -789,6 +801,7 @@ export class DiscordTransport implements Transport {
     channel: SendableChannel,
     sessionId: string,
     sessionStore: SessionStore,
+    triggerMessageId?: string,
   ): Promise<void> {
     // Start typing indicator
     const typing = this.startTyping(channel);
@@ -796,16 +809,33 @@ export class DiscordTransport implements Transport {
     // Mark session as active
     this.activeSessions.add(sessionId);
 
+    // Reply-marker resolver: applied to each outbound chunk. Default mode is
+    // "off" — no reply marker unless the agent emits an inline directive.
+    const resolveReply = createReplyResolver({
+      mode: this.config.replyToMode ?? "off",
+      triggerMessageId,
+    });
+
     try {
       // Track what we've already sent via the segmented buffer
       let lastSentLength = 0;
 
       // Create segmented stream buffer that sends new messages at sentence boundaries
       const streamBuffer = new SegmentedStreamBuffer(async (text: string) => {
-        // Chunk if needed and send as new messages
-        const chunks = this.chunkMessage(text);
-        for (const chunk of chunks) {
-          await channel.send(chunk);
+        const { replyToId, stripped } = resolveReply(text);
+        if (!stripped) return; // chunk was nothing but a directive
+        // Chunk if needed and send. Reply marker (if any) goes on first chunk only.
+        const chunks = this.chunkMessage(stripped);
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          if (i === 0 && replyToId) {
+            await channel.send({
+              content: chunk,
+              reply: { messageReference: replyToId, failIfNotExists: false },
+            });
+          } else {
+            await channel.send(chunk);
+          }
         }
       });
 

@@ -1,8 +1,7 @@
-// src/tools/reply-react.test.ts — Unit tests for message_reply and message_react tools
+// src/tools/reply-react.test.ts — Unit tests for message_react tool
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  createMessageReplyTool,
   createMessageReactTool,
   createReplyReactTools,
   LazyTransportContext,
@@ -14,7 +13,6 @@ function createMockTransport(overrides: Partial<Transport> = {}): Transport {
   return {
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
-    reply: vi.fn().mockResolvedValue({ messageId: "reply-456" }),
     react: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -23,67 +21,6 @@ function createMockTransport(overrides: Partial<Transport> = {}): Transport {
 function wrapTransport(transport: Transport): ReplyReactToolContext {
   return { getTransport: () => transport };
 }
-
-describe("message_reply tool", () => {
-  let ctx: ReplyReactToolContext;
-  let transport: Transport;
-
-  beforeEach(() => {
-    transport = createMockTransport();
-    ctx = wrapTransport(transport);
-  });
-
-  it("sends a reply and returns the reply message ID", async () => {
-    const { handler } = createMessageReplyTool(ctx);
-    const result = JSON.parse(await handler({ message_id: "msg-123", content: "Thanks!" }));
-    expect(result.success).toBe(true);
-    expect(result.reply_message_id).toBe("reply-456");
-    expect(transport.reply).toHaveBeenCalledWith("msg-123", "Thanks!", undefined);
-  });
-
-  it("passes channel_id to transport when provided", async () => {
-    const { handler } = createMessageReplyTool(ctx);
-    const result = JSON.parse(
-      await handler({ message_id: "msg-123", channel_id: "ch-1", content: "Thanks!" }),
-    );
-    expect(result.success).toBe(true);
-    expect(transport.reply).toHaveBeenCalledWith("msg-123", "Thanks!", "ch-1");
-  });
-
-  it("returns error for empty message_id", async () => {
-    const { handler } = createMessageReplyTool(ctx);
-    const result = JSON.parse(await handler({ message_id: "", content: "Hello" }));
-    expect(result.error).toBe("message_id must not be empty");
-  });
-
-  it("returns error for empty content", async () => {
-    const { handler } = createMessageReplyTool(ctx);
-    const result = JSON.parse(await handler({ message_id: "msg-1", content: "" }));
-    expect(result.error).toBe("content must not be empty");
-  });
-
-  it("returns error when transport is not available", async () => {
-    const { handler } = createMessageReplyTool({ getTransport: () => undefined });
-    const result = JSON.parse(await handler({ message_id: "msg-1", content: "hi" }));
-    expect(result.error).toBe("Transport not available");
-  });
-
-  it("returns error when transport does not support replies", async () => {
-    const noReplyTransport = createMockTransport({ reply: undefined });
-    const { handler } = createMessageReplyTool(wrapTransport(noReplyTransport));
-    const result = JSON.parse(await handler({ message_id: "msg-1", content: "hi" }));
-    expect(result.error).toBe("Transport does not support replies");
-  });
-
-  it("returns transport error on failure", async () => {
-    const failingTransport = createMockTransport({
-      reply: vi.fn().mockRejectedValue(new Error("Message not found: msg-999")),
-    });
-    const { handler } = createMessageReplyTool(wrapTransport(failingTransport));
-    const result = JSON.parse(await handler({ message_id: "msg-999", content: "hi" }));
-    expect(result.error).toBe("Message not found: msg-999");
-  });
-});
 
 describe("message_react tool", () => {
   let ctx: ReplyReactToolContext;
@@ -160,25 +97,24 @@ describe("LazyTransportContext", () => {
 
   it("works end-to-end with tool handlers", async () => {
     const ctx = new LazyTransportContext();
-    const { handler: replyHandler } = createMessageReplyTool(ctx);
+    const { handler: reactHandler } = createMessageReactTool(ctx);
 
     // Before transport is set → error
-    const before = JSON.parse(await replyHandler({ message_id: "m1", content: "hi" }));
+    const before = JSON.parse(await reactHandler({ message_id: "m1", emoji: "\u{1F44D}" }));
     expect(before.error).toBe("Transport not available");
 
     // After transport is set → success
     const transport = createMockTransport();
     ctx.setTransport(transport);
-    const after = JSON.parse(await replyHandler({ message_id: "m1", content: "hi" }));
+    const after = JSON.parse(await reactHandler({ message_id: "m1", emoji: "\u{1F44D}" }));
     expect(after.success).toBe(true);
   });
 });
 
 describe("createReplyReactTools", () => {
-  it("returns both tools", () => {
+  it("returns the react tool only (message_reply removed)", () => {
     const transport = createMockTransport();
     const tools = createReplyReactTools(wrapTransport(transport));
-    expect(tools).toHaveLength(2);
-    expect(tools.map((t) => t.tool.name)).toEqual(["message_reply", "message_react"]);
+    expect(tools.map((t) => t.tool.name)).toEqual(["message_react"]);
   });
 });

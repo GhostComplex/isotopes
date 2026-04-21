@@ -74,6 +74,7 @@ export class DiscordTransportManager {
         context: account.context,
         usageTracker: shared.usageTracker,
         adminUsers: account.adminUsers,
+        replyToMode: account.replyToMode,
       });
 
       this.transports.set(accountId, transport);

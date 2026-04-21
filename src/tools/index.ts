@@ -70,7 +70,6 @@ export {
 export type { ExecToolOptions, ProcessInfo } from "./exec.js";
 
 export {
-  createMessageReplyTool,
   createMessageReactTool,
   createReplyReactTools,
 } from "./reply-react.js";
