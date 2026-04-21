@@ -43,7 +43,6 @@ export interface InitAnswers {
 // Defaults
 // ---------------------------------------------------------------------------
 
-const DEFAULT_GHC_BASE_URL = "https://api.ghccoder.com";
 const DEFAULT_GHC_MODEL = "claude-opus-4.6";
 
 // ---------------------------------------------------------------------------
@@ -71,7 +70,7 @@ function InitWizard({ onDone }: Props) {
   const [step, setStep] = useState<Step>({ kind: "llm" });
 
   const [llm, setLlm] = useState<LlmChoice>("skip");
-  const [ghcBaseUrl, setGhcBaseUrl] = useState(DEFAULT_GHC_BASE_URL);
+  const [ghcBaseUrl, setGhcBaseUrl] = useState("");
   const [ghcApiKey, setGhcApiKey] = useState("");
   const [ghcModel, setGhcModel] = useState(DEFAULT_GHC_MODEL);
 
