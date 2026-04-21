@@ -71,13 +71,6 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
         await onTextDelta(responseText);
       }
     } else if (event.type === "tool_call") {
-      // Log tool start so outbound effects (e.g. Discord sends) can be traced.
-      // Mirrors openclaw's "embedded run tool start" line: just the fact that
-      // a tool fired, not its arguments — args may contain user data and full
-      // structured records belong in the session JSONL (see issue #453).
-      // The pi-agent-core Agent retains tool_call/tool_result in its in-memory
-      // state for the rest of this prompt(); we don't persist to SessionStore
-      // here because the message types don't model tool_call blocks yet.
       log.debug(`Tool call: ${event.name}`, { id: event.id });
     } else if (event.type === "tool_result") {
       log.debug(`Tool result: ${event.id}`);
