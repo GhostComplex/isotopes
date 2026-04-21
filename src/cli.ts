@@ -606,29 +606,50 @@ async function handleLogsCommand(): Promise<void> {
   };
 
   if (follow) {
-    // Follow mode: watch file for changes and stream new content
-    const { watch, createReadStream } = await import("node:fs");
+    // Follow mode: poll file for new content (fs.watchFile is more reliable
+    // than fs.watch for append-only log files, especially on network FS).
+    const nodeFs = await import("node:fs");
     let position = (await fsPromises.stat(logFile)).size;
+    let reading = false;
+    let trailingFragment = "";
 
     const readNew = () => {
-      const stream = createReadStream(logFile, { start: position, encoding: "utf-8" });
+      if (reading) return;
+      // Handle log rotation: if file shrank, reset to beginning
+      let currentSize: number;
+      try {
+        currentSize = nodeFs.statSync(logFile).size;
+      } catch {
+        return;
+      }
+      if (currentSize < position) position = 0;
+      if (currentSize === position) return;
+
+      reading = true;
+      const readStart = position;
+      position = currentSize;
+
+      const stream = nodeFs.createReadStream(logFile, { start: readStart, end: currentSize - 1, encoding: "utf-8" });
       let buf = "";
       stream.on("data", (chunk: string | Buffer) => { buf += String(chunk); });
       stream.on("end", () => {
-        position += Buffer.byteLength(buf);
-        const newLines = buf.split("\n");
-        for (const line of newLines) {
+        reading = false;
+        const text = trailingFragment + buf;
+        const parts = text.split("\n");
+        trailingFragment = parts.pop() ?? "";
+        for (const line of parts) {
           if (line && matchesLevel(line)) {
             console.log(line);
           }
         }
       });
+      stream.on("error", () => { reading = false; });
     };
 
-    const watcher = watch(logFile, () => readNew());
+    nodeFs.watchFile(logFile, { interval: 500 }, () => readNew());
 
     process.on("SIGINT", () => {
-      watcher.close();
+      nodeFs.unwatchFile(logFile);
       process.exit(0);
     });
   } else {

@@ -60,13 +60,16 @@ async function removePid(pidFile: string): Promise<void> {
   }
 }
 
-/** Terminate a process by PID. On Windows uses taskkill for tree kill. */
+/** Terminate a process by PID. On Windows uses taskkill (tree kill); without
+ *  force it omits /F to allow graceful shutdown, with force it adds /F. */
 function killProcess(pid: number, force = false): void {
   if (process.platform === "win32") {
     try {
-      execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
+      const flags = force ? "/F /T" : "/T";
+      execSync(`taskkill ${flags} /PID ${pid}`, { stdio: "ignore" });
     } catch {
-      // process may have already exited
+      // Exit code 128 = process not found (already exited) — acceptable.
+      // Permission errors will surface via the isProcessAlive poll timeout.
     }
   } else {
     process.kill(pid, force ? "SIGKILL" : "SIGTERM");

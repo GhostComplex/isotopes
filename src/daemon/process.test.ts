@@ -198,7 +198,7 @@ describe("DaemonProcess.stop", () => {
       const d = makeDaemon();
       await d.stop();
 
-      expect(mockExecSync).toHaveBeenCalledWith("taskkill /F /T /PID 12345", { stdio: "ignore" });
+      expect(mockExecSync).toHaveBeenCalledWith("taskkill /T /PID 12345", { stdio: "ignore" });
     } else {
       // On Unix, killProcess uses process.kill(pid, "SIGTERM")
       let alive = true;
