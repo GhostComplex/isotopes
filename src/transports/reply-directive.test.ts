@@ -68,6 +68,13 @@ describe("createReplyResolver", () => {
     expect(resolve("b").replyToId).toBe("t1");
   });
 
+  it("mode=all defers to inline directive on a later chunk and stops stamping after", () => {
+    const resolve = createReplyResolver({ mode: "all", triggerMessageId: "t1" });
+    expect(resolve("a").replyToId).toBe("t1");
+    expect(resolve("b [[reply_to: m9]]").replyToId).toBe("m9");
+    expect(resolve("c").replyToId).toBeUndefined();
+  });
+
   it("inline [[reply_to: id]] overrides config and is single-use", () => {
     const resolve = createReplyResolver({ mode: "off", triggerMessageId: "t1" });
     const a = resolve("hi [[reply_to: m9]]");

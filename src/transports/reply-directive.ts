@@ -76,10 +76,12 @@ export interface ResolvedChunk {
  * Build a stateful resolver: call `resolve(text)` once per outbound chunk to
  * get back the stripped text and the optional reply target.
  *
- * Single-use: once any chunk in the response gets a reply marker (from an
- * inline directive or from `mode: "first"`), no later chunk in the same
- * response will get one. `mode: "all"` opts out of single-use and stamps the
- * trigger id on every chunk.
+ * Single-use across the response: once any chunk gets a reply marker — from
+ * an inline directive, from `mode: "first"`, or from `mode: "all"` — no
+ * later chunk in the same response will get one. `mode: "all"` differs from
+ * `mode: "first"` only in that it stamps every chunk *until* an inline
+ * directive consumes the slot; an inline directive on chunk N ends the
+ * stamping for chunks N+1 onward.
  */
 export function createReplyResolver(opts: ReplyResolverOptions) {
   let used = false;
@@ -99,8 +101,9 @@ export function createReplyResolver(opts: ReplyResolverOptions) {
       }
     }
 
-    // Config-based default.
-    if (opts.mode === "all" && opts.triggerMessageId) {
+    // Config-based default. Both modes honor `used` so an inline directive
+    // earlier in the response cleanly takes over the reply slot.
+    if (opts.mode === "all" && opts.triggerMessageId && !used) {
       return { replyToId: opts.triggerMessageId, stripped: parsed.stripped };
     }
     if (opts.mode === "first" && opts.triggerMessageId && !used) {

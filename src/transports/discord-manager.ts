@@ -10,10 +10,13 @@ import type {
 import { getDiscordToken } from "../core/config.js";
 import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
+import type { ReplyToMode } from "./reply-directive.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("discord-manager");
+
+const VALID_REPLY_TO_MODES = new Set<ReplyToMode>(["off", "first", "all"]);
 
 /** Shared infrastructure injected into every Discord account transport. */
 export interface DiscordSharedConfig {
@@ -52,6 +55,11 @@ export class DiscordTransportManager {
     const entries = Object.entries(this.config.accounts);
 
     for (const [accountId, account] of entries) {
+      if (account.replyToMode !== undefined && !VALID_REPLY_TO_MODES.has(account.replyToMode)) {
+        throw new Error(
+          `Invalid replyToMode "${account.replyToMode}" for Discord account "${accountId}" (must be off, first, or all)`,
+        );
+      }
       const token = getDiscordToken(account);
       const shared = this.config.shared;
 

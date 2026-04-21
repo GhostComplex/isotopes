@@ -2,6 +2,7 @@
 // Zero coupling to any specific agent SDK — these are OUR types.
 
 import type { SandboxConfig } from "../sandbox/config.js";
+import type { ReplyToMode } from "../transports/reply-directive.js";
 
 // ---------------------------------------------------------------------------
 // Messages
@@ -395,7 +396,7 @@ export interface DiscordAccountConfig {
    * One of `"off"` (default), `"first"`, `"all"`. Inline `[[reply_to_current]]`
    * / `[[reply_to: <id>]]` directives in agent text override this per-response.
    */
-  replyToMode?: "off" | "first" | "all";
+  replyToMode?: ReplyToMode;
 }
 
 /** Channels section of the configuration */

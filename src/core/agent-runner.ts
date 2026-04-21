@@ -82,7 +82,7 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
         argsPreview = String(event.args);
       }
       if (argsPreview.length > 500) argsPreview = argsPreview.slice(0, 500) + "…";
-      log.info(`Tool call: ${event.name}`, { id: event.id, args: argsPreview });
+      log.debug(`Tool call: ${event.name}`, { id: event.id, args: argsPreview });
     } else if (event.type === "tool_result") {
       const truncated = event.output.length > 500
         ? event.output.slice(0, 500) + "…"
