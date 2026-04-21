@@ -134,6 +134,26 @@ describe("sanitizeToolUseResultPairing", () => {
     expect(result).toEqual(msgs);
   });
 
+  it("recognizes the tool_call block shape (our persisted format) for orphan synthesis", () => {
+    const msgs: Message[] = [
+      user("do it"),
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "calling" },
+          { type: "tool_call", id: "t1", name: "read_file", input: { path: "/x" } },
+        ],
+      },
+      // no tool_result for t1 — session truncated mid-turn
+      user("next"),
+    ];
+    const result = sanitizeToolUseResultPairing(msgs);
+    expect(result.length).toBe(4);
+    expect(result[2].role).toBe("tool_result");
+    expect(result[2].metadata?.toolCallId).toBe("t1");
+    expect(result[2].metadata?.synthetic).toBe(true);
+  });
+
   it("handles multiple tool_use blocks in one assistant message", () => {
     const msgs = [
       user("do both"),

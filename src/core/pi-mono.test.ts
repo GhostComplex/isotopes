@@ -727,6 +727,25 @@ describe("Message conversion", () => {
 
     vi.restoreAllMocks();
   });
+
+  it("serializes assistant tool_call blocks to pi-agent-core toolCall shape", () => {
+    const core = new PiMonoCore();
+    const instance = core.createAgent(makeConfig());
+    instance.steer({
+      role: "assistant",
+      content: [
+        { type: "text", text: "calling" },
+        { type: "tool_call", id: "c-1", name: "shell", input: { cmd: "ls" } },
+      ],
+    });
+
+    const arg = mockAgent.steer.mock.calls[0][0];
+    expect(arg.role).toBe("assistant");
+    expect(arg.content).toEqual([
+      { type: "text", text: "calling" },
+      { type: "toolCall", id: "c-1", name: "shell", input: { cmd: "ls" } },
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------

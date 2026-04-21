@@ -39,16 +39,16 @@ export function limitHistoryTurns(messages: Message[], limit: number): Message[]
 
 /** Duck-type check for tool_use blocks inside assistant message content. */
 interface ToolUseBlock {
-  type: "tool_use";
+  type: "tool_use" | "tool_call";
   id: string;
   name?: string;
 }
 
 function isToolUseBlock(block: unknown): block is ToolUseBlock {
+  if (typeof block !== "object" || block === null) return false;
+  const t = (block as Record<string, unknown>).type;
   return (
-    typeof block === "object" &&
-    block !== null &&
-    (block as Record<string, unknown>).type === "tool_use" &&
+    (t === "tool_use" || t === "tool_call") &&
     typeof (block as Record<string, unknown>).id === "string"
   );
 }

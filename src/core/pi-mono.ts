@@ -130,9 +130,19 @@ function toAgentMessage(msg: Message): AgentMessage {
     } as unknown as AgentMessage;
   }
 
+  // Translate our assistant tool_call blocks into pi-agent-core's toolCall shape.
+  const content = role === "assistant"
+    ? msg.content.map((block) => {
+        if (block.type === "tool_call") {
+          return { type: "toolCall", id: block.id, name: block.name, input: block.input };
+        }
+        return block;
+      })
+    : msg.content;
+
   return {
     role,
-    content: msg.content,
+    content,
     timestamp: msg.timestamp ?? Date.now(),
   } as AgentMessage;
 }
@@ -193,10 +203,28 @@ function normalizeContentBlocks(content: unknown): MessageContentBlock[] {
         isError?: unknown;
         toolCallId?: unknown;
         toolName?: unknown;
+        id?: unknown;
+        name?: unknown;
+        input?: unknown;
+        arguments?: unknown;
       };
 
       if (typed.type === "text" && typeof typed.text === "string") {
         blocks.push({ type: "text", text: typed.text });
+        continue;
+      }
+
+      if (
+        (typed.type === "toolCall" || typed.type === "tool_call" || typed.type === "tool_use") &&
+        typeof typed.id === "string" &&
+        typeof typed.name === "string"
+      ) {
+        blocks.push({
+          type: "tool_call",
+          id: typed.id,
+          name: typed.name,
+          input: typed.input ?? typed.arguments ?? {},
+        });
         continue;
       }
 

@@ -68,4 +68,13 @@ describe("messageContentToPlainText", () => {
 
     expect(messageContentToPlainText(blocks)).toBe("only text");
   });
+
+  it("renders tool_call blocks as [tool: name]", () => {
+    const blocks: MessageContentBlock[] = [
+      { type: "text", text: "Let me check." },
+      { type: "tool_call", id: "c1", name: "shell", input: { cmd: "ls" } },
+    ];
+
+    expect(messageContentToPlainText(blocks)).toBe("Let me check.\n[tool: shell]");
+  });
 });

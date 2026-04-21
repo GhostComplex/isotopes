@@ -14,6 +14,14 @@ export interface TextContentBlock {
   text: string;
 }
 
+/** A tool call (the model's request to invoke a tool) inside an assistant message. */
+export interface ToolCallContentBlock {
+  type: 'tool_call';
+  id: string;
+  name: string;
+  input: unknown;
+}
+
 /** A tool result content block within a message. */
 export interface ToolResultContentBlock {
   type: 'tool_result';
@@ -24,7 +32,7 @@ export interface ToolResultContentBlock {
 }
 
 /** Union of content block types that can appear in a {@link Message}. */
-export type MessageContentBlock = TextContentBlock | ToolResultContentBlock;
+export type MessageContentBlock = TextContentBlock | ToolCallContentBlock | ToolResultContentBlock;
 
 /** Wrap a plain text string into a single-element {@link MessageContentBlock} array. */
 export function textContent(text: string): MessageContentBlock[] {
@@ -37,6 +45,9 @@ export function messageContentToPlainText(content: MessageContentBlock[]): strin
     .map((block) => {
       if (block.type === 'text') {
         return block.text;
+      }
+      if (block.type === 'tool_call') {
+        return `[tool: ${block.name}]`;
       }
       return block.output;
     })

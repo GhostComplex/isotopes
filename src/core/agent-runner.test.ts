@@ -198,4 +198,127 @@ describe("runAgentLoop", () => {
     // Should not crash, just skip the callback
     expect(agent.steer).not.toHaveBeenCalled();
   });
+
+  it("persists tool_call blocks on the assistant message and tool_result as its own message", async () => {
+    const agent = createMockAgentInstance([
+      { type: "text_delta", text: "Let me check." },
+      { type: "tool_call", id: "call-1", name: "shell", args: { cmd: "ls" } },
+      { type: "tool_result", id: "call-1", output: "a.txt\nb.txt" },
+      { type: "turn_end" },
+      { type: "text_delta", text: "Done." },
+      { type: "turn_end" },
+      { type: "agent_end", messages: [] },
+    ]);
+    const sessionStore = createMockSessionStore();
+
+    await runAgentLoop({
+      agent,
+      input: "list files",
+      sessionId: "s1",
+      sessionStore,
+      log: createMockLogger(),
+    });
+
+    const calls = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toHaveLength(3);
+
+    // Turn 1: assistant with text + tool_call
+    expect(calls[0][0]).toBe("s1");
+    expect(calls[0][1].role).toBe("assistant");
+    expect(calls[0][1].content).toEqual([
+      { type: "text", text: "Let me check." },
+      { type: "tool_call", id: "call-1", name: "shell", input: { cmd: "ls" } },
+    ]);
+
+    // Turn 1: tool_result-role message paired to call-1, with toolName
+    expect(calls[1][1].role).toBe("tool_result");
+    expect(calls[1][1].content).toEqual([
+      {
+        type: "tool_result",
+        output: "a.txt\nb.txt",
+        toolCallId: "call-1",
+        toolName: "shell",
+      },
+    ]);
+    expect(calls[1][1].metadata).toMatchObject({ toolCallId: "call-1", toolName: "shell" });
+
+    // Turn 2: text-only assistant
+    expect(calls[2][1].role).toBe("assistant");
+    expect(calls[2][1].content).toEqual([{ type: "text", text: "Done." }]);
+  });
+
+  it("truncates oversized tool_result output when persisting", async () => {
+    const big = "x".repeat(30_000);
+    const agent = createMockAgentInstance([
+      { type: "tool_call", id: "c", name: "read_file", args: {} },
+      { type: "tool_result", id: "c", output: big },
+      { type: "turn_end" },
+      { type: "agent_end", messages: [] },
+    ]);
+    const sessionStore = createMockSessionStore();
+
+    await runAgentLoop({
+      agent,
+      input: "read",
+      sessionId: "s1",
+      sessionStore,
+      log: createMockLogger(),
+    });
+
+    const toolResultCall = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[1].role === "tool_result",
+    );
+    expect(toolResultCall).toBeDefined();
+    const output = toolResultCall![1].content[0].output as string;
+    expect(output.length).toBeLessThan(big.length);
+    expect(output).toContain("[truncated");
+  });
+
+  it("propagates isError on tool_result blocks", async () => {
+    const agent = createMockAgentInstance([
+      { type: "tool_call", id: "c", name: "shell", args: {} },
+      { type: "tool_result", id: "c", output: "boom", isError: true },
+      { type: "turn_end" },
+      { type: "agent_end", messages: [] },
+    ]);
+    const sessionStore = createMockSessionStore();
+
+    await runAgentLoop({
+      agent,
+      input: "x",
+      sessionId: "s1",
+      sessionStore,
+      log: createMockLogger(),
+    });
+
+    const toolResultCall = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[1].role === "tool_result",
+    );
+    expect(toolResultCall![1].content[0].isError).toBe(true);
+  });
+
+  it("flushes accumulated tool_calls at agent_end when turn_end is missing", async () => {
+    const agent = createMockAgentInstance([
+      { type: "text_delta", text: "partial" },
+      { type: "tool_call", id: "c", name: "t", args: {} },
+      { type: "agent_end", messages: [] },
+    ]);
+    const sessionStore = createMockSessionStore();
+
+    await runAgentLoop({
+      agent,
+      input: "x",
+      sessionId: "s1",
+      sessionStore,
+      log: createMockLogger(),
+    });
+
+    const calls = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1].role).toBe("assistant");
+    expect(calls[0][1].content).toEqual([
+      { type: "text", text: "partial" },
+      { type: "tool_call", id: "c", name: "t", input: {} },
+    ]);
+  });
 });
