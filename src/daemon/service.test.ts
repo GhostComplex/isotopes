@@ -80,9 +80,9 @@ describe("getPlatform", () => {
     expect(getPlatform()).toBe("linux");
   });
 
-  it("returns 'unsupported' on win32", () => {
+  it("returns 'windows' on win32", () => {
     mockPlatform("win32");
-    expect(getPlatform()).toBe("unsupported");
+    expect(getPlatform()).toBe("windows");
   });
 });
 
@@ -234,12 +234,92 @@ describe("ServiceManager (Linux)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// ServiceManager — Windows (schtasks)
+// ---------------------------------------------------------------------------
+
+describe("ServiceManager (Windows)", () => {
+  beforeEach(() => {
+    mockPlatform("win32");
+  });
+
+  it("install() writes a .cmd script and creates a scheduled task", async () => {
+    const svc = new ServiceManager();
+    await svc.install(sampleConfig);
+
+    expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect.stringContaining("ai.isotopes.daemon.cmd"),
+      expect.stringContaining("ISOTOPES_DAEMON=1"),
+      "utf-8",
+    );
+    expect(mockExec).toHaveBeenCalledWith(
+      expect.stringContaining("schtasks /Create"),
+    );
+  });
+
+  it("install() .cmd script contains exec and cli paths", async () => {
+    const svc = new ServiceManager();
+    await svc.install(sampleConfig);
+
+    const cmdContent = mockFs.writeFile.mock.calls[0][1] as string;
+    expect(cmdContent).toContain(sampleConfig.execPath);
+    expect(cmdContent).toContain(sampleConfig.cliPath);
+  });
+
+  it("uninstall() deletes the scheduled task and .cmd script", async () => {
+    const svc = new ServiceManager();
+    await svc.uninstall("ai.isotopes.daemon");
+
+    expect(mockExec).toHaveBeenCalledWith(
+      expect.stringContaining("schtasks /Delete"),
+    );
+    expect(mockFs.unlink).toHaveBeenCalledWith(
+      expect.stringContaining("ai.isotopes.daemon.cmd"),
+    );
+  });
+
+  it("enable() calls schtasks /Change /ENABLE", async () => {
+    const svc = new ServiceManager();
+    await svc.enable("ai.isotopes.daemon");
+
+    expect(mockExec).toHaveBeenCalledWith(
+      expect.stringContaining("schtasks /Change"),
+    );
+    expect(mockExec).toHaveBeenCalledWith(
+      expect.stringContaining("/ENABLE"),
+    );
+  });
+
+  it("disable() calls schtasks /Change /DISABLE", async () => {
+    const svc = new ServiceManager();
+    await svc.disable("ai.isotopes.daemon");
+
+    expect(mockExec).toHaveBeenCalledWith(
+      expect.stringContaining("/DISABLE"),
+    );
+  });
+
+  it("isInstalled() queries schtasks", async () => {
+    mockExec.mockResolvedValue({ stdout: "TaskName: ...", stderr: "" });
+
+    const svc = new ServiceManager();
+    expect(await svc.isInstalled("ai.isotopes.daemon")).toBe(true);
+  });
+
+  it("isInstalled() returns false when task not found", async () => {
+    mockExec.mockRejectedValue(new Error("ERROR: The system cannot find the file specified"));
+
+    const svc = new ServiceManager();
+    expect(await svc.isInstalled("ai.isotopes.daemon")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Unsupported platform
 // ---------------------------------------------------------------------------
 
 describe("ServiceManager (unsupported)", () => {
   beforeEach(() => {
-    mockPlatform("win32");
+    mockPlatform("freebsd" as NodeJS.Platform);
   });
 
   it("install() throws on unsupported platform", async () => {
