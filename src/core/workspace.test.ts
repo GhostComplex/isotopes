@@ -201,9 +201,11 @@ Use this skill to search the web.
   });
 
   describe("buildSystemPrompt", () => {
-    it("returns base prompt when no workspace", () => {
+    it("returns base prompt with directives when no workspace", () => {
       const result = buildSystemPrompt("Base prompt", null);
-      expect(result).toBe("Base prompt");
+      expect(result).toContain("Base prompt");
+      expect(result).toContain("# Assistant Output Directives");
+      expect(result).toContain("[[reply_to_current]]");
     });
 
     it("combines base prompt with workspace context", async () => {
@@ -228,12 +230,22 @@ Use this skill to search the web.
 
       // Sections should be separated by "---"
       const sections = result.split("\n\n---\n\n");
-      expect(sections.length).toBe(4); // base + workspace path + workspace context + memory
+      expect(sections.length).toBe(5); // base + workspace path + workspace context + memory + directives
       expect(sections[0]).toBe("Base prompt");
       expect(sections[1]).toContain("# Workspace");
       expect(sections[1]).toContain("Your working directory is:");
       expect(sections[2]).toContain("# Workspace Context");
       expect(sections[3]).toContain("# Memory");
+      expect(sections[4]).toContain("# Assistant Output Directives");
+    });
+
+    it("always includes assistant output directives section", async () => {
+      const ctx = await loadWorkspaceContext(tempDir);
+      const result = buildSystemPrompt("Base prompt", ctx);
+
+      expect(result).toContain("# Assistant Output Directives");
+      expect(result).toContain("[[reply_to_current]]");
+      expect(result).toContain("[[reply_to: <message-id>]]");
     });
 
     it("includes workspace path even when no workspace files exist", async () => {

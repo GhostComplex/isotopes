@@ -4,6 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { SkillLoader } from "../skills/index.js";
+import { buildAssistantOutputDirectives } from "./assistant-output-directives.js";
 
 /** Standard workspace files that contribute to system prompt */
 export const WORKSPACE_FILES = [
@@ -86,8 +87,10 @@ export function buildSystemPrompt(
   basePrompt: string,
   workspace: WorkspaceContext | null,
 ): string {
+  const directives = buildAssistantOutputDirectives();
+
   if (!workspace) {
-    return basePrompt;
+    return [basePrompt, directives].join("\n\n---\n\n");
   }
 
   const parts = [basePrompt];
@@ -106,6 +109,8 @@ export function buildSystemPrompt(
   if (workspace.memory) {
     parts.push("# Memory\n\n" + workspace.memory);
   }
+
+  parts.push(directives);
 
   return parts.join("\n\n---\n\n");
 }
