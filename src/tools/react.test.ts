@@ -112,7 +112,7 @@ describe("LazyTransportContext", () => {
 });
 
 describe("createReactTools", () => {
-  it("returns the react tool only (message_reply removed)", () => {
+  it("returns the react tool", () => {
     const transport = createMockTransport();
     const tools = createReactTools(wrapTransport(transport));
     expect(tools.map((t) => t.tool.name)).toEqual(["message_react"]);

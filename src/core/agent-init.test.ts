@@ -85,7 +85,7 @@ describe("initializeAgent", () => {
     expect(toolNames).not.toContain("exec");
   });
 
-  it("skips reply/react tools when no transportContext provided", async () => {
+  it("skips react tools when no transportContext provided", async () => {
     const result = await initializeAgent({
       agentFile: makeMinimalAgentFile(),
       core,

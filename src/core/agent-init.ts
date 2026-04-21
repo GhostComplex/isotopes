@@ -68,7 +68,7 @@ export interface InitAgentOptions {
   agentManager: DefaultAgentManager;
   /** Pre-built sandbox executor (optional — no sandbox if omitted) */
   sandboxExecutor?: SandboxExecutor;
-  /** Transport context for reply/react tools (optional — skipped if omitted) */
+  /** Transport context for react tools (optional — skipped if omitted) */
   transportContext?: LazyTransportContext;
   /** Hook registry for lifecycle events (optional) */
   hooks?: HookRegistry;
@@ -173,7 +173,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     toolRegistry.register(tool, handler);
   }
 
-  // 10. Register reply/react tools (transport is bound lazily after transport starts)
+  // 10. Register react tools (transport is bound lazily after transport starts)
   if (transportContext) {
     for (const { tool, handler } of createReactTools(transportContext)) {
       toolRegistry.register(tool, handler);

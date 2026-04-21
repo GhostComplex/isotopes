@@ -311,7 +311,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       if (firstTransport) {
         for (const [agentId, ctx] of transportContexts) {
           ctx.setTransport(firstTransport);
-          log.debug(`Bound Discord transport for reply/react tools (agent: ${agentId})`);
+          log.debug(`Bound Discord transport for react tools (agent: ${agentId})`);
         }
       }
     }
