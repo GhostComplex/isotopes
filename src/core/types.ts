@@ -363,14 +363,14 @@ export interface DiscordAccountConfig {
   /** Channel/guild ID -> agent ID overrides. */
   agentBindings?: Record<string, string>;
   /** DM access control. */
-  dm?: {
+  dmAccess?: {
     /** "disabled" (default) = ignore all DMs, "allowlist" = only from listed user IDs. */
     policy?: "disabled" | "allowlist";
     /** Discord user IDs allowed to DM when policy is "allowlist". */
     allowlist?: string[];
   };
-  /** Group (guild) access control — parallel to `dm`. */
-  group?: {
+  /** Group (guild) access control — parallel to `dmAccess`. */
+  groupAccess?: {
     /** "allowlist" (default) = only listed channels/guilds, "disabled" = ignore all guild messages, "open" = accept all guild channels. */
     policy?: "disabled" | "allowlist" | "open";
     /** Channel IDs allowed when policy is "allowlist". */

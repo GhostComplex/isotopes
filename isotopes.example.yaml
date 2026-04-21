@@ -103,11 +103,11 @@ channels:
       main:                              # accountId — referenced by bindings, etc.
         tokenEnv: DISCORD_TOKEN          # or `token: <literal>`
         defaultAgentId: main
-        dm:
+        dmAccess:
           policy: disabled               # disabled (default) | allowlist
           # allowlist:                   # Discord user IDs (only when policy=allowlist)
           #   - "123456789012345678"
-        group:
+        groupAccess:
           policy: allowlist              # allowlist (default) | disabled | open
           # channelAllowlist:            # channel IDs (only when policy=allowlist)
           #   - "channel-id"

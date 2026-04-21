@@ -107,11 +107,11 @@ channels:
       main:
         token: ${DISCORD_TOKEN}
         defaultAgentId: main
-        dm:
+        dmAccess:
           policy: disabled           # disabled (default) | allowlist
           # allowlist:
           #   - "123456789012345678"
-        group:
+        groupAccess:
           policy: allowlist          # disabled | allowlist (default) | open
           # guildAllowlist:
           #   - "guild-id"

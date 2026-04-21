@@ -36,7 +36,7 @@ export interface DiscordTransportManagerConfig {
  * DiscordTransportManager — creates and manages multiple DiscordTransport instances.
  *
  * Each account in the config gets its own transport with an independent Client,
- * token, and identity. All per-account behavior (dm, allowBots, threadBindings,
+ * token, and identity. All per-account behavior (dmAccess, allowBots, threadBindings,
  * subagentStreaming, context, adminUsers, etc.) is read from the account config.
  */
 export class DiscordTransportManager {
@@ -62,8 +62,8 @@ export class DiscordTransportManager {
         sessionStoreForAgent: shared.sessionStoreForAgent,
         defaultAgentId: account.defaultAgentId,
         agentBindings: account.agentBindings,
-        dm: account.dm,
-        group: account.group,
+        dmAccess: account.dmAccess,
+        groupAccess: account.groupAccess,
         channels: shared.channels,
         accountId,
         threadBindings: account.threadBindings,

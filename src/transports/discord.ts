@@ -155,12 +155,12 @@ export interface DiscordTransportConfig {
   /** Map of Discord bot user ID → agent ID for multi-agent routing */
   agentBindings?: Record<string, string>;
   /** DM access control policy. */
-  dm?: {
+  dmAccess?: {
     policy?: "disabled" | "allowlist";
     allowlist?: string[];
   };
-  /** Group (guild) access control — parallel to `dm`. Default policy is `"allowlist"`. */
-  group?: {
+  /** Group (guild) access control — parallel to `dmAccess`. Default policy is `"allowlist"`. */
+  groupAccess?: {
     policy?: "disabled" | "allowlist" | "open";
     channelAllowlist?: string[];
     guildAllowlist?: string[];
@@ -558,7 +558,7 @@ export class DiscordTransport implements Transport {
   }
 
   private isDmAllowed(userId: string): boolean {
-    const dm = this.config.dm;
+    const dm = this.config.dmAccess;
     if (dm?.policy) {
       switch (dm.policy) {
         case "disabled": return false;
@@ -574,7 +574,7 @@ export class DiscordTransport implements Transport {
     channelAllowlist?: string[];
     guildAllowlist?: string[];
   } {
-    const g = this.config.group;
+    const g = this.config.groupAccess;
     if (g?.policy || g?.channelAllowlist?.length || g?.guildAllowlist?.length) {
       return {
         policy: g.policy ?? "allowlist",
