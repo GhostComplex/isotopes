@@ -354,7 +354,7 @@ export class DiscordTransport implements Transport {
     const inboundType = msg.channel.isThread() ? "thread" : msg.guild ? "guild" : "dm";
     log.debug(
       `discord: inbound id=${msg.id} guild=${msg.guild?.id ?? "dm"} channel=${msg.channelId} ` +
-      `mention=${isMentioned ? "yes" : "no"} type=${inboundType} content=${msg.content ? "yes" : "no"}`,
+      `mention=${isMentioned ? "yes" : "no"} type=${inboundType} len=${msg.content.length}`,
     );
 
     // 2. Deduplication — prevent processing the same message twice (gateway replays)
