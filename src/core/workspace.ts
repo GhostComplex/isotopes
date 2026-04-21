@@ -111,18 +111,10 @@ export function buildSystemPrompt(
 }
 
 /**
- * Get the sessions directory for a workspace.
- */
-export function getSessionsDir(workspacePath: string): string {
-  return path.join(workspacePath, "sessions");
-}
-
-/**
  * Ensure workspace directory structure exists.
  */
 export async function ensureWorkspaceStructure(workspacePath: string): Promise<void> {
   await fs.mkdir(workspacePath, { recursive: true });
-  await fs.mkdir(path.join(workspacePath, "sessions"), { recursive: true });
   await fs.mkdir(path.join(workspacePath, "memory"), { recursive: true });
 }
 

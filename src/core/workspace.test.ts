@@ -8,7 +8,6 @@ import {
   loadWorkspaceContext,
   buildSystemPrompt,
   ensureWorkspaceStructure,
-  getSessionsDir,
 } from "./workspace.js";
 
 describe("Workspace", () => {
@@ -29,9 +28,6 @@ describe("Workspace", () => {
 
       const stats = await fs.stat(workspacePath);
       expect(stats.isDirectory()).toBe(true);
-
-      const sessionsStats = await fs.stat(path.join(workspacePath, "sessions"));
-      expect(sessionsStats.isDirectory()).toBe(true);
 
       const memoryStats = await fs.stat(path.join(workspacePath, "memory"));
       expect(memoryStats.isDirectory()).toBe(true);
@@ -296,13 +292,6 @@ description: Help with git operations
       expect(result).toContain("git-helper");
       expect(result).toContain("Help with git operations");
       expect(result).toContain("<available_skills>");
-    });
-  });
-
-  describe("getSessionsDir", () => {
-    it("returns sessions subdirectory path", () => {
-      const result = getSessionsDir("/path/to/workspace");
-      expect(result).toBe("/path/to/workspace/sessions");
     });
   });
 });

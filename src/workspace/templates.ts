@@ -163,7 +163,6 @@ MEMORY.md      — accumulated knowledge
 AGENTS.md      — this file (your operating instructions)
 memory/        — daily notes (YYYY-MM-DD.md)
 skills/        — your learned skills (each has a SKILL.md)
-sessions/      — conversation logs
 \`\`\`
 
 All workspace paths are relative to your workspace root. Use filenames like "SOUL.md" or "skills/my-skill/SKILL.md" with \`read_file\`/\`write_file\`/\`edit\` — no absolute paths needed.
