@@ -349,8 +349,8 @@ export class DiscordTransport implements Transport {
       return;
     }
 
-    const botId = this.client.user?.id;
-    const isMentioned = botId ? msg.mentions.has(botId) : false;
+    const botId = this.client.user!.id;
+    const isMentioned = msg.mentions.has(botId);
     const inboundType = msg.channel.isThread() ? "thread" : msg.guild ? "guild" : "dm";
     log.debug(
       `discord: inbound id=${msg.id} guild=${msg.guild?.id ?? "dm"} channel=${msg.channelId} ` +
@@ -358,7 +358,7 @@ export class DiscordTransport implements Transport {
     );
 
     // 2. Deduplication — prevent processing the same message twice (gateway replays)
-    const dedupeKey = `${botId ?? "unknown"}:${msg.channelId}:${msg.id}`;
+    const dedupeKey = `${botId}:${msg.channelId}:${msg.id}`;
     if (this.config.context?.dedupe !== false && this.dedupe.isDuplicate(dedupeKey)) {
       log.debug(`Dedup: ignoring duplicate message ${msg.id}`);
       return;
