@@ -139,13 +139,23 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   const resolvedToolGuards = resolveToolGuards(agentConfig.toolSettings);
   const toolRegistry = new ToolRegistry(agentConfig.id);
   const processRegistry = new ProcessRegistry();
-  const subagentEnabled = subagent?.enabled === true;
   const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];
 
   // 8. Resolve fs implementation (host vs sandbox)
-  const fsImpl: FsLike = sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false)
-    ? new SandboxFs(sandboxExecutor, agentConfig.id)
-    : nodeFs;
+  const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
+  const fsImpl: FsLike = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
+
+  // Subagent tools spawn child runners (Claude CLI, builtin) that execute on
+  // the host, bypassing the Docker sandbox. Disable them entirely for
+  // sandboxed agents — see issue #440.
+  const subagentEnabled = subagent?.enabled === true && !isSandboxed;
+  if (subagent?.enabled === true && isSandboxed) {
+    log.warn(
+      `Subagent tools disabled for ${agentConfig.id}: sandbox is active and ` +
+        `child runners cannot be confined. Use \`docker exec\` with a custom ` +
+        `image to run a coding CLI inside the sandbox.`,
+    );
+  }
 
   // 9. Create and register workspace tools
   const workspaceTools = createWorkspaceToolsWithGuards(

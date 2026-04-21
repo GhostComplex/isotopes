@@ -4,6 +4,16 @@ import type { AgentConfigFile } from "./config.js";
 import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";
 import { createMockAgentInstance } from "./test-helpers.js";
+import type { SandboxExecutor } from "../sandbox/executor.js";
+
+function makeMockSandboxExecutor(): SandboxExecutor {
+  return {
+    shouldExecuteInSandbox: vi.fn(() => true),
+    execute: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
+    buildExecArgv: vi.fn(async (_id: string, cmd: string[]) => ["docker", "exec", "ctr", ...cmd]),
+    cleanup: vi.fn(async () => {}),
+  } as unknown as SandboxExecutor;
+}
 
 function makeMinimalAgentFile(overrides?: Partial<AgentConfigFile>): AgentConfigFile {
   return {
@@ -101,5 +111,31 @@ describe("initializeAgent", () => {
         baseSystemPrompt: expect.any(String),
       }),
     );
+  });
+
+  it("registers spawn_subagent when subagent enabled and no sandbox", async () => {
+    const result = await initializeAgent({
+      agentFile: makeMinimalAgentFile(),
+      subagent: { enabled: true },
+      core,
+      agentManager,
+    });
+
+    const toolNames = result.toolRegistry.list().map((t) => t.name);
+    expect(toolNames).toContain("spawn_subagent");
+  });
+
+  it("does not register spawn_subagent when sandbox is active (issue #440)", async () => {
+    const result = await initializeAgent({
+      agentFile: makeMinimalAgentFile({ sandbox: { mode: "all" } }),
+      sandbox: { mode: "all", docker: { image: "isotopes-sandbox:latest" } },
+      subagent: { enabled: true },
+      sandboxExecutor: makeMockSandboxExecutor(),
+      core,
+      agentManager,
+    });
+
+    const toolNames = result.toolRegistry.list().map((t) => t.name);
+    expect(toolNames).not.toContain("spawn_subagent");
   });
 });
