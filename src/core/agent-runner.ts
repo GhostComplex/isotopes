@@ -14,7 +14,7 @@ import type { UsageTracker } from "./usage-tracker.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 
 /** Max chars to keep in a persisted tool_result output. Longer outputs are truncated. */
-export const MAX_TOOL_RESULT_CHARS = 25_000;
+export const MAX_TOOL_RESULT_CHARS = 16_000;
 
 function truncateToolResult(output: string): string {
   if (output.length <= MAX_TOOL_RESULT_CHARS) return output;
