@@ -635,9 +635,8 @@ export class DiscordTransport implements Transport {
       isDM: false,
     });
     if (!ok) {
-      log.debug(
-        `discord: drop guild message ${msg.id} (mention required, not mentioned; ` +
-        `guild=${msg.guild.id})`,
+      log.info(
+        `discord: skipping guild message ${msg.id} (reason=no-mention, guild=${msg.guild.id})`,
       );
     }
     return ok;
