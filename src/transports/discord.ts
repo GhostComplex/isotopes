@@ -558,11 +558,11 @@ export class DiscordTransport implements Transport {
   }
 
   private isDmAllowed(userId: string): boolean {
-    const dm = this.config.dmAccess;
-    if (dm?.policy) {
-      switch (dm.policy) {
+    const dmAccess = this.config.dmAccess;
+    if (dmAccess?.policy) {
+      switch (dmAccess.policy) {
         case "disabled": return false;
-        case "allowlist": return dm.allowlist?.includes(userId) ?? false;
+        case "allowlist": return dmAccess.allowlist?.includes(userId) ?? false;
       }
     }
     return false;

@@ -128,7 +128,7 @@ channels:
         defaultAgentId: assistant
         agentBindings:
           "123456": assistant
-        dm:
+        dmAccess:
           policy: open
 `,
       );

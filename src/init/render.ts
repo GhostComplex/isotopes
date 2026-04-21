@@ -40,12 +40,12 @@ function renderChannels(answers: InitAnswers): string {
   const { token, dmPolicy, dmUserId, groupPolicy, groupAllowlist } = answers.discord;
 
   const dmBlock = dmPolicy === "allowlist" && dmUserId
-    ? `        dm:
+    ? `        dmAccess:
           policy: allowlist
           allowlist:
             - "${dmUserId}"
 `
-    : `        dm:
+    : `        dmAccess:
           policy: disabled
 `;
 
@@ -60,7 +60,7 @@ function renderChannels(answers: InitAnswers): string {
     }
     const guildLines = [...guildIds].map((id) => `            - "${id}"`).join("\n");
     const channelLines = channelIds.map((id) => `            - "${id}"`).join("\n");
-    groupBlock = `        group:
+    groupBlock = `        groupAccess:
           policy: allowlist
           guildAllowlist:
 ${guildLines}
@@ -71,7 +71,7 @@ ${channelLines}
 `;
     }
   } else {
-    groupBlock = `        group:
+    groupBlock = `        groupAccess:
           policy: ${groupPolicy}
 `;
   }

@@ -42,7 +42,7 @@ describe("renderConfig", () => {
       discord: { token: "tok", dmPolicy: "allowlist", dmUserId: "111222333", groupPolicy: "open" },
     });
     expect(yaml).toContain('- "111222333"');
-    expect(yaml).toMatch(/dm:\s+policy: allowlist/);
+    expect(yaml).toMatch(/dmAccess:\s+policy: allowlist/);
   });
 
   it("emits group allowlist with guild and channel IDs", () => {
@@ -56,7 +56,7 @@ describe("renderConfig", () => {
         groupAllowlist: ["111222333", "444555666/777888999"],
       },
     });
-    expect(yaml).toMatch(/group:\s+policy: allowlist/);
+    expect(yaml).toMatch(/groupAccess:\s+policy: allowlist/);
     expect(yaml).toContain('- "111222333"');
     expect(yaml).toContain('- "444555666"');
     expect(yaml).toContain('- "777888999"');
@@ -70,7 +70,7 @@ describe("renderConfig", () => {
       channel: "discord",
       discord: { token: "tok", dmPolicy: "disabled", groupPolicy: "open" },
     });
-    expect(yaml).toMatch(/group:\s+policy: open/);
+    expect(yaml).toMatch(/groupAccess:\s+policy: open/);
     expect(yaml).not.toContain("guildAllowlist:");
   });
 
