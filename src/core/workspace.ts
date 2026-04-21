@@ -95,7 +95,7 @@ export function buildSystemPrompt(
 
   const parts = [basePrompt];
 
-  // Inject workspace path (like OpenClaw's ## Workspace section)
+  // Inject workspace path
   parts.push(`# Workspace\n\nYour working directory is: ${workspace.workspacePath}`);
 
   if (workspace.systemPromptAdditions) {

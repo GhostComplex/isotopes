@@ -439,7 +439,7 @@ export function resolveSubagentConfig(
 /**
  * Resolve sandbox config from config file types.
  *
- * Layered resolution (openclaw-style): an agents-level config (from
+ * Layered resolution: an agents-level config (from
  * `agents.defaults.sandbox` or top-level `sandbox`) provides image / docker /
  * workspaceAccess. Per-agent `sandbox` is a partial override — typically just
  * `{ mode: "off" }` to opt a single agent out. Per-agent `sandbox.docker` is

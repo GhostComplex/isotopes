@@ -10,7 +10,7 @@ import type { SubagentEvent } from "./types.js";
 import type { SessionStore, Message, Session } from "../core/types.js";
 
 describe("buildSubagentSessionKey", () => {
-  it("produces the openclaw-style sessionKey", () => {
+  it("produces the expected sessionKey", () => {
     const key = buildSubagentSessionKey("code-reviewer");
     expect(key.startsWith("agent:code-reviewer:subagent:")).toBe(true);
     // suffix should be a UUID-shaped string (8-4-4-4-12)

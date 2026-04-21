@@ -262,11 +262,11 @@ cli.ts  init
 
 新增 builtin backend **不需要改 cli.ts**，也不需要改 recorder。`metadata.subagent.backend` 字段在创建 session 时由 `spawnSubagent` 写入（值为 `"claude"` / `"builtin"`），落盘后可按 backend 过滤。
 
-### 4.4 目标布局：对齐 openclaw（计划项）
+### 4.4 目标布局（计划项）
 
-**现状的两个根**（§4.2 表里那两条 dataDir）和"主 agent / subagent 各自一套 store 实例"是历史遗留。计划在独立 PR 里把整个存储层对齐 openclaw：主 + sub 共用一个根目录、一个 manager、一种 agentId 体系。**不做向后兼容**——切换后旧路径下的 transcript 文件物理上还在，但代码不再读，等同于失忆。
+**现状的两个根**（§4.2 表里那两条 dataDir）和"主 agent / subagent 各自一套 store 实例"是历史遗留。计划在独立 PR 里把整个存储层收敛：主 + sub 共用一个根目录、一个 manager、一种 agentId 体系。**不做向后兼容**——切换后旧路径下的 transcript 文件物理上还在，但代码不再读，等同于失忆。
 
-#### 核心原则（直接抄 openclaw）
+#### 核心原则
 
 1. **agentId 永远是真实的**——主 agent 用它配置里的真实 ID，命名 subagent（比如 `code-reviewer`）用自己的真名，**没有"虚拟 agentId"概念**（不再有 `subagent:<parent>:<task>` 这种合成 ID）。
 2. **匿名/动态 subagent fallback 到父 agent 的 ID**——没指定 `targetAgentId` 时，session 直接落在父 agent 目录下。
@@ -407,21 +407,6 @@ cli.ts  init
                                                 │ 复用粒度   │ 主连续 / sub 默认一次性
 ```
 
-#### 与 openclaw 对照
-
-```
-  openclaw                                我们 (对齐后)
-  ──────────                              ─────────────
-  <stateDir>/agents/<id>/sessions/        ~/.isotopes/agents/<id>/sessions/
-  normalizeAgentId() 把 :,/ 替成 -        同
-  per-agentId store 实例                   同 (SessionStoreManager 提供)
-  agentId 永远真实，无合成 ID              同
-  匿名 sub 落父 agent 目录                 同
-  sessionKey: agent:<id>:subagent:<uuid>  同
-  主 agent + 命名 sub + 匿名 sub 同根     同
-  无 workspace-local                      同 (砍掉旧分支)
-```
-
 #### 改动清单
 
 - `paths.ts`：加 `normalizeAgentId()`（小写 + `[^a-z0-9_-]+ → -`）和 `getAgentSessionsDir(agentId)`。
@@ -484,4 +469,3 @@ dispatcher 负责所有"通用机制"（并发、超时、cancel、validate、st
 - `src/tools/subagent.ts` — `spawnSubagent` 入口（recorder 已接好）
 - `src/subagent/persistence.ts` — recorder + 事件→Message 适配
 - `docs/subagent-persistence.md` — 上一阶段（#400）的持久化设计
-- openclaw `pi-embedded-runner`、hermes `delegate_tool` — builtin 风格参考

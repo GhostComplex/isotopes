@@ -24,7 +24,7 @@ non-root `agent` user with uid 1000.
 
 ## Configure
 
-Sandbox config is layered openclaw-style: an **agents-level** block (under
+Sandbox config is layered: an **agents-level** block (under
 `agents.defaults.sandbox` or top-level `sandbox`) supplies docker / mount
 defaults; each agent may overlay a partial **per-agent** override (typically
 just `mode: "off"` to opt one agent out).
