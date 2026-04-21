@@ -193,16 +193,6 @@ export interface DiscordTransportConfig {
     /** Whether to include thread messages in channel history context. Default: true */
     observe?: boolean;
   };
-  /**
-   * How to attach Discord reply markers to outbound messages.
-   *
-   * - `"off"` (default): never attach reply marker by default. Agent can still
-   *   opt in per-response via inline `[[reply_to_current]]` /
-   *   `[[reply_to: <id>]]` directives.
-   * - `"first"`: attach the trigger message as a reply marker on the first
-   *   outbound chunk only.
-   * - `"all"`: attach on every outbound chunk.
-   */
   replyToMode?: ReplyToMode;
 }
 

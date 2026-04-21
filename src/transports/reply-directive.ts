@@ -11,7 +11,18 @@
 
 const REPLY_TAG_RE = /\[\[\s*(?:reply_to_current|reply_to\s*:\s*([^\]\n]+))\s*\]\]/gi;
 
-/** How the trigger message id should be applied as a Discord reply marker. */
+/**
+ * How the trigger message id should be applied as a Discord reply marker.
+ *
+ * - `"off"` (default): never attach a reply marker by default. The agent can
+ *   still opt in per-response via inline `[[reply_to_current]]` /
+ *   `[[reply_to: <id>]]` directives.
+ * - `"first"`: attach the trigger message as a reply marker on the first
+ *   outbound chunk only.
+ * - `"all"`: attach on every outbound chunk.
+ *
+ * Inline directives in agent text always override this per-response.
+ */
 export type ReplyToMode = "off" | "first" | "all";
 
 export interface ParsedReplyDirective {

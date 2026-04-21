@@ -391,11 +391,6 @@ export interface DiscordAccountConfig {
   context?: DiscordAccountContextConfig;
   /** Discord user IDs allowed to execute slash commands on this account. */
   adminUsers?: string[];
-  /**
-   * How to attach Discord reply markers to outbound messages on this account.
-   * One of `"off"` (default), `"first"`, `"all"`. Inline `[[reply_to_current]]`
-   * / `[[reply_to: <id>]]` directives in agent text override this per-response.
-   */
   replyToMode?: ReplyToMode;
 }
 
