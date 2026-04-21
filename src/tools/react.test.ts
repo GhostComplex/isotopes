@@ -1,12 +1,12 @@
-// src/tools/reply-react.test.ts — Unit tests for message_react tool
+// src/tools/react.test.ts — Unit tests for message_react tool
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   createMessageReactTool,
-  createReplyReactTools,
+  createReactTools,
   LazyTransportContext,
-  type ReplyReactToolContext,
-} from "./reply-react.js";
+  type ReactToolContext,
+} from "./react.js";
 import type { Transport } from "../core/types.js";
 
 function createMockTransport(overrides: Partial<Transport> = {}): Transport {
@@ -18,12 +18,12 @@ function createMockTransport(overrides: Partial<Transport> = {}): Transport {
   };
 }
 
-function wrapTransport(transport: Transport): ReplyReactToolContext {
+function wrapTransport(transport: Transport): ReactToolContext {
   return { getTransport: () => transport };
 }
 
 describe("message_react tool", () => {
-  let ctx: ReplyReactToolContext;
+  let ctx: ReactToolContext;
   let transport: Transport;
 
   beforeEach(() => {
@@ -111,10 +111,10 @@ describe("LazyTransportContext", () => {
   });
 });
 
-describe("createReplyReactTools", () => {
+describe("createReactTools", () => {
   it("returns the react tool only (message_reply removed)", () => {
     const transport = createMockTransport();
-    const tools = createReplyReactTools(wrapTransport(transport));
+    const tools = createReactTools(wrapTransport(transport));
     expect(tools.map((t) => t.tool.name)).toEqual(["message_react"]);
   });
 });

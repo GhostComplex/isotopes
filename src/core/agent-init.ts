@@ -31,7 +31,7 @@ import {
   resolveToolGuards,
   applyToolPolicy,
 } from "./tools.js";
-import { createReplyReactTools, LazyTransportContext } from "../tools/reply-react.js";
+import { createReactTools, LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import { SandboxExecutor, SandboxFs, shouldSandbox, type FsLike } from "../sandbox/index.js";
 import * as nodeFs from "node:fs/promises";
@@ -175,7 +175,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
 
   // 10. Register reply/react tools (transport is bound lazily after transport starts)
   if (transportContext) {
-    for (const { tool, handler } of createReplyReactTools(transportContext)) {
+    for (const { tool, handler } of createReactTools(transportContext)) {
       toolRegistry.register(tool, handler);
     }
   }

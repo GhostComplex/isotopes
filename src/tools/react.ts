@@ -1,23 +1,17 @@
-// src/tools/reply-react.ts — message_react tool (reactions only)
-//
-// The previous `message_reply` tool was removed: it called Discord's
-// `target.reply()` directly, which double-sent alongside the auto-streamed
-// channel.send() in the transport. Reply-marker behavior now lives in the
-// transport via the [[reply_to_current]] / [[reply_to: <id>]] inline
-// directives — see src/transports/reply-directive.ts.
+// src/tools/react.ts — message_react tool
 
 import { createLogger } from "../core/logger.js";
 import type { Tool, Transport } from "../core/types.js";
 import type { ToolHandler } from "../core/tools.js";
 
-const log = createLogger("tools:reply-react");
+const log = createLogger("tools:react");
 
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
 
 /** Runtime context required by react tools. */
-export interface ReplyReactToolContext {
+export interface ReactToolContext {
   getTransport: () => Transport | undefined;
 }
 
@@ -26,7 +20,7 @@ export interface ReplyReactToolContext {
  * be set after tool registration.  This allows cli.ts to register react tools
  * eagerly and bind the real transport once the channel transport starts.
  */
-export class LazyTransportContext implements ReplyReactToolContext {
+export class LazyTransportContext implements ReactToolContext {
   private _transport: Transport | undefined;
 
   setTransport(transport: Transport): void {
@@ -48,7 +42,7 @@ export class LazyTransportContext implements ReplyReactToolContext {
  * Adds an emoji reaction to a specific message by its ID via the current transport.
  */
 export function createMessageReactTool(
-  ctx: ReplyReactToolContext,
+  ctx: ReactToolContext,
 ): { tool: Tool; handler: ToolHandler } {
   return {
     tool: {
@@ -126,8 +120,8 @@ export function createMessageReactTool(
  * Create the react tool(s) with shared context.
  * Returns an array of tool+handler pairs ready for registration.
  */
-export function createReplyReactTools(
-  ctx: ReplyReactToolContext,
+export function createReactTools(
+  ctx: ReactToolContext,
 ): { tool: Tool; handler: ToolHandler }[] {
   return [createMessageReactTool(ctx)];
 }

@@ -71,6 +71,6 @@ export type { ExecToolOptions, ProcessInfo } from "./exec.js";
 
 export {
   createMessageReactTool,
-  createReplyReactTools,
-} from "./reply-react.js";
-export type { ReplyReactToolContext } from "./reply-react.js";
+  createReactTools,
+} from "./react.js";
+export type { ReactToolContext } from "./react.js";
