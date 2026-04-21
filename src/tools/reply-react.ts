@@ -125,11 +125,6 @@ export function createMessageReactTool(
 /**
  * Create the react tool(s) with shared context.
  * Returns an array of tool+handler pairs ready for registration.
- *
- * To attach a Discord reply marker to an outbound message, the agent should
- * include `[[reply_to_current]]` or `[[reply_to: <message-id>]]` in its
- * response text — the transport will strip the tag and apply the reply
- * reference. See src/transports/reply-directive.ts.
  */
 export function createReplyReactTools(
   ctx: ReplyReactToolContext,
