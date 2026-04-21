@@ -263,6 +263,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   // Discord transport
   let discordManager: DiscordTransportManager | undefined;
+  let discordSessionStores: Map<string, DefaultSessionStore> | undefined;
 
   if (config.channels?.discord) {
     const accounts = config.channels.discord.accounts ?? {};
@@ -274,6 +275,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       for (const agentFile of config.agents) {
         sessionStores.set(agentFile.id, await sessionStoreManager.getOrCreate(agentFile.id));
       }
+      discordSessionStores = sessionStores;
 
       const firstAccount = Object.values(accounts)[0];
       const defaultAgentId = firstAccount?.defaultAgentId || config.agents[0]?.id;
@@ -339,6 +341,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       usageTracker,
       uiRegistry: pluginManager.getUIRegistry(),
       sessionStoreManager,
+      discordSessionStores,
       hooks: pluginManager.getHooks(),
     },
   );
