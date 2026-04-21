@@ -184,9 +184,9 @@ export function shouldCompact(
 export function createSummaryMessage(summaryText: string): AgentMessage {
   return {
     role: "user",
-    content: `[Previous conversation summary]\n\n${summaryText}`,
+    content: [{ type: "text", text: `[Previous conversation summary]\n\n${summaryText}` }],
     timestamp: Date.now(),
-  } as AgentMessage;
+  };
 }
 
 // ---------------------------------------------------------------------------

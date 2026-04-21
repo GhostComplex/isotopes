@@ -172,13 +172,16 @@ describe("buildSummaryPrompt", () => {
 // ---------------------------------------------------------------------------
 
 describe("createSummaryMessage", () => {
-  it("creates a user message with summary prefix", () => {
+  it("creates a user message with array content containing the summary", () => {
     const msg = createSummaryMessage("The user asked about math.");
 
-    const m = msg as unknown as Record<string, unknown>;
+    const m = msg as unknown as { role: string; content: Array<{ type: string; text: string }> };
     expect(m.role).toBe("user");
-    expect(m.content).toContain("[Previous conversation summary]");
-    expect(m.content).toContain("The user asked about math.");
+    expect(Array.isArray(m.content)).toBe(true);
+    expect(m.content).toHaveLength(1);
+    expect(m.content[0].type).toBe("text");
+    expect(m.content[0].text).toContain("[Previous conversation summary]");
+    expect(m.content[0].text).toContain("The user asked about math.");
   });
 });
 
@@ -266,10 +269,10 @@ describe("compactMessages", () => {
     expect(summarize).toHaveBeenCalledOnce();
 
     // First message should be the summary
-    const summary = result[0] as unknown as Record<string, unknown>;
+    const summary = result[0] as unknown as { role: string; content: Array<{ type: string; text: string }> };
     expect(summary.role).toBe("user");
-    expect(summary.content).toContain("[Previous conversation summary]");
-    expect(summary.content).toContain("This is a summary.");
+    expect(summary.content[0].text).toContain("[Previous conversation summary]");
+    expect(summary.content[0].text).toContain("This is a summary.");
 
     // Last 10 should be from the original
     for (let i = 1; i < result.length; i++) {
@@ -442,9 +445,9 @@ describe("forceCompact", () => {
     expect(result).toHaveLength(6);
     expect(summarize).toHaveBeenCalledOnce();
 
-    const summary = result[0] as unknown as Record<string, unknown>;
-    expect(summary.content).toContain("[Previous conversation summary]");
-    expect(summary.content).toContain("forced summary");
+    const summary = result[0] as unknown as { content: Array<{ type: string; text: string }> };
+    expect(summary.content[0].text).toContain("[Previous conversation summary]");
+    expect(summary.content[0].text).toContain("forced summary");
   });
 
   it("returns original messages when not enough to compact", async () => {
