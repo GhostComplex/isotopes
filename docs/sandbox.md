@@ -120,13 +120,28 @@ entirely. To avoid this escape, **`spawn_subagent` is not registered for
 sandboxed agents** — the tool simply does not exist in their tool list.
 
 If you need a coding CLI inside the sandbox, build a custom image that
-includes it and `docker exec` into the running container:
+includes it and point `sandbox.docker.image` at the new tag. Recommended
+naming convention: `isotopes-sandbox-<cli>` (e.g. `isotopes-sandbox-claude`),
+so it composes with the base image namespace and aligns with any
+prebuilt images we may ship later (see issue #451):
 
 ```dockerfile
+# Dockerfile.claude
 FROM isotopes-sandbox:latest
 USER root
 RUN npm install -g @anthropic-ai/claude-code
 USER agent
+```
+
+```bash
+docker build -t isotopes-sandbox-claude:latest -f Dockerfile.claude .
+```
+
+```yaml
+# isotopes.yaml
+sandbox:
+  docker:
+    image: isotopes-sandbox-claude:latest
 ```
 
 Then exec into the running container (containers are named
