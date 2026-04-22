@@ -628,7 +628,7 @@ class PiMonoInstance implements AgentInstance {
           );
 
           // Replace agent messages with sanitized compacted version
-          this.agent.replaceMessages(sanitized);
+          this.agent.state.messages = sanitized;
 
           // Retry the prompt with compacted context
           // Don't re-yield the failed events, start fresh
@@ -662,7 +662,7 @@ class PiMonoInstance implements AgentInstance {
   }
 
   clearMessages(): void {
-    this.agent.clearMessages();
+    this.agent.reset();
   }
 
   getMessages(): Message[] {
@@ -707,7 +707,7 @@ class PiMonoInstance implements AgentInstance {
         compactedMessages.map(fromAgentMessage),
       ).map(toAgentMessage);
 
-      this.agent.replaceMessages(sanitized);
+      this.agent.state.messages = sanitized;
       return true;
     } catch (err) {
       log.error("Force compaction failed", err);
