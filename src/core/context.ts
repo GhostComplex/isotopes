@@ -1,20 +1,14 @@
 // src/core/context.ts — Prompt preparation transforms for context management.
-// All functions are pure: Message[] in, new Message[] out, no mutation.
+// All functions are pure: AgentMessage[] in, new AgentMessage[] out, no mutation.
 
-import type { Message, MessageContentBlock } from "./types.js";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { messageText } from "./messages.js";
 
 // ---------------------------------------------------------------------------
 // limitHistoryTurns — truncate by user turn count
 // ---------------------------------------------------------------------------
 
-/**
- * Keep the last `limit` user turns from a message array.
- *
- * A "turn" is one user message plus all immediately following non-user messages
- * (assistant replies, tool results, etc.). Counting by turns avoids slicing
- * mid-turn, which would produce an assistant-first sequence that some models reject.
- */
-export function limitHistoryTurns(messages: Message[], limit: number): Message[] {
+export function limitHistoryTurns(messages: AgentMessage[], limit: number): AgentMessage[] {
   if (limit <= 0 || messages.length === 0) return messages;
 
   let userCount = 0;
@@ -37,9 +31,8 @@ export function limitHistoryTurns(messages: Message[], limit: number): Message[]
 // sanitizeToolUseResultPairing — fix broken pairs after truncation
 // ---------------------------------------------------------------------------
 
-/** Duck-type check for tool_use blocks inside assistant message content. */
 interface ToolUseBlock {
-  type: "tool_use" | "tool_call";
+  type: "tool_use" | "tool_call" | "toolCall";
   id: string;
   name?: string;
 }
@@ -48,37 +41,29 @@ function isToolUseBlock(block: unknown): block is ToolUseBlock {
   if (typeof block !== "object" || block === null) return false;
   const t = (block as Record<string, unknown>).type;
   return (
-    (t === "tool_use" || t === "tool_call") &&
+    (t === "tool_use" || t === "tool_call" || t === "toolCall") &&
     typeof (block as Record<string, unknown>).id === "string"
   );
 }
 
-/** Extract tool_use block IDs from an assistant message's content. */
-function getToolUseIds(msg: Message): ToolUseBlock[] {
+function getToolUseIds(msg: AgentMessage): ToolUseBlock[] {
   if (msg.role !== "assistant") return [];
-  return (msg.content as unknown[]).filter(isToolUseBlock);
+  const m = msg as unknown as { content?: unknown[] };
+  if (!Array.isArray(m.content)) return [];
+  return m.content.filter(isToolUseBlock);
 }
 
-/**
- * Repair tool_use / tool_result pairing after truncation.
- *
- * 1. Drop orphaned leading tool_result messages (no preceding assistant with tool_use).
- * 2. For assistant messages with tool_use blocks but no matching tool_result,
- *    insert a synthetic error tool_result.
- */
-export function sanitizeToolUseResultPairing(messages: Message[]): Message[] {
+export function sanitizeToolUseResultPairing(messages: AgentMessage[]): AgentMessage[] {
   if (messages.length === 0) return messages;
 
-  // Phase 1: drop orphaned leading tool_result messages
   let startIdx = 0;
-  while (startIdx < messages.length && messages[startIdx].role === "tool_result") {
+  while (startIdx < messages.length && messages[startIdx].role === "toolResult") {
     startIdx++;
   }
   const trimmed = startIdx > 0 ? messages.slice(startIdx) : messages;
   if (trimmed.length === 0) return [];
 
-  // Phase 2: ensure every tool_use has a matching tool_result
-  const result: Message[] = [];
+  const result: AgentMessage[] = [];
   for (let i = 0; i < trimmed.length; i++) {
     const msg = trimmed[i];
     result.push(msg);
@@ -86,30 +71,26 @@ export function sanitizeToolUseResultPairing(messages: Message[]): Message[] {
     const toolUses = getToolUseIds(msg);
     if (toolUses.length === 0) continue;
 
-    // Collect tool_result IDs from all following messages up to the next assistant
-    // that has its own tool_use blocks (which starts a new pairing scope)
     const foundResultIds = new Set<string>();
     for (let j = i + 1; j < trimmed.length; j++) {
       if (trimmed[j].role === "user") break;
       if (trimmed[j].role === "assistant" && getToolUseIds(trimmed[j]).length > 0) break;
-      if (trimmed[j].role === "tool_result") {
-        // toolCallId may be in metadata or on the content block itself
-        const firstBlock = trimmed[j].content[0] as { toolCallId?: string } | undefined;
-        const callId = (trimmed[j].metadata?.toolCallId as string | undefined)
-          ?? firstBlock?.toolCallId;
-        if (callId) foundResultIds.add(callId);
+      if (trimmed[j].role === "toolResult") {
+        const m = trimmed[j] as unknown as { toolCallId?: string };
+        if (m.toolCallId) foundResultIds.add(m.toolCallId);
       }
     }
 
-    // Insert synthetic error results for missing pairs
     for (const tu of toolUses) {
       if (!foundResultIds.has(tu.id)) {
         result.push({
-          role: "tool_result",
-          content: [{ type: "tool_result", output: "[Tool result unavailable — conversation truncated]", isError: true, toolCallId: tu.id, toolName: tu.name }],
+          role: "toolResult",
+          content: "[Tool result unavailable — conversation truncated]",
+          toolCallId: tu.id,
+          toolName: tu.name ?? "unknown",
+          isError: true,
           timestamp: Date.now(),
-          metadata: { toolCallId: tu.id, synthetic: true },
-        });
+        } as unknown as AgentMessage);
       }
     }
   }
@@ -122,25 +103,12 @@ export function sanitizeToolUseResultPairing(messages: Message[]): Message[] {
 // ---------------------------------------------------------------------------
 
 export interface PruneToolResultsOptions {
-  /** Number of recent assistant messages to protect from pruning. Default: 3 */
   protectRecent?: number;
-  /** Head characters to keep in soft-trimmed results. Default: 1500 */
   headChars?: number;
-  /** Tail characters to keep in soft-trimmed results. Default: 1500 */
   tailChars?: number;
 }
 
-/**
- * Prune old tool_result messages to save tokens.
- *
- * - Protected zone: the last N assistant messages and everything after them
- *   are never pruned.
- * - Outside the protected zone: tool_result outputs longer than head+tail are
- *   soft-trimmed to keep only the head and tail portions.
- * - When the tail contains error/summary patterns, the tail budget is expanded
- *   to preserve diagnostically important content.
- */
-export function pruneToolResults(messages: Message[], opts?: PruneToolResultsOptions): Message[] {
+export function pruneToolResults(messages: AgentMessage[], opts?: PruneToolResultsOptions): AgentMessage[] {
   const protectRecent = opts?.protectRecent ?? 3;
   const headChars = opts?.headChars ?? 1500;
   const tailChars = opts?.tailChars ?? 1500;
@@ -161,23 +129,24 @@ export function pruneToolResults(messages: Message[], opts?: PruneToolResultsOpt
 
   return messages.map((msg, i) => {
     if (i >= protectFrom) return msg;
-    if (msg.role !== "tool_result") return msg;
+    if (msg.role !== "toolResult") return msg;
 
-    const pruned = msg.content.map((block): MessageContentBlock => {
-      if (block.type !== "tool_result") return block;
-      if (block.output.length < minLenForTrim) return block;
-      const effectiveTail = hasImportantTail(block.output) ? importantTailChars : tailChars;
-      const budget = headChars + effectiveTail;
-      if (block.output.length <= budget + 50) return block;
-      return {
-        ...block,
-        output: block.output.slice(0, headChars) +
-          "\n⚠️ [... middle content omitted — showing head and tail ...]\n" +
-          block.output.slice(-effectiveTail),
-      };
-    });
+    const m = msg as unknown as { content?: unknown };
+    const text = messageText(msg);
+    if (text.length < minLenForTrim) return msg;
 
-    return { ...msg, content: pruned };
+    const effectiveTail = hasImportantTail(text) ? importantTailChars : tailChars;
+    const budget = headChars + effectiveTail;
+    if (text.length <= budget + 50) return msg;
+
+    const trimmed = text.slice(0, headChars) +
+      "\n⚠️ [... middle content omitted — showing head and tail ...]\n" +
+      text.slice(-effectiveTail);
+
+    if (typeof m.content === "string") {
+      return { ...msg, content: trimmed } as unknown as AgentMessage;
+    }
+    return { ...msg, content: [{ type: "text", text: trimmed }] } as unknown as AgentMessage;
   });
 }
 
@@ -194,19 +163,12 @@ function hasImportantTail(text: string): boolean {
 // ---------------------------------------------------------------------------
 
 export interface PruneImagesOptions {
-  /** Number of recent user turns to keep images in. Default: 3 */
   keepRecentTurns?: number;
 }
 
-/**
- * Replace image content blocks in old turns with text placeholders.
- * Uses duck-type check for `{type: "image"}` blocks — no-op if none exist.
- */
-export function pruneImages(messages: Message[], opts?: PruneImagesOptions): Message[] {
+export function pruneImages(messages: AgentMessage[], opts?: PruneImagesOptions): AgentMessage[] {
   const keepRecentTurns = opts?.keepRecentTurns ?? 3;
 
-  // Find the protection boundary by counting user turns from the end.
-  // If fewer than N user turns exist, protect everything (protectFrom = 0).
   let protectFrom = 0;
   let userCount = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -221,20 +183,23 @@ export function pruneImages(messages: Message[], opts?: PruneImagesOptions): Mes
 
   return messages.map((msg, i) => {
     if (i >= protectFrom) return msg;
-    const hasImage = msg.content.some(
-      (block) => (block as unknown as { type: string }).type === "image",
+    const m = msg as unknown as { content?: unknown[] };
+    if (!Array.isArray(m.content)) return msg;
+
+    const hasImage = (m.content as Array<Record<string, unknown>>).some(
+      (block) => block.type === "image",
     );
     if (!hasImage) return msg;
 
     return {
       ...msg,
-      content: msg.content.map((block): MessageContentBlock => {
-        if ((block as unknown as { type: string }).type === "image") {
+      content: (m.content as Array<Record<string, unknown>>).map((block) => {
+        if (block.type === "image") {
           return { type: "text", text: "[image data removed — already processed by model]" };
         }
         return block;
       }),
-    };
+    } as unknown as AgentMessage;
   });
 }
 
@@ -243,29 +208,17 @@ export function pruneImages(messages: Message[], opts?: PruneImagesOptions): Mes
 // ---------------------------------------------------------------------------
 
 export interface PromptPrepareOptions {
-  /** Max user turns to keep. Default: 20 */
   historyTurns?: number;
-  /** Number of recent assistant messages to protect from pruning. Default: 3 */
   protectRecentAssistant?: number;
-  /** Head chars to keep in soft-trimmed tool results. Default: 1500 */
   toolResultHeadChars?: number;
-  /** Tail chars to keep in soft-trimmed tool results. Default: 1500 */
   toolResultTailChars?: number;
-  /** Number of recent turns to keep images in. Default: 3 */
   keepRecentImageTurns?: number;
 }
 
-/**
- * Prepare messages for prompt input by chaining all context transforms:
- *   1. Limit to last N user turns
- *   2. Fix broken tool_use/tool_result pairs
- *   3. Prune old tool results
- *   4. Prune old images
- */
 export function preparePromptMessages(
-  messages: Message[],
+  messages: AgentMessage[],
   opts?: PromptPrepareOptions,
-): Message[] {
+): AgentMessage[] {
   let result = limitHistoryTurns(messages, opts?.historyTurns ?? 20);
   result = sanitizeToolUseResultPairing(result);
   result = pruneToolResults(result, {

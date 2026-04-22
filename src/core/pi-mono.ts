@@ -104,14 +104,12 @@ function getAgentEndMetadata(messages: Message[]): {
   stopReason?: string;
   errorMessage?: string;
 } {
-  const assistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
-  const metadata = assistantMessage?.metadata;
-
+  const last = [...messages].reverse().find((m) => m.role === "assistant");
+  if (!last) return {};
+  const m = last as unknown as { stopReason?: string; errorMessage?: string };
   return {
-    stopReason:
-      typeof metadata?.stopReason === "string" ? metadata.stopReason : undefined,
-    errorMessage:
-      typeof metadata?.errorMessage === "string" ? metadata.errorMessage : undefined,
+    stopReason: typeof m.stopReason === "string" ? m.stopReason : undefined,
+    errorMessage: typeof m.errorMessage === "string" ? m.errorMessage : undefined,
   };
 }
 

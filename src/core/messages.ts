@@ -1,0 +1,53 @@
+// src/core/messages.ts — Helper functions for constructing AgentMessages
+// These create properly-typed user/assistant/toolResult messages compatible
+// with the pi-agent-core AgentMessage union.
+
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+
+/** Create a user message with text content. */
+export function userMessage(text: string, timestamp?: number): AgentMessage {
+  return { role: "user", content: text, timestamp: timestamp ?? Date.now() };
+}
+
+/** Create an assistant message with text content. */
+export function assistantMessage(text: string, timestamp?: number): AgentMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    timestamp: timestamp ?? Date.now(),
+  } as unknown as AgentMessage;
+}
+
+/** Create a toolResult message. */
+export function toolResultMessage(
+  output: string,
+  toolCallId: string,
+  toolName: string,
+  opts?: { isError?: boolean; timestamp?: number },
+): AgentMessage {
+  return {
+    role: "toolResult",
+    content: output,
+    toolCallId,
+    toolName,
+    ...(opts?.isError !== undefined ? { isError: opts.isError } : {}),
+    timestamp: opts?.timestamp ?? Date.now(),
+  } as unknown as AgentMessage;
+}
+
+/** Extract plain text from an AgentMessage's content. */
+export function messageText(msg: AgentMessage): string {
+  const m = msg as unknown as { content?: unknown };
+  if (typeof m.content === "string") return m.content;
+  if (Array.isArray(m.content)) {
+    return m.content
+      .map((b: Record<string, unknown>) => {
+        if (typeof b.text === "string") return b.text;
+        if (typeof b.output === "string") return b.output;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
