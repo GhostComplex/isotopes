@@ -132,7 +132,7 @@ describe("PiMonoCore", () => {
     const cache = core.createServiceCache(makeConfig());
     expect(cache).toBeDefined();
     expect(cache.model).toBeDefined();
-    expect(cache.tools).toEqual([]);
+    expect(cache.customTools).toEqual([]);
   });
 
   it("binds tool registries per agent", () => {
@@ -156,10 +156,10 @@ describe("PiMonoCore", () => {
     const cacheA = core.createServiceCache(makeConfig({ id: "agent-a" }));
     const cacheB = core.createServiceCache(makeConfig({ id: "agent-b" }));
 
-    expect(cacheA.tools).toHaveLength(1);
-    expect(cacheA.tools[0].name).toBe("read_file");
-    expect(cacheB.tools).toHaveLength(1);
-    expect(cacheB.tools[0].name).toBe("list_dir");
+    expect(cacheA.customTools).toHaveLength(1);
+    expect(cacheA.customTools[0].name).toBe("read_file");
+    expect(cacheB.customTools).toHaveLength(1);
+    expect(cacheB.customTools[0].name).toBe("list_dir");
   });
 
   it("clearToolRegistry removes binding", () => {
@@ -173,6 +173,6 @@ describe("PiMonoCore", () => {
     core.clearToolRegistry("agent-a");
 
     const cache = core.createServiceCache(makeConfig({ id: "agent-a" }));
-    expect(cache.tools).toHaveLength(0);
+    expect(cache.customTools).toHaveLength(0);
   });
 });

@@ -4,7 +4,6 @@
 // Compaction, overflow recovery, and event streaming are all delegated to
 // the SDK's AgentSession.
 
-import { type AgentTool } from "@mariozechner/pi-agent-core";
 import { getModel, type Model, type Api } from "@mariozechner/pi-ai";
 import {
   type AgentSession,
@@ -13,6 +12,7 @@ import {
   ModelRegistry,
   type SessionManager,
   SettingsManager,
+  type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 
 import {
@@ -103,11 +103,11 @@ export function resolveModel(config: AgentConfig): Model<Api> {
 // Tool conversion
 // ---------------------------------------------------------------------------
 
-function toAgentTool(tool: Tool, handler: (args: unknown) => Promise<string>): AgentTool {
+function toToolDefinition(tool: Tool, handler: (args: unknown) => Promise<string>): ToolDefinition {
   return {
     name: tool.name,
     description: tool.description,
-    parameters: tool.parameters as AgentTool["parameters"],
+    parameters: tool.parameters as ToolDefinition["parameters"],
     label: tool.name,
     execute: async (_toolCallId, params) => {
       const result = await handler(params);
@@ -132,7 +132,7 @@ export interface AgentServiceCacheConfig {
 
 export class AgentServiceCache {
   readonly model: Model<Api>;
-  readonly tools: AgentTool[];
+  readonly customTools: ToolDefinition[];
   readonly agentDir: string;
   private readonly authStorage: AuthStorage;
   private readonly modelRegistry: ModelRegistry;
@@ -155,13 +155,13 @@ export class AgentServiceCache {
     this.authStorage = AuthStorage.inMemory(creds);
     this.modelRegistry = ModelRegistry.create(this.authStorage);
 
-    // Convert registered tools
-    this.tools = [];
+    // Convert registered tools to ToolDefinition for the SDK
+    this.customTools = [];
     if (toolRegistry) {
       for (const entry of toolRegistry.list()) {
         const toolEntry = toolRegistry.get(entry.name);
         if (toolEntry) {
-          this.tools.push(toAgentTool(toolEntry.tool, toolEntry.handler));
+          this.customTools.push(toToolDefinition(toolEntry.tool, toolEntry.handler));
         }
       }
     }
@@ -200,7 +200,8 @@ export class AgentServiceCache {
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
       model: this.model,
-      tools: this.tools,
+      tools: [],
+      customTools: this.customTools,
       sessionManager: opts.sessionManager,
       settingsManager,
     });
