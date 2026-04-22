@@ -52,33 +52,30 @@ describe("eventToMessage", () => {
     expect(text).toContain("\"path\"");
   });
 
-  it("converts tool_result to tool_result block", () => {
+  it("converts tool_result to toolResult message", () => {
     const msg = eventToMessage({
       type: "tool_result",
       toolName: "Read",
       toolResult: "file contents",
     });
-    expect((msg as any)?.role).toBe("tool_result");
-    expect((msg as any)?.content?.[0]).toMatchObject({
-      type: "tool_result",
-      output: "file contents",
-      toolName: "Read",
-    });
+    expect((msg as any)?.role).toBe("toolResult");
+    expect((msg as any)?.content).toBe("file contents");
+    expect((msg as any)?.toolName).toBe("Read");
   });
 
-  it("flags error events in metadata", () => {
+  it("flags error events with error text in content", () => {
     const msg = eventToMessage({ type: "error", error: "boom" });
-    expect((msg as any)?.metadata?.error).toBe(true);
-    const text = ((msg as any)?.content?.[0] as { type: "text"; text: string }).text;
-    expect(text).toContain("boom");
+    expect((msg as any)?.role).toBe("assistant");
+    const content = (msg as any)?.content;
+    expect(content[0].text).toContain("boom");
   });
 
   it("truncates oversized tool_result", () => {
     const long = "x".repeat(10_000);
     const msg = eventToMessage({ type: "tool_result", toolResult: long });
-    const block = (msg as any)?.content?.[0] as { type: "tool_result"; output: string };
-    expect(block.output.length).toBeLessThan(long.length);
-    expect(block.output.endsWith("…")).toBe(true);
+    const content = (msg as any)?.content as string;
+    expect(content.length).toBeLessThan(long.length);
+    expect(content.endsWith("…")).toBe(true);
   });
 });
 
@@ -195,7 +192,7 @@ describe("createSubagentRecorder", () => {
 
     expect(store.__messages).toHaveLength(3);
     expect(store.__messages[0]?.role).toBe("assistant");
-    expect(store.__messages[2]?.role).toBe("tool_result");
+    expect(store.__messages[2]?.role).toBe("toolResult");
   });
 
   it("respects a caller-provided sessionKey", async () => {

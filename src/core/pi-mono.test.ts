@@ -366,39 +366,18 @@ describe("prompt() event mapping", () => {
     const core = new PiMonoCore();
     const instance = core.createAgent(makeConfig());
 
-    for await (const _ev of instance.prompt([
-      { role: "user", content: ("hello"), timestamp: 1000 },
-    // @ts-expect-error — test constructs AgentMessage with minimal fields
-      { role: "assistant", content: ("hi there"), timestamp: 2000 },
-      {
-        role: "toolResult",
-    // @ts-expect-error test fixture
-        content: [{ type: "toolResult", output: "tool output", toolCallId: "call-1", toolName: "readFile" }],
-        timestamp: 3000,
-      },
-    ])) {
+    const inputMsgs = [
+      { role: "user", content: "hello", timestamp: 1000 } as unknown as Message,
+      { role: "assistant", content: [{ type: "text", text: "hi there" }], timestamp: 2000 } as unknown as Message,
+      { role: "toolResult", content: "tool output", toolCallId: "call-1", toolName: "readFile", timestamp: 3000 } as unknown as Message,
+    ];
+
+    for await (const _ev of instance.prompt(inputMsgs)) {
       void _ev;
     }
 
-    expect(mockAgent.prompt).toHaveBeenCalledWith([
-      {
-        role: "user",
-        content: ("hello"),
-        timestamp: 1000,
-      },
-      {
-        role: "assistant",
-        content: ("hi there"),
-        timestamp: 2000,
-      },
-      {
-        role: "toolResult",
-        content: "tool output",
-        timestamp: 3000,
-        toolCallId: "call-1",
-        toolName: "readFile",
-      },
-    ]);
+    // No conversion — messages pass through directly
+    expect(mockAgent.prompt).toHaveBeenCalledWith(inputMsgs);
   });
 
   it("maps turn_end", async () => {
@@ -429,7 +408,7 @@ describe("prompt() event mapping", () => {
       },
     ]);
     expect(events).toContainEqual({
-      type: "toolCall",
+      type: "tool_call",
       id: "tc-1",
       name: "readFile",
       args: { path: "/foo" },
@@ -447,7 +426,7 @@ describe("prompt() event mapping", () => {
       },
     ]);
     expect(events).toContainEqual({
-      type: "toolResult",
+      type: "tool_result",
       id: "tc-2",
       output: "file contents",
       isError: false,
@@ -477,13 +456,11 @@ describe("prompt() event mapping", () => {
     expect(agentEnd.type).toBe("agent_end");
     expect(agentEnd.messages).toHaveLength(3);
     expect(agentEnd.messages[0].role).toBe("user");
-    expect((agentEnd.messages[0] as any).content).toEqual(("hi"));
+    expect((agentEnd.messages[0] as any).content).toBe("hi");
     expect(agentEnd.messages[1].role).toBe("assistant");
-    expect((agentEnd.messages[1] as any).content).toEqual(("hello"));
+    expect((agentEnd.messages[1] as any).content).toEqual([{ type: "text", text: "hello" }]);
     expect(agentEnd.messages[2].role).toBe("toolResult");
-    expect((agentEnd.messages[2] as any).content).toEqual([
-      { type: "text", text: "result data" },
-    ]);
+    expect((agentEnd.messages[2] as any).content).toBe("result data");
   });
 
   it("maps agent_end error metadata from assistant message", async () => {
@@ -505,10 +482,8 @@ describe("prompt() event mapping", () => {
     const agentEnd = events[0] as Extract<AgentEvent, { type: "agent_end" }>;
     expect(agentEnd.stopReason).toBe("error");
     expect(agentEnd.errorMessage).toBe("No API provider registered for api: undefined");
-    expect((agentEnd.messages[0] as any).metadata).toEqual({
-      stopReason: "error",
-      errorMessage: "No API provider registered for api: undefined",
-    });
+    expect((agentEnd.messages[0] as any).stopReason).toBe("error");
+    expect((agentEnd.messages[0] as any).errorMessage).toBe("No API provider registered for api: undefined");
   });
 
   it("skips unknown event types", async () => {
@@ -679,81 +654,6 @@ describe("prompt() event mapping", () => {
   });
 });
 
-describe("Message conversion", () => {
-  beforeEach(resetMocks);
-
-  it("maps user role to user", () => {
-    const core = new PiMonoCore();
-    const instance = core.createAgent(makeConfig());
-    // @ts-expect-error test fixture
-    instance.steer({ role: "user", content: ("hi") });
-
-    expect(mockAgent.steer).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "user" }),
-    );
-  });
-
-  it("maps assistant role to assistant", () => {
-    const core = new PiMonoCore();
-    const instance = core.createAgent(makeConfig());
-    // @ts-expect-error test fixture
-    instance.steer({ role: "assistant", content: ("hey") });
-
-    expect(mockAgent.steer).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "assistant" }),
-    );
-  });
-
-  it("maps tool_result role to toolResult", () => {
-    const core = new PiMonoCore();
-    const instance = core.createAgent(makeConfig());
-    instance.steer({
-      role: "toolResult",
-    // @ts-expect-error test fixture
-      content: [{ type: "toolResult", output: "output", toolCallId: "call-3", toolName: "runTool" }],
-    });
-
-    expect(mockAgent.steer).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "toolResult", content: "output", toolCallId: "call-3", toolName: "runTool" }),
-    );
-  });
-
-  it("uses Date.now() when timestamp is not provided", () => {
-    const now = 1700000000000;
-    vi.spyOn(Date, "now").mockReturnValue(now);
-
-    const core = new PiMonoCore();
-    const instance = core.createAgent(makeConfig());
-    // @ts-expect-error test fixture
-    instance.steer({ role: "user", content: ("test") });
-
-    expect(mockAgent.steer).toHaveBeenCalledWith(
-      expect.objectContaining({ timestamp: now }),
-    );
-
-    vi.restoreAllMocks();
-  });
-
-  it("serializes assistant tool_call blocks to pi-agent-core toolCall shape", () => {
-    const core = new PiMonoCore();
-    const instance = core.createAgent(makeConfig());
-    instance.steer({
-      role: "assistant",
-      content: [
-        { type: "text", text: "calling" },
-    // @ts-expect-error test fixture
-        { type: "toolCall", id: "c-1", name: "shell", input: { cmd: "ls" } },
-      ],
-    });
-
-    const arg = mockAgent.steer.mock.calls[0][0];
-    expect(arg.role).toBe("assistant");
-    expect(arg.content).toEqual([
-      { type: "text", text: "calling" },
-      { type: "toolCall", id: "c-1", name: "shell", input: { cmd: "ls" } },
-    ]);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // stripOrphanedToolResults (#146)
