@@ -116,7 +116,7 @@ describe("PiMonoCore.createAgent", () => {
   it("followUp() delegates to the underlying Agent with mapped message", () => {
     const core = new PiMonoCore();
     const instance = core.createAgent(makeConfig());
-    const msg: Message = { role: "user", content: ("follow up") };
+    const msg = { role: "user", content: "follow up", timestamp: Date.now() } as unknown as Message as unknown as Message;
 
     instance.followUp(msg);
 
@@ -368,10 +368,12 @@ describe("prompt() event mapping", () => {
 
     for await (const _ev of instance.prompt([
       { role: "user", content: ("hello"), timestamp: 1000 },
+    // @ts-expect-error — test constructs AgentMessage with minimal fields
       { role: "assistant", content: ("hi there"), timestamp: 2000 },
       {
         role: "toolResult",
-        content: [{ type: "tool_result", output: "tool output", toolCallId: "call-1", toolName: "readFile" }],
+    // @ts-expect-error test fixture
+        content: [{ type: "toolResult", output: "tool output", toolCallId: "call-1", toolName: "readFile" }],
         timestamp: 3000,
       },
     ])) {
@@ -427,7 +429,7 @@ describe("prompt() event mapping", () => {
       },
     ]);
     expect(events).toContainEqual({
-      type: "tool_call",
+      type: "toolCall",
       id: "tc-1",
       name: "readFile",
       args: { path: "/foo" },
@@ -445,7 +447,7 @@ describe("prompt() event mapping", () => {
       },
     ]);
     expect(events).toContainEqual({
-      type: "tool_result",
+      type: "toolResult",
       id: "tc-2",
       output: "file contents",
       isError: false,
@@ -458,7 +460,7 @@ describe("prompt() event mapping", () => {
         type: "agent_end",
         messages: [
           { role: "user", content: "hi", timestamp: 1000 },
-          { role: "assistant", content: "hello", timestamp: 2000 },
+          { role: "assistant", content: [{ type: "text", text: "hello" }], timestamp: 2000 },
           {
             role: "toolResult",
             content: "result data",
@@ -475,11 +477,11 @@ describe("prompt() event mapping", () => {
     expect(agentEnd.type).toBe("agent_end");
     expect(agentEnd.messages).toHaveLength(3);
     expect(agentEnd.messages[0].role).toBe("user");
-    expect(agentEnd.messages[0].content).toEqual(("hi"));
+    expect((agentEnd.messages[0] as any).content).toEqual(("hi"));
     expect(agentEnd.messages[1].role).toBe("assistant");
-    expect(agentEnd.messages[1].content).toEqual(("hello"));
-    expect(agentEnd.messages[2].role).toBe("tool_result");
-    expect(agentEnd.messages[2].content).toEqual([
+    expect((agentEnd.messages[1] as any).content).toEqual(("hello"));
+    expect(agentEnd.messages[2].role).toBe("toolResult");
+    expect((agentEnd.messages[2] as any).content).toEqual([
       { type: "text", text: "result data" },
     ]);
   });
@@ -503,7 +505,7 @@ describe("prompt() event mapping", () => {
     const agentEnd = events[0] as Extract<AgentEvent, { type: "agent_end" }>;
     expect(agentEnd.stopReason).toBe("error");
     expect(agentEnd.errorMessage).toBe("No API provider registered for api: undefined");
-    expect(agentEnd.messages[0].metadata).toEqual({
+    expect((agentEnd.messages[0] as any).metadata).toEqual({
       stopReason: "error",
       errorMessage: "No API provider registered for api: undefined",
     });
@@ -683,6 +685,7 @@ describe("Message conversion", () => {
   it("maps user role to user", () => {
     const core = new PiMonoCore();
     const instance = core.createAgent(makeConfig());
+    // @ts-expect-error test fixture
     instance.steer({ role: "user", content: ("hi") });
 
     expect(mockAgent.steer).toHaveBeenCalledWith(
@@ -693,6 +696,7 @@ describe("Message conversion", () => {
   it("maps assistant role to assistant", () => {
     const core = new PiMonoCore();
     const instance = core.createAgent(makeConfig());
+    // @ts-expect-error test fixture
     instance.steer({ role: "assistant", content: ("hey") });
 
     expect(mockAgent.steer).toHaveBeenCalledWith(
@@ -705,7 +709,8 @@ describe("Message conversion", () => {
     const instance = core.createAgent(makeConfig());
     instance.steer({
       role: "toolResult",
-      content: [{ type: "tool_result", output: "output", toolCallId: "call-3", toolName: "runTool" }],
+    // @ts-expect-error test fixture
+      content: [{ type: "toolResult", output: "output", toolCallId: "call-3", toolName: "runTool" }],
     });
 
     expect(mockAgent.steer).toHaveBeenCalledWith(
@@ -719,6 +724,7 @@ describe("Message conversion", () => {
 
     const core = new PiMonoCore();
     const instance = core.createAgent(makeConfig());
+    // @ts-expect-error test fixture
     instance.steer({ role: "user", content: ("test") });
 
     expect(mockAgent.steer).toHaveBeenCalledWith(
@@ -735,7 +741,8 @@ describe("Message conversion", () => {
       role: "assistant",
       content: [
         { type: "text", text: "calling" },
-        { type: "tool_call", id: "c-1", name: "shell", input: { cmd: "ls" } },
+    // @ts-expect-error test fixture
+        { type: "toolCall", id: "c-1", name: "shell", input: { cmd: "ls" } },
       ],
     });
 

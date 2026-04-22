@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { DefaultSessionStore } from "./session-store.js";
-import type { Message } from "./types.js";
+
 import { userMessage, assistantMessage, messageText } from "./messages.js";
 
 // ---------------------------------------------------------------------------
@@ -317,14 +317,8 @@ describe("DefaultSessionStore", () => {
       await shortTtlStore.init();
 
       const session = await shortTtlStore.create("agent-1");
-      await shortTtlStore.addMessage(session.id, {
-        role: "user",
-        content: ("test message"),
-      });
-      await shortTtlStore.addMessage(session.id, {
-        role: "assistant",
-        content: ("response"),
-      });
+      await shortTtlStore.addMessage(session.id, userMessage("test message"));
+      await shortTtlStore.addMessage(session.id, assistantMessage("response"));
 
       const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
       // Verify transcript exists

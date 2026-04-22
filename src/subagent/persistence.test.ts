@@ -31,8 +31,8 @@ describe("eventToMessage", () => {
 
   it("converts message events to assistant text", () => {
     const msg = eventToMessage({ type: "message", content: "hello" });
-    expect(msg?.role).toBe("assistant");
-    expect(msg?.content).toEqual([{ type: "text", text: "hello" }]);
+    expect((msg as any)?.role).toBe("assistant");
+    expect((msg as any)?.content).toEqual([{ type: "text", text: "hello" }]);
   });
 
   it("skips empty messages", () => {
@@ -46,8 +46,8 @@ describe("eventToMessage", () => {
       toolName: "Read",
       toolInput: { path: "x" },
     });
-    expect(msg?.role).toBe("assistant");
-    const text = (msg?.content[0] as { type: "text"; text: string }).text;
+    expect((msg as any)?.role).toBe("assistant");
+    const text = ((msg as any)?.content?.[0] as { type: "text"; text: string }).text;
     expect(text).toContain("🔧 Read(");
     expect(text).toContain("\"path\"");
   });
@@ -58,8 +58,8 @@ describe("eventToMessage", () => {
       toolName: "Read",
       toolResult: "file contents",
     });
-    expect(msg?.role).toBe("tool_result");
-    expect(msg?.content[0]).toMatchObject({
+    expect((msg as any)?.role).toBe("tool_result");
+    expect((msg as any)?.content?.[0]).toMatchObject({
       type: "tool_result",
       output: "file contents",
       toolName: "Read",
@@ -68,15 +68,15 @@ describe("eventToMessage", () => {
 
   it("flags error events in metadata", () => {
     const msg = eventToMessage({ type: "error", error: "boom" });
-    expect(msg?.metadata?.error).toBe(true);
-    const text = (msg?.content[0] as { type: "text"; text: string }).text;
+    expect((msg as any)?.metadata?.error).toBe(true);
+    const text = ((msg as any)?.content?.[0] as { type: "text"; text: string }).text;
     expect(text).toContain("boom");
   });
 
   it("truncates oversized tool_result", () => {
     const long = "x".repeat(10_000);
     const msg = eventToMessage({ type: "tool_result", toolResult: long });
-    const block = msg?.content[0] as { type: "tool_result"; output: string };
+    const block = (msg as any)?.content?.[0] as { type: "tool_result"; output: string };
     expect(block.output.length).toBeLessThan(long.length);
     expect(block.output.endsWith("…")).toBe(true);
   });
