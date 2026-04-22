@@ -137,15 +137,16 @@ export interface PruneToolResultsOptions {
  *   are never pruned.
  * - Outside the protected zone: tool_result outputs longer than head+tail are
  *   soft-trimmed to keep only the head and tail portions.
+ * - When the tail contains error/summary patterns, the tail budget is expanded
+ *   to preserve diagnostically important content.
  */
 export function pruneToolResults(messages: Message[], opts?: PruneToolResultsOptions): Message[] {
   const protectRecent = opts?.protectRecent ?? 3;
   const headChars = opts?.headChars ?? 1500;
   const tailChars = opts?.tailChars ?? 1500;
-  const minLenForTrim = headChars + tailChars + 50; // don't trim if barely over
+  const importantTailChars = 4000;
+  const minLenForTrim = headChars + tailChars + 50;
 
-  // Find the protection boundary: index of the Nth-from-last assistant message.
-  // If fewer than N assistants exist, protect everything (protectFrom = 0).
   let protectFrom = 0;
   let assistantCount = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -165,14 +166,29 @@ export function pruneToolResults(messages: Message[], opts?: PruneToolResultsOpt
     const pruned = msg.content.map((block): MessageContentBlock => {
       if (block.type !== "tool_result") return block;
       if (block.output.length < minLenForTrim) return block;
+      const effectiveTail = hasImportantTail(block.output) ? importantTailChars : tailChars;
+      const budget = headChars + effectiveTail;
+      if (block.output.length <= budget + 50) return block;
       return {
         ...block,
-        output: block.output.slice(0, headChars) + "\n...[trimmed]...\n" + block.output.slice(-tailChars),
+        output: block.output.slice(0, headChars) +
+          "\n⚠️ [... middle content omitted — showing head and tail ...]\n" +
+          block.output.slice(-effectiveTail),
       };
     });
 
     return { ...msg, content: pruned };
   });
+}
+
+const IMPORTANT_TAIL_PATTERN =
+  /\b(error|exception|failed|fatal|traceback|panic|stack trace|errno|exit code|total|summary|result|complete|finished|done)\b/i;
+
+function hasImportantTail(text: string): boolean {
+  const tail = text.slice(-2000).toLowerCase();
+  if (IMPORTANT_TAIL_PATTERN.test(tail)) return true;
+  if (/\}\s*$/.test(tail.trim())) return true;
+  return false;
 }
 
 // ---------------------------------------------------------------------------

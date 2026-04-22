@@ -225,7 +225,7 @@ describe("pruneToolResults", () => {
     expect(trimmedBlock.type).toBe("tool_result");
     if (trimmedBlock.type === "tool_result") {
       expect(trimmedBlock.output.length).toBeLessThan(longOutput.length);
-      expect(trimmedBlock.output).toContain("...[trimmed]...");
+      expect(trimmedBlock.output).toContain("middle content omitted");
     }
   });
 
