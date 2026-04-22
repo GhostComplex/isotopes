@@ -15,20 +15,12 @@ export type SubagentAgent = "claude" | "builtin";
 /** All known subagent values for validation */
 export const SUBAGENT_AGENTS: ReadonlySet<string> = new Set<string>(["claude", "builtin"]);
 
-/**
- * Role of a builtin subagent run. Subagents are always leaf workers
- * that cannot spawn further subagents (single-level nesting only).
- */
-export type SubagentRole = "leaf";
-
 /** Builtin-backend-specific spawn options. */
 export interface BuiltinSubagentOptions {
   /** Provider config inherited from the parent agent. */
   provider: ProviderConfig;
   /** Parent agent's tool registry; the runner filters this by role. */
   tools: ToolRegistry;
-  /** Role for capability gating. Default: "leaf". */
-  role?: SubagentRole;
   /** Optional extra system prompt fragment appended after the base subagent prompt. */
   extraSystemPrompt?: string;
 }

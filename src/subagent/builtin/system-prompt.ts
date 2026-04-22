@@ -1,14 +1,9 @@
 // src/subagent/builtin/system-prompt.ts — System prompt builder for builtin subagents
-// A builtin subagent gets a focused, task-scoped prompt — NOT the parent's SOUL.
-
-import type { SubagentRole } from "../types.js";
 
 /** Inputs for building a builtin subagent system prompt. */
 export interface BuildPromptOptions {
   /** The task to perform — supplied by the caller (typically the parent agent). */
   task: string;
-  /** The subagent's role; controls capability framing in the prompt. */
-  role: SubagentRole;
   /** Optional fragment appended after the base prompt (e.g. workspace hints). */
   extraSystemPrompt?: string;
 }

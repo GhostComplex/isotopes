@@ -5,12 +5,19 @@
 import { randomUUID } from "node:crypto";
 import { createLogger } from "../../core/logger.js";
 import { PiMonoCore } from "../../core/pi-mono.js";
-import type { ToolRegistry } from "../../core/tools.js";
+import { ToolRegistry, type ToolHandler } from "../../core/tools.js";
 import { bridgeAgentEvents } from "../builtin/event-bridge.js";
 import { buildBuiltinSubagentSystemPrompt } from "../builtin/system-prompt.js";
-import { filterToolRegistry, resolveBuiltinToolPolicy } from "../builtin/tool-policy.js";
 import type { RunnerSignals, SubagentRunner } from "../runner.js";
 import type { SubagentAgent, SubagentEvent, SubagentSpawnOptions } from "../types.js";
+
+const DENIED_TOOLS: ReadonlySet<string> = new Set([
+  "write_file",
+  "edit",
+  "web_fetch",
+  "web_search",
+  "spawn_subagent",
+]);
 
 const log = createLogger("subagent:runner:builtin");
 
@@ -40,18 +47,14 @@ export class BuiltinRunner implements SubagentRunner {
       return;
     }
 
-    const role = options.builtin.role ?? "leaf";
-    const policy = resolveBuiltinToolPolicy(role);
-    const tools = filterToolRegistry(options.builtin.tools, policy);
-
     const subagentId = `subagent-builtin-${taskId}-${randomUUID().slice(0, 8)}`;
+    const tools = filterTools(options.builtin.tools, subagentId);
     const systemPrompt = buildBuiltinSubagentSystemPrompt({
       task: options.prompt,
-      role,
       extraSystemPrompt: options.builtin.extraSystemPrompt,
     });
 
-    log.info("BuiltinRunner.run", { taskId, subagentId, role, toolCount: tools.list().length });
+    log.info("BuiltinRunner.run", { taskId, subagentId, toolCount: tools.list().length });
 
     this.core.setToolRegistry(subagentId, tools);
 
@@ -73,4 +76,15 @@ export class BuiltinRunner implements SubagentRunner {
       this.core.clearToolRegistry(subagentId);
     }
   }
+}
+
+function filterTools(parent: ToolRegistry, agentId: string): ToolRegistry {
+  const filtered = new ToolRegistry(agentId);
+  for (const tool of parent.list()) {
+    if (DENIED_TOOLS.has(tool.name)) continue;
+    const entry = parent.get(tool.name);
+    if (!entry) continue;
+    filtered.register(tool, entry.handler as ToolHandler);
+  }
+  return filtered;
 }
