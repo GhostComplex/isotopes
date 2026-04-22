@@ -218,9 +218,14 @@ function InitWizard({ onDone }: Props) {
             <TextInput
               value={ghcModel}
               onChange={setGhcModel}
-              onSubmit={goToChannel}
+              onSubmit={() => {
+                if (ghcModel.trim().length > 0) goToChannel();
+              }}
             />
           </Box>
+          {ghcModel.trim().length === 0 && (
+            <Text color="yellow">  model is required</Text>
+          )}
         </Box>
       )}
 
