@@ -11,12 +11,14 @@ import {
   type WorkspaceReloadedEvent,
 } from "./hot-reload.js";
 import type { AgentConfig } from "../core/types.js";
+import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { DefaultAgentManager } from "../core/agent-manager.js";
 
 // ---------------------------------------------------------------------------
-// Mock AgentManager
+// Mock DefaultAgentManager
 // ---------------------------------------------------------------------------
 
-function createMockAgentManager(): AgentManager & { reloadWorkspaceCalls: string[] } {
+function createMockDefaultAgentManager(): DefaultAgentManager & { reloadWorkspaceCalls: string[] } {
   const reloadWorkspaceCalls: string[] = [];
 
   return {
@@ -41,7 +43,7 @@ function createMockAgentManager(): AgentManager & { reloadWorkspaceCalls: string
     async reloadWorkspace(id: string): Promise<void> {
       reloadWorkspaceCalls.push(id);
     },
-  };
+  } as unknown as DefaultAgentManager & { reloadWorkspaceCalls: string[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -50,12 +52,12 @@ function createMockAgentManager(): AgentManager & { reloadWorkspaceCalls: string
 
 describe("HotReloadManager", () => {
   let tempDir: string;
-  let mockManager: ReturnType<typeof createMockAgentManager>;
+  let mockManager: ReturnType<typeof createMockDefaultAgentManager>;
   let hotReload: HotReloadManager;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-reload-test-"));
-    mockManager = createMockAgentManager();
+    mockManager = createMockDefaultAgentManager();
     hotReload = new HotReloadManager(mockManager, {
       enabled: true,
       debounceMs: 50, // Fast debounce for tests

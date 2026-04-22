@@ -2,9 +2,11 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
-import type { SessionStore, PiMonoInstance, ChannelsConfig } from "../core/types.js";
+import type { SessionStore, ChannelsConfig } from "../core/types.js";
+import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { DefaultAgentManager } from "../core/agent-manager.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
-import { createMockcreateMockPiMonoInstance, createMockSessionStore } from "../core/test-helpers.js";
+import { createMockAgentInstance, createMockAgentManager, createMockSessionStore } from "../core/test-helpers.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -64,7 +66,7 @@ vi.mock("discord.js", () => {
 
 describe("DiscordTransport", () => {
   let transport: DiscordTransport;
-  let agentManager: AgentManager;
+  let agentManager: DefaultAgentManager;
   let sessionStore: SessionStore;
 
   beforeEach(() => {
@@ -130,14 +132,20 @@ describe("DiscordTransport", () => {
 
   describe("runAgentAndRespond", () => {
     it("logs and sends a message when agent_end reports an error", async () => {
-      const erroringAgent = createMockPiMonoInstance([
+      const erroringAgent = createMockAgentInstance([
         {
           type: "agent_end",
-          messages: [],
-          stopReason: "error",
-          errorMessage: "No API provider registered for api: undefined",
+          messages: [{ role: "assistant", stopReason: "error", errorMessage: "No API provider registered for api: undefined", content: [], timestamp: 0 } as never],
         },
       ]);
+
+
+
+
+
+
+
+
 
       const channel: MockChannel = {
         sendTyping: vi.fn().mockResolvedValue(undefined),
@@ -1057,12 +1065,12 @@ describe("DiscordTransport", () => {
     }
 
     it("responds to thread messages by default (threads.respond undefined)", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1078,12 +1086,12 @@ describe("DiscordTransport", () => {
     });
 
     it("does NOT respond in threads when threads.respond=false", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
         threads: { respond: false },
@@ -1100,12 +1108,12 @@ describe("DiscordTransport", () => {
     });
 
     it("still responds in regular channels when threads.respond=false", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
         threads: { respond: false },
@@ -1122,12 +1130,12 @@ describe("DiscordTransport", () => {
     });
 
     it("ignores thread messages completely when both respond=false and observe=false", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
         threads: { respond: false, observe: false },
@@ -1174,7 +1182,7 @@ describe("DiscordTransport", () => {
     }
 
     it("buffers messages when session is active (in-flight prompt)", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
 
       // Create a promise that we can control to simulate a long-running agent
@@ -1192,12 +1200,12 @@ describe("DiscordTransport", () => {
         steer: vi.fn(),
         followUp: vi.fn(),
       };
-      localAgentManager.get = vi.fn().mockReturnValue(hangingAgent);
+      localDefaultAgentManager.get = vi.fn().mockReturnValue(hangingAgent);
 
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1224,7 +1232,7 @@ describe("DiscordTransport", () => {
     });
 
     it("persists drained pending messages to SessionStore (issue #371)", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
 
       let resolveAgent: () => void;
@@ -1242,12 +1250,12 @@ describe("DiscordTransport", () => {
         steer: vi.fn(),
         followUp: vi.fn(),
       };
-      localAgentManager.get = vi.fn().mockReturnValue(agent);
+      localDefaultAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1286,20 +1294,20 @@ describe("DiscordTransport", () => {
     });
 
     it("clears active session and pending buffer after agent completes", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
 
       // Agent that completes normally
-      const completingAgent = createMockPiMonoInstance([
-        { type: "text_delta", text: "Done!" },
+      const completingAgent = createMockAgentInstance([
+        { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "Done!" } as never },
         { type: "agent_end", messages: [] },
       ]);
-      localAgentManager.get = vi.fn().mockReturnValue(completingAgent);
+      localDefaultAgentManager.get = vi.fn().mockReturnValue(completingAgent);
 
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1373,15 +1381,15 @@ describe("DiscordTransport", () => {
     }
 
     it("/stop aborts an in-flight main-agent turn and acks with 🛑", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = makeStatefulSessionStore();
       const { agent, release } = makeHangingAgent();
-      localAgentManager.get = vi.fn().mockReturnValue(agent);
+      localDefaultAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1404,15 +1412,15 @@ describe("DiscordTransport", () => {
     });
 
     it("/cancel also aborts the in-flight turn", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = makeStatefulSessionStore();
       const { agent, release } = makeHangingAgent();
-      localAgentManager.get = vi.fn().mockReturnValue(agent);
+      localDefaultAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1434,7 +1442,7 @@ describe("DiscordTransport", () => {
     });
 
     it("/stop with no active turn does not abort and does not dispatch to model", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const agent = {
         prompt: vi.fn(),
@@ -1442,12 +1450,12 @@ describe("DiscordTransport", () => {
         steer: vi.fn(),
         followUp: vi.fn(),
       };
-      localAgentManager.get = vi.fn().mockReturnValue(agent);
+      localDefaultAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1464,15 +1472,15 @@ describe("DiscordTransport", () => {
     });
 
     it("normal messages during an in-flight turn do NOT abort (steer-at-turn_end preserved)", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const { agent, release } = makeHangingAgent();
-      localAgentManager.get = vi.fn().mockReturnValue(agent);
+      localDefaultAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1495,15 +1503,15 @@ describe("DiscordTransport", () => {
       await inFlight;
     });
     it("/stop in a group channel without @mention is ignored (multi-bot safety)", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = makeStatefulSessionStore();
       const { agent, release } = makeHangingAgent();
-      localAgentManager.get = vi.fn().mockReturnValue(agent);
+      localDefaultAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1526,15 +1534,15 @@ describe("DiscordTransport", () => {
     });
 
     it("/stop in a DM (no guild) works without @mention", async () => {
-      const localAgentManager = createMockAgentManager();
+      const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = makeStatefulSessionStore();
       const { agent, release } = makeHangingAgent();
-      localAgentManager.get = vi.fn().mockReturnValue(agent);
+      localDefaultAgentManager.get = vi.fn().mockReturnValue(agent);
 
       const localTransport = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
-        agentManager: localAgentManager,
+        agentManager: localDefaultAgentManager,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
         dmAccess: { policy: "allowlist", allowlist: ["user-1"] },

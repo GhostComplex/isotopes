@@ -2,7 +2,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SlashCommandHandler, type CommandContext } from "./slash-commands.js";
-import { createMockSessionStore } from "../core/test-helpers.js";
+import { createMockAgentManager, createMockSessionStore } from "../core/test-helpers.js";
+import type { PiMonoInstance } from "../core/pi-mono.js";
 
 function createContext(overrides?: Partial<CommandContext>): CommandContext {
   return {
@@ -249,7 +250,7 @@ describe("SlashCommandHandler", () => {
         steer: vi.fn(),
         followUp: vi.fn(),
         clearMessages: vi.fn(),
-      };
+      } as unknown as PiMonoInstance;
 
       const ctx = createContext({
         sessionStore,
@@ -320,7 +321,7 @@ describe("SlashCommandHandler", () => {
         steer: vi.fn(),
         followUp: vi.fn(),
         forceCompact: vi.fn().mockResolvedValue(true),
-      };
+      } as unknown as PiMonoInstance;
 
       const ctx = createContext({
         sessionStore,
@@ -341,7 +342,7 @@ describe("SlashCommandHandler", () => {
         steer: vi.fn(),
         followUp: vi.fn(),
         forceCompact: vi.fn().mockResolvedValue(false),
-      };
+      } as unknown as PiMonoInstance;
 
       const ctx = createContext({
         sessionId: "session-small",
@@ -366,7 +367,7 @@ describe("SlashCommandHandler", () => {
         steer: vi.fn(),
         followUp: vi.fn(),
         // No forceCompact method
-      };
+      } as unknown as PiMonoInstance;
 
       const ctx = createContext({
         sessionId: "session-no-compact",
@@ -385,7 +386,7 @@ describe("SlashCommandHandler", () => {
         steer: vi.fn(),
         followUp: vi.fn(),
         forceCompact: vi.fn().mockRejectedValue(new Error("Model API error")),
-      };
+      } as unknown as PiMonoInstance;
 
       const ctx = createContext({
         sessionId: "session-error",

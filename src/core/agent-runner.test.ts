@@ -137,7 +137,7 @@ describe("runAgentLoop", () => {
 
   it("calls onToolComplete after turn_end and injects via steer", async () => {
     const agent = createMockAgentInstance([
-      { type: "turn_end" },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "agent_end", messages: [] },
     ]);
     const sessionStore = createMockSessionStore();
@@ -163,7 +163,7 @@ describe("runAgentLoop", () => {
 
   it("does not call steer if onToolComplete returns null", async () => {
     const agent = createMockAgentInstance([
-      { type: "turn_end" },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "agent_end", messages: [] },
     ]);
     const sessionStore = createMockSessionStore();
@@ -184,7 +184,7 @@ describe("runAgentLoop", () => {
 
   it("does not call onToolComplete if not provided", async () => {
     const agent = createMockAgentInstance([
-      { type: "turn_end" },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "agent_end", messages: [] },
     ]);
     const sessionStore = createMockSessionStore();
@@ -205,10 +205,10 @@ describe("runAgentLoop", () => {
     const agent = createMockAgentInstance([
       { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "Let me check." } as never },
       { type: "tool_execution_start", toolCallId: "call-1", toolName: "shell", args: { cmd: "ls" } },
-      { type: "tool_execution_end", toolCallId: "call-1", result: "a.txt\nb.txt" },
-      { type: "turn_end" },
+      { type: "tool_execution_end", toolCallId: "call-1", toolName: "test", result: "a.txt\nb.txt", isError: false },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "Done." } as never },
-      { type: "turn_end" },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "agent_end", messages: [] },
     ]);
     const sessionStore = createMockSessionStore();
@@ -247,8 +247,8 @@ describe("runAgentLoop", () => {
     const big = "x".repeat(30_000);
     const agent = createMockAgentInstance([
       { type: "tool_execution_start", toolCallId: "c", toolName: "read_file", args: {} },
-      { type: "tool_execution_end", toolCallId: "c", result: big },
-      { type: "turn_end" },
+      { type: "tool_execution_end", toolCallId: "c", toolName: "read_file", result: big, isError: false },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "agent_end", messages: [] },
     ]);
     const sessionStore = createMockSessionStore();
@@ -273,8 +273,8 @@ describe("runAgentLoop", () => {
   it("propagates isError on tool_result blocks", async () => {
     const agent = createMockAgentInstance([
       { type: "tool_execution_start", toolCallId: "c", toolName: "shell", args: {} },
-      { type: "tool_execution_end", toolCallId: "c", result: "boom", isError: true },
-      { type: "turn_end" },
+      { type: "tool_execution_end", toolCallId: "c", toolName: "test", result: "boom", isError: true },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "agent_end", messages: [] },
     ]);
     const sessionStore = createMockSessionStore();

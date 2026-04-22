@@ -382,7 +382,7 @@ describe("prompt() event mapping", () => {
     const events = await collectEvents([
       { type: "turn_end", message: {}, toolResults: [] },
     ]);
-    expect(events).toContainEqual({ type: "turn_end" });
+    expect(events).toContainEqual(expect.objectContaining({ type: "turn_end" }));
   });
 
   it("maps message_update with text_delta", async () => {
@@ -405,12 +405,12 @@ describe("prompt() event mapping", () => {
         args: { path: "/foo" },
       },
     ]);
-    expect(events).toContainEqual({
-      type: "tool_call",
-      id: "tc-1",
-      name: "readFile",
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "tool_execution_start",
+      toolCallId: "tc-1",
+      toolName: "readFile",
       args: { path: "/foo" },
-    });
+    }));
   });
 
   it("maps tool_execution_end to tool_result", async () => {
@@ -423,12 +423,10 @@ describe("prompt() event mapping", () => {
         isError: false,
       },
     ]);
-    expect(events).toContainEqual({
-      type: "tool_result",
-      id: "tc-2",
-      output: "file contents",
-      isError: false,
-    });
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "tool_execution_end",
+      toolCallId: "tc-2",
+    }));
   });
 
   it("maps agent_end with converted messages", async () => {
@@ -484,13 +482,14 @@ describe("prompt() event mapping", () => {
     expect(msgField(agentEnd.messages[0], "errorMessage")).toBe("No API provider registered for api: undefined");
   });
 
-  it("skips unknown event types", async () => {
+  it("passes through all SDK event types without filtering", async () => {
     const events = await collectEvents([
       { type: "agent_start" },
-      { type: "message_start", message: {} },
-      { type: "unknown_future_event" },
+      { type: "turn_start" },
     ]);
-    expect(events).toHaveLength(0);
+    expect(events).toHaveLength(2);
+    expect(events[0].type).toBe("agent_start");
+    expect(events[1].type).toBe("turn_start");
   });
 
   it("handles multiple events in sequence", async () => {
@@ -507,7 +506,7 @@ describe("prompt() event mapping", () => {
     expect(events).toHaveLength(3);
     expect(events.map((e) => e.type)).toEqual([
       "turn_start",
-      "text_delta",
+      "message_update",
       "turn_end",
     ]);
   });

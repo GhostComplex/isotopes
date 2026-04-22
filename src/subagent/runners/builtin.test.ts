@@ -4,7 +4,8 @@ import { describe, it, expect } from "vitest";
 import type { AgentConfig, AgentEvent, ProviderConfig } from "../../core/types.js";
 import { ToolRegistry } from "../../core/tools.js";
 import type { SubagentEvent } from "../types.js";
-import { BuiltinRunner, type Builtin } from "./builtin.js";
+import { BuiltinRunner, type BuiltinPiMonoCore } from "./builtin.js";
+import type { PiMonoInstance } from "../../core/pi-mono.js";
 
 function makeRegistry(names: string[]): ToolRegistry {
   const r = new ToolRegistry("test");
@@ -22,7 +23,7 @@ function fakeProvider(): ProviderConfig {
 }
 
 function makeCore(events: AgentEvent[]): {
-  core: Builtin;
+  core: BuiltinPiMonoCore;
   setIds: string[];
   clearedIds: string[];
   capturedConfig: AgentConfig | undefined;
@@ -48,18 +49,18 @@ function makeCore(events: AgentEvent[]): {
     followUp: () => {},
   } as unknown as PiMonoInstance;
 
-  const core: Builtin = {
-    setToolRegistry: (id) => {
+  const core = {
+    setToolRegistry: (id: string) => {
       setIds.push(id);
     },
-    clearToolRegistry: (id) => {
+    clearToolRegistry: (id: string) => {
       clearedIds.push(id);
     },
-    createAgent: (config) => {
+    createAgent: (config: AgentConfig) => {
       capturedConfig = config;
       return instance;
     },
-  };
+  } as unknown as BuiltinPiMonoCore;
 
   return {
     core,
@@ -98,8 +99,8 @@ describe("BuiltinRunner", () => {
   it("registers a filtered tool registry, runs, and clears it", async () => {
     const harness = makeCore([
       { type: "turn_start" },
-      { type: "text_delta", text: "ok" },
-      { type: "turn_end" },
+      { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "ok" } as never },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "agent_end", messages: [] },
     ]);
     const runner = new BuiltinRunner(harness.core);
@@ -170,11 +171,11 @@ describe("BuiltinRunner", () => {
       steer: () => {},
       followUp: () => {},
     } as unknown as PiMonoInstance;
-    const core: Builtin = {
-      setToolRegistry: (id) => setIds.push(id),
-      clearToolRegistry: (id) => clearedIds.push(id),
+    const core = {
+      setToolRegistry: (id: string) => setIds.push(id),
+      clearToolRegistry: (id: string) => clearedIds.push(id),
       createAgent: () => errInstance,
-    };
+    } as unknown as BuiltinPiMonoCore;
     const runner = new BuiltinRunner(core);
 
     await expect(

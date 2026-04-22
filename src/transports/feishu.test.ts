@@ -11,10 +11,12 @@ import {
   resolveAgentId,
   type FeishuMessageEvent,
 } from "./feishu.js";
-import type { SessionStore, PiMonoInstance, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
+import type { SessionStore, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
+import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { DefaultAgentManager } from "../core/agent-manager.js";
 import {
   createMockAgentManager,
-  createMockPiMonoInstance,
+  createMockAgentInstance,
   createMockSessionStore,
 } from "../core/test-helpers.js";
 
@@ -372,16 +374,16 @@ describe("shouldRespondToGroupMessage", () => {
 
 describe("FeishuTransport", () => {
   let transport: FeishuTransport;
-  let agentManager: AgentManager;
+  let agentManager: DefaultAgentManager;
   let sessionStore: SessionStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
     capturedEventHandler = null;
     agentManager = createMockAgentManager(
-      createMockPiMonoInstance([
-        { type: "text_delta", text: "Hello " },
-        { type: "text_delta", text: "from Feishu!" },
+      createMockAgentInstance([
+        { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "Hello " } as never },
+        { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "from Feishu!" } as never },
         { type: "agent_end", messages: [] },
       ]),
     );
@@ -726,15 +728,15 @@ describe("FeishuTransport", () => {
             async next() {
               throw new Error("Agent crashed");
             },
-          };
+          } as AsyncIterator<AgentEvent>;
         },
       };
-      const errorAgent: PiMonoInstance = {
+      const errorAgent = {
         prompt: vi.fn(() => throwingIterable),
         abort: vi.fn(),
         steer: vi.fn(),
         followUp: vi.fn(),
-      };
+      } as unknown as PiMonoInstance;
       agentManager.get = vi.fn(() => errorAgent);
 
       const event = createDMEvent();
@@ -751,12 +753,10 @@ describe("FeishuTransport", () => {
     });
 
     it("handles agent_end with error stopReason", async () => {
-      const errorAgent = createMockPiMonoInstance([
+      const errorAgent = createMockAgentInstance([
         {
           type: "agent_end",
-          messages: [],
-          stopReason: "error",
-          errorMessage: "API key invalid",
+          messages: [{ role: "assistant", stopReason: "error", errorMessage: "API key invalid", content: [], timestamp: 0 } as never],
         },
       ]);
       agentManager.get = vi.fn(() => errorAgent);

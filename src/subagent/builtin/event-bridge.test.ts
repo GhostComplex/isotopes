@@ -1,7 +1,7 @@
 // src/subagent/builtin/event-bridge.test.ts — Tests for AgentEvent → SubagentEvent bridge
 
 import { describe, it, expect } from "vitest";
-import type { AgentEvent } from "../../core/types.js";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { SubagentEvent } from "../types.js";
 import { bridgeAgentEvents } from "./event-bridge.js";
 
@@ -50,8 +50,8 @@ describe("bridgeAgentEvents", () => {
 
   it("translates tool_result and surfaces error flag", async () => {
     const out = await collect([
-      { type: "tool_execution_end", toolCallId: "1", toolName: "test", args: {}, result: "ok", isError: false },
-      { type: "tool_execution_end", toolCallId: "2", toolName: "test", args: {}, result: "boom", isError: false, isError: true },
+      { type: "tool_execution_end", toolCallId: "1", toolName: "test", result: "ok", isError: false },
+      { type: "tool_execution_end", toolCallId: "2", toolName: "test", result: "boom", isError: true },
       { type: "agent_end", messages: [] },
     ]);
     expect(out[0]).toEqual({ type: "tool_result", toolResult: "ok" });
@@ -68,9 +68,9 @@ describe("bridgeAgentEvents", () => {
     ]);
   });
 
-  it("emits error+done(1) for an error event", async () => {
+  it("emits error+done(1) when agent_end has errorMessage", async () => {
     const out = await collect([
-      { type: "error", error: new Error("kaboom") },
+      { type: "agent_end", messages: [{ role: "assistant", errorMessage: "kaboom", content: [], timestamp: 0 } as never] },
     ]);
     expect(out).toEqual([
       { type: "error", error: "kaboom" },
