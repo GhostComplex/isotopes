@@ -199,58 +199,59 @@ export const DEFAULT_SUBAGENT_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", 
 /** Claude Agent SDK settings source — controls which `settings.json` files the spawned `claude` CLI loads. */
 export type SettingSource = "user" | "project" | "local";
 
-/** Sub-agent execution configuration in config file (M7/M8) */
+/** Valid subagent runner types */
+export type SubagentType = "claude" | "builtin";
+
+/** Claude-specific sub-agent configuration */
+export interface ClaudeSubagentConfigFile {
+  permissionMode?: SubagentPermissionMode;
+  allowedTools?: string[];
+  enableShell?: boolean;
+  settingSources?: SettingSource[];
+}
+
+/** Builtin-specific sub-agent configuration (extensible) */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface BuiltinSubagentConfigFile {}
+
+/** Sub-agent execution configuration in config file */
 export interface SubagentConfigFile {
   /** Whether subagent backend is enabled. Default: false */
   enabled?: boolean;
-  /** Settings sources the SDK should load. Default: ["user"] (loads ~/.claude/settings.json — env, model, permissions). SDK default is [] (load nothing); pass [] to opt out. */
-  settingSources?: SettingSource[];
-  /** Default sub-agent to use when spawning sub-agents */
-  defaultAgent?: string;
-  /** Agents allowed to be spawned as sub-agents */
-  allowedAgents?: string[];
+  /** Runner types allowed to be spawned. Default: ["claude", "builtin"] */
+  allowedTypes?: SubagentType[];
+  /** Default runner type when not specified. Default: "claude" */
+  defaultType?: SubagentType;
   /** Default timeout in seconds for sub-agent runs */
   timeout?: number;
   /** Default maximum turns per sub-agent run */
   maxTurns?: number;
-  /**
-   * Permission mode for subagent tool execution (M8)
-   * - "skip" — Use --dangerously-skip-permissions (full access, no prompts)
-   * - "allowlist" — Use --allowedTools with configured list (recommended)
-   * - "default" — Use claude CLI defaults (interactive prompts, not suitable for automation)
-   * Default: "allowlist"
-   */
-  permissionMode?: SubagentPermissionMode;
-  /**
-   * Tool allowlist for subagent execution (M8)
-   * Only used when permissionMode: "allowlist"
-   * Default: ["Read", "Write", "Edit", "Glob", "Grep", "LS"]
-   */
-  allowedTools?: string[];
-  /**
-   * Enable shell access for subagents (M8)
-   * Adds "Bash" to allowedTools when permissionMode: "allowlist"
-   * WARNING: Combined with permissionMode: "skip", this allows arbitrary command execution
-   * Default: false
-   */
-  enableShell?: boolean;
   /** Whether to create Discord threads for sub-agent output. Default: true */
   useThread?: boolean;
   /** Whether to show tool call details in Discord. Default: true */
   showToolCalls?: boolean;
+  /** Claude Agent SDK runner configuration */
+  claude?: ClaudeSubagentConfigFile;
+  /** Built-in runner configuration */
+  builtin?: BuiltinSubagentConfigFile;
 }
 
-/** Resolved subagent configuration with defaults applied (M8) */
-export interface ResolvedSubagentConfig {
-  defaultAgent?: string;
-  allowedAgents?: string[];
-  timeout?: number;
-  maxTurns?: number;
+/** Resolved claude-specific subagent config with defaults applied */
+export interface ResolvedClaudeSubagentConfig {
   permissionMode: SubagentPermissionMode;
   allowedTools: string[];
+  settingSources?: SettingSource[];
+}
+
+/** Resolved subagent configuration with defaults applied */
+export interface ResolvedSubagentConfig {
+  allowedTypes: Set<SubagentType>;
+  defaultType: SubagentType;
+  timeout?: number;
+  maxTurns?: number;
   useThread: boolean;
   showToolCalls: boolean;
-  settingSources?: SettingSource[];
+  claude: ResolvedClaudeSubagentConfig;
 }
 
 /** Cron job configuration in config file */
@@ -368,58 +369,66 @@ export function resolveSessionConfig(
 }
 
 const VALID_PERMISSION_MODES = new Set<SubagentPermissionMode>(["skip", "allowlist", "default"]);
+const VALID_SUBAGENT_TYPES = new Set<SubagentType>(["claude", "builtin"]);
+const DEFAULT_ALLOWED_TYPES: SubagentType[] = ["claude", "builtin"];
 
 /**
- * Resolve subagent config with defaults applied (M8).
- * Validates permission mode and logs security warnings.
+ * Resolve subagent config with defaults applied.
+ * Validates permission mode, allowed types, and logs security warnings.
  */
 export function resolveSubagentConfig(
   subagentConfig?: SubagentConfigFile,
 ): ResolvedSubagentConfig {
-  const permissionMode = subagentConfig?.permissionMode ?? "allowlist";
+  const claude = subagentConfig?.claude;
+  const permissionMode = claude?.permissionMode ?? "allowlist";
 
-  // Validate permission mode
   if (!VALID_PERMISSION_MODES.has(permissionMode)) {
     throw new Error(
-      `Invalid subagent.permissionMode "${permissionMode}" (must be skip, allowlist, or default)`,
+      `Invalid subagent.claude.permissionMode "${permissionMode}" (must be skip, allowlist, or default)`,
     );
   }
 
-  // Build allowed tools list
-  let allowedTools = subagentConfig?.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
-
-  // Add Bash if enableShell is true and not already in list
-  if (subagentConfig?.enableShell && !allowedTools.includes("Bash")) {
+  let allowedTools = claude?.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
+  if (claude?.enableShell && !allowedTools.includes("Bash")) {
     allowedTools = [...allowedTools, "Bash"];
   }
 
-  // Security warnings (M8.1)
   if (permissionMode === "skip") {
     log.warn(
-      "⚠️  SECURITY WARNING: subagent.permissionMode is set to 'skip'. " +
-      "Sub-agents will have unrestricted tool access without any permission prompts. " +
-      "This is NOT recommended for production use.",
+      "⚠️  SECURITY WARNING: subagent.claude.permissionMode is set to 'skip'. " +
+      "Sub-agents will have unrestricted tool access without any permission prompts.",
     );
-
-    if (subagentConfig?.enableShell) {
+    if (claude?.enableShell) {
       log.warn(
-        "⚠️  CRITICAL SECURITY WARNING: permissionMode 'skip' combined with enableShell: true " +
-        "allows sub-agents to execute ARBITRARY SHELL COMMANDS without approval. " +
-        "Only use this configuration in fully trusted, isolated environments.",
+        "⚠️  CRITICAL: permissionMode 'skip' + enableShell allows arbitrary shell commands.",
       );
     }
   }
 
+  const allowedTypes = (subagentConfig?.allowedTypes ?? DEFAULT_ALLOWED_TYPES);
+  for (const t of allowedTypes) {
+    if (!VALID_SUBAGENT_TYPES.has(t)) {
+      throw new Error(`Invalid subagent.allowedTypes entry "${t}" (must be claude or builtin)`);
+    }
+  }
+
+  const defaultType = subagentConfig?.defaultType ?? "claude";
+  if (!VALID_SUBAGENT_TYPES.has(defaultType)) {
+    throw new Error(`Invalid subagent.defaultType "${defaultType}" (must be claude or builtin)`);
+  }
+
   return {
-    defaultAgent: subagentConfig?.defaultAgent,
-    allowedAgents: subagentConfig?.allowedAgents,
+    allowedTypes: new Set(allowedTypes),
+    defaultType,
     timeout: subagentConfig?.timeout,
     maxTurns: subagentConfig?.maxTurns,
-    permissionMode,
-    allowedTools,
     useThread: subagentConfig?.useThread ?? true,
     showToolCalls: subagentConfig?.showToolCalls ?? true,
-    ...(subagentConfig?.settingSources && { settingSources: subagentConfig.settingSources }),
+    claude: {
+      permissionMode,
+      allowedTools,
+      ...(claude?.settingSources && { settingSources: claude.settingSources }),
+    },
   };
 }
 

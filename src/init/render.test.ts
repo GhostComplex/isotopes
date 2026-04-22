@@ -97,15 +97,17 @@ describe("renderConfig", () => {
     expect(yaml).toMatch(/^#\s+enabled: true/m);
   });
 
-  it("emits subagent with allowlist and no shell", () => {
+  it("emits subagent with claude allowlist and no shell", () => {
     const yaml = renderConfig({
       llm: "skip",
       channel: "skip",
       subagent: "enabled",
-      subagentConfig: { permissionMode: "allowlist", enableShell: false },
+      subagentConfig: { allowedTypes: ["claude", "builtin"], permissionMode: "allowlist", enableShell: false },
     });
     expect(yaml).toMatch(/^subagent:/m);
     expect(yaml).toContain("enabled: true");
+    expect(yaml).toContain("allowedTypes: [claude, builtin]");
+    expect(yaml).toContain("defaultType: claude");
     expect(yaml).toContain("permissionMode: allowlist");
     expect(yaml).toContain("enableShell: false");
   });
@@ -115,9 +117,23 @@ describe("renderConfig", () => {
       llm: "skip",
       channel: "skip",
       subagent: "enabled",
-      subagentConfig: { permissionMode: "skip", enableShell: true },
+      subagentConfig: { allowedTypes: ["claude"], permissionMode: "skip", enableShell: true },
     });
+    expect(yaml).toContain("allowedTypes: [claude]");
     expect(yaml).toContain("permissionMode: skip");
     expect(yaml).toContain("enableShell: true");
+  });
+
+  it("emits subagent builtin-only without claude block", () => {
+    const yaml = renderConfig({
+      llm: "skip",
+      channel: "skip",
+      subagent: "enabled",
+      subagentConfig: { allowedTypes: ["builtin"], permissionMode: "allowlist", enableShell: false },
+    });
+    expect(yaml).toContain("allowedTypes: [builtin]");
+    expect(yaml).toContain("defaultType: builtin");
+    expect(yaml).not.toContain("permissionMode:");
+    expect(yaml).not.toContain("claude:");
   });
 });

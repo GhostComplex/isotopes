@@ -168,27 +168,28 @@ channels:
 #         id: "1480866703880487034"
 
 # =============================================================================
-# Subagent — Claude Agent SDK backend for sub-agent spawning
+# Subagent — Sub-agent spawning configuration
 # =============================================================================
 subagent:
   enabled: true
-  defaultAgent: main
-  allowedAgents:
-    - main
-  # settingSources: [user]            # default; loads ~/.claude/settings.json (env, model, permissions). Use [] to opt out.
-  # timeout: 900                      # seconds; backend default 15min
+  allowedTypes: [claude, builtin]   # runner types allowed to be spawned
+  defaultType: claude               # which runner to use when not specified
+  # timeout: 900                      # seconds; default 15min
   # maxTurns: 50
-  # permissionMode: allowlist         # skip | allowlist | default
-  # allowedTools:                     # used when permissionMode=allowlist
-  #   - Read
-  #   - Write
-  #   - Edit
-  #   - Glob
-  #   - Grep
-  #   - LS
-  # enableShell: false                # appends Bash to allowedTools
   # useThread: true                   # spawn Discord thread for subagent output
   # showToolCalls: true
+  claude:                             # Claude Agent SDK runner config
+    # permissionMode: allowlist       # skip | allowlist | default
+    # allowedTools:                   # used when permissionMode=allowlist
+    #   - Read
+    #   - Write
+    #   - Edit
+    #   - Glob
+    #   - Grep
+    #   - LS
+    # enableShell: false              # appends Bash to allowedTools
+    # settingSources: [user]          # loads ~/.claude/settings.json; use [] to opt out
+  # builtin: {}                       # built-in runner config (extensible)
 
 # =============================================================================
 # CRON — channel-level scheduled jobs (per-agent cron lives under agents.<id>.cron)

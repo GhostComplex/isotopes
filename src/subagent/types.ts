@@ -12,9 +12,6 @@ import type { ToolRegistry } from "../core/tools.js";
 /** Supported subagent backends. */
 export type SubagentAgent = "claude" | "builtin";
 
-/** All known subagent values for validation */
-export const SUBAGENT_AGENTS: ReadonlySet<string> = new Set<string>(["claude", "builtin"]);
-
 /** Builtin-backend-specific spawn options. */
 export interface BuiltinSubagentOptions {
   /** Provider config inherited from the parent agent. */

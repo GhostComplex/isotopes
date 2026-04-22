@@ -78,12 +78,14 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   if (config.subagent?.enabled) {
     const subagentConfig = resolveSubagentConfig(config.subagent);
     initSubagentBackend({
-      permissionMode: subagentConfig.permissionMode,
-      allowedTools: subagentConfig.allowedTools,
-      settingSources: subagentConfig.settingSources,
+      permissionMode: subagentConfig.claude.permissionMode,
+      allowedTools: subagentConfig.claude.allowedTools,
+      settingSources: subagentConfig.claude.settingSources,
+      allowedTypes: subagentConfig.allowedTypes,
+      defaultType: subagentConfig.defaultType,
       core,
     });
-    log.info(`Subagent backend initialized (permissionMode: ${subagentConfig.permissionMode})`);
+    log.info(`Subagent backend initialized (defaultType: ${subagentConfig.defaultType}, claude.permissionMode: ${subagentConfig.claude.permissionMode})`);
 
     setSubagentSessionStoreFactory((agentId) => sessionStoreManager.getOrCreate(agentId));
     log.info("Subagent session store factory → shared SessionStoreManager");

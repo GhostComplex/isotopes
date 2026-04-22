@@ -37,18 +37,28 @@ const AGENTS = `agents:
 
 const SUBAGENT_SKIP = `# subagent:
 #   enabled: true
-#   permissionMode: allowlist
-#   enableShell: false
+#   allowedTypes: [claude, builtin]
+#   claude:
+#     permissionMode: allowlist
+#     enableShell: false
 `;
 
 function renderSubagent(answers: InitAnswers): string {
   if (answers.subagent !== "enabled" || !answers.subagentConfig) return SUBAGENT_SKIP;
-  const { permissionMode, enableShell } = answers.subagentConfig;
+  const { allowedTypes, permissionMode, enableShell } = answers.subagentConfig;
+  const typesStr = `[${allowedTypes.join(", ")}]`;
+  const hasClaude = allowedTypes.includes("claude");
+  const claudeBlock = hasClaude
+    ? `  claude:
+    permissionMode: ${permissionMode}
+    enableShell: ${enableShell}
+`
+    : "";
   return `subagent:
   enabled: true
-  permissionMode: ${permissionMode}
-  enableShell: ${enableShell}
-`;
+  allowedTypes: ${typesStr}
+  defaultType: ${allowedTypes[0]}
+${claudeBlock}`;
 }
 
 function renderChannels(answers: InitAnswers): string {

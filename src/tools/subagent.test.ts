@@ -43,14 +43,14 @@ describe("initSubagentBackend / getSubagentBackend", () => {
   it("returns backend after init", async () => {
     vi.resetModules();
     const { initSubagentBackend, getSubagentBackend } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist", allowedTools: ["Read"] });
+    initSubagentBackend({ permissionMode: "allowlist", allowedTools: ["Read"], defaultType: "claude" });
     expect(getSubagentBackend()).toBeDefined();
   });
 
   it("caches backend per workspace key", async () => {
     vi.resetModules();
     const { initSubagentBackend, getSubagentBackend } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist" });
+    initSubagentBackend({ permissionMode: "allowlist", defaultType: "claude" });
     const a = getSubagentBackend(["/w1"]);
     const b = getSubagentBackend(["/w1"]);
     expect(a).toBe(b);
@@ -63,7 +63,7 @@ describe("spawnSubagent", () => {
   it("returns success result with collected output", async () => {
     vi.resetModules();
     const { initSubagentBackend, spawnSubagent } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist" });
+    initSubagentBackend({ permissionMode: "allowlist", defaultType: "claude" });
     spawnMock.mockReturnValue(
       eventGen(
         { type: "start" },
@@ -82,7 +82,7 @@ describe("spawnSubagent", () => {
   it("returns failure when spawn throws", async () => {
     vi.resetModules();
     const { initSubagentBackend, spawnSubagent } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist" });
+    initSubagentBackend({ permissionMode: "allowlist", defaultType: "claude" });
     spawnMock.mockImplementation(() => {
       throw new Error("boom");
     });
@@ -94,7 +94,7 @@ describe("spawnSubagent", () => {
   it("streams events to onEvent callback", async () => {
     vi.resetModules();
     const { initSubagentBackend, spawnSubagent } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist" });
+    initSubagentBackend({ permissionMode: "allowlist", defaultType: "claude" });
     spawnMock.mockReturnValue(
       eventGen(
         { type: "start" },

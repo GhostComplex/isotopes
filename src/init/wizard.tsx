@@ -35,8 +35,10 @@ export interface DiscordAnswers {
 
 export type SubagentPermissionModeChoice = "allowlist" | "skip" | "default";
 export type SubagentEnableShellChoice = "yes" | "no";
+export type SubagentTypeChoice = "claude" | "builtin" | "both";
 
 export interface SubagentAnswers {
+  allowedTypes: ("claude" | "builtin")[];
   permissionMode: SubagentPermissionModeChoice;
   enableShell: boolean;
 }
@@ -72,6 +74,7 @@ type Step =
   | { kind: "discord-group-policy" }
   | { kind: "discord-group-allowlist" }
   | { kind: "subagent" }
+  | { kind: "subagent-types" }
   | { kind: "subagent-permissionMode" }
   | { kind: "subagent-enableShell" };
 
@@ -96,6 +99,7 @@ function InitWizard({ onDone }: Props) {
   const [groupAllowlistInput, setGroupAllowlistInput] = useState("");
 
   const [subagent, setSubagent] = useState<SubagentChoice>("skip");
+  const [subagentTypes, setSubagentTypes] = useState<("claude" | "builtin")[]>(["claude", "builtin"]);
   const [subagentPermissionMode, setSubagentPermissionMode] = useState<SubagentPermissionModeChoice>("allowlist");
   const [subagentEnableShell, setSubagentEnableShell] = useState(false);
 
@@ -130,7 +134,7 @@ function InitWizard({ onDone }: Props) {
           }
         : {}),
       ...(subagent === "enabled"
-        ? { subagentConfig: { permissionMode: subagentPermissionMode, enableShell: subagentEnableShell } }
+        ? { subagentConfig: { allowedTypes: subagentTypes, permissionMode: subagentPermissionMode, enableShell: subagentEnableShell } }
         : {}),
       ...overrides,
     };
@@ -341,7 +345,7 @@ function InitWizard({ onDone }: Props) {
 
       {step.kind === "subagent" && (
         <Box flexDirection="column">
-          <Text>3) Sub-agent (Claude Agent SDK):</Text>
+          <Text>3) Sub-agent:</Text>
           <SelectInput
             items={[
               { label: "enabled (configure sub-agent execution)", value: "enabled" as const },
@@ -349,8 +353,29 @@ function InitWizard({ onDone }: Props) {
             ]}
             onSelect={(item: { value: SubagentChoice }) => {
               setSubagent(item.value);
-              if (item.value === "enabled") setStep({ kind: "subagent-permissionMode" });
+              if (item.value === "enabled") setStep({ kind: "subagent-types" });
               else finish({ subagent: item.value });
+            }}
+          />
+        </Box>
+      )}
+
+      {step.kind === "subagent-types" && (
+        <Box flexDirection="column">
+          <Text>Sub-agent runner types:</Text>
+          <SelectInput
+            items={[
+              { label: "both (claude + builtin)", value: "both" as const },
+              { label: "claude only (Claude Agent SDK)", value: "claude" as const },
+              { label: "builtin only (in-process)", value: "builtin" as const },
+            ]}
+            onSelect={(item: { value: SubagentTypeChoice }) => {
+              const types: ("claude" | "builtin")[] = item.value === "both"
+                ? ["claude", "builtin"]
+                : [item.value];
+              setSubagentTypes(types);
+              if (types.includes("claude")) setStep({ kind: "subagent-permissionMode" });
+              else finish();
             }}
           />
         </Box>
@@ -358,7 +383,7 @@ function InitWizard({ onDone }: Props) {
 
       {step.kind === "subagent-permissionMode" && (
         <Box flexDirection="column">
-          <Text>Sub-agent permission mode:</Text>
+          <Text>Claude sub-agent permission mode:</Text>
           <SelectInput
             items={[
               { label: "allowlist (recommended — restrict to a tool allowlist)", value: "allowlist" as const },

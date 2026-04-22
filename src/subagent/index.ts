@@ -14,8 +14,6 @@ export type {
   SubagentTask,
 } from "./types.js";
 
-export { SUBAGENT_AGENTS } from "./types.js";
-
 export { SubagentBackend, collectResult, summarizeEvents, mapSdkMessage, MAX_CONCURRENT_AGENTS } from "./backend.js";
 export type { SubagentBackendOptions } from "./backend.js";
 

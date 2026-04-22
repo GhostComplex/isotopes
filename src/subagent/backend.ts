@@ -7,13 +7,12 @@ import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { createLogger } from "../core/logger.js";
 import {
-  SUBAGENT_AGENTS,
   type SubagentAgent,
   type SubagentEvent,
   type SubagentResult,
   type SubagentSpawnOptions,
 } from "./types.js";
-import type { SettingSource, SubagentPermissionMode } from "../core/config.js";
+import type { SettingSource, SubagentPermissionMode, SubagentType } from "../core/config.js";
 import type { SubagentRunner } from "./runner.js";
 import { ClaudeRunner } from "./runners/claude.js";
 import { BuiltinRunner, type BuiltinPiMonoCore } from "./runners/builtin.js";
@@ -44,6 +43,10 @@ export interface SubagentBackendOptions {
   allowedTools?: string[];
   /** Settings sources passed to the Claude Agent SDK. Default: ["user"]. */
   settingSources?: SettingSource[];
+  /** Runner types allowed to be spawned. Default: ["claude", "builtin"] */
+  allowedTypes?: Set<SubagentType>;
+  /** Default runner type when not specified. Default: "claude" */
+  defaultType?: SubagentType;
   /**
    * Core used to host in-process builtin subagents. When provided, a
    * BuiltinRunner is registered for the "builtin" agent. When omitted,
@@ -65,6 +68,8 @@ export interface SubagentBackendOptions {
 export class SubagentBackend {
   private allowedRoots: string[];
   private runners: Partial<Record<SubagentAgent, SubagentRunner>>;
+  private allowedTypes: Set<SubagentType>;
+  public defaultType: SubagentType;
   /** Workspace key for singleton comparison (used by getBackend cache) */
   public workspacesKey: string;
 
@@ -75,17 +80,21 @@ export class SubagentBackend {
 
     this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
     this.workspacesKey = this.allowedRoots.slice().sort().join(":");
+    this.allowedTypes = opts.allowedTypes ?? new Set(["claude", "builtin"]);
+    this.defaultType = opts.defaultType ?? "claude";
 
     if (opts.runners) {
       this.runners = { ...opts.runners };
     } else {
-      const claude = new ClaudeRunner({
-        permissionMode: opts.permissionMode,
-        allowedTools: opts.allowedTools,
-        settingSources: opts.settingSources,
-      });
-      this.runners = { claude };
-      if (opts.core) {
+      this.runners = {};
+      if (this.allowedTypes.has("claude")) {
+        this.runners.claude = new ClaudeRunner({
+          permissionMode: opts.permissionMode,
+          allowedTools: opts.allowedTools,
+          settingSources: opts.settingSources,
+        });
+      }
+      if (this.allowedTypes.has("builtin") && opts.core) {
         this.runners.builtin = new BuiltinRunner(opts.core);
       }
     }
@@ -127,10 +136,10 @@ export class SubagentBackend {
     }
   }
 
-  /** Validate that the agent name is one of the known subagent backends. */
+  /** Validate that the agent name is one of the allowed subagent types. */
   validateAgent(agent: string): void {
-    if (!SUBAGENT_AGENTS.has(agent)) {
-      throw new Error(`Unknown agent: ${agent}. Allowed: ${[...SUBAGENT_AGENTS].join(", ")}`);
+    if (!this.allowedTypes.has(agent as SubagentType)) {
+      throw new Error(`Unknown agent: ${agent}. Allowed: ${[...this.allowedTypes].join(", ")}`);
     }
   }
 
