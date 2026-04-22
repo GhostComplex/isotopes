@@ -5,14 +5,12 @@
 import { randomUUID } from "node:crypto";
 import { createLogger } from "../../core/logger.js";
 import { PiMonoCore } from "../../core/pi-mono.js";
-import { PiMonoCore } from "./pi-mono.js";
 import type { ToolRegistry } from "../../core/tools.js";
 import { bridgeAgentEvents } from "../builtin/event-bridge.js";
 import { buildBuiltinSubagentSystemPrompt } from "../builtin/system-prompt.js";
 import { filterToolRegistry, resolveBuiltinToolPolicy } from "../builtin/tool-policy.js";
 import type { RunnerSignals, SubagentRunner } from "../runner.js";
 import type { SubagentAgent, SubagentEvent, SubagentSpawnOptions } from "../types.js";
-import { PiMonoCore } from "./pi-mono.js";
 
 const log = createLogger("subagent:runner:builtin");
 

@@ -11,10 +11,10 @@ import {
   resolveAgentId,
   type FeishuMessageEvent,
 } from "./feishu.js";
-import type { AgentManager, SessionStore, AgentInstance, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
+import type { AgentManager, SessionStore, PiMonoInstance, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
 import {
   createMockAgentManager,
-  createMockAgentInstance,
+  createMockPiMonoInstance,
   createMockSessionStore,
 } from "../core/test-helpers.js";
 
@@ -379,7 +379,7 @@ describe("FeishuTransport", () => {
     vi.clearAllMocks();
     capturedEventHandler = null;
     agentManager = createMockAgentManager(
-      createMockAgentInstance([
+      createMockPiMonoInstance([
         { type: "text_delta", text: "Hello " },
         { type: "text_delta", text: "from Feishu!" },
         { type: "agent_end", messages: [] },
@@ -729,7 +729,7 @@ describe("FeishuTransport", () => {
           };
         },
       };
-      const errorAgent: AgentInstance = {
+      const errorAgent: PiMonoInstance = {
         prompt: vi.fn(() => throwingIterable),
         abort: vi.fn(),
         steer: vi.fn(),
@@ -751,7 +751,7 @@ describe("FeishuTransport", () => {
     });
 
     it("handles agent_end with error stopReason", async () => {
-      const errorAgent = createMockAgentInstance([
+      const errorAgent = createMockPiMonoInstance([
         {
           type: "agent_end",
           messages: [],

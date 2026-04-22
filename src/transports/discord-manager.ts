@@ -2,7 +2,6 @@
 // Each Discord bot account gets its own transport (Client, token, identity).
 
 import type {
-  AgentManager,
   ChannelsConfig,
   DiscordAccountConfig,
   SessionStore,
@@ -21,7 +20,7 @@ const VALID_REPLY_TO_MODES = new Set<ReplyToMode>(["off", "first", "all"]);
 
 /** Shared infrastructure injected into every Discord account transport. */
 export interface DiscordSharedConfig {
-  agentManager: AgentManager;
+  agentManager: DefaultAgentManager;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   /** Full channels block — passed through for per-guild lookups (e.g. requireMention). */

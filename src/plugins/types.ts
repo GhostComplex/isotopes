@@ -3,7 +3,8 @@
 
 import type { Logger } from "../core/logger.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { Transport, AgentManager } from "../core/types.js";
+import type { Transport } from "../core/types.js";
+import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { IsotopesConfigFile } from "../core/config.js";
 
@@ -76,7 +77,7 @@ export interface UIPluginConfig {
 export type TransportFactory = (ctx: TransportFactoryContext) => Transport | Promise<Transport>;
 
 export interface TransportFactoryContext {
-  agentManager: AgentManager;
+  agentManager: DefaultAgentManager;
   sessionStoreManager: SessionStoreManager;
   config: IsotopesConfigFile;
 }

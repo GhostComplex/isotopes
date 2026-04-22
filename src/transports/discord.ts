@@ -148,7 +148,7 @@ export class SegmentedStreamBuffer {
 export interface DiscordTransportConfig {
   /** Discord bot token from Developer Portal */
   token: string;
-  agentManager: AgentManager;
+  agentManager: DefaultAgentManager;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   /** Default agent ID to use when no @mention routing */

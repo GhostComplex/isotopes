@@ -178,8 +178,8 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
         if (!agent) throw new Error(`Agent "${agentId}" not found`);
         let responseText = "";
         for await (const event of agent.prompt(prompt)) {
-          if (event.type === "text_delta") {
-            responseText += event.text;
+          if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+            responseText += event.assistantMessageEvent.delta;
           }
         }
         return responseText;
@@ -246,8 +246,8 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     try {
       let responseText = "";
       for await (const event of agent.prompt(prompt)) {
-        if (event.type === "text_delta") {
-          responseText += event.text;
+        if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+          responseText += event.assistantMessageEvent.delta;
         }
       }
       log.info(`Cron "${job.name}" completed (${responseText.length} chars)`);

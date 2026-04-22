@@ -1,19 +1,8 @@
-// src/subagent/builtin/event-bridge.ts — Bridge AgentEvent stream to SubagentEvent stream
-// AgentEvent (pi-mono) is delta-oriented; SubagentEvent is message-oriented. The bridge
-// buffers text deltas across a turn and emits a single "message" event at turn_end.
+// src/subagent/builtin/event-bridge.ts — Bridge SDK AgentEvent stream to SubagentEvent stream
 
-import type { AgentEvent } from "../../core/types.js";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { SubagentEvent } from "../types.js";
 
-/**
- * Translate a stream of {@link AgentEvent}s from {@link AgentInstance.prompt}
- * into a stream of {@link SubagentEvent}s used by the subagent backend.
- *
- * - text_delta: buffered, flushed as "message" on turn_end (only if non-empty).
- * - tool_call → tool_use; tool_result → tool_result.
- * - agent_end → "done" with exitCode 0 (or 1 if `errorMessage` set).
- * - error → "error" + "done" exitCode 1.
- */
 export async function* bridgeAgentEvents(
   events: AsyncIterable<AgentEvent>,
 ): AsyncGenerator<SubagentEvent, void, void> {
@@ -25,35 +14,43 @@ export async function* bridgeAgentEvents(
       case "turn_start":
         buffer = "";
         break;
-      case "text_delta":
-        buffer += event.text;
+      case "message_update": {
+        const ame = event.assistantMessageEvent;
+        if (ame.type === "text_delta") {
+          buffer += ame.delta;
+        }
         break;
+      }
       case "turn_end": {
         const text = buffer.trim();
         if (text.length > 0) yield { type: "message", content: text };
         buffer = "";
         break;
       }
-      case "tool_call":
+      case "tool_execution_start":
         yield {
           type: "tool_use",
-          toolName: event.name,
+          toolName: event.toolName,
           toolInput: event.args,
         };
         break;
-      case "tool_result":
+      case "tool_execution_end": {
+        const output = typeof event.result === "string" ? event.result : JSON.stringify(event.result);
         yield {
           type: "tool_result",
-          toolResult: event.output,
+          toolResult: output,
           ...(event.isError ? { error: "tool error" } : {}),
         };
         break;
+      }
       case "agent_end": {
         const trailing = buffer.trim();
         if (trailing.length > 0) yield { type: "message", content: trailing };
         buffer = "";
-        if (event.errorMessage) {
-          yield { type: "error", error: event.errorMessage };
+        const lastAssistant = [...event.messages].reverse().find((m) => m.role === "assistant");
+        const errMsg = (lastAssistant as unknown as { errorMessage?: string })?.errorMessage;
+        if (errMsg) {
+          yield { type: "error", error: errMsg };
           yield { type: "done", exitCode: 1 };
         } else {
           yield { type: "done", exitCode: 0 };
@@ -61,11 +58,6 @@ export async function* bridgeAgentEvents(
         endedNormally = true;
         break;
       }
-      case "error":
-        yield { type: "error", error: event.error.message };
-        yield { type: "done", exitCode: 1 };
-        endedNormally = true;
-        break;
     }
   }
 

@@ -3,7 +3,7 @@
 
 import path from "node:path";
 import { createLogger } from "../core/logger.js";
-import type { AgentManager } from "../core/types.js";
+import type { DefaultAgentManager } from '../core/agent-manager.js';;
 import { WorkspaceWatcher } from "./watcher.js";
 
 const log = createLogger("hot-reload");
@@ -77,7 +77,7 @@ export class HotReloadManager {
   private started = false;
 
   constructor(
-    private agentManager: AgentManager,
+    private agentManager: DefaultAgentManager,
     private config: HotReloadConfig = { enabled: true },
   ) {}
 

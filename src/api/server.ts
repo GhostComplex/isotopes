@@ -6,7 +6,8 @@ import path from "node:path";
 import { createLogger } from "../core/logger.js";
 import type { CronScheduler } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
-import type { AgentManager, SessionStore } from "../core/types.js";
+import type { DefaultAgentManager } from '../core/agent-manager.js';
+import type { SessionStore } from '../core/types.js';
 import type { UsageTracker } from "../core/usage-tracker.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import {
@@ -56,7 +57,7 @@ export interface ApiServerConfig {
 export interface ApiServerDeps {
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
-  agentManager?: AgentManager;
+  agentManager?: DefaultAgentManager;
   usageTracker?: UsageTracker;
   discordSessionStores?: Map<string, SessionStore>;
   uiRegistry?: UIRegistry;

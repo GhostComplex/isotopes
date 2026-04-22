@@ -2,9 +2,9 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
-import type { AgentManager, SessionStore, AgentInstance, ChannelsConfig } from "../core/types.js";
+import type { AgentManager, SessionStore, PiMonoInstance, ChannelsConfig } from "../core/types.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
-import { createMockAgentManager, createMockAgentInstance, createMockSessionStore } from "../core/test-helpers.js";
+import { createMockAgentManager, createMockPiMonoInstance, createMockSessionStore } from "../core/test-helpers.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -130,7 +130,7 @@ describe("DiscordTransport", () => {
 
   describe("runAgentAndRespond", () => {
     it("logs and sends a message when agent_end reports an error", async () => {
-      const erroringAgent = createMockAgentInstance([
+      const erroringAgent = createMockPiMonoInstance([
         {
           type: "agent_end",
           messages: [],
@@ -148,7 +148,7 @@ describe("DiscordTransport", () => {
       await (
         transport as unknown as {
           runAgentAndRespond: (
-            agent: AgentInstance,
+            agent: PiMonoInstance,
             input: string,
             channel: MockChannel,
             sessionId: string,
@@ -1290,7 +1290,7 @@ describe("DiscordTransport", () => {
       const localSessionStore = createMockSessionStore();
 
       // Agent that completes normally
-      const completingAgent = createMockAgentInstance([
+      const completingAgent = createMockPiMonoInstance([
         { type: "text_delta", text: "Done!" },
         { type: "agent_end", messages: [] },
       ]);

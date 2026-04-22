@@ -1,5 +1,7 @@
 // src/core/types.ts — Core interfaces for the Isotopes agent framework
 
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+
 import type { SandboxConfig } from "../sandbox/config.js";
 import type { ReplyToMode } from "../transports/reply-directive.js";
 

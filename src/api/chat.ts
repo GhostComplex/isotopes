@@ -142,27 +142,30 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
       if (ac.signal.aborted) break;
 
       switch (event.type) {
-        case "text_delta":
-          responseText += event.text;
-          writeEvent("text_delta", { text: event.text });
+        case "message_update": {
+          const ame = event.assistantMessageEvent;
+          if (ame.type === "text_delta") {
+            responseText += ame.delta;
+            writeEvent("text_delta", { text: ame.delta });
+          }
           break;
-        case "tool_call":
-          writeEvent("tool_call", { id: event.id, name: event.name, args: event.args });
+        }
+        case "tool_execution_start":
+          writeEvent("tool_call", { id: event.toolCallId, name: event.toolName, args: event.args });
           break;
-        case "tool_result":
-          writeEvent("tool_result", { id: event.id, output: event.output, isError: event.isError });
+        case "tool_execution_end": {
+          const output = typeof event.result === "string" ? event.result : JSON.stringify(event.result);
+          writeEvent("tool_result", { id: event.toolCallId, output, isError: event.isError });
           break;
+        }
         case "turn_start":
           writeEvent("turn_start", {});
           break;
         case "turn_end":
-          writeEvent("turn_end", { usage: event.usage });
+          writeEvent("turn_end", {});
           break;
         case "agent_end":
-          writeEvent("agent_end", { stopReason: event.stopReason });
-          break;
-        case "error":
-          writeEvent("error", { message: event.error.message });
+          writeEvent("agent_end", {});
           break;
       }
     }

@@ -19,8 +19,8 @@ describe("bridgeAgentEvents", () => {
   it("buffers text_delta and emits a single message at turn_end", async () => {
     const out = await collect([
       { type: "turn_start" },
-      { type: "text_delta", text: "Hello, " },
-      { type: "text_delta", text: "world." },
+      { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "Hello, " } as never },
+      { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "world." } as never },
       { type: "turn_end" },
       { type: "agent_end", messages: [] },
     ]);
@@ -33,7 +33,7 @@ describe("bridgeAgentEvents", () => {
   it("skips empty messages", async () => {
     const out = await collect([
       { type: "turn_start" },
-      { type: "text_delta", text: "   " },
+      { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "   " } as never },
       { type: "turn_end" },
       { type: "agent_end", messages: [] },
     ]);
@@ -42,7 +42,7 @@ describe("bridgeAgentEvents", () => {
 
   it("translates tool_call → tool_use", async () => {
     const out = await collect([
-      { type: "tool_call", id: "1", name: "shell", args: { cmd: "ls" } },
+      { type: "tool_execution_start", toolCallId: "1", toolName: "shell", args: { cmd: "ls" } },
       { type: "agent_end", messages: [] },
     ]);
     expect(out[0]).toEqual({ type: "tool_use", toolName: "shell", toolInput: { cmd: "ls" } });
@@ -50,8 +50,8 @@ describe("bridgeAgentEvents", () => {
 
   it("translates tool_result and surfaces error flag", async () => {
     const out = await collect([
-      { type: "tool_result", id: "1", output: "ok" },
-      { type: "tool_result", id: "2", output: "boom", isError: true },
+      { type: "tool_execution_end", toolCallId: "1", result: "ok" },
+      { type: "tool_execution_end", toolCallId: "2", result: "boom", isError: true },
       { type: "agent_end", messages: [] },
     ]);
     expect(out[0]).toEqual({ type: "tool_result", toolResult: "ok" });
@@ -81,7 +81,7 @@ describe("bridgeAgentEvents", () => {
   it("flushes trailing text and emits done if stream ends without agent_end", async () => {
     const out = await collect([
       { type: "turn_start" },
-      { type: "text_delta", text: "tail" },
+      { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "tail" } as never },
     ]);
     expect(out).toEqual([
       { type: "message", content: "tail" },

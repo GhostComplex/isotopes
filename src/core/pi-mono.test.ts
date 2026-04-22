@@ -393,7 +393,7 @@ describe("prompt() event mapping", () => {
         assistantMessageEvent: { type: "text_delta", delta: "hello world" },
       },
     ]);
-    expect(events).toContainEqual({ type: "text_delta", text: "hello world" });
+    expect(events).toContainEqual({ type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "hello world" } as never });
   });
 
   it("maps tool_execution_start to tool_call", async () => {

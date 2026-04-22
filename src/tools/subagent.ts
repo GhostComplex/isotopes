@@ -10,7 +10,7 @@ import {
   type SubagentEvent,
 } from "../subagent/index.js";
 import type { BuiltinSubagentOptions } from "../subagent/types.js";
-import type { BuiltinAgentCore } from "../subagent/runners/builtin.js";
+import type { BuiltinPiMonoCore } from "../subagent/runners/builtin.js";
 import { taskRegistry } from "../subagent/task-registry.js";
 import { createSubagentRecorder } from "../subagent/persistence.js";
 import type { SessionStore } from "../core/types.js";
@@ -31,7 +31,7 @@ export interface SubagentBackendConfig {
   /** Claude-specific settings (auth, base URL, executable path) */
   claude?: SubagentClaudeConfigFile;
   /** AgentCore used to host in-process builtin subagents. */
-  core?: BuiltinAgentCore;
+  core?: BuiltinPiMonoCore;
 }
 
 /** Options for spawning a sub-agent */

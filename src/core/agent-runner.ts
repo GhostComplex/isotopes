@@ -146,7 +146,7 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
       }
 
       if (hooks && agentId) {
-        await hooks.emit("agent_end", { agentId, stopReason: event.stopReason });
+        await hooks.emit("agent_end", { agentId, stopReason });
       }
     }
   }

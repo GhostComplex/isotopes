@@ -139,7 +139,7 @@ export interface FeishuTransportConfig {
   appId: string;
   /** Feishu app secret from Developer Console */
   appSecret: string;
-  agentManager: AgentManager;
+  agentManager: DefaultAgentManager;
   sessionStore: SessionStore;
   /** Default agent ID to use for incoming messages */
   defaultAgentId?: string;

@@ -1,13 +1,8 @@
-import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 // src/core/agent-manager.ts — Agent lifecycle management
-// Creates, stores, and manages PiMonoInstance objects.
 
-import type {
-  AgentConfig,
-  
-} from "./types.js";
+import type { AgentConfig } from "./types.js";
 import { PiMonoCore, PiMonoInstance } from "./pi-mono.js";
-import { PiMonoCore } from "./pi-mono.js";
+import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 import {
   buildSystemPrompt,
   ensureWorkspaceStructure,
@@ -46,7 +41,7 @@ interface AgentEntry {
  * SOUL.md, MEMORY.md, and other context files that are merged into
  * the system prompt.
  */
-export class DefaultAgentManager implements AgentManager {
+export class DefaultAgentManager {
   private agents = new Map<string, AgentEntry>();
 
   constructor(private core: PiMonoCore) {}

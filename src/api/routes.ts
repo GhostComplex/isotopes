@@ -9,7 +9,8 @@ import path from "node:path";
 import { VERSION } from "../version.js";
 import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
-import type { AgentManager, SessionStore } from "../core/types.js";
+import type { DefaultAgentManager } from "../core/agent-manager.js";
+import type { SessionStore } from "../core/types.js";
 import { messageText } from "../core/messages.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
@@ -25,7 +26,7 @@ import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middle
 export interface RouteDeps {
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
-  agentManager?: AgentManager;
+  agentManager?: DefaultAgentManager;
   discordSessionStores?: Map<string, SessionStore>;
   usageTracker?: UsageTracker;
   sessionStoreManager?: SessionStoreManager;
