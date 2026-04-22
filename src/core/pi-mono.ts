@@ -452,6 +452,7 @@ export class PiMonoInstance {
           );
 
           // Replace agent messages with sanitized compacted version
+          // pi-agent-core 0.66: state.messages setter copies the array (replaceMessages was removed)
           this.agent.state.messages = sanitized;
 
           // Retry the prompt with compacted context
@@ -533,6 +534,7 @@ export class PiMonoInstance {
         compactedMessages,
       );
 
+      // pi-agent-core 0.66: state.messages setter copies the array
       this.agent.state.messages = sanitized;
       return true;
     } catch (err) {

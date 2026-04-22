@@ -283,14 +283,12 @@ export type CompactionMode = 'off' | 'safeguard' | 'aggressive';
 
 /** Configuration for context compaction */
 export interface CompactionConfig {
-  /** Compaction mode. Default: 'safeguard' */
   mode: CompactionMode;
-  /** Maximum context window size in tokens. Default: 128000 */
   contextWindow?: number;
-  /** Threshold ratio (0–1) at which compaction triggers. Default: 0.8 for safeguard, 0.5 for aggressive */
   threshold?: number;
-  /** Number of recent messages to preserve (not summarized). Default: 10 */
   preserveRecent?: number;
+  /** Absolute token reserve before compaction triggers. Overrides threshold if set. */
+  reserveTokens?: number;
 }
 
 // ---------------------------------------------------------------------------

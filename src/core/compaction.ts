@@ -68,10 +68,10 @@ export function resolveCompactionConfig(
 function toSdkSettings(config: CompactionConfig): SdkCompactionSettings {
   const contextWindow = config.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
   const threshold = config.threshold ?? DEFAULT_THRESHOLDS[config.mode];
-  const reserveTokens = Math.floor(contextWindow * (1 - threshold));
+  const fromThreshold = Math.floor(contextWindow * (1 - threshold));
   return {
     enabled: config.mode !== "off",
-    reserveTokens: Math.max(reserveTokens, DEFAULT_RESERVE_TOKENS),
+    reserveTokens: config.reserveTokens ?? Math.max(fromThreshold, DEFAULT_RESERVE_TOKENS),
     keepRecentTokens: DEFAULT_KEEP_RECENT_TOKENS,
   } satisfies SdkCompactionSettings;
 }
