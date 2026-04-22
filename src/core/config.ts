@@ -210,6 +210,13 @@ export interface SubagentClaudeConfigFile {
   baseUrl?: string;
   /** Override the Claude Code executable path */
   pathToClaudeCodeExecutable?: string;
+  /**
+   * Which Claude Code settings sources the SDK should load (env, model,
+   * permissions, hooks). Defaults to `["user"]` so `~/.claude/settings.json`
+   * is honored — the SDK itself defaults to `[]` (load nothing). Pass `[]`
+   * explicitly to opt out.
+   */
+  settingSources?: ("user" | "project" | "local")[];
 }
 
 /** Sub-agent execution configuration in config file (M7/M8) */

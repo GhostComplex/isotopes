@@ -156,6 +156,8 @@ export class ClaudeRunner implements SubagentRunner {
       sdkOptions.pathToClaudeCodeExecutable = this.claude.pathToClaudeCodeExecutable;
     }
 
+    sdkOptions.settingSources = this.claude?.settingSources ?? ["user"];
+
     const envOverrides: Record<string, string> = {};
     if (this.claude?.authToken) envOverrides.ANTHROPIC_AUTH_TOKEN = this.claude.authToken;
     if (this.claude?.baseUrl) envOverrides.ANTHROPIC_BASE_URL = this.claude.baseUrl;
