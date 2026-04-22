@@ -40,10 +40,6 @@ interface SdkCompactionSettings {
 // Token estimation — delegate to SDK
 // ---------------------------------------------------------------------------
 
-export function estimateMessageTokens(message: AgentMessage): number {
-  return sdkEstimateTokens(message);
-}
-
 export function estimateTotalTokens(messages: AgentMessage[]): number {
   let total = 0;
   for (const msg of messages) {

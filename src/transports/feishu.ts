@@ -8,7 +8,7 @@ import {
   type Binding,
   type BindingPeer,
   type ChannelsConfig,
-  type Message,
+  type AgentMessage,
   type SessionStore,
   type Transport,
 } from "../core/types.js";
@@ -408,11 +408,11 @@ export class FeishuTransport implements Transport {
     const enrichedText = buildHistoryContext(historyEntries, text);
 
     // Add user message to session
-    const userMsg: Message = {
+    const userMsg: AgentMessage = {
       role: "user",
       content: enrichedText,
       timestamp: parseInt(message.create_time, 10),
-    } as unknown as Message;
+    } as unknown as AgentMessage;
     await this.config.sessionStore.addMessage(session.id, userMsg);
 
     // Prepare prompt — limitHistoryTurns + sanitize + prune
@@ -450,7 +450,7 @@ export class FeishuTransport implements Transport {
 
   private async runAgentAndReply(
     agent: AgentInstance,
-    input: Message[],
+    input: AgentMessage[],
     chatId: string,
     sessionId: string,
   ): Promise<void> {

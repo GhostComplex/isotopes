@@ -2,7 +2,8 @@
 // Defines the manifest, lifecycle, hooks, and API surface for Isotopes plugins.
 
 import type { Logger } from "../core/logger.js";
-import type { Message, Transport, AgentManager } from "../core/types.js";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { Transport, AgentManager } from "../core/types.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { IsotopesConfigFile } from "../core/config.js";
 
@@ -50,8 +51,8 @@ export interface HookPayloads {
   agent_end: { agentId: string; stopReason?: string };
   before_tool_call: { agentId: string; toolName: string; args: unknown };
   after_tool_call: { agentId: string; toolName: string; args: unknown; result: string };
-  message_received: { agentId: string; sessionId: string; message: Message };
-  message_sending: { agentId: string; sessionId: string; message: Message };
+  message_received: { agentId: string; sessionId: string; message: AgentMessage };
+  message_sending: { agentId: string; sessionId: string; message: AgentMessage };
   session_start: { agentId: string; sessionId: string };
   session_end: { agentId: string; sessionId: string };
 }

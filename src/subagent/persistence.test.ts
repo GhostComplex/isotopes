@@ -7,7 +7,7 @@ import {
   buildSubagentSessionKey,
 } from "./persistence.js";
 import type { SubagentEvent } from "./types.js";
-import type { SessionStore, Message, Session } from "../core/types.js";
+import type { SessionStore, AgentMessage, Session } from "../core/types.js";
 
 describe("buildSubagentSessionKey", () => {
   it("produces the expected sessionKey", () => {
@@ -99,7 +99,7 @@ describe("terminalEventPatch", () => {
 
 function fakeStore(): SessionStore & {
   __session: Session;
-  __messages: Message[];
+  __messages: AgentMessage[];
 } {
   const session: Session = {
     id: "sess-1",
@@ -107,7 +107,7 @@ function fakeStore(): SessionStore & {
     metadata: {},
     lastActiveAt: new Date(),
   };
-  const messages: Message[] = [];
+  const messages: AgentMessage[] = [];
   return {
     __session: session,
     __messages: messages,

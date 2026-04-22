@@ -1,7 +1,7 @@
 // src/core/context.test.ts — Tests for prompt preparation transforms
 
 import { describe, it, expect } from "vitest";
-import { type Message } from "./types.js";
+import type { AgentMessage as Message } from "@mariozechner/pi-agent-core";
 import {
   limitHistoryTurns,
   sanitizeToolUseResultPairing,

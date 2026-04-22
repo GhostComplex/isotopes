@@ -15,7 +15,7 @@ import {
   type AgentInstance,
   type AgentManager,
   type ChannelsConfig,
-  type Message,
+  type AgentMessage,
   type SessionStore,
   type ThreadBindingConfig,
   type Transport,
@@ -538,11 +538,11 @@ export class DiscordTransport implements Transport {
     const inboundMeta = formatInboundMeta(messageMetadata, chatType);
     const contentWithMeta = `${inboundMeta}\n\n${enrichedContent}`;
     
-    const userMsg: Message = {
+    const userMsg: AgentMessage = {
       role: "user",
       content: contentWithMeta,
       timestamp: msg.createdTimestamp,
-    } as unknown as Message;
+    } as unknown as AgentMessage;
     await sessionStore.addMessage(session.id, userMsg);
 
     // 9. Prepare prompt — limitHistoryTurns + sanitize + prune
@@ -809,7 +809,7 @@ export class DiscordTransport implements Transport {
 
   private async runAgentAndRespond(
     agent: AgentInstance,
-    input: string | Message[],
+    input: string | AgentMessage[],
     channel: SendableChannel,
     sessionId: string,
     sessionStore: SessionStore,

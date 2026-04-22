@@ -13,9 +13,9 @@ vi.mock("@mariozechner/pi-coding-agent", async (importOriginal) => {
   };
 });
 
-import { generateSummary } from "@mariozechner/pi-coding-agent";
+import { generateSummary, estimateTokens } from "@mariozechner/pi-coding-agent";
 import {
-  estimateMessageTokens,
+
   estimateTotalTokens,
   shouldCompact,
   createSummaryMessage,
@@ -65,18 +65,18 @@ beforeEach(() => {
 // Token estimation (delegates to SDK estimateTokens)
 // ---------------------------------------------------------------------------
 
-describe("estimateMessageTokens", () => {
+describe("estimateTokens (SDK)", () => {
   it("estimates tokens using chars/4 heuristic", () => {
     const msg = makeMessage("user", "hello world"); // 11 chars
-    expect(estimateMessageTokens(msg)).toBe(3); // ceil(11/4)
+    expect(estimateTokens(msg)).toBe(3); // ceil(11/4)
   });
 
   it("returns 0 for empty string", () => {
-    expect(estimateMessageTokens(makeMessage("user", ""))).toBe(0);
+    expect(estimateTokens(makeMessage("user", ""))).toBe(0);
   });
 
   it("estimates long content", () => {
-    expect(estimateMessageTokens(makeMessage("user", "a".repeat(400)))).toBe(100);
+    expect(estimateTokens(makeMessage("user", "a".repeat(400)))).toBe(100);
   });
 });
 

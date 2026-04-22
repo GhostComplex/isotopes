@@ -9,8 +9,8 @@
 import { randomUUID } from "node:crypto";
 
 import { createLogger } from "../core/logger.js";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
-  Message,
   Session,
   SessionMetadata,
   SessionStore,
@@ -42,7 +42,7 @@ function safeStringify(value: unknown): string {
 }
 
 /**
- * Convert one SubagentEvent into a Message suitable for SessionStore.
+ * Convert one SubagentEvent into an AgentMessage suitable for SessionStore.
  *
  * Returns undefined for control events (start/done) — those drive
  * session lifecycle and metadata, not transcript content.
@@ -52,7 +52,7 @@ function safeStringify(value: unknown): string {
  * `tool_result` content block so downstream consumers can read them
  * uniformly with main-agent transcripts.
  */
-export function eventToMessage(event: SubagentEvent): Message | undefined {
+export function eventToMessage(event: SubagentEvent): AgentMessage | undefined {
   const timestamp = Date.now();
   switch (event.type) {
     case "start":
@@ -66,7 +66,7 @@ export function eventToMessage(event: SubagentEvent): Message | undefined {
         role: "assistant",
         content: [{ type: "text", text }],
         timestamp,
-      } as unknown as Message;
+      } as unknown as AgentMessage;
     }
 
     case "tool_use": {
@@ -77,7 +77,7 @@ export function eventToMessage(event: SubagentEvent): Message | undefined {
         role: "assistant",
         content: [{ type: "text", text }],
         timestamp,
-      } as unknown as Message;
+      } as unknown as AgentMessage;
     }
 
     case "tool_result": {
@@ -88,7 +88,7 @@ export function eventToMessage(event: SubagentEvent): Message | undefined {
         toolCallId: "subagent",
         toolName: event.toolName ?? "unknown",
         timestamp,
-      } as unknown as Message;
+      } as unknown as AgentMessage;
     }
 
     case "error": {
@@ -97,7 +97,7 @@ export function eventToMessage(event: SubagentEvent): Message | undefined {
         role: "assistant",
         content: [{ type: "text", text: `❌ ${text}` }],
         timestamp,
-      } as unknown as Message;
+      } as unknown as AgentMessage;
     }
 
     default:

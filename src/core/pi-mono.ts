@@ -9,7 +9,6 @@ import {
   type AgentCore,
   type AgentEvent,
   type AgentInstance,
-  type Message,
   type Tool,
   type Usage,
 } from "./types.js";
@@ -100,7 +99,7 @@ function resolveModel(config: AgentConfig): Model<Api> {
   return model;
 }
 
-function getAgentEndMetadata(messages: Message[]): {
+function getAgentEndMetadata(messages: AgentMessage[]): {
   stopReason?: string;
   errorMessage?: string;
 } {
@@ -337,7 +336,7 @@ class PiMonoInstance implements AgentInstance {
     }
   }
 
-  async *prompt(input: string | Message[]): AsyncIterable<AgentEvent> {
+  async *prompt(input: string | AgentMessage[]): AsyncIterable<AgentEvent> {
     let releaseQueue: (() => void) | undefined;
     const waitForTurn = this.promptQueue.catch(() => undefined);
     this.promptQueue = new Promise<void>((resolve) => {
@@ -359,7 +358,7 @@ class PiMonoInstance implements AgentInstance {
    * If an overflow error is detected, compact context and retry.
    */
   private async *promptWithOverflowRecovery(
-    input: string | Message[],
+    input: string | AgentMessage[],
     retryCount = 0,
   ): AsyncIterable<AgentEvent> {
     const events: (CoreEvent | null)[] = [];
@@ -499,11 +498,11 @@ class PiMonoInstance implements AgentInstance {
     this.agent.abort();
   }
 
-  steer(msg: Message): void {
+  steer(msg: AgentMessage): void {
     this.agent.steer(msg);
   }
 
-  followUp(msg: Message): void {
+  followUp(msg: AgentMessage): void {
     this.agent.followUp(msg);
   }
 
@@ -511,7 +510,7 @@ class PiMonoInstance implements AgentInstance {
     this.agent.reset();
   }
 
-  getMessages(): Message[] {
+  getMessages(): AgentMessage[] {
     return this.agent.state.messages;
   }
 

@@ -10,9 +10,6 @@ import type { ReplyToMode } from "../transports/reply-directive.js";
 
 export type { AgentMessage } from "@mariozechner/pi-agent-core";
 
-/** Alias for code that references "Message" — this IS AgentMessage. */
-export type Message = AgentMessage;
-
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 // src/core/pi-mono.test.ts — Unit tests for PiMonoCore
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AgentConfig, AgentEvent, Message } from "./types.js";
+import type { AgentConfig, AgentEvent, AgentMessage } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Mock setup
@@ -103,7 +103,7 @@ describe("PiMonoCore.createAgent", () => {
   it("steer() delegates to the underlying Agent with mapped message", () => {
     const core = new PiMonoCore();
     const instance = core.createAgent(makeConfig());
-    const msg: Message = { role: "user", content: "hi", timestamp: 5000 };
+    const msg: AgentMessage = { role: "user", content: "hi", timestamp: 5000 };
 
     instance.steer(msg);
 
@@ -115,7 +115,7 @@ describe("PiMonoCore.createAgent", () => {
   it("followUp() delegates to the underlying Agent with mapped message", () => {
     const core = new PiMonoCore();
     const instance = core.createAgent(makeConfig());
-    const msg = { role: "user", content: "follow up", timestamp: Date.now() } as unknown as Message as unknown as Message;
+    const msg = { role: "user", content: "follow up", timestamp: Date.now() } as unknown as AgentMessage as unknown as AgentMessage;
 
     instance.followUp(msg);
 
@@ -366,9 +366,9 @@ describe("prompt() event mapping", () => {
     const instance = core.createAgent(makeConfig());
 
     const inputMsgs = [
-      { role: "user", content: "hello", timestamp: 1000 } as unknown as Message,
-      { role: "assistant", content: [{ type: "text", text: "hi there" }], timestamp: 2000 } as unknown as Message,
-      { role: "toolResult", content: "tool output", toolCallId: "call-1", toolName: "readFile", timestamp: 3000 } as unknown as Message,
+      { role: "user", content: "hello", timestamp: 1000 } as unknown as AgentMessage,
+      { role: "assistant", content: [{ type: "text", text: "hi there" }], timestamp: 2000 } as unknown as AgentMessage,
+      { role: "toolResult", content: "tool output", toolCallId: "call-1", toolName: "readFile", timestamp: 3000 } as unknown as AgentMessage,
     ];
 
     for await (const _ev of instance.prompt(inputMsgs)) {
