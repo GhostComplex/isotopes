@@ -14,6 +14,7 @@ import TextInput from "ink-text-input";
 
 export type LlmChoice = "ghc-proxy" | "skip";
 export type ChannelChoice = "discord" | "skip";
+export type SubagentChoice = "enabled" | "skip";
 
 export interface GhcProxyAnswers {
   baseUrl: string;
@@ -32,11 +33,21 @@ export interface DiscordAnswers {
   groupAllowlist?: string[];
 }
 
+export type SubagentPermissionModeChoice = "allowlist" | "skip" | "default";
+export type SubagentEnableShellChoice = "yes" | "no";
+
+export interface SubagentAnswers {
+  permissionMode: SubagentPermissionModeChoice;
+  enableShell: boolean;
+}
+
 export interface InitAnswers {
   llm: LlmChoice;
   ghcProxy?: GhcProxyAnswers;
   channel: ChannelChoice;
   discord?: DiscordAnswers;
+  subagent: SubagentChoice;
+  subagentConfig?: SubagentAnswers;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,7 +70,10 @@ type Step =
   | { kind: "discord-dm-policy" }
   | { kind: "discord-dm-userId" }
   | { kind: "discord-group-policy" }
-  | { kind: "discord-group-allowlist" };
+  | { kind: "discord-group-allowlist" }
+  | { kind: "subagent" }
+  | { kind: "subagent-permissionMode" }
+  | { kind: "subagent-enableShell" };
 
 interface Props {
   onDone: (answers: InitAnswers) => void;
@@ -81,6 +95,10 @@ function InitWizard({ onDone }: Props) {
   const [groupPolicy, setGroupPolicy] = useState<GroupPolicyChoice>("allowlist");
   const [groupAllowlistInput, setGroupAllowlistInput] = useState("");
 
+  const [subagent, setSubagent] = useState<SubagentChoice>("skip");
+  const [subagentPermissionMode, setSubagentPermissionMode] = useState<SubagentPermissionModeChoice>("allowlist");
+  const [subagentEnableShell, setSubagentEnableShell] = useState(false);
+
   useInput((_input, key) => {
     if (key.ctrl && _input === "c") {
       exit();
@@ -92,6 +110,7 @@ function InitWizard({ onDone }: Props) {
     const answers: InitAnswers = {
       llm,
       channel,
+      subagent,
       ...(llm === "ghc-proxy"
         ? { ghcProxy: { baseUrl: ghcBaseUrl, apiKey: ghcApiKey, model: ghcModel } }
         : {}),
@@ -110,6 +129,9 @@ function InitWizard({ onDone }: Props) {
             },
           }
         : {}),
+      ...(subagent === "enabled"
+        ? { subagentConfig: { permissionMode: subagentPermissionMode, enableShell: subagentEnableShell } }
+        : {}),
       ...overrides,
     };
     onDone(answers);
@@ -117,6 +139,7 @@ function InitWizard({ onDone }: Props) {
   };
 
   const goToChannel = () => setStep({ kind: "channel" });
+  const goToSubagent = () => setStep({ kind: "subagent" });
 
   const handleLlmSelect = (item: { value: LlmChoice }) => {
     setLlm(item.value);
@@ -127,7 +150,7 @@ function InitWizard({ onDone }: Props) {
   const handleChannelSelect = (item: { value: ChannelChoice }) => {
     setChannel(item.value);
     if (item.value === "discord") setStep({ kind: "discord-token" });
-    else finish({ channel: item.value });
+    else goToSubagent();
   };
 
   return (
@@ -276,7 +299,7 @@ function InitWizard({ onDone }: Props) {
             onSelect={(item) => {
               setGroupPolicy(item.value);
               if (item.value === "allowlist") setStep({ kind: "discord-group-allowlist" });
-              else finish();
+              else goToSubagent();
             }}
           />
         </Box>
@@ -294,7 +317,7 @@ function InitWizard({ onDone }: Props) {
               onSubmit={() => {
                 const entries = groupAllowlistInput.trim().split(",").map((s) => s.trim()).filter(Boolean);
                 const valid = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
-                if (entries.length > 0 && valid) finish();
+                if (entries.length > 0 && valid) goToSubagent();
               }}
             />
           </Box>
@@ -303,6 +326,56 @@ function InitWizard({ onDone }: Props) {
             const valid = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
             return !valid ? <Text color="yellow">  each entry must be serverId or serverId/channelId (numeric)</Text> : null;
           })()}
+        </Box>
+      )}
+
+      {step.kind === "subagent" && (
+        <Box flexDirection="column">
+          <Text>3) Sub-agent (Claude Agent SDK):</Text>
+          <SelectInput
+            items={[
+              { label: "enabled (configure sub-agent execution)", value: "enabled" as const },
+              { label: "skip (configure later)", value: "skip" as const },
+            ]}
+            onSelect={(item: { value: SubagentChoice }) => {
+              setSubagent(item.value);
+              if (item.value === "enabled") setStep({ kind: "subagent-permissionMode" });
+              else finish({ subagent: item.value });
+            }}
+          />
+        </Box>
+      )}
+
+      {step.kind === "subagent-permissionMode" && (
+        <Box flexDirection="column">
+          <Text>Sub-agent permission mode:</Text>
+          <SelectInput
+            items={[
+              { label: "allowlist (recommended — restrict to a tool allowlist)", value: "allowlist" as const },
+              { label: "default (claude CLI defaults, interactive prompts)", value: "default" as const },
+              { label: "skip (--dangerously-skip-permissions, full access)", value: "skip" as const },
+            ]}
+            onSelect={(item: { value: SubagentPermissionModeChoice }) => {
+              setSubagentPermissionMode(item.value);
+              setStep({ kind: "subagent-enableShell" });
+            }}
+          />
+        </Box>
+      )}
+
+      {step.kind === "subagent-enableShell" && (
+        <Box flexDirection="column">
+          <Text>Enable shell access (Bash) for sub-agents?</Text>
+          <SelectInput
+            items={[
+              { label: "no (default — file tools only)", value: "no" as const },
+              { label: "yes (adds Bash to allowed tools)", value: "yes" as const },
+            ]}
+            onSelect={(item: { value: SubagentEnableShellChoice }) => {
+              setSubagentEnableShell(item.value === "yes");
+              finish();
+            }}
+          />
         </Box>
       )}
     </Box>
