@@ -234,7 +234,7 @@ describe("runAgentLoop", () => {
 
     // Turn 1: tool_result-role message paired to call-1, with toolName
     expect(msgField(calls[1][1], "role")).toBe("toolResult");
-    expect(msgField(calls[1][1], "content")).toBe("a.txt\nb.txt");
+    expect(msgField(calls[1][1], "content")).toEqual([{ type: "text", text: "a.txt\nb.txt" }]);
     expect(msgField(calls[1][1], "toolCallId")).toBe("call-1");
     expect(msgField(calls[1][1], "toolName")).toBe("shell");
 
@@ -265,7 +265,8 @@ describe("runAgentLoop", () => {
       (c) => c[1].role === "toolResult",
     );
     expect(toolResultCall).toBeDefined();
-    const output = msgField(toolResultCall![1], "content") as string;
+    const contentBlocks = msgField(toolResultCall![1], "content") as Array<{ type: string; text: string }>;
+    const output = contentBlocks.map((b) => b.text).join("");
     expect(output.length).toBeLessThan(big.length);
     expect(output).toContain("[truncated");
   });

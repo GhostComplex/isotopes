@@ -30,8 +30,8 @@ describe("toolResultMessage", () => {
   it("creates a toolResult message", () => {
     const msg = toolResultMessage("output", "call-1", "shell");
     expect(msg.role).toBe("toolResult");
-    const m = msg as unknown as { content: string; toolCallId: string; toolName: string };
-    expect(m.content).toBe("output");
+    const m = msg as unknown as { content: Array<{ type: string; text: string }>; toolCallId: string; toolName: string };
+    expect(m.content).toEqual([{ type: "text", text: "output" }]);
     expect(m.toolCallId).toBe("call-1");
     expect(m.toolName).toBe("shell");
   });

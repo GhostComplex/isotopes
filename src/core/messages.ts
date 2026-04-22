@@ -27,7 +27,7 @@ export function toolResultMessage(
 ): AgentMessage {
   return {
     role: "toolResult",
-    content: output,
+    content: [{ type: "text", text: output }],
     toolCallId,
     toolName,
     ...(opts?.isError !== undefined ? { isError: opts.isError } : {}),
