@@ -2,7 +2,7 @@
 // Implements the AgentCore / AgentInstance interfaces from types.ts.
 
 import { Agent, type AgentEvent as CoreEvent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
-import { getModel, completeSimple, type Model, type Api } from "@mariozechner/pi-ai";
+import { getModel, type Model, type Api } from "@mariozechner/pi-ai";
 
 import {
   messageContentToPlainText,
@@ -331,7 +331,9 @@ function toAgentTool(tool: Tool, handler: (args: unknown) => Promise<string>): A
 /** Options passed to PiMonoInstance for overflow recovery */
 interface CompactionContext {
   config: ReturnType<typeof resolveCompactionConfig>;
-  summarize: (prompt: string, signal?: AbortSignal) => Promise<string>;
+  model: Model<Api>;
+  apiKey: string;
+  headers?: Record<string, string>;
 }
 
 /**
@@ -379,33 +381,20 @@ export class PiMonoCore implements AgentCore {
     let compactionTransform: ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>) | undefined;
     let compactionContext: CompactionContext | undefined;
 
+    const apiKey = config.provider?.apiKey ?? "";
+
     if (config.compaction && config.compaction.mode !== "off") {
       const compactionConfig = resolveCompactionConfig(config.compaction);
       log.info(`Context compaction enabled for agent "${config.id}" (mode: ${compactionConfig.mode})`);
 
-      const summarize = async (prompt: string, _signal?: AbortSignal): Promise<string> => {
-        const result = await completeSimple(model, {
-          systemPrompt: "You are a concise summarizer. Output only the summary, nothing else.",
-          messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
-        });
-        // Extract text from the assistant message
-        if (typeof result.content === "string") return result.content;
-        if (Array.isArray(result.content)) {
-          return result.content
-            .filter((b): b is { type: "text"; text: string } => "type" in b && b.type === "text")
-            .map((b) => b.text)
-            .join("");
-        }
-        return String(result.content);
-      };
-
       compactionTransform = createTransformContext({
         config: compactionConfig,
-        summarize,
+        model,
+        apiKey,
+        headers: config.provider?.headers,
       });
 
-      // Pass compaction context to instance for overflow recovery
-      compactionContext = { config: compactionConfig, summarize };
+      compactionContext = { config: compactionConfig, model, apiKey, headers: config.provider?.headers };
     }
 
     const transformContext = async (messages: AgentMessage[], signal?: AbortSignal): Promise<AgentMessage[]> => {
@@ -472,13 +461,17 @@ class PiMonoInstance implements AgentInstance {
         systemPromptLength: state.systemPrompt?.length ?? 0,
         systemPrompt: state.systemPrompt,
         messagesCount: state.messages?.length ?? 0,
-        messages: state.messages?.map((m) => ({
-          role: m.role,
-          content:
-            typeof m.content === "string"
-              ? m.content.slice(0, 500)
-              : JSON.stringify(m.content).slice(0, 500),
-        })),
+        messages: state.messages?.map((m) => {
+          const msg = m as unknown as { role?: string; content?: unknown };
+          const content = msg.content;
+          return {
+            role: msg.role,
+            content:
+              typeof content === "string"
+                ? content.slice(0, 500)
+                : JSON.stringify(content).slice(0, 500),
+          };
+        }),
         toolsCount: state.tools?.length ?? 0,
         toolNames: state.tools?.map((t) => t.name) ?? [],
       };
@@ -613,7 +606,9 @@ class PiMonoInstance implements AgentInstance {
           const compactedMessages = await iterativeCompact({
             messages: currentMessages,
             config: this.compactionContext.config,
-            summarize: this.compactionContext.summarize,
+            model: this.compactionContext.model,
+            apiKey: this.compactionContext.apiKey,
+            headers: this.compactionContext.headers,
             maxRounds: 3,
           });
 
@@ -696,7 +691,9 @@ class PiMonoInstance implements AgentInstance {
       const compactedMessages = await forceCompact({
         messages: currentMessages,
         config: this.compactionContext.config,
-        summarize: this.compactionContext.summarize,
+        model: this.compactionContext.model,
+        apiKey: this.compactionContext.apiKey,
+        headers: this.compactionContext.headers,
       });
 
       const tokensAfter = estimateTotalTokens(compactedMessages);
