@@ -1,34 +1,42 @@
-// src/core/pi-mono.ts — Wrapper around @mariozechner/pi-agent-core Agent
+// src/core/pi-mono.ts — Agent session factory backed by pi-coding-agent SDK
+//
+// Replaces the old PiMonoCore/PiMonoInstance with createAgentSession().
+// Model resolution is handled here; compaction, overflow recovery, and
+// event streaming are all delegated to the SDK's AgentSession.
 
-import { Agent, type AgentEvent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
+import { type AgentEvent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
 import { getModel, type Model, type Api } from "@mariozechner/pi-ai";
+import {
+  type AgentSession,
+  type AgentSessionEvent,
+  AuthStorage,
+  createAgentSession,
+  ModelRegistry,
+  SessionManager,
+  SettingsManager,
+} from "@mariozechner/pi-coding-agent";
 
 import {
   type AgentConfig,
+  type CompactionConfig,
   type Tool,
 } from "./types.js";
 import type { ToolRegistry } from "./tools.js";
-import {
-  createTransformContext,
-  resolveCompactionConfig,
-  isContextOverflow,
-  forceCompact,
-  iterativeCompact,
-  estimateTotalTokens,
-} from "./compaction.js";
-import { sanitizeToolUseResultPairing } from "./context.js";
-import { getAgentEndMeta } from "./messages.js";
+import { resolveCompactionConfig } from "./compaction.js";
 import { createLogger } from "./logger.js";
-import * as fs from "node:fs";
 import * as path from "node:path";
+
+// ---------------------------------------------------------------------------
+// Re-exports
+// ---------------------------------------------------------------------------
+
+export type { AgentSession } from "@mariozechner/pi-coding-agent";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Default model — used when no provider config is specified
 const DEFAULT_MODEL = "claude-opus-4.5";
-
 const log = createLogger("pi-mono");
 
 function cloneModel<TApi extends Api>(
@@ -60,7 +68,6 @@ function resolveKnownModel(
   const model = getModel(provider, modelId as Parameters<typeof getModel>[1]) as Model<Api> | undefined;
   if (model) return model;
 
-  // For Anthropic, try dashed variant (e.g. claude-opus-4.5 → claude-opus-4-5)
   if (provider === "anthropic") {
     const dashed = modelId.replace(/(claude-(?:opus|sonnet|haiku)-\d)\.(\d)/g, "$1-$2");
     if (dashed !== modelId) {
@@ -72,14 +79,12 @@ function resolveKnownModel(
   throw new Error(`Unknown ${provider} model: ${modelId}`);
 }
 
-/** Resolve a pi-ai Model from our ProviderConfig. */
-function resolveModel(config: AgentConfig): Model<Api> {
+export function resolveModel(config: AgentConfig): Model<Api> {
   const p = config.provider;
   const provider = (p?.type.replace(/-proxy$/, "") ?? "anthropic") as Parameters<typeof getModel>[0];
   const modelId = p?.model ?? DEFAULT_MODEL;
   const model = resolveKnownModel(provider, modelId);
 
-  // Build proxy headers (Authorization injection for anthropic-proxy)
   const proxyHeaders = { ...(p?.headers ?? {}) };
   if (p?.type === "anthropic-proxy" && p.apiKey) {
     proxyHeaders.Authorization ??= `Bearer ${p.apiKey}`;
@@ -95,53 +100,10 @@ function resolveModel(config: AgentConfig): Model<Api> {
   return model;
 }
 
-
-// ---------------------------------------------------------------------------
-// Orphaned toolResult stripping (#146)
-// ---------------------------------------------------------------------------
-
-/**
- * Strip `toolResult` messages whose corresponding assistant `toolCall` is
- * missing from the context.  This happens when the SDK's `transformMessages`
- * drops errored/aborted assistant messages but keeps their tool results,
- * which the Anthropic API then rejects as orphaned `tool_result` blocks.
- *
- * Operates on `AgentMessage[]` (pi-agent-core format).
- */
-export function stripOrphanedToolResults(messages: AgentMessage[]): AgentMessage[] {
-  // Collect all toolCall IDs present in non-errored/non-aborted assistants
-  const validToolCallIds = new Set<string>();
-  for (const msg of messages) {
-    if (msg.role !== "assistant") continue;
-    const m = msg as { role: string; stopReason?: string; content?: unknown };
-    if (m.stopReason === "error" || m.stopReason === "aborted") continue;
-    if (!Array.isArray(m.content)) continue;
-    for (const block of m.content) {
-      if (block && typeof block === "object" && "type" in block && block.type === "toolCall" && "id" in block) {
-        validToolCallIds.add(block.id as string);
-      }
-    }
-  }
-
-  return messages.filter((msg) => {
-    if (msg.role !== "toolResult") return true;
-    const m = msg as { role: string; toolCallId?: string };
-    // Keep if toolCallId matches a valid (non-errored) assistant toolCall
-    if (m.toolCallId && !validToolCallIds.has(m.toolCallId)) {
-      log.debug(`Stripping orphaned toolResult (toolCallId: ${m.toolCallId})`);
-      return false;
-    }
-    return true;
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Tool conversion
 // ---------------------------------------------------------------------------
 
-/**
- * Convert our Tool + handler to pi-agent-core AgentTool.
- */
 function toAgentTool(tool: Tool, handler: (args: unknown) => Promise<string>): AgentTool {
   return {
     name: tool.name,
@@ -159,166 +121,145 @@ function toAgentTool(tool: Tool, handler: (args: unknown) => Promise<string>): A
 }
 
 // ---------------------------------------------------------------------------
-// PiMonoCore
+// AgentServiceCache — cached per-agent SDK dependencies
 // ---------------------------------------------------------------------------
 
-/** Options passed to PiMonoInstance for overflow recovery */
-interface CompactionContext {
-  config: ReturnType<typeof resolveCompactionConfig>;
-  model: Model<Api>;
-  apiKey: string;
-  headers?: Record<string, string>;
+const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
+
+export interface AgentServiceCacheConfig {
+  agentConfig: AgentConfig;
+  toolRegistry?: ToolRegistry;
 }
 
-/**
- * PiMonoCore — {@link AgentCore} implementation backed by pi-agent-core.
- *
- * Wraps the `@mariozechner/pi-agent-core` Agent to create
- * {@link AgentInstance}s that stream {@link AgentEvent}s. Supports
- * context compaction, tool registries, and configurable LLM providers.
- */
-export class PiMonoCore {
-  private toolRegistries = new Map<string, ToolRegistry>();
+export class AgentServiceCache {
+  readonly model: Model<Api>;
+  readonly tools: AgentTool[];
+  readonly agentDir: string;
+  private readonly authStorage: AuthStorage;
+  private readonly modelRegistry: ModelRegistry;
+  private readonly compactionConfig?: CompactionConfig;
+  private readonly apiKey: string;
 
-  /**
-   * Set a tool registry to be used for a specific agent.
-   */
-  setToolRegistry(agentId: string, registry: ToolRegistry): void {
-    this.toolRegistries.set(agentId, registry);
-  }
+  constructor(opts: AgentServiceCacheConfig) {
+    const { agentConfig, toolRegistry } = opts;
 
-  /**
-   * Drop the tool registry binding for an agent id. Used by short-lived
-   * subagent runs to release per-spawn registries after the agent exits.
-   */
-  clearToolRegistry(agentId: string): void {
-    this.toolRegistries.delete(agentId);
-  }
+    this.model = resolveModel(agentConfig);
+    this.agentDir = path.join(ISOTOPES_HOME, "agents", agentConfig.id, "agent");
+    this.apiKey = agentConfig.provider?.apiKey ?? "";
 
-  createAgent(config: AgentConfig): PiMonoInstance {
-    const model = resolveModel(config);
+    // Build in-memory auth storage with the provider's API key
+    const provider = (agentConfig.provider?.type.replace(/-proxy$/, "") ?? "anthropic") as string;
+    const creds: Record<string, { type: "api_key"; key: string }> = {};
+    if (this.apiKey) {
+      creds[provider] = { type: "api_key", key: this.apiKey };
+    }
+    this.authStorage = AuthStorage.inMemory(creds);
+    this.modelRegistry = ModelRegistry.create(this.authStorage);
 
-    // Convert registered tools to AgentTools
-    const tools: AgentTool[] = [];
-    const toolRegistry = this.toolRegistries.get(config.id);
+    // Convert registered tools
+    this.tools = [];
     if (toolRegistry) {
       for (const entry of toolRegistry.list()) {
         const toolEntry = toolRegistry.get(entry.name);
         if (toolEntry) {
-          tools.push(toAgentTool(toolEntry.tool, toolEntry.handler));
+          this.tools.push(toAgentTool(toolEntry.tool, toolEntry.handler));
         }
       }
     }
 
-    // Build transformContext hook — always includes orphaned toolResult
-    // stripping (#146), with compaction layered on top if enabled.
-    let compactionTransform: ((messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>) | undefined;
-    let compactionContext: CompactionContext | undefined;
-
-    const apiKey = config.provider?.apiKey ?? "";
-
-    if (config.compaction && config.compaction.mode !== "off") {
-      const compactionConfig = resolveCompactionConfig(config.compaction);
-      log.info(`Context compaction enabled for agent "${config.id}" (mode: ${compactionConfig.mode})`);
-
-      compactionTransform = createTransformContext({
-        config: compactionConfig,
-        model,
-        apiKey,
-        headers: config.provider?.headers,
-      });
-
-      compactionContext = { config: compactionConfig, model, apiKey, headers: config.provider?.headers };
-    }
-
-    const transformContext = async (messages: AgentMessage[], signal?: AbortSignal): Promise<AgentMessage[]> => {
-      // Strip orphaned toolResult messages whose assistant (with the
-      // matching toolCall) was dropped by the SDK due to error/abort (#146).
-      const sanitized = stripOrphanedToolResults(messages);
-      // Then apply compaction if configured
-      if (compactionTransform) {
-        return compactionTransform(sanitized, signal);
-      }
-      return sanitized;
-    };
-
-    const agent = new Agent({
-      initialState: {
-        systemPrompt: config.systemPrompt,
-        model,
-        tools,
-        messages: [],
-      },
-      transformContext,
-      ...(config.provider?.apiKey
-        ? { getApiKey: () => config.provider!.apiKey }
-        : {}),
-    });
-
-    return new PiMonoInstance(agent, compactionContext);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// PiMonoInstance — wraps a single pi-agent-core Agent instance
-// ---------------------------------------------------------------------------
-
-/** Maximum number of overflow recovery attempts */
-const MAX_OVERFLOW_RETRIES = 2;
-
-export class PiMonoInstance {
-  private promptQueue: Promise<void> = Promise.resolve();
-
-  constructor(
-    private agent: Agent,
-    private compactionContext?: CompactionContext,
-  ) {
-    // Debug payload logger — logs LLM request context on each turn
-    if (process.env.LOG_LEVEL === "debug" || process.env.DEBUG) {
-      this.agent.subscribe((e: AgentEvent) => {
-        if (e.type === "agent_start") {
-          this.logDebugPayload();
-        }
-      });
+    // Resolve compaction config
+    if (agentConfig.compaction && agentConfig.compaction.mode !== "off") {
+      this.compactionConfig = resolveCompactionConfig(agentConfig.compaction);
+      log.info(`Context compaction enabled for agent "${agentConfig.id}" (mode: ${this.compactionConfig.mode})`);
     }
   }
 
   /**
-   * Log the current agent state (system prompt, messages, tools) for debugging.
-   * Only active when LOG_LEVEL=debug or DEBUG is set.
+   * Create a new AgentSession for a specific conversation.
+   * The session manages its own compaction and overflow recovery.
    */
-  private logDebugPayload(): void {
-    try {
-      const state = this.agent.state;
-      const payload = {
-        timestamp: new Date().toISOString(),
-        systemPromptLength: state.systemPrompt?.length ?? 0,
-        systemPrompt: state.systemPrompt,
-        messagesCount: state.messages?.length ?? 0,
-        messages: state.messages?.map((m) => {
-          const msg = m as unknown as { role?: string; content?: unknown };
-          const content = msg.content;
-          return {
-            role: msg.role,
-            content:
-              typeof content === "string"
-                ? content.slice(0, 500)
-                : JSON.stringify(content).slice(0, 500),
-          };
-        }),
-        toolsCount: state.tools?.length ?? 0,
-        toolNames: state.tools?.map((t) => t.name) ?? [],
-      };
-      const logDir = process.env.ISOTOPES_LOG_DIR || path.join(process.env.HOME || "/tmp", ".isotopes", "logs");
-      fs.appendFileSync(
-        path.join(logDir, "debug-payload.jsonl"),
-        JSON.stringify(payload) + "\n",
-      );
-      log.debug("Payload logged to debug-payload.jsonl");
-    } catch {
-      // Silently ignore logging errors
-    }
+  async createSession(opts: {
+    sessionManager: SessionManager;
+    systemPrompt: string;
+    cwd?: string;
+  }): Promise<AgentSession> {
+    const compactionSettings = this.compactionConfig
+      ? {
+          enabled: true,
+          reserveTokens: this.compactionConfig.reserveTokens ?? 16_384,
+          keepRecentTokens: 20_000,
+        }
+      : { enabled: false, reserveTokens: 16_384, keepRecentTokens: 20_000 };
+
+    const settingsManager = SettingsManager.inMemory({
+      compaction: compactionSettings,
+    });
+
+    const { session } = await createAgentSession({
+      cwd: opts.cwd ?? process.cwd(),
+      agentDir: this.agentDir,
+      authStorage: this.authStorage,
+      modelRegistry: this.modelRegistry,
+      model: this.model,
+      tools: this.tools,
+      sessionManager: opts.sessionManager,
+      settingsManager,
+    });
+
+    session.agent.state.systemPrompt = opts.systemPrompt;
+
+    return session;
   }
+}
+
+// ---------------------------------------------------------------------------
+// PiMonoCore — tool registry management + AgentServiceCache factory
+// ---------------------------------------------------------------------------
+
+export class PiMonoCore {
+  private toolRegistries = new Map<string, ToolRegistry>();
+
+  setToolRegistry(agentId: string, registry: ToolRegistry): void {
+    this.toolRegistries.set(agentId, registry);
+  }
+
+  clearToolRegistry(agentId: string): void {
+    this.toolRegistries.delete(agentId);
+  }
+
+  createServiceCache(config: AgentConfig): AgentServiceCache {
+    return new AgentServiceCache({
+      agentConfig: config,
+      toolRegistry: this.toolRegistries.get(config.id),
+    });
+  }
+
+  /**
+   * @deprecated Use createServiceCache() instead. This creates a backward-compatible
+   * PiMonoInstance wrapper for consumers not yet migrated to AgentSession.
+   */
+  createAgent(config: AgentConfig): PiMonoInstance {
+    const cache = this.createServiceCache(config);
+    return new PiMonoInstance(cache, config);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PiMonoInstance — backward-compatible wrapper around AgentServiceCache
+//
+// Provides the same AsyncIterable<AgentEvent> interface as the old
+// PiMonoInstance by wrapping AgentSession.subscribe() + prompt().
+// Consumers should migrate to using AgentSession directly.
+// ---------------------------------------------------------------------------
+
+export class PiMonoInstance {
+  private activeSession?: AgentSession;
+  private promptQueue: Promise<void> = Promise.resolve();
+
+  constructor(
+    private cache: AgentServiceCache,
+    private config: AgentConfig,
+  ) {}
 
   async *prompt(input: string | AgentMessage[]): AsyncIterable<AgentEvent> {
     let releaseQueue: (() => void) | undefined;
@@ -330,217 +271,140 @@ export class PiMonoInstance {
     await waitForTurn;
 
     try {
-      // Attempt prompt with overflow recovery
-      yield* this.promptWithOverflowRecovery(input);
+      // Create a temporary session with an in-memory SessionManager
+      const sessionManager = SessionManager.open(
+        path.join(this.cache.agentDir, "tmp-session.jsonl"),
+      );
+
+      const session = await this.cache.createSession({
+        sessionManager,
+        systemPrompt: this.config.systemPrompt,
+      });
+
+      this.activeSession = session;
+
+      // If input is messages, load them into the session
+      if (Array.isArray(input)) {
+        session.agent.state.messages = input;
+      }
+
+      // Bridge AgentSession events to AsyncIterable<AgentEvent>
+      yield* this.bridgeSessionEvents(session, typeof input === "string" ? input : undefined);
     } finally {
+      this.activeSession?.dispose();
+      this.activeSession = undefined;
       releaseQueue?.();
     }
   }
 
-  /**
-   * Execute prompt with overflow detection and recovery.
-   * If an overflow error is detected, compact context and retry.
-   */
-  private async *promptWithOverflowRecovery(
-    input: string | AgentMessage[],
-    retryCount = 0,
+  private async *bridgeSessionEvents(
+    session: AgentSession,
+    textInput?: string,
   ): AsyncIterable<AgentEvent> {
     const events: (AgentEvent | null)[] = [];
     let resolve: (() => void) | null = null;
-    let overflowDetected = false;
-    let overflowErrorMessage: string | undefined;
 
-    const unsub = this.agent.subscribe((e: AgentEvent) => {
-      if (e.type === "agent_end") {
-        const { errorMessage: err } = getAgentEndMeta(e.messages);
-        if (err && isContextOverflow(err)) {
-          overflowDetected = true;
-          overflowErrorMessage = err;
-        }
+    const unsub = session.subscribe((e: AgentSessionEvent) => {
+      // AgentSessionEvent is a superset of AgentEvent — forward matching types
+      if ("type" in e && isAgentEvent(e)) {
+        events.push(e as AgentEvent);
+        resolve?.();
       }
-      events.push(e);
-      resolve?.();
     });
 
-    // Start the prompt (runs in background)
-    const done = (
-      typeof input === "string"
-        ? this.agent.prompt(input)
-        : this.agent.prompt(input)
-    ).then(
-      () => {
-        events.push(null); // sentinel for normal completion
-        resolve?.();
-      },
-      (err) => {
-        // Check if the error itself indicates overflow
-        const errMessage = err instanceof Error ? err.message : String(err);
-        if (isContextOverflow(errMessage)) {
-          overflowDetected = true;
-          overflowErrorMessage = errMessage;
-        }
-        events.push(null);
-        resolve?.();
-        throw err;
-      },
+    const done = (async () => {
+      if (textInput) {
+        await session.prompt(textInput);
+      } else {
+        // Messages already loaded, trigger a turn by sending empty follow-up
+        // Actually for message-based input the agent should already have messages set.
+        // We need to trigger the agent loop. Use the Agent directly.
+        await session.agent.prompt([]);
+      }
+    })().then(
+      () => { events.push(null); resolve?.(); },
+      (err) => { events.push(null); resolve?.(); throw err; },
     );
 
     try {
       let finished = false;
-      const collectedEvents: AgentEvent[] = [];
-
       while (!finished) {
         if (events.length === 0) {
-          await new Promise<void>((r) => {
-            resolve = r;
-          });
+          await new Promise<void>((r) => { resolve = r; });
         }
         while (events.length > 0) {
           const ev = events.shift()!;
-          if (ev === null) {
-            finished = true;
-            break;
-          }
-          collectedEvents.push(ev);
+          if (ev === null) { finished = true; break; }
+          yield ev;
         }
       }
-
-      // Try to await done, but catch overflow errors
-      try {
-        await done;
-      } catch (err) {
-        const errMessage = err instanceof Error ? err.message : String(err);
-        if (isContextOverflow(errMessage)) {
-          overflowDetected = true;
-          overflowErrorMessage = errMessage;
-        } else {
-          // Re-throw non-overflow errors
-          throw err;
-        }
-      }
-
-      // Handle overflow recovery
-      if (overflowDetected && this.compactionContext && retryCount < MAX_OVERFLOW_RETRIES) {
-        log.warn(
-          `Context overflow detected (attempt ${retryCount + 1}/${MAX_OVERFLOW_RETRIES}): ${overflowErrorMessage}`,
-        );
-
-        // Get current messages from agent state and perform iterative compaction
-        const currentMessages = this.agent.state.messages;
-        const tokensBefore = estimateTotalTokens(currentMessages);
-
-        log.info(`Performing overflow recovery compaction: ~${tokensBefore} tokens in ${currentMessages.length} messages`);
-
-        try {
-          const compactedMessages = await iterativeCompact({
-            messages: currentMessages,
-            config: this.compactionContext.config,
-            model: this.compactionContext.model,
-            apiKey: this.compactionContext.apiKey,
-            headers: this.compactionContext.headers,
-            maxRounds: 3,
-          });
-
-          // Sanitize tool_use/tool_result pairing after compaction (#141)
-          const sanitized = sanitizeToolUseResultPairing(
-            compactedMessages,
-          );
-
-          const tokensAfter = estimateTotalTokens(sanitized);
-          log.info(
-            `Overflow recovery compaction complete: ~${tokensBefore} → ~${tokensAfter} tokens`,
-          );
-
-          // Replace agent messages with sanitized compacted version
-          // pi-agent-core 0.66: state.messages setter copies the array (replaceMessages was removed)
-          this.agent.state.messages = sanitized;
-
-          // Retry the prompt with compacted context
-          // Don't re-yield the failed events, start fresh
-          yield* this.promptWithOverflowRecovery(input, retryCount + 1);
-          return;
-        } catch (compactErr) {
-          log.error("Overflow recovery compaction failed", compactErr);
-          // Fall through to yield original events
-        }
-      }
-
-      // Yield all collected events
-      for (const event of collectedEvents) {
-        yield event;
-      }
+      await done;
     } finally {
       unsub();
     }
   }
 
   abort(): void {
-    this.agent.abort();
+    this.activeSession?.abort();
   }
 
   steer(msg: AgentMessage): void {
-    this.agent.steer(msg);
+    if (this.activeSession) {
+      const text = extractText(msg);
+      if (text) this.activeSession.steer(text);
+    }
   }
 
   followUp(msg: AgentMessage): void {
-    this.agent.followUp(msg);
+    if (this.activeSession) {
+      const text = extractText(msg);
+      if (text) this.activeSession.followUp(text);
+    }
   }
 
   clearMessages(): void {
-    this.agent.reset();
+    // No-op — sessions are per-prompt now
   }
 
   getMessages(): AgentMessage[] {
-    return this.agent.state.messages;
+    return this.activeSession?.messages ?? [];
   }
 
-  /**
-   * Force context compaction for overflow recovery.
-   * Returns true if compaction occurred, false if not possible or not configured.
-   */
   async forceCompact(): Promise<boolean> {
-    if (!this.compactionContext) {
-      log.warn("forceCompact called but compaction is not configured");
-      return false;
-    }
-
-    const currentMessages = this.agent.state.messages;
-    const preserveRecent = this.compactionContext.config.preserveRecent ?? 10;
-
-    if (currentMessages.length <= preserveRecent) {
-      log.warn(
-        `Cannot force compact: only ${currentMessages.length} messages, need more than ${preserveRecent}`,
-      );
-      return false;
-    }
-
-    const tokensBefore = estimateTotalTokens(currentMessages);
-    log.info(`Force compacting: ~${tokensBefore} tokens in ${currentMessages.length} messages`);
-
+    if (!this.activeSession) return false;
     try {
-      const compactedMessages = await forceCompact({
-        messages: currentMessages,
-        config: this.compactionContext.config,
-        model: this.compactionContext.model,
-        apiKey: this.compactionContext.apiKey,
-        headers: this.compactionContext.headers,
-      });
-
-      const tokensAfter = estimateTotalTokens(compactedMessages);
-      log.info(`Force compaction complete: ~${tokensBefore} → ~${tokensAfter} tokens`);
-
-      // Sanitize tool_use/tool_result pairing after compaction (#141)
-      const sanitized = sanitizeToolUseResultPairing(
-        compactedMessages,
-      );
-
-      // pi-agent-core 0.66: state.messages setter copies the array
-      this.agent.state.messages = sanitized;
+      await this.activeSession.compact();
       return true;
-    } catch (err) {
-      log.error("Force compaction failed", err);
+    } catch {
       return false;
     }
   }
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const AGENT_EVENT_TYPES = new Set([
+  "agent_start", "agent_end",
+  "turn_start", "turn_end",
+  "message_start", "message_update", "message_end",
+  "tool_execution_start", "tool_execution_update", "tool_execution_end",
+]);
+
+function isAgentEvent(e: { type: string }): boolean {
+  return AGENT_EVENT_TYPES.has(e.type);
+}
+
+function extractText(msg: AgentMessage): string | undefined {
+  const m = msg as unknown as { content?: unknown };
+  if (typeof m.content === "string") return m.content;
+  if (Array.isArray(m.content)) {
+    for (const block of m.content) {
+      if (block && typeof block === "object" && "type" in block && block.type === "text" && "text" in block) {
+        return (block as { text: string }).text;
+      }
+    }
+  }
+  return undefined;
+}
