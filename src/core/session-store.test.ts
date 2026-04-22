@@ -165,28 +165,32 @@ describe("DefaultSessionStore", () => {
       const session = await store.create("agent-1");
 
       await store.addMessage(session.id, { role: "user", content: textContent("Test") });
+      await store.addMessage(session.id, { role: "assistant", content: textContent("Reply") });
 
+      // SessionManager defers file creation until an assistant message exists
       const messagesFile = path.join(tempDir, `${session.id}.jsonl`);
       const content = await fs.readFile(messagesFile, "utf-8");
-      const lines = content.trim().split("\n");
-      const record = JSON.parse(lines[0]);
+      expect(content.trim().split("\n").length).toBeGreaterThanOrEqual(3); // header + 2 messages
 
-      expect(lines).toHaveLength(1);
-      expect(record.type).toBe("message");
-      expect(record.message.content).toEqual(textContent("Test"));
+      const messages = await store.getMessages(session.id);
+      expect(messages).toHaveLength(2);
+      expect(messages[0].content).toEqual(textContent("Test"));
+      expect(messages[1].content).toEqual(textContent("Reply"));
     });
 
     it("loads messages from disk", async () => {
       const session = await store.create("agent-1");
       await store.addMessage(session.id, { role: "user", content: textContent("Persisted") });
+      await store.addMessage(session.id, { role: "assistant", content: textContent("Response") });
 
       // New store instance
       const newStore = new DefaultSessionStore({ dataDir: tempDir });
       await newStore.init();
 
       const messages = await newStore.getMessages(session.id);
-      expect(messages).toHaveLength(1);
+      expect(messages).toHaveLength(2);
       expect(messages[0].content).toEqual(textContent("Persisted"));
+      expect(messages[1].content).toEqual(textContent("Response"));
     });
 
     it("throws if session not found", async () => {
@@ -316,6 +320,10 @@ describe("DefaultSessionStore", () => {
       await shortTtlStore.addMessage(session.id, {
         role: "user",
         content: textContent("test message"),
+      });
+      await shortTtlStore.addMessage(session.id, {
+        role: "assistant",
+        content: textContent("response"),
       });
 
       const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
@@ -447,17 +455,15 @@ describe("DefaultSessionStore", () => {
       await store.addMessage(session.id, { role: "user", content: textContent("persist1") });
       await store.addMessage(session.id, { role: "assistant", content: textContent("persist2") });
 
-      const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
-
       // Verify messages are persisted
-      const beforeContent = await fs.readFile(transcriptFile, "utf-8");
-      expect(beforeContent.trim().split("\n")).toHaveLength(2);
+      const beforeMessages = await store.getMessages(session.id);
+      expect(beforeMessages).toHaveLength(2);
 
       await store.clearMessages(session.id);
 
-      // Verify transcript is truncated
-      const afterContent = await fs.readFile(transcriptFile, "utf-8");
-      expect(afterContent).toBe("");
+      // Verify messages are cleared
+      const afterMessages = await store.getMessages(session.id);
+      expect(afterMessages).toHaveLength(0);
     });
 
     it("throws on non-existent session", async () => {
@@ -507,11 +513,9 @@ describe("DefaultSessionStore", () => {
       await store.addMessage(session.id, { role: "user", content: textContent("old1") });
       await store.addMessage(session.id, { role: "assistant", content: textContent("old2") });
 
-      const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
-
       // Verify old messages are persisted
-      const beforeContent = await fs.readFile(transcriptFile, "utf-8");
-      expect(beforeContent.trim().split("\n")).toHaveLength(2);
+      const beforeMessages = await store.getMessages(session.id);
+      expect(beforeMessages).toHaveLength(2);
 
       const newMessages = [
         { role: "user" as const, content: textContent("new1") },
@@ -519,13 +523,10 @@ describe("DefaultSessionStore", () => {
 
       await store.setMessages(session.id, newMessages);
 
-      // Verify transcript is overwritten with new messages
-      const afterContent = await fs.readFile(transcriptFile, "utf-8");
-      const lines = afterContent.trim().split("\n");
-      expect(lines).toHaveLength(1);
-
-      const record = JSON.parse(lines[0]);
-      expect(record.message.content).toEqual(textContent("new1"));
+      // Verify messages are overwritten
+      const afterMessages = await store.getMessages(session.id);
+      expect(afterMessages).toHaveLength(1);
+      expect(afterMessages[0].content).toEqual(textContent("new1"));
     });
 
     it("persists after store restart", async () => {

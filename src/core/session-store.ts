@@ -1,9 +1,12 @@
-// src/core/session-store.ts — Session persistence and message history
-// Stores sessions in memory with optional file-based persistence.
+// src/core/session-store.ts — Session persistence backed by pi-coding-agent SessionManager
+// Each session maps to one SessionManager (one JSONL file).
+// Multi-session indexing and metadata managed locally via sessions.json.
 
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { SessionManager } from "@mariozechner/pi-coding-agent";
+import type { Message as PiMessage } from "@mariozechner/pi-ai";
 import type {
   Message,
   Session,
@@ -12,14 +15,10 @@ import type {
   SessionStoreConfig,
   SessionConfig,
 } from "./types.js";
+import { toAgentMessage, fromAgentMessage } from "./message-convert.js";
 import { createLogger } from "./logger.js";
 
 const log = createLogger("session-store");
-
-interface StoredSession extends Session {
-  messages?: Message[];
-  messagesLoaded: boolean;
-}
 
 interface PersistedSessionRecord {
   id: string;
@@ -33,32 +32,21 @@ interface PersistedSessionIndex {
   keyIndex?: Record<string, string>;
 }
 
-interface PersistedTranscriptRecord {
-  type: "message";
-  timestamp: number;
-  message: Message;
+interface StoredSession extends Session {
+  manager?: SessionManager;
+  managerLoaded: boolean;
 }
 
-/** Default session TTL: 24 hours in seconds */
 const DEFAULT_TTL_SECONDS = 86_400;
-/** Default cleanup interval: 1 hour in seconds */
 const DEFAULT_CLEANUP_INTERVAL_SECONDS = 3_600;
 
-/**
- * DefaultSessionStore — in-memory {@link SessionStore} with file persistence.
- *
- * Sessions are kept in memory for fast access. Message histories are
- * persisted to disk as JSONL files. Supports automatic TTL-based cleanup
- * of expired sessions.
- */
 export class DefaultSessionStore implements SessionStore {
   private sessions = new Map<string, StoredSession>();
-  private keyIndex = new Map<string, string>(); // key -> sessionId
+  private keyIndex = new Map<string, string>();
   private config: Required<SessionStoreConfig>;
   private sessionConfig: Required<SessionConfig>;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private indexDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Debounce interval for index persistence on addMessage (ms) */
   private static readonly INDEX_DEBOUNCE_MS = 1_000;
 
   constructor(config: SessionStoreConfig) {
@@ -74,86 +62,77 @@ export class DefaultSessionStore implements SessionStore {
     };
   }
 
-  /**
-   * Initialize the store — create data directory and load existing sessions.
-   * Call this before using the store.
-   */
   async init(): Promise<void> {
     await fs.mkdir(this.config.dataDir, { recursive: true });
     await this.loadAllSessions();
   }
 
   async create(agentId: string, metadata?: SessionMetadata): Promise<Session> {
-    // Check key uniqueness
     if (metadata?.key && this.keyIndex.has(metadata.key)) {
       throw new Error(`Session with key already exists: ${metadata.key}`);
     }
 
     const id = randomUUID();
+    const sessionFile = this.transcriptFile(id);
+
+    // Create the SessionManager with a new JSONL file
+    const manager = SessionManager.open(sessionFile);
+
     const session: StoredSession = {
       id,
       agentId,
       metadata,
       lastActiveAt: new Date(),
-      messages: [],
-      messagesLoaded: true,
+      manager,
+      managerLoaded: true,
     };
 
     this.sessions.set(id, session);
-
-    // Index by key if provided
     if (metadata?.key) {
       this.keyIndex.set(metadata.key, id);
     }
 
     await this.persistIndex();
-
     return this.toSession(session);
   }
 
   async get(sessionId: string): Promise<Session | undefined> {
     const stored = this.sessions.get(sessionId);
-    if (!stored) {
-      return undefined;
-    }
+    if (!stored) return undefined;
     return this.toSession(stored);
   }
 
   async findByKey(key: string): Promise<Session | undefined> {
     const sessionId = this.keyIndex.get(key);
-    if (!sessionId) {
-      return undefined;
-    }
+    if (!sessionId) return undefined;
     return this.get(sessionId);
   }
 
   async addMessage(sessionId: string, message: Message): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Session "${sessionId}" not found`);
-    }
+    if (!session) throw new Error(`Session "${sessionId}" not found`);
 
-    await this.ensureMessagesLoaded(session);
-
-    session.messages!.push(message);
+    await this.ensureManagerLoaded(session);
+    const agentMsg = toAgentMessage(message) as unknown as PiMessage;
+    session.manager!.appendMessage(agentMsg);
     session.lastActiveAt = new Date();
 
-    // Append message to JSONL file (critical path — always await)
-    await this.appendMessage(sessionId, message);
-
-    // Index persistence is non-critical here (only updates lastActiveAt);
-    // the message itself is already durable in the JSONL file.
-    // Use debounced write to avoid excessive I/O on rapid message bursts.
     this.debouncedPersistIndex();
   }
 
   async getMessages(sessionId: string): Promise<Message[]> {
     const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Session "${sessionId}" not found`);
+    if (!session) throw new Error(`Session "${sessionId}" not found`);
+
+    await this.ensureManagerLoaded(session);
+    const entries = session.manager!.getBranch();
+    const messages: Message[] = [];
+    for (const entry of entries) {
+      if (entry.type === "message" && entry.message) {
+        messages.push(fromAgentMessage(entry.message));
+      }
     }
-    await this.ensureMessagesLoaded(session);
-    return [...session.messages!];
+    return messages;
   }
 
   async list(): Promise<Session[]> {
@@ -166,10 +145,8 @@ export class DefaultSessionStore implements SessionStore {
       this.keyIndex.delete(session.metadata.key);
     }
     this.sessions.delete(sessionId);
-
     await this.persistIndex();
 
-    // Remove persisted files
     try {
       await fs.rm(this.transcriptFile(sessionId), { force: true });
     } catch (err) {
@@ -179,54 +156,41 @@ export class DefaultSessionStore implements SessionStore {
 
   async clearMessages(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Session "${sessionId}" not found`);
-    }
+    if (!session) throw new Error(`Session "${sessionId}" not found`);
 
-    // Clear in-memory messages
-    session.messages = [];
-    session.messagesLoaded = true;
     session.lastActiveAt = new Date();
-
-    // Truncate transcript file
+    // Truncate the file and create a fresh SessionManager
     await fs.writeFile(this.transcriptFile(sessionId), "");
+    session.manager = SessionManager.open(this.transcriptFile(sessionId));
+    session.managerLoaded = true;
+
     await this.persistIndex();
   }
 
   async setMessages(sessionId: string, messages: Message[]): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Session "${sessionId}" not found`);
-    }
+    if (!session) throw new Error(`Session "${sessionId}" not found`);
 
-    // Update in-memory messages
-    session.messages = [...messages];
-    session.messagesLoaded = true;
     session.lastActiveAt = new Date();
-
-    // Overwrite transcript file with new messages
-    const file = this.transcriptFile(sessionId);
-    const records = messages.map((message): PersistedTranscriptRecord => ({
-      type: "message",
-      timestamp: message.timestamp ?? Date.now(),
-      message,
-    }));
-    const content = records.map((r) => JSON.stringify(r)).join("\n") + (records.length > 0 ? "\n" : "");
-    await fs.writeFile(file, content);
+    // Rewrite the file: truncate and re-append all messages
+    await fs.writeFile(this.transcriptFile(sessionId), "");
+    const manager = SessionManager.open(this.transcriptFile(sessionId));
+    for (const msg of messages) {
+      manager.appendMessage(toAgentMessage(msg) as unknown as PiMessage);
+    }
+    session.manager = manager;
+    session.managerLoaded = true;
 
     this.debouncedPersistIndex();
   }
 
   async setMetadata(sessionId: string, patch: Partial<SessionMetadata>): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Session "${sessionId}" not found`);
-    }
+    if (!session) throw new Error(`Session "${sessionId}" not found`);
 
     const prevKey = session.metadata?.key;
     const merged = { ...(session.metadata ?? {}), ...patch } as SessionMetadata;
 
-    // Maintain key index if the key changed.
     if (prevKey && prevKey !== merged.key) {
       this.keyIndex.delete(prevKey);
     }
@@ -246,20 +210,12 @@ export class DefaultSessionStore implements SessionStore {
   // TTL & cleanup
   // -------------------------------------------------------------------------
 
-  /**
-   * Get the age of a session in seconds (time since lastActiveAt).
-   * Returns undefined if the session does not exist.
-   */
   getSessionAge(sessionId: string): number | undefined {
     const session = this.sessions.get(sessionId);
     if (!session) return undefined;
     return (Date.now() - session.lastActiveAt.getTime()) / 1_000;
   }
 
-  /**
-   * Remove all sessions whose age exceeds the configured TTL.
-   * Returns the IDs of deleted sessions.
-   */
   async cleanupExpiredSessions(): Promise<string[]> {
     const ttl = this.sessionConfig.ttl;
     const now = Date.now();
@@ -268,72 +224,48 @@ export class DefaultSessionStore implements SessionStore {
     for (const [id, session] of this.sessions) {
       if (session.metadata?.persistent) continue;
       const ageSeconds = (now - session.lastActiveAt.getTime()) / 1_000;
-      if (ageSeconds > ttl) {
-        expired.push(id);
-      }
+      if (ageSeconds > ttl) expired.push(id);
     }
 
     if (expired.length === 0) return expired;
 
-    // Remove from in-memory maps first (avoids per-session index writes)
     for (const id of expired) {
       const session = this.sessions.get(id);
-      if (session?.metadata?.key) {
-        this.keyIndex.delete(session.metadata.key);
-      }
+      if (session?.metadata?.key) this.keyIndex.delete(session.metadata.key);
       this.sessions.delete(id);
     }
 
-    // Persist index once for the batch, then clean up transcript files in parallel
     await this.persistIndex();
     await Promise.allSettled(
       expired.map(async (id) => {
-        try {
-          await fs.rm(this.transcriptFile(id), { force: true });
-        } catch (err) {
-          log.debug(`Could not remove transcript file for session ${id}`, err);
-        }
+        try { await fs.rm(this.transcriptFile(id), { force: true }); } catch { /* ignore */ }
       }),
     );
 
     return expired;
   }
 
-  /**
-   * Start the periodic cleanup timer.
-   * Runs cleanupExpiredSessions() every `cleanupInterval` seconds.
-   */
   startCleanupTimer(): void {
     this.stopCleanupTimer();
     const intervalMs = this.sessionConfig.cleanupInterval * 1_000;
-    this.cleanupTimer = setInterval(() => {
-      void this.cleanupExpiredSessions();
-    }, intervalMs);
-    // Allow the Node.js process to exit even if the timer is active
+    this.cleanupTimer = setInterval(() => { void this.cleanupExpiredSessions(); }, intervalMs);
     if (this.cleanupTimer && typeof this.cleanupTimer === "object" && "unref" in this.cleanupTimer) {
       this.cleanupTimer.unref();
     }
   }
 
-  /**
-   * Stop the periodic cleanup timer.
-   */
   stopCleanupTimer(): void {
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-      this.cleanupTimer = null;
-    }
+    if (this.cleanupTimer) { clearInterval(this.cleanupTimer); this.cleanupTimer = null; }
   }
 
-  /**
-   * Tear down the store: stop cleanup timer and release resources.
-   */
   destroy(): void {
     this.stopCleanupTimer();
-    if (this.indexDebounceTimer) {
-      clearTimeout(this.indexDebounceTimer);
-      this.indexDebounceTimer = null;
-    }
+    if (this.indexDebounceTimer) { clearTimeout(this.indexDebounceTimer); this.indexDebounceTimer = null; }
+  }
+
+  /** Expose the underlying SessionManager for a session (for compaction wiring). */
+  getSessionManager(sessionId: string): SessionManager | undefined {
+    return this.sessions.get(sessionId)?.manager;
   }
 
   // -------------------------------------------------------------------------
@@ -363,152 +295,80 @@ export class DefaultSessionStore implements SessionStore {
       ),
       keyIndex: Object.fromEntries(this.keyIndex),
     };
-
-    await fs.writeFile(
-      this.indexFile(),
-      JSON.stringify(index, null, 2),
-    );
+    await fs.writeFile(this.indexFile(), JSON.stringify(index, null, 2));
   }
 
-  /**
-   * Debounced index persistence — coalesces rapid writes (e.g. during
-   * message bursts) into a single disk write.
-   */
   private debouncedPersistIndex(): void {
-    if (this.indexDebounceTimer) {
-      clearTimeout(this.indexDebounceTimer);
-    }
+    if (this.indexDebounceTimer) clearTimeout(this.indexDebounceTimer);
     this.indexDebounceTimer = setTimeout(() => {
       this.indexDebounceTimer = null;
       void this.persistIndex();
     }, DefaultSessionStore.INDEX_DEBOUNCE_MS);
   }
 
-  private async appendMessage(sessionId: string, message: Message): Promise<void> {
-    const file = this.transcriptFile(sessionId);
-    const record: PersistedTranscriptRecord = {
-      type: "message",
-      timestamp: message.timestamp ?? Date.now(),
-      message,
-    };
-    const line = JSON.stringify(record) + "\n";
-    await fs.appendFile(file, line);
+  private async ensureManagerLoaded(session: StoredSession): Promise<void> {
+    if (session.managerLoaded && session.manager) return;
+    session.manager = SessionManager.open(this.transcriptFile(session.id));
+    session.managerLoaded = true;
   }
 
-  private async ensureMessagesLoaded(session: StoredSession): Promise<void> {
-    if (session.messagesLoaded) {
-      return;
-    }
-
-    session.messages = await this.loadMessages(session.id);
-    session.messagesLoaded = true;
-  }
-
-  private async loadMessages(sessionId: string): Promise<Message[]> {
-    try {
-      const content = await fs.readFile(this.transcriptFile(sessionId), "utf-8");
-      const messages: Message[] = [];
-      for (const line of content.split("\n")) {
-        if (!line.trim()) {
-          continue;
-        }
-        const record = JSON.parse(line) as PersistedTranscriptRecord;
-        if (record.type !== "message") {
-          continue;
-        }
-        messages.push({
-          ...record.message,
-          timestamp: record.timestamp,
-        });
-      }
-      return messages;
-    } catch (err) {
-      log.debug(`Could not load messages for session ${sessionId}`, err);
-      return [];
-    }
-  }
-
-  private toStoredSession(meta: PersistedSessionRecord): StoredSession {
-    return {
-      id: meta.id,
-      agentId: meta.agentId,
-      metadata: meta.metadata,
-      lastActiveAt: new Date(meta.lastActiveAt),
-      messagesLoaded: false,
-    };
-  }
-
-  private async loadIndexFile(): Promise<void> {
-    let raw: string;
-    try {
-      raw = await fs.readFile(this.indexFile(), "utf-8");
-    } catch (err) {
-      log.debug("No session index found (first run or empty store)", err);
-      return;
-    }
-
-    const index = JSON.parse(raw) as PersistedSessionIndex;
-    const sessions = index.sessions ?? {};
-    for (const meta of Object.values(sessions)) {
-      const session = this.toStoredSession(meta);
-      this.sessions.set(session.id, session);
-      if (session.metadata?.key) {
-        this.keyIndex.set(session.metadata.key, session.id);
-      }
-    }
-
-    for (const [key, sessionId] of Object.entries(index.keyIndex ?? {})) {
-      if (this.sessions.has(sessionId)) {
-        this.keyIndex.set(key, sessionId);
-      }
-    }
-  }
-
-
-  /**
-   * Load all sessions from disk on startup.
-   * Also recovers orphan transcripts (JSONL files not tracked in the index),
-   * which can occur when two stores share the same directory and one overwrites
-   * the other's sessions.json.
-   */
   private async loadAllSessions(): Promise<void> {
     this.sessions.clear();
     this.keyIndex.clear();
 
-    await this.loadIndexFile();
+    // Load index
+    try {
+      const raw = await fs.readFile(this.indexFile(), "utf-8");
+      const index = JSON.parse(raw) as PersistedSessionIndex;
+      for (const meta of Object.values(index.sessions ?? {})) {
+        const session: StoredSession = {
+          id: meta.id,
+          agentId: meta.agentId,
+          metadata: meta.metadata,
+          lastActiveAt: new Date(meta.lastActiveAt),
+          managerLoaded: false,
+        };
+        this.sessions.set(session.id, session);
+        if (session.metadata?.key) this.keyIndex.set(session.metadata.key, session.id);
+      }
+      for (const [key, sessionId] of Object.entries(index.keyIndex ?? {})) {
+        if (this.sessions.has(sessionId)) this.keyIndex.set(key, sessionId);
+      }
+    } catch {
+      log.debug("No session index found (first run or empty store)");
+    }
 
-    // Recover orphan transcripts (jsonl files not in index)
+    // Recover orphan JSONL files
     const countBefore = this.sessions.size;
     try {
       const files = await fs.readdir(this.config.dataDir);
-      const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
-
-      for (const file of jsonlFiles) {
+      for (const file of files.filter((f) => f.endsWith(".jsonl"))) {
         const id = file.replace(".jsonl", "");
         if (this.sessions.has(id)) continue;
 
-        const messages = await this.loadMessages(id);
-        if (messages.length === 0) continue;
+        try {
+          const manager = SessionManager.open(this.transcriptFile(id));
+          const entries = manager.getBranch();
+          if (entries.length === 0) continue;
 
-        const firstMsg = messages[0];
-        const lastMsg = messages[messages.length - 1];
-        const session: StoredSession = {
-          id,
-          agentId: (firstMsg.metadata?.agentId as string) ?? "unknown",
-          metadata: (firstMsg.metadata?.sessionMetadata as SessionMetadata) ?? {},
-          lastActiveAt: new Date(lastMsg.timestamp ?? Date.now()),
-          messagesLoaded: false, // will lazy-load on access
-        };
-        this.sessions.set(id, session);
-        log.info(`Recovered orphan session: ${id} (${messages.length} messages)`);
+          const session: StoredSession = {
+            id,
+            agentId: "unknown",
+            lastActiveAt: new Date(),
+            manager,
+            managerLoaded: true,
+          };
+          this.sessions.set(id, session);
+          log.info(`Recovered orphan session: ${id} (${entries.length} entries)`);
+        } catch {
+          log.debug(`Could not recover orphan session ${id}`);
+        }
       }
     } catch {
       log.debug("Could not scan for orphan transcripts");
     }
 
-    if (this.sessions.size > countBefore) {
-      await this.persistIndex();
-    }
+    if (this.sessions.size > countBefore) await this.persistIndex();
   }
 
   private toSession(stored: StoredSession): Session {
