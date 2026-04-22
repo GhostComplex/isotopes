@@ -52,7 +52,8 @@ export function createMockAgentManager(cache?: AgentServiceCache): DefaultAgentM
   return {
     create: vi.fn(),
     get: vi.fn(() => mockCache),
-    getConfig: vi.fn(() => ({ systemPrompt: "test prompt" })),
+    getConfig: vi.fn(() => ({})),
+    getSystemPrompt: vi.fn(() => "test prompt"),
     list: vi.fn(() => []),
     update: vi.fn(),
     delete: vi.fn(),

@@ -545,8 +545,7 @@ export class DiscordTransport implements Transport {
     await sessionStore.addMessage(session.id, userMsg);
 
     // 9. Run agent — SDK loads history from SessionManager automatically
-    const agentConfig = this.config.agentManager.getConfig(agentId);
-    const systemPrompt = agentConfig?.systemPrompt ?? "";
+    const systemPrompt = this.config.agentManager.getSystemPrompt(agentId) ?? "";
     await this.runAgentAndRespond(agent, session.id, sessionStore, systemPrompt, msg.channel as SendableChannel, msg.id);
   }
 

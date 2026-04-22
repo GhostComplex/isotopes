@@ -576,7 +576,6 @@ export function toAgentConfig(
 
   return {
     id: agent.id,
-    systemPrompt: "",
     toolSettings: resolveToolSettings(tools),
     provider: provider as ProviderConfig | undefined,
     compaction,

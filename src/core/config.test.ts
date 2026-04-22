@@ -260,7 +260,6 @@ agents:
       const config = toAgentConfig(agentFile);
 
       expect(config.id).toBe("test");
-      expect(config.systemPrompt).toBe("");
     });
 
     it("uses default provider when agent has none", () => {

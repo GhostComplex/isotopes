@@ -73,7 +73,6 @@ export class BuiltinRunner implements SubagentRunner {
 
     const cache = this.core.createServiceCache({
       id: subagentId,
-      systemPrompt,
       provider: options.builtin.provider,
       compaction: { mode: "off" },
     });

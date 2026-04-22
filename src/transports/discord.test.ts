@@ -669,7 +669,7 @@ describe("DiscordTransport", () => {
 
     it("routes /model to command handler", async () => {
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "default", systemPrompt: "", provider: { type: "anthropic", model: "claude-sonnet-4" } },
+        { id: "default", provider: { type: "anthropic", model: "claude-sonnet-4" } },
       ]);
 
       const transportWithAdmin = new DiscordTransport({

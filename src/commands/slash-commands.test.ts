@@ -110,7 +110,7 @@ describe("SlashCommandHandler", () => {
     it("returns uptime, model, agent, and session info", async () => {
       const agentManager = createMockAgentManager();
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", systemPrompt: "", provider: { type: "anthropic", model: "claude-sonnet-4" } },
+        { id: "agent-1", provider: { type: "anthropic", model: "claude-sonnet-4" } },
       ]);
 
       const sessionStore = createMockSessionStore();
@@ -131,7 +131,7 @@ describe("SlashCommandHandler", () => {
     it("shows default model when no provider configured", async () => {
       const agentManager = createMockAgentManager();
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", systemPrompt: "" },
+        { id: "agent-1" },
       ]);
 
       const ctx = createContext({ agentManager });
@@ -178,7 +178,7 @@ describe("SlashCommandHandler", () => {
     it("shows current model when no args given", async () => {
       const agentManager = createMockAgentManager();
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", systemPrompt: "", provider: { type: "anthropic", model: "claude-sonnet-4" } },
+        { id: "agent-1", provider: { type: "anthropic", model: "claude-sonnet-4" } },
       ]);
 
       const ctx = createContext({ agentManager });
@@ -191,7 +191,7 @@ describe("SlashCommandHandler", () => {
     it("switches model on agent", async () => {
       const agentManager = createMockAgentManager();
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", systemPrompt: "", provider: { type: "anthropic", model: "claude-opus-4.5" } },
+        { id: "agent-1", provider: { type: "anthropic", model: "claude-opus-4.5" } },
       ]);
       (agentManager.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
@@ -208,7 +208,7 @@ describe("SlashCommandHandler", () => {
     it("reports errors on invalid model", async () => {
       const agentManager = createMockAgentManager();
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", systemPrompt: "" },
+        { id: "agent-1" },
       ]);
       (agentManager.update as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error("Unknown anthropic model: fake-model"),

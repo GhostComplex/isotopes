@@ -130,7 +130,6 @@ describe("BuiltinRunner", () => {
     expect(harness.setIds[0]).toMatch(/^subagent-builtin-task-2-/);
     expect(harness.clearedIds).toEqual(harness.setIds);
 
-    expect(harness.capturedConfig?.systemPrompt).toContain("do thing");
     expect(harness.capturedConfig?.compaction).toEqual({ mode: "off" });
     expect(harness.capturedConfig?.provider?.type).toBe("anthropic");
 

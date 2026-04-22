@@ -197,7 +197,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       runAgentLoop: async (agentId, prompt, _sessionKey) => {
         const cache = agentManager.get(agentId);
         if (!cache) throw new Error(`Agent "${agentId}" not found`);
-        const agentConfig = agentManager.getConfig(agentId);
         const store = await sessionStoreManager.getOrCreate(agentId);
         const sessionKey = `heartbeat:${agentId}`;
         const session = (await store.findByKey(sessionKey)) ?? (await store.create(agentId, { key: sessionKey }));
@@ -205,15 +204,13 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
           cache,
           sessionStore: store,
           sessionId: session.id,
-          systemPrompt: agentConfig?.systemPrompt ?? "",
+          systemPrompt: agentManager.getSystemPrompt(agentId) ?? "",
           textInput: prompt,
           log,
         });
         return result.responseText;
       },
     });
-
-    hb.start();
     heartbeatManagers.push(hb);
     log.info(`Heartbeat enabled for "${agentFile.id}" (every ${agentFile.heartbeat.intervalSeconds ?? 300}s)`);
   }
@@ -271,14 +268,13 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
 
     try {
-      const agentConfig = agentManager.getConfig(job.agentId);
       const store = await sessionStoreManager.getOrCreate(job.agentId);
       const session = (await store.findByKey(sessionKey)) ?? (await store.create(job.agentId, { key: sessionKey }));
       const result = await runAgentLoop({
         cache,
         sessionStore: store,
         sessionId: session.id,
-        systemPrompt: agentConfig?.systemPrompt ?? "",
+        systemPrompt: agentManager.getSystemPrompt(job.agentId) ?? "",
         textInput: prompt,
         log,
       });

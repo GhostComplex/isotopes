@@ -36,7 +36,6 @@ import { ToolRegistry } from "./tools.js";
 function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
   return {
     id: "test-agent",
-    systemPrompt: "You are a test agent.",
     ...overrides,
   };
 }

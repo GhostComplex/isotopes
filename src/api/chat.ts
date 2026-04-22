@@ -131,13 +131,13 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
   };
 
   try {
-    const agentConfig = deps.agentManager.getConfig?.(session.agentId);
+    const systemPrompt = deps.agentManager.getSystemPrompt?.(session.agentId) ?? "";
     let lastTextLen = 0;
     const result = await runAgentLoop({
       cache,
       sessionStore: store,
       sessionId,
-      systemPrompt: agentConfig?.systemPrompt ?? "",
+      systemPrompt: systemPrompt,
       textInput: body.message,
       log,
       onTextDelta: (currentText) => {

@@ -83,6 +83,7 @@ export interface InitAgentResult {
   transportContext?: LazyTransportContext;
   baseSystemPrompt: string;
   toolGuardPrompt: string;
+  systemPrompt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,8 +132,8 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
 
   // 6. Load workspace context (SOUL.md, TOOLS.md, MEMORY.md, etc.)
   const workspaceContext = await loadWorkspaceContext(workspacePath, { bundledPath: resolveBundledSkillsDir() });
-  const baseSystemPrompt = agentConfig.systemPrompt;
-  agentConfig.systemPrompt = buildSystemPrompt(agentConfig.systemPrompt, workspaceContext);
+  const baseSystemPrompt = "";
+  let systemPrompt = buildSystemPrompt(baseSystemPrompt, workspaceContext);
   log.debug(`Loaded workspace context for ${agentConfig.id}: systemPrompt=${workspaceContext.systemPromptAdditions.length > 0}, memory=${workspaceContext.memory !== null}`);
 
   // 7. Create tool registry and process registry
@@ -199,8 +200,8 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
 
   // 12. Build tool guard prompt and append to system prompt
   const toolGuardPrompt = buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, workspacePath, agentAllowedWorkspaces);
-  agentConfig.systemPrompt = [
-    agentConfig.systemPrompt,
+  systemPrompt = [
+    systemPrompt,
     toolGuardPrompt,
   ].filter(Boolean).join("\n\n---\n\n");
 
@@ -210,7 +211,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     toolRegistry.setHooks(opts.hooks);
     await opts.hooks.emit("before_agent_start", { agentId: agentConfig.id });
   }
-  const instance = await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, baseSystemPrompt });
+  const instance = await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, baseSystemPrompt, initialSystemPrompt: systemPrompt });
   log.info(`Created agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${toolRegistry.list().length})`);
 
   return {
@@ -222,5 +223,6 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     transportContext,
     baseSystemPrompt,
     toolGuardPrompt,
+    systemPrompt,
   };
 }

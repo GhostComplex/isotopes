@@ -65,7 +65,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       });
 
       cacheRef.current = result.instance;
-      systemPromptRef.current = result.agentConfig.systemPrompt;
+      systemPromptRef.current = result.systemPrompt;
       sessionManagerRef.current = SessionManager.inMemory();
       setAgentReady(true);
     } catch (err) {

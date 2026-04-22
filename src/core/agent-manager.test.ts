@@ -26,7 +26,6 @@ function createMockCore(): PiMonoCore {
 function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
   return {
     id: "test-agent",
-    systemPrompt: "You are a test agent.",
     ...overrides,
   };
 }
@@ -108,14 +107,14 @@ describe("DefaultAgentManager", () => {
       await manager.create(config);
 
       const updated = await manager.update("test-agent", {
-        systemPrompt: "Updated prompt",
+        compaction: { mode: "off" },
       });
 
       expect(updated).toBeDefined();
       expect(core.createServiceCache).toHaveBeenCalledTimes(2);
 
       const configs = manager.list();
-      expect(configs[0].systemPrompt).toBe("Updated prompt");
+      expect(configs[0].compaction).toEqual({ mode: "off" });
     });
 
     it("preserves id even if update tries to change it", async () => {
@@ -123,7 +122,6 @@ describe("DefaultAgentManager", () => {
 
       await manager.update("test-agent", {
         id: "different-id",
-        systemPrompt: "Updated",
       } as Partial<AgentConfig>);
 
       const configs = manager.list();
@@ -132,7 +130,7 @@ describe("DefaultAgentManager", () => {
 
     it("throws if agent not found", async () => {
       await expect(
-        manager.update("non-existent", { systemPrompt: "New" }),
+        manager.update("non-existent", { compaction: { mode: "off" } }),
       ).rejects.toThrow('Agent "non-existent" not found');
     });
   });
@@ -155,7 +153,7 @@ describe("DefaultAgentManager", () => {
 
   describe("getPrompt / updatePrompt", () => {
     it("getPrompt returns system prompt", async () => {
-      await manager.create(makeConfig({ systemPrompt: "Hello world" }));
+      await manager.create(makeConfig(), { initialSystemPrompt: "Hello world" });
 
       const prompt = await manager.getPrompt("test-agent");
       expect(prompt).toBe("Hello world");
