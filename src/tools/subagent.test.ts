@@ -43,14 +43,14 @@ describe("initSubagentBackend / getSubagentBackend", () => {
   it("returns backend after init", async () => {
     vi.resetModules();
     const { initSubagentBackend, getSubagentBackend } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist", allowedTools: ["Read"], defaultType: "claude" });
+    initSubagentBackend({ permissionMode: "allowlist", allowedTools: ["Read"], allowedTypes: new Set(["claude"]) });
     expect(getSubagentBackend()).toBeDefined();
   });
 
   it("caches backend per workspace key", async () => {
     vi.resetModules();
     const { initSubagentBackend, getSubagentBackend } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist", defaultType: "claude" });
+    initSubagentBackend({ permissionMode: "allowlist", allowedTypes: new Set(["claude"]) });
     const a = getSubagentBackend(["/w1"]);
     const b = getSubagentBackend(["/w1"]);
     expect(a).toBe(b);
@@ -63,7 +63,7 @@ describe("spawnSubagent", () => {
   it("returns success result with collected output", async () => {
     vi.resetModules();
     const { initSubagentBackend, spawnSubagent } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist", defaultType: "claude" });
+    initSubagentBackend({ permissionMode: "allowlist", allowedTypes: new Set(["claude"]) });
     spawnMock.mockReturnValue(
       eventGen(
         { type: "start" },
@@ -82,7 +82,7 @@ describe("spawnSubagent", () => {
   it("returns failure when spawn throws", async () => {
     vi.resetModules();
     const { initSubagentBackend, spawnSubagent } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist", defaultType: "claude" });
+    initSubagentBackend({ permissionMode: "allowlist", allowedTypes: new Set(["claude"]) });
     spawnMock.mockImplementation(() => {
       throw new Error("boom");
     });
@@ -94,7 +94,7 @@ describe("spawnSubagent", () => {
   it("streams events to onEvent callback", async () => {
     vi.resetModules();
     const { initSubagentBackend, spawnSubagent } = await import("./subagent.js");
-    initSubagentBackend({ permissionMode: "allowlist", defaultType: "claude" });
+    initSubagentBackend({ permissionMode: "allowlist", allowedTypes: new Set(["claude"]) });
     spawnMock.mockReturnValue(
       eventGen(
         { type: "start" },
@@ -116,8 +116,16 @@ describe("spawnSubagent", () => {
 });
 
 describe("getSupportedAgents", () => {
-  it("returns claude and builtin", async () => {
+  it("returns claude and builtin by default", async () => {
+    vi.resetModules();
     const { getSupportedAgents } = await import("./subagent.js");
     expect(getSupportedAgents()).toEqual(["claude", "builtin"]);
+  });
+
+  it("returns configured types after init", async () => {
+    vi.resetModules();
+    const { initSubagentBackend, getSupportedAgents } = await import("./subagent.js");
+    initSubagentBackend({ permissionMode: "allowlist", allowedTypes: new Set(["claude"] as const) });
+    expect(getSupportedAgents()).toEqual(["claude"]);
   });
 });

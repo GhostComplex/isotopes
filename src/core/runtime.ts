@@ -82,10 +82,9 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       allowedTools: subagentConfig.claude.allowedTools,
       settingSources: subagentConfig.claude.settingSources,
       allowedTypes: subagentConfig.allowedTypes,
-      defaultType: subagentConfig.defaultType,
       core,
     });
-    log.info(`Subagent backend initialized (defaultType: ${subagentConfig.defaultType}, claude.permissionMode: ${subagentConfig.claude.permissionMode})`);
+    log.info(`Subagent backend initialized (allowedTypes: ${[...subagentConfig.allowedTypes].join(",")}, claude.permissionMode: ${subagentConfig.claude.permissionMode})`);
 
     setSubagentSessionStoreFactory((agentId) => sessionStoreManager.getOrCreate(agentId));
     log.info("Subagent session store factory → shared SessionStoreManager");

@@ -57,7 +57,6 @@ function renderSubagent(answers: InitAnswers): string {
   return `subagent:
   enabled: true
   allowedTypes: ${typesStr}
-  defaultType: ${allowedTypes[0]}
 ${claudeBlock}`;
 }
 

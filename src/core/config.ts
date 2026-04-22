@@ -220,8 +220,6 @@ export interface SubagentConfigFile {
   enabled?: boolean;
   /** Runner types allowed to be spawned. Default: ["claude", "builtin"] */
   allowedTypes?: SubagentType[];
-  /** Default runner type when not specified. Default: "claude" */
-  defaultType?: SubagentType;
   /** Default timeout in seconds for sub-agent runs */
   timeout?: number;
   /** Default maximum turns per sub-agent run */
@@ -246,7 +244,6 @@ export interface ResolvedClaudeSubagentConfig {
 /** Resolved subagent configuration with defaults applied */
 export interface ResolvedSubagentConfig {
   allowedTypes: Set<SubagentType>;
-  defaultType: SubagentType;
   timeout?: number;
   maxTurns?: number;
   useThread: boolean;
@@ -412,14 +409,8 @@ export function resolveSubagentConfig(
     }
   }
 
-  const defaultType = subagentConfig?.defaultType ?? "claude";
-  if (!VALID_SUBAGENT_TYPES.has(defaultType)) {
-    throw new Error(`Invalid subagent.defaultType "${defaultType}" (must be claude or builtin)`);
-  }
-
   return {
     allowedTypes: new Set(allowedTypes),
-    defaultType,
     timeout: subagentConfig?.timeout,
     maxTurns: subagentConfig?.maxTurns,
     useThread: subagentConfig?.useThread ?? true,

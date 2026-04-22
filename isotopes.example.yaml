@@ -173,7 +173,6 @@ channels:
 subagent:
   enabled: true
   allowedTypes: [claude, builtin]   # runner types allowed to be spawned
-  defaultType: claude               # which runner to use when not specified
   # timeout: 900                      # seconds; default 15min
   # maxTurns: 50
   # useThread: true                   # spawn Discord thread for subagent output

@@ -45,8 +45,6 @@ export interface SubagentBackendOptions {
   settingSources?: SettingSource[];
   /** Runner types allowed to be spawned. Default: ["claude", "builtin"] */
   allowedTypes?: Set<SubagentType>;
-  /** Default runner type when not specified. Default: "claude" */
-  defaultType?: SubagentType;
   /**
    * Core used to host in-process builtin subagents. When provided, a
    * BuiltinRunner is registered for the "builtin" agent. When omitted,
@@ -69,7 +67,6 @@ export class SubagentBackend {
   private allowedRoots: string[];
   private runners: Partial<Record<SubagentAgent, SubagentRunner>>;
   private allowedTypes: Set<SubagentType>;
-  public defaultType: SubagentType;
   /** Workspace key for singleton comparison (used by getBackend cache) */
   public workspacesKey: string;
 
@@ -81,7 +78,6 @@ export class SubagentBackend {
     this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
     this.workspacesKey = this.allowedRoots.slice().sort().join(":");
     this.allowedTypes = opts.allowedTypes ?? new Set(["claude", "builtin"]);
-    this.defaultType = opts.defaultType ?? "claude";
 
     if (opts.runners) {
       this.runners = { ...opts.runners };

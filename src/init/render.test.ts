@@ -107,7 +107,6 @@ describe("renderConfig", () => {
     expect(yaml).toMatch(/^subagent:/m);
     expect(yaml).toContain("enabled: true");
     expect(yaml).toContain("allowedTypes: [claude, builtin]");
-    expect(yaml).toContain("defaultType: claude");
     expect(yaml).toContain("permissionMode: allowlist");
     expect(yaml).toContain("enableShell: false");
   });
@@ -132,7 +131,6 @@ describe("renderConfig", () => {
       subagentConfig: { allowedTypes: ["builtin"], permissionMode: "allowlist", enableShell: false },
     });
     expect(yaml).toContain("allowedTypes: [builtin]");
-    expect(yaml).toContain("defaultType: builtin");
     expect(yaml).not.toContain("permissionMode:");
     expect(yaml).not.toContain("claude:");
   });

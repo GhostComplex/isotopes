@@ -31,8 +31,6 @@ export interface SubagentBackendConfig {
   settingSources?: SettingSource[];
   /** Runner types allowed to be spawned */
   allowedTypes?: Set<SubagentType>;
-  /** Default runner type when not specified */
-  defaultType?: SubagentType;
   /** AgentCore used to host in-process builtin subagents. */
   core?: BuiltinPiMonoCore;
 }
@@ -121,7 +119,6 @@ export function initSubagentBackend(config: SubagentBackendConfig): void {
   sharedBackend = undefined;
   sharedBackendKey = undefined;
   log.info("Subagent backend initialized", {
-    defaultType: config.defaultType,
     allowedTypes: config.allowedTypes ? [...config.allowedTypes] : undefined,
     permissionMode: config.permissionMode ?? "allowlist",
     allowedTools: config.allowedTools,
@@ -137,7 +134,6 @@ function getBackend(allowedWorkspaces?: string[]): SubagentBackend {
       allowedTools: backendConfig.allowedTools,
       settingSources: backendConfig.settingSources,
       allowedTypes: backendConfig.allowedTypes,
-      defaultType: backendConfig.defaultType,
       core: backendConfig.core,
     });
     sharedBackendKey = key;
@@ -153,7 +149,7 @@ let taskCounter = 0;
  * Returns undefined if the backend hasn't been initialized.
  */
 export function getSubagentBackend(allowedWorkspaces?: string[]): SubagentBackend | undefined {
-  if (!backendConfig.defaultType) {
+  if (!backendConfig.allowedTypes) {
     return undefined;
   }
   return getBackend(allowedWorkspaces);
