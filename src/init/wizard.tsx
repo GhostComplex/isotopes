@@ -180,9 +180,14 @@ function InitWizard({ onDone }: Props) {
             <TextInput
               value={ghcBaseUrl}
               onChange={setGhcBaseUrl}
-              onSubmit={() => setStep({ kind: "ghc-apiKey" })}
+              onSubmit={() => {
+                if (ghcBaseUrl.trim().length > 0) setStep({ kind: "ghc-apiKey" });
+              }}
             />
           </Box>
+          {ghcBaseUrl.trim().length === 0 && (
+            <Text color="yellow">  baseUrl is required</Text>
+          )}
         </Box>
       )}
 
