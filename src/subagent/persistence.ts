@@ -66,7 +66,7 @@ export function eventToMessage(event: SubagentEvent): Message | undefined {
         role: "assistant",
         content: [{ type: "text", text }],
         timestamp,
-      };
+      } as unknown as Message;
     }
 
     case "tool_use": {
@@ -77,24 +77,18 @@ export function eventToMessage(event: SubagentEvent): Message | undefined {
         role: "assistant",
         content: [{ type: "text", text }],
         timestamp,
-        metadata: { subagentEvent: "tool_use", toolName: name },
-      };
+      } as unknown as Message;
     }
 
     case "tool_result": {
       const output = truncate(event.toolResult ?? "");
       return {
-        role: "tool_result",
-        content: [
-          {
-            type: "tool_result",
-            output,
-            toolName: event.toolName,
-          },
-        ],
+        role: "toolResult",
+        content: output,
+        toolCallId: "subagent",
+        toolName: event.toolName ?? "unknown",
         timestamp,
-        metadata: { subagentEvent: "tool_result" },
-      };
+      } as unknown as Message;
     }
 
     case "error": {
@@ -103,8 +97,7 @@ export function eventToMessage(event: SubagentEvent): Message | undefined {
         role: "assistant",
         content: [{ type: "text", text: `❌ ${text}` }],
         timestamp,
-        metadata: { subagentEvent: "error", error: true },
-      };
+      } as unknown as Message;
     }
 
     default:

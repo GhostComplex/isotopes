@@ -3,7 +3,6 @@
 
 import * as lark from "@larksuiteoapi/node-sdk";
 import {
-  textContent,
   type AgentInstance,
   type AgentManager,
   type Binding,
@@ -409,17 +408,12 @@ export class FeishuTransport implements Transport {
     const enrichedText = buildHistoryContext(historyEntries, text);
 
     // Add user message to session
-    const userMessage: Message = {
+    const userMsg: Message = {
       role: "user",
-      content: textContent(enrichedText),
+      content: enrichedText,
       timestamp: parseInt(message.create_time, 10),
-      metadata: {
-        userId,
-        messageId: message.message_id,
-        chatId: message.chat_id,
-      },
-    };
-    await this.config.sessionStore.addMessage(session.id, userMessage);
+    } as unknown as Message;
+    await this.config.sessionStore.addMessage(session.id, userMsg);
 
     // Prepare prompt — limitHistoryTurns + sanitize + prune
     const allMessages = await this.config.sessionStore.getMessages(session.id);

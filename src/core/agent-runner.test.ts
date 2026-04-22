@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runAgentLoop } from "./agent-runner.js";
 import { createMockAgentInstance, createMockSessionStore } from "./test-helpers.js";
-import { textContent } from "./types.js";
+import {  } from "./types.js";
 import type { Logger } from "./logger.js";
 
 // Suppress console output
@@ -59,7 +59,7 @@ describe("runAgentLoop", () => {
       "s1",
       expect.objectContaining({
         role: "assistant",
-        content: textContent("Reply"),
+        content: ("Reply"),
       }),
     );
   });
@@ -155,7 +155,7 @@ describe("runAgentLoop", () => {
     expect(onToolComplete).toHaveBeenCalledTimes(1);
     expect(agent.steer).toHaveBeenCalledWith({
       role: "user",
-      content: textContent("[Messages arrived]\nuser1: hello"),
+      content: ("[Messages arrived]\nuser1: hello"),
     });
   });
 
@@ -266,7 +266,7 @@ describe("runAgentLoop", () => {
     });
 
     const toolResultCall = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls.find(
-      (c) => c[1].role === "tool_result",
+      (c) => c[1].role === "toolResult",
     );
     expect(toolResultCall).toBeDefined();
     const output = toolResultCall![1].content[0].output as string;
@@ -292,7 +292,7 @@ describe("runAgentLoop", () => {
     });
 
     const toolResultCall = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls.find(
-      (c) => c[1].role === "tool_result",
+      (c) => c[1].role === "toolResult",
     );
     expect(toolResultCall![1].content[0].isError).toBe(true);
   });

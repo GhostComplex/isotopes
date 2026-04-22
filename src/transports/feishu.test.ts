@@ -12,7 +12,7 @@ import {
   type FeishuMessageEvent,
 } from "./feishu.js";
 import type { AgentManager, SessionStore, AgentInstance, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
-import { textContent } from "../core/types.js";
+import {  } from "../core/types.js";
 import {
   createMockAgentManager,
   createMockAgentInstance,
@@ -450,7 +450,7 @@ describe("FeishuTransport", () => {
         "session-feishu-123",
         expect.objectContaining({
           role: "user",
-          content: textContent("Hello bot"),
+          content: ("Hello bot"),
         }),
       );
 
@@ -473,7 +473,7 @@ describe("FeishuTransport", () => {
         "session-feishu-123",
         expect.objectContaining({
           role: "assistant",
-          content: textContent("Hello from Feishu!"),
+          content: ("Hello from Feishu!"),
         }),
       );
     });
@@ -510,7 +510,7 @@ describe("FeishuTransport", () => {
         "session-feishu-123",
         expect.objectContaining({
           role: "user",
-          content: textContent("Hello bot"),
+          content: ("Hello bot"),
         }),
       );
 
@@ -600,7 +600,7 @@ describe("FeishuTransport", () => {
         "session-feishu-123",
         expect.objectContaining({
           role: "user",
-          content: textContent("tell me a joke"),
+          content: ("tell me a joke"),
         }),
       );
     });
@@ -624,7 +624,7 @@ describe("FeishuTransport", () => {
         "session-feishu-123",
         expect.objectContaining({
           role: "user",
-          content: textContent("email@_user_1 test"),
+          content: ("email@_user_1 test"),
         }),
       );
     });
@@ -790,8 +790,8 @@ describe("FeishuTransport", () => {
 
     it("passes full conversation history to agent.prompt", async () => {
       const previousMessages = [
-        { role: "user" as const, content: textContent("Hi"), timestamp: 1000 },
-        { role: "assistant" as const, content: textContent("Hello!"), timestamp: 2000 },
+        { role: "user" as const, content: ("Hi"), timestamp: 1000 },
+        { role: "assistant" as const, content: ("Hello!"), timestamp: 2000 },
       ];
 
       sessionStore.findByKey = vi.fn().mockResolvedValue({
@@ -803,7 +803,7 @@ describe("FeishuTransport", () => {
       // getMessages returns previous history PLUS the new message we just added
       sessionStore.getMessages = vi.fn().mockResolvedValue([
         ...previousMessages,
-        { role: "user" as const, content: textContent("Hello bot"), timestamp: 1700000000000 },
+        { role: "user" as const, content: ("Hello bot"), timestamp: 1700000000000 },
       ]);
 
       const event = createDMEvent();
@@ -812,7 +812,7 @@ describe("FeishuTransport", () => {
       const agent = agentManager.get("default")!;
       expect(agent.prompt).toHaveBeenCalledWith([
         ...previousMessages,
-        expect.objectContaining({ role: "user", content: textContent("Hello bot") }),
+        expect.objectContaining({ role: "user", content: ("Hello bot") }),
       ]);
     });
   });

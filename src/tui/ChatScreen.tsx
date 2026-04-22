@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import type { Message, AgentInstance } from "../core/types.js";
+import type { AgentMessage, AgentInstance } from "../core/types.js";
 import { loadConfig } from "../core/config.js";
 import { PiMonoCore } from "../core/pi-mono.js";
 import { DefaultAgentManager } from "../core/agent-manager.js";
@@ -25,7 +25,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const [agentId, setAgentId] = useState(options.agent ?? "");
   const [error, setError] = useState<string | null>(null);
   const agentRef = useRef<AgentInstance | null>(null);
-  const historyRef = useRef<Message[]>([]);
+  const historyRef = useRef<AgentMessage[]>([]);
   const autoMessageSent = useRef(false);
 
   const initAgent = useCallback(async (requestedAgent?: string) => {
@@ -83,7 +83,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     if (!agentRef.current || isStreaming) return;
     const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
-    historyRef.current.push({ role: "user", content: [{ type: "text", text }] });
+    historyRef.current.push({ role: "user", content: text, timestamp: Date.now() } as unknown as AgentMessage);
     setIsStreaming(true);
     let responseText = "";
     const toolCalls: ToolCallEntry[] = [];
@@ -122,7 +122,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
     }
     if (responseText) {
-      historyRef.current.push({ role: "assistant", content: [{ type: "text", text: responseText }] });
+      historyRef.current.push({ role: "assistant", content: [{ type: "text", text: responseText }], timestamp: Date.now() } as unknown as AgentMessage);
     }
     setIsStreaming(false);
   };

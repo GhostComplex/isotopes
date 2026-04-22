@@ -10,6 +10,7 @@ import { VERSION } from "../version.js";
 import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { AgentManager, SessionStore } from "../core/types.js";
+import { messageText } from "../core/messages.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { HookRegistry } from "../plugins/hooks.js";
@@ -165,10 +166,9 @@ addRoute("GET", "/api/sessions/:id", async (req, res, deps) => {
           source: "discord",
           history: messages.map((m) => ({
             role: m.role,
-            content: Array.isArray(m.content)
-              ? m.content.map((b) => (typeof b === "string" ? b : (b as { text?: string }).text ?? JSON.stringify(b))).join("")
-              : String(m.content),
-            timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+            content: messageText(m),
+            timestamp: "timestamp" in m && typeof m.timestamp === "number"
+              ? new Date(m.timestamp).toISOString() : undefined,
           })),
         });
         return;
@@ -192,10 +192,9 @@ addRoute("GET", "/api/sessions/:id/messages", async (req, res, deps) => {
         sendJson(res, 200, {
           messages: messages.map((m) => ({
             role: m.role,
-            content: Array.isArray(m.content)
-              ? m.content.map((b) => (typeof b === "string" ? b : (b as { text?: string }).text ?? JSON.stringify(b))).join("")
-              : String(m.content),
-            timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+            content: messageText(m),
+            timestamp: "timestamp" in m && typeof m.timestamp === "number"
+              ? new Date(m.timestamp).toISOString() : undefined,
           })),
         });
         return;

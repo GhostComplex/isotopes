@@ -6,7 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import { DefaultSessionStore } from "./session-store.js";
 import type { Message } from "./types.js";
-import { textContent } from "./types.js";
+import { userMessage, assistantMessage, messageText } from "./messages.js";
 
 // ---------------------------------------------------------------------------
 // Test setup
@@ -149,23 +149,23 @@ describe("DefaultSessionStore", () => {
     it("stores and retrieves messages", async () => {
       const session = await store.create("agent-1");
 
-      const msg1: Message = { role: "user", content: textContent("Hello") };
-      const msg2: Message = { role: "assistant", content: textContent("Hi there!") };
+      const msg1 = userMessage("Hello");
+      const msg2 = assistantMessage("Hi there!");
 
       await store.addMessage(session.id, msg1);
       await store.addMessage(session.id, msg2);
 
       const messages = await store.getMessages(session.id);
       expect(messages).toHaveLength(2);
-      expect(messages[0].content).toEqual(textContent("Hello"));
-      expect(messages[1].content).toEqual(textContent("Hi there!"));
+      expect(messageText(messages[0])).toBe("Hello");
+      expect(messageText(messages[1])).toBe("Hi there!");
     });
 
     it("persists messages to JSONL file", async () => {
       const session = await store.create("agent-1");
 
-      await store.addMessage(session.id, { role: "user", content: textContent("Test") });
-      await store.addMessage(session.id, { role: "assistant", content: textContent("Reply") });
+      await store.addMessage(session.id, userMessage("Test"));
+      await store.addMessage(session.id, assistantMessage("Reply"));
 
       // SessionManager defers file creation until an assistant message exists
       const messagesFile = path.join(tempDir, `${session.id}.jsonl`);
@@ -174,14 +174,14 @@ describe("DefaultSessionStore", () => {
 
       const messages = await store.getMessages(session.id);
       expect(messages).toHaveLength(2);
-      expect(messages[0].content).toEqual(textContent("Test"));
-      expect(messages[1].content).toEqual(textContent("Reply"));
+      expect(messageText(messages[0])).toBe("Test");
+      expect(messageText(messages[1])).toBe("Reply");
     });
 
     it("loads messages from disk", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: textContent("Persisted") });
-      await store.addMessage(session.id, { role: "assistant", content: textContent("Response") });
+      await store.addMessage(session.id, userMessage("Persisted"));
+      await store.addMessage(session.id, assistantMessage("Response"));
 
       // New store instance
       const newStore = new DefaultSessionStore({ dataDir: tempDir });
@@ -189,13 +189,13 @@ describe("DefaultSessionStore", () => {
 
       const messages = await newStore.getMessages(session.id);
       expect(messages).toHaveLength(2);
-      expect(messages[0].content).toEqual(textContent("Persisted"));
-      expect(messages[1].content).toEqual(textContent("Response"));
+      expect(messageText(messages[0])).toBe("Persisted");
+      expect(messageText(messages[1])).toBe("Response");
     });
 
     it("throws if session not found", async () => {
       await expect(
-        store.addMessage("non-existent", { role: "user", content: textContent("Hi") }),
+        store.addMessage("non-existent", userMessage("Hi")),
       ).rejects.toThrow('Session "non-existent" not found');
 
       await expect(store.getMessages("non-existent")).rejects.toThrow(
@@ -227,7 +227,7 @@ describe("DefaultSessionStore", () => {
 
     it("removes session files from disk", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: textContent("persist me") });
+      await store.addMessage(session.id, userMessage("persist me"));
       const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
 
       await store.delete(session.id);
@@ -319,11 +319,11 @@ describe("DefaultSessionStore", () => {
       const session = await shortTtlStore.create("agent-1");
       await shortTtlStore.addMessage(session.id, {
         role: "user",
-        content: textContent("test message"),
+        content: ("test message"),
       });
       await shortTtlStore.addMessage(session.id, {
         role: "assistant",
-        content: textContent("response"),
+        content: ("response"),
       });
 
       const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
@@ -441,8 +441,8 @@ describe("DefaultSessionStore", () => {
   describe("clearMessages", () => {
     it("clears in-memory messages", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: textContent("msg1") });
-      await store.addMessage(session.id, { role: "assistant", content: textContent("msg2") });
+      await store.addMessage(session.id, userMessage("msg1"));
+      await store.addMessage(session.id, assistantMessage("msg2"));
 
       await store.clearMessages(session.id);
 
@@ -452,8 +452,8 @@ describe("DefaultSessionStore", () => {
 
     it("truncates transcript file on disk", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: textContent("persist1") });
-      await store.addMessage(session.id, { role: "assistant", content: textContent("persist2") });
+      await store.addMessage(session.id, userMessage("persist1"));
+      await store.addMessage(session.id, assistantMessage("persist2"));
 
       // Verify messages are persisted
       const beforeMessages = await store.getMessages(session.id);
@@ -490,35 +490,35 @@ describe("DefaultSessionStore", () => {
   describe("setMessages", () => {
     it("replaces in-memory messages", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: textContent("old1") });
-      await store.addMessage(session.id, { role: "assistant", content: textContent("old2") });
+      await store.addMessage(session.id, userMessage("old1"));
+      await store.addMessage(session.id, assistantMessage("old2"));
 
       const newMessages = [
-        { role: "user" as const, content: textContent("new1") },
-        { role: "assistant" as const, content: textContent("new2") },
-        { role: "user" as const, content: textContent("new3") },
+        userMessage("new1"),
+        assistantMessage("new2"),
+        userMessage("new3"),
       ];
 
       await store.setMessages(session.id, newMessages);
 
       const messages = await store.getMessages(session.id);
       expect(messages).toHaveLength(3);
-      expect(messages[0].content).toEqual(textContent("new1"));
-      expect(messages[1].content).toEqual(textContent("new2"));
-      expect(messages[2].content).toEqual(textContent("new3"));
+      expect(messageText(messages[0])).toBe("new1");
+      expect(messageText(messages[1])).toBe("new2");
+      expect(messageText(messages[2])).toBe("new3");
     });
 
     it("overwrites transcript file on disk", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: textContent("old1") });
-      await store.addMessage(session.id, { role: "assistant", content: textContent("old2") });
+      await store.addMessage(session.id, userMessage("old1"));
+      await store.addMessage(session.id, assistantMessage("old2"));
 
       // Verify old messages are persisted
       const beforeMessages = await store.getMessages(session.id);
       expect(beforeMessages).toHaveLength(2);
 
       const newMessages = [
-        { role: "user" as const, content: textContent("new1") },
+        userMessage("new1"),
       ];
 
       await store.setMessages(session.id, newMessages);
@@ -526,16 +526,16 @@ describe("DefaultSessionStore", () => {
       // Verify messages are overwritten
       const afterMessages = await store.getMessages(session.id);
       expect(afterMessages).toHaveLength(1);
-      expect(afterMessages[0].content).toEqual(textContent("new1"));
+      expect(messageText(afterMessages[0])).toBe("new1");
     });
 
     it("persists after store restart", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: textContent("old") });
+      await store.addMessage(session.id, userMessage("old"));
 
       const newMessages = [
-        { role: "user" as const, content: textContent("compacted1") },
-        { role: "assistant" as const, content: textContent("compacted2") },
+        userMessage("compacted1"),
+        assistantMessage("compacted2"),
       ];
 
       await store.setMessages(session.id, newMessages);
@@ -546,13 +546,13 @@ describe("DefaultSessionStore", () => {
 
       const messages = await newStore.getMessages(session.id);
       expect(messages).toHaveLength(2);
-      expect(messages[0].content).toEqual(textContent("compacted1"));
-      expect(messages[1].content).toEqual(textContent("compacted2"));
+      expect(messageText(messages[0])).toBe("compacted1");
+      expect(messageText(messages[1])).toBe("compacted2");
     });
 
     it("throws on non-existent session", async () => {
       await expect(
-        store.setMessages("non-existent", [{ role: "user", content: textContent("test") }]),
+        store.setMessages("non-existent", [userMessage("test")]),
       ).rejects.toThrow('Session "non-existent" not found');
     });
 
@@ -564,7 +564,7 @@ describe("DefaultSessionStore", () => {
 
       const beforeTimestamp = (await store.get(session.id))!.lastActiveAt.getTime();
 
-      await store.setMessages(session.id, [{ role: "user", content: textContent("test") }]);
+      await store.setMessages(session.id, [userMessage("test")]);
 
       const afterTimestamp = (await store.get(session.id))!.lastActiveAt.getTime();
       expect(afterTimestamp).toBeGreaterThan(beforeTimestamp);
@@ -572,7 +572,7 @@ describe("DefaultSessionStore", () => {
 
     it("handles empty message array", async () => {
       const session = await store.create("agent-1");
-      await store.addMessage(session.id, { role: "user", content: textContent("old") });
+      await store.addMessage(session.id, userMessage("old"));
 
       await store.setMessages(session.id, []);
 

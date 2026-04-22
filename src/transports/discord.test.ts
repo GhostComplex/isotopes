@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
 import type { AgentManager, SessionStore, AgentInstance, ChannelsConfig } from "../core/types.js";
-import { textContent } from "../core/types.js";
+import {  } from "../core/types.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
 import { createMockAgentManager, createMockAgentInstance, createMockSessionStore } from "../core/test-helpers.js";
 
@@ -168,7 +168,7 @@ describe("DiscordTransport", () => {
         "session-123",
         expect.objectContaining({
           role: "assistant",
-          content: textContent("❌ No API provider registered for api: undefined"),
+          content: ("❌ No API provider registered for api: undefined"),
           metadata: { isError: true },
         }),
       );
@@ -186,8 +186,8 @@ describe("DiscordTransport", () => {
         lastActiveAt: new Date(),
       });
       sessionStore.getMessages = vi.fn().mockResolvedValue([
-        { role: "assistant", content: textContent("Previous reply") },
-        { role: "user", content: textContent("hello again") },
+        { role: "assistant", content: ("Previous reply") },
+        { role: "user", content: ("hello again") },
       ]);
 
       const channel: MockChannel = {
@@ -226,8 +226,8 @@ describe("DiscordTransport", () => {
         }),
       );
       expect(promptSpy).toHaveBeenCalledWith([
-        { role: "assistant", content: textContent("Previous reply") },
-        { role: "user", content: textContent("hello again") },
+        { role: "assistant", content: ("Previous reply") },
+        { role: "user", content: ("hello again") },
       ]);
     });
   });
@@ -904,11 +904,11 @@ describe("DiscordTransport", () => {
 
       // Provide messages that would be affected by limitHistoryTurns
       sessionStore.getMessages = vi.fn().mockResolvedValue([
-        { role: "user", content: textContent("old") },
-        { role: "assistant", content: textContent("old reply") },
-        { role: "user", content: textContent("recent") },
-        { role: "assistant", content: textContent("recent reply") },
-        { role: "user", content: textContent("hello bot") },
+        { role: "user", content: ("old") },
+        { role: "assistant", content: ("old reply") },
+        { role: "user", content: ("recent") },
+        { role: "assistant", content: ("recent reply") },
+        { role: "user", content: ("hello bot") },
       ]);
 
       const transportCtx = new DiscordTransport({

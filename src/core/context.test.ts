@@ -1,7 +1,8 @@
 // src/core/context.test.ts — Tests for prompt preparation transforms
 
 import { describe, it, expect } from "vitest";
-import { textContent, type Message } from "./types.js";
+import { type Message } from "./types.js";
+import { messageText } from "./messages.js";
 import {
   limitHistoryTurns,
   sanitizeToolUseResultPairing,
@@ -14,10 +15,10 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const user = (text: string): Message => ({ role: "user", content: textContent(text) });
-const assistant = (text: string): Message => ({ role: "assistant", content: textContent(text) });
+const user = (text: string): Message => ({ role: "user", content: (text) });
+const assistant = (text: string): Message => ({ role: "assistant", content: (text) });
 const toolResult = (output: string, toolCallId?: string): Message => ({
-  role: "tool_result",
+  role: "toolResult",
   content: [{ type: "tool_result", output, toolCallId }],
   metadata: toolCallId ? { toolCallId } : undefined,
 });
@@ -189,7 +190,7 @@ describe("sanitizeToolUseResultPairing", () => {
 
   it("handles tool_result with empty content array without throwing", () => {
     const emptyContentResult: Message = {
-      role: "tool_result",
+      role: "toolResult",
       content: [] as unknown as Message["content"],
       metadata: { toolCallId: "t1" },
     };
