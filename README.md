@@ -127,6 +127,20 @@ channels:
 
 See [isotopes.example.yaml](isotopes.example.yaml) for all options.
 
+## Running Multiple Instances
+
+Run two isotopes instances on the same machine (e.g., so agents on one instance can fix the code of another). Each instance needs its own bot token, data directory, and API port:
+
+```bash
+# Instance A
+ISOTOPES_HOME=~/.isotopes-a ISOTOPES_PORT=2712 DISCORD_TOKEN=<token-a> isotopes
+
+# Instance B (separate terminal)
+ISOTOPES_HOME=~/.isotopes-b ISOTOPES_PORT=2713 DISCORD_TOKEN=<token-b> isotopes
+```
+
+Each instance gets its own config, sessions, logs, and PID file under its `ISOTOPES_HOME`. Discord connections are outbound WebSockets, so no port conflicts — `ISOTOPES_PORT` only controls the REST API.
+
 ## License
 
 MIT
