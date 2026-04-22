@@ -47,7 +47,7 @@ describe("CronScheduler", () => {
       const job = scheduler.register(makeJobInput({ expression: "*/15 * * * *" }));
 
       expect(job.schedule).toBeDefined();
-      expect(job.schedule._cron).toBeDefined();
+      expect(job.schedule.nextRun()).toBeInstanceOf(Date);
     });
 
     it("computes nextRun for enabled jobs", () => {

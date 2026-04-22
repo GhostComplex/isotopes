@@ -1,8 +1,8 @@
 // src/automation/cron-job.ts — Cron job scheduler for Isotopes
 // Manages cron-based scheduled tasks for agents and channels.
 
+import { Cron } from "croner";
 import { createLogger } from "../core/logger.js";
-import { parseCronExpression, getNextRun, type CronSchedule } from "./cron-parser.js";
 
 const log = createLogger("cron");
 
@@ -21,7 +21,7 @@ export interface CronJob {
   id: string;
   name: string;
   expression: string;
-  schedule: CronSchedule;
+  schedule: Cron;
   agentId: string;
   channelId?: string;
   action: CronAction;
@@ -58,7 +58,7 @@ function generateId(): string {
  * CronScheduler — manages cron-based scheduled tasks.
  *
  * Jobs are registered with a cron expression that is parsed into a
- * {@link CronSchedule}. When the scheduler is started, it sets timers
+ * {@link Cron}. When the scheduler is started, it sets timers
  * for each enabled job and re-schedules them after every trigger.
  * Callbacks registered via {@link onTrigger} are invoked each time a
  * job fires.
@@ -74,9 +74,9 @@ export class CronScheduler {
    * Parses the cron expression and schedules the next run if the scheduler is started.
    */
   register(input: CronJobInput): CronJob {
-    const schedule = parseCronExpression(input.expression);
+    const schedule = new Cron(input.expression, { paused: true });
     const now = new Date();
-    const nextRun = input.enabled ? getNextRun(schedule, now) : undefined;
+    const nextRun = input.enabled ? schedule.nextRun(now) ?? undefined : undefined;
 
     const job: CronJob = {
       ...input,
@@ -119,7 +119,7 @@ export class CronScheduler {
     if (!job) return false;
 
     job.enabled = true;
-    job.nextRun = getNextRun(job.schedule);
+    job.nextRun = job.schedule.nextRun() ?? undefined;
 
     if (this.running) {
       this.scheduleTimer(job);
@@ -189,7 +189,7 @@ export class CronScheduler {
 
     for (const job of this.jobs.values()) {
       if (job.enabled) {
-        job.nextRun = getNextRun(job.schedule);
+        job.nextRun = job.schedule.nextRun() ?? undefined;
         this.scheduleTimer(job);
       }
     }
@@ -256,7 +256,7 @@ export class CronScheduler {
 
     // Schedule next run
     if (this.running && job.enabled) {
-      job.nextRun = getNextRun(job.schedule, job.lastRun);
+      job.nextRun = job.schedule.nextRun(job.lastRun) ?? undefined;
       this.scheduleTimer(job);
     }
   }
