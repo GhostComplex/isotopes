@@ -247,12 +247,8 @@ describe("pruneToolResults", () => {
     const shortOutput = "ok";
     const msgs = [user("a"), toolResult(shortOutput, "t1"), assistant("b"), assistant("c"), assistant("d"), assistant("e")];
     const result = pruneToolResults(msgs, { protectRecent: 3 });
-    const block = (result[1] as unknown as {content:unknown}).content;
-    // @ts-expect-error test fixture
-    if (block.type === "tool_result") {
-    // @ts-expect-error test fixture
-      expect(block.output).toBe(shortOutput);
-    }
+    const content = (result[1] as any).content as string;
+    expect(content).toBe(shortOutput);
   });
 
   it("no-op for messages without tool results", () => {

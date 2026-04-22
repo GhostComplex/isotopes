@@ -51,3 +51,8 @@ export function messageText(msg: AgentMessage): string {
   }
   return "";
 }
+
+/** Loosely-typed accessor for AgentMessage properties (avoids `as any` in tests). */
+export function msgField<T = unknown>(msg: AgentMessage, field: string): T {
+  return (msg as unknown as Record<string, unknown>)[field] as T;
+}

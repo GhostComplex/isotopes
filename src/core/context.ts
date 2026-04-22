@@ -131,7 +131,6 @@ export function pruneToolResults(messages: AgentMessage[], opts?: PruneToolResul
     if (i >= protectFrom) return msg;
     if (msg.role !== "toolResult") return msg;
 
-    const m = msg as unknown as { content?: unknown };
     const text = messageText(msg);
     if (text.length < minLenForTrim) return msg;
 
@@ -139,14 +138,15 @@ export function pruneToolResults(messages: AgentMessage[], opts?: PruneToolResul
     const budget = headChars + effectiveTail;
     if (text.length <= budget + 50) return msg;
 
-    const trimmed = text.slice(0, headChars) +
+    const trimmedText = text.slice(0, headChars) +
       "\n⚠️ [... middle content omitted — showing head and tail ...]\n" +
       text.slice(-effectiveTail);
 
-    if (typeof m.content === "string") {
-      return { ...msg, content: trimmed } as unknown as AgentMessage;
+    const content = (msg as unknown as { content?: unknown }).content;
+    if (typeof content === "string") {
+      return { ...msg, content: trimmedText } as unknown as AgentMessage;
     }
-    return { ...msg, content: [{ type: "text", text: trimmed }] } as unknown as AgentMessage;
+    return { ...msg, content: [{ type: "text", text: trimmedText }] } as unknown as AgentMessage;
   });
 }
 

@@ -41,7 +41,6 @@ vi.mock("@mariozechner/pi-ai", () => ({
 import { Agent } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
 import { PiMonoCore, stripOrphanedToolResults } from "./pi-mono.js";
-import {  } from "./types.js";
 import { ToolRegistry } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -104,12 +103,12 @@ describe("PiMonoCore.createAgent", () => {
   it("steer() delegates to the underlying Agent with mapped message", () => {
     const core = new PiMonoCore();
     const instance = core.createAgent(makeConfig());
-    const msg: Message = { role: "user", content: ("hi"), timestamp: 5000 };
+    const msg: Message = { role: "user", content: "hi", timestamp: 5000 };
 
     instance.steer(msg);
 
     expect(mockAgent.steer).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "user", content: ("hi"), timestamp: 5000 }),
+      expect.objectContaining({ role: "user", content: "hi", timestamp: 5000 }),
     );
   });
 
@@ -121,7 +120,7 @@ describe("PiMonoCore.createAgent", () => {
     instance.followUp(msg);
 
     expect(mockAgent.followUp).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "user", content: ("follow up") }),
+      expect.objectContaining({ role: "user", content: "follow up" }),
     );
   });
 

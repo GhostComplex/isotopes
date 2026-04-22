@@ -3,7 +3,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { runAgentLoop } from "./agent-runner.js";
 import { createMockAgentInstance, createMockSessionStore } from "./test-helpers.js";
-import {  } from "./types.js";
 import type { Logger } from "./logger.js";
 
 // Suppress console output
