@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SlashCommandHandler, type CommandContext } from "./slash-commands.js";
-import { createMockAgentManager, createMockSessionStore } from "../core/test-helpers.js";
+import { createMockSessionStore } from "../core/test-helpers.js";
 
 function createContext(overrides?: Partial<CommandContext>): CommandContext {
   return {

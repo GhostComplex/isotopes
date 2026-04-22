@@ -21,7 +21,7 @@ describe("bridgeAgentEvents", () => {
       { type: "turn_start" },
       { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "Hello, " } as never },
       { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "world." } as never },
-      { type: "turn_end" },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "agent_end", messages: [] },
     ]);
     expect(out).toEqual([
@@ -34,7 +34,7 @@ describe("bridgeAgentEvents", () => {
     const out = await collect([
       { type: "turn_start" },
       { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "   " } as never },
-      { type: "turn_end" },
+      { type: "turn_end", message: {} as never, toolResults: [] },
       { type: "agent_end", messages: [] },
     ]);
     expect(out).toEqual([{ type: "done", exitCode: 0 }]);
@@ -50,8 +50,8 @@ describe("bridgeAgentEvents", () => {
 
   it("translates tool_result and surfaces error flag", async () => {
     const out = await collect([
-      { type: "tool_execution_end", toolCallId: "1", result: "ok" },
-      { type: "tool_execution_end", toolCallId: "2", result: "boom", isError: true },
+      { type: "tool_execution_end", toolCallId: "1", toolName: "test", args: {}, result: "ok", isError: false },
+      { type: "tool_execution_end", toolCallId: "2", toolName: "test", args: {}, result: "boom", isError: false, isError: true },
       { type: "agent_end", messages: [] },
     ]);
     expect(out[0]).toEqual({ type: "tool_result", toolResult: "ok" });
@@ -60,7 +60,7 @@ describe("bridgeAgentEvents", () => {
 
   it("emits error+done(1) when agent_end carries errorMessage", async () => {
     const out = await collect([
-      { type: "agent_end", messages: [], errorMessage: "boom" },
+      { type: "agent_end", messages: [{ role: "assistant", errorMessage: "boom", content: [], timestamp: Date.now() } as never] },
     ]);
     expect(out).toEqual([
       { type: "error", error: "boom" },

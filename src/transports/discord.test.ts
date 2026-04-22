@@ -2,9 +2,9 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
-import type { AgentManager, SessionStore, PiMonoInstance, ChannelsConfig } from "../core/types.js";
+import type { SessionStore, PiMonoInstance, ChannelsConfig } from "../core/types.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
-import { createMockAgentManager, createMockPiMonoInstance, createMockSessionStore } from "../core/test-helpers.js";
+import { createMockcreateMockPiMonoInstance, createMockSessionStore } from "../core/test-helpers.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 

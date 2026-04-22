@@ -478,8 +478,8 @@ describe("prompt() event mapping", () => {
     ]);
 
     const agentEnd = events[0] as Extract<AgentEvent, { type: "agent_end" }>;
-    expect(agentEnd.stopReason).toBe("error");
-    expect(agentEnd.errorMessage).toBe("No API provider registered for api: undefined");
+    expect(msgField(agentEnd.messages[agentEnd.messages.length-1], "stopReason")).toBe("error");
+    expect(msgField(agentEnd.messages[agentEnd.messages.length-1], "errorMessage")).toBe("No API provider registered for api: undefined");
     expect(msgField(agentEnd.messages[0], "stopReason")).toBe("error");
     expect(msgField(agentEnd.messages[0], "errorMessage")).toBe("No API provider registered for api: undefined");
   });

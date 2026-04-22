@@ -1,10 +1,10 @@
 // src/subagent/runners/builtin.test.ts — Tests for BuiltinRunner
 
 import { describe, it, expect } from "vitest";
-import type { AgentConfig, AgentEvent, AgentInstance, ProviderConfig } from "../../core/types.js";
+import type { AgentConfig, AgentEvent, ProviderConfig } from "../../core/types.js";
 import { ToolRegistry } from "../../core/tools.js";
 import type { SubagentEvent } from "../types.js";
-import { BuiltinRunner, type BuiltinAgentCore } from "./builtin.js";
+import { BuiltinRunner, type Builtin } from "./builtin.js";
 
 function makeRegistry(names: string[]): ToolRegistry {
   const r = new ToolRegistry("test");
@@ -22,7 +22,7 @@ function fakeProvider(): ProviderConfig {
 }
 
 function makeCore(events: AgentEvent[]): {
-  core: BuiltinAgentCore;
+  core: Builtin;
   setIds: string[];
   clearedIds: string[];
   capturedConfig: AgentConfig | undefined;
@@ -33,7 +33,7 @@ function makeCore(events: AgentEvent[]): {
   let capturedConfig: AgentConfig | undefined;
   let abortCalled = 0;
 
-  const instance: AgentInstance = {
+  const instance: PiMonoInstance = {
     async *[Symbol.asyncIterator]() {
       // unused
     },
@@ -46,9 +46,9 @@ function makeCore(events: AgentEvent[]): {
     },
     steer: () => {},
     followUp: () => {},
-  } as unknown as AgentInstance;
+  } as unknown as PiMonoInstance;
 
-  const core: BuiltinAgentCore = {
+  const core: Builtin = {
     setToolRegistry: (id) => {
       setIds.push(id);
     },
@@ -160,7 +160,7 @@ describe("BuiltinRunner", () => {
   it("clears the tool registry even if the agent throws", async () => {
     const setIds: string[] = [];
     const clearedIds: string[] = [];
-    const errInstance: AgentInstance = {
+    const errInstance: PiMonoInstance = {
       prompt: () =>
         (async function* () {
           throw new Error("boom");
@@ -169,8 +169,8 @@ describe("BuiltinRunner", () => {
       abort: () => {},
       steer: () => {},
       followUp: () => {},
-    } as unknown as AgentInstance;
-    const core: BuiltinAgentCore = {
+    } as unknown as PiMonoInstance;
+    const core: Builtin = {
       setToolRegistry: (id) => setIds.push(id),
       clearToolRegistry: (id) => clearedIds.push(id),
       createAgent: () => errInstance,

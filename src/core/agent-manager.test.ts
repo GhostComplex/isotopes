@@ -2,25 +2,28 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DefaultAgentManager } from "./agent-manager.js";
-import type { AgentConfig, AgentCore, AgentInstance } from "./types.js";
+import type { AgentConfig } from "./types.js";
+import { PiMonoCore } from "./pi-mono.js";
 
 // ---------------------------------------------------------------------------
 // Mock setup
 // ---------------------------------------------------------------------------
 
-function createMockInstance(): AgentInstance {
+import type { PiMonoInstance } from "./pi-mono.js";
+
+function createMockInstance(): PiMonoInstance {
   return {
     prompt: vi.fn(),
     abort: vi.fn(),
     steer: vi.fn(),
     followUp: vi.fn(),
-  };
+  } as unknown as PiMonoInstance;
 }
 
-function createMockCore(): AgentCore {
+function createMockCore(): PiMonoCore {
   return {
     createAgent: vi.fn(() => createMockInstance()),
-  };
+  } as unknown as PiMonoCore;
 }
 
 function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
@@ -36,7 +39,7 @@ function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
 // ---------------------------------------------------------------------------
 
 describe("DefaultAgentManager", () => {
-  let core: AgentCore;
+  let core: PiMonoCore;
   let manager: DefaultAgentManager;
 
   beforeEach(() => {

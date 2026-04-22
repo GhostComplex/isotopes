@@ -11,7 +11,7 @@ import {
   resolveAgentId,
   type FeishuMessageEvent,
 } from "./feishu.js";
-import type { AgentManager, SessionStore, PiMonoInstance, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
+import type { SessionStore, PiMonoInstance, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
 import {
   createMockAgentManager,
   createMockPiMonoInstance,

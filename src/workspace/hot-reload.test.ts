@@ -10,7 +10,7 @@ import {
   IGNORE_PATTERNS,
   type WorkspaceReloadedEvent,
 } from "./hot-reload.js";
-import type { AgentManager, AgentInstance, AgentConfig } from "../core/types.js";
+import type { AgentConfig } from "../core/types.js";
 
 // ---------------------------------------------------------------------------
 // Mock AgentManager
@@ -21,17 +21,17 @@ function createMockAgentManager(): AgentManager & { reloadWorkspaceCalls: string
 
   return {
     reloadWorkspaceCalls,
-    async create(config: AgentConfig): Promise<AgentInstance> {
-      return { id: config.id } as unknown as AgentInstance;
+    async create(config: AgentConfig): Promise<PiMonoInstance> {
+      return { id: config.id } as unknown as PiMonoInstance;
     },
-    get(id: string): AgentInstance | undefined {
-      return { id } as unknown as AgentInstance;
+    get(id: string): PiMonoInstance | undefined {
+      return { id } as unknown as PiMonoInstance;
     },
     list(): AgentConfig[] {
       return [];
     },
-    async update(_id: string, _updates: Partial<AgentConfig>): Promise<AgentInstance> {
-      return { id: _id } as unknown as AgentInstance;
+    async update(_id: string, _updates: Partial<AgentConfig>): Promise<PiMonoInstance> {
+      return { id: _id } as unknown as PiMonoInstance;
     },
     async delete(_id: string): Promise<void> {},
     async getPrompt(_id: string): Promise<string> {
