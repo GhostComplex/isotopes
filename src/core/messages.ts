@@ -56,3 +56,19 @@ export function messageText(msg: AgentMessage): string {
 export function msgField<T = unknown>(msg: AgentMessage, field: string): T {
   return (msg as unknown as Record<string, unknown>)[field] as T;
 }
+
+/** Extract stopReason + errorMessage from the last assistant message in an agent_end event. */
+export function getAgentEndMeta(messages: AgentMessage[]): { stopReason?: string; errorMessage?: string } {
+  const last = [...messages].reverse().find((m) => m.role === "assistant");
+  if (!last) return {};
+  return {
+    stopReason: msgField<string | undefined>(last, "stopReason"),
+    errorMessage: msgField<string | undefined>(last, "errorMessage"),
+  };
+}
+
+/** Extract usage from an assistant message (SDK turn_end.message). */
+export function getUsage(msg: AgentMessage | undefined): unknown {
+  if (!msg || !("usage" in msg)) return undefined;
+  return (msg as unknown as { usage: unknown }).usage;
+}

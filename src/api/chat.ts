@@ -3,7 +3,7 @@
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
-import { userMessage as mkUserMsg, assistantMessage as mkAssistantMsg, messageText } from "../core/messages.js";
+import { userMessage as mkUserMsg, assistantMessage as mkAssistantMsg, messageText, getAgentEndMeta, getUsage } from "../core/messages.js";
 import { createLogger } from "../core/logger.js";
 import { randomUUID } from "node:crypto";
 
@@ -162,11 +162,13 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
           writeEvent("turn_start", {});
           break;
         case "turn_end":
-          writeEvent("turn_end", {});
+          writeEvent("turn_end", { usage: getUsage(event.message) });
           break;
-        case "agent_end":
-          writeEvent("agent_end", {});
+        case "agent_end": {
+          const { stopReason, errorMessage } = getAgentEndMeta(event.messages);
+          writeEvent("agent_end", { stopReason, errorMessage });
           break;
+        }
       }
     }
 
