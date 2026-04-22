@@ -182,13 +182,11 @@ export function pruneToolResults(messages: Message[], opts?: PruneToolResultsOpt
 }
 
 const IMPORTANT_TAIL_PATTERN =
-  /\b(error|exception|failed|fatal|traceback|panic|stack trace|errno|exit code|total|summary|result|complete|finished|done)\b/i;
+  /\b(error|exception|failed|fatal|traceback|panic|stack trace|errno|exit code)\b/i;
 
 function hasImportantTail(text: string): boolean {
-  const tail = text.slice(-2000).toLowerCase();
-  if (IMPORTANT_TAIL_PATTERN.test(tail)) return true;
-  if (/\}\s*$/.test(tail.trim())) return true;
-  return false;
+  const tail = text.slice(-2000);
+  return IMPORTANT_TAIL_PATTERN.test(tail);
 }
 
 // ---------------------------------------------------------------------------

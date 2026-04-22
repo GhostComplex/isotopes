@@ -1,6 +1,7 @@
 // src/core/message-convert.ts — Convert between isotopes Message and pi-agent-core AgentMessage
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { Message as PiMessage } from "@mariozechner/pi-ai";
 import {
   textContent,
   messageContentToPlainText,
@@ -45,6 +46,11 @@ export function toAgentMessage(msg: Message): AgentMessage {
     content,
     timestamp: msg.timestamp ?? Date.now(),
   } as AgentMessage;
+}
+
+/** Narrower conversion for SessionManager.appendMessage() which expects pi-ai Message. */
+export function toPiMessage(msg: Message): PiMessage {
+  return toAgentMessage(msg) as unknown as PiMessage;
 }
 
 export function fromAgentMessage(msg: AgentMessage): Message {

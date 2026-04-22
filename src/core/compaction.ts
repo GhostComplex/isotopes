@@ -64,7 +64,7 @@ export function resolveCompactionConfig(
     mode,
     contextWindow: config?.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
     threshold: config?.threshold ?? DEFAULT_THRESHOLDS[mode],
-    preserveRecent: config?.preserveRecent,
+    preserveRecent: config?.preserveRecent ?? 10,
   };
 }
 
@@ -336,13 +336,27 @@ function keepRecentByTokens(messages: AgentMessage[], tokenBudget: number): Agen
     }
   }
 
-  // Don't cut at a tool_result — walk forward to include its parent assistant
+  // Forward check: don't cut at a toolResult — walk back to include its parent
   while (cutIndex > 0 && cutIndex < messages.length) {
     const msg = messages[cutIndex] as unknown as { role?: string };
     if (msg.role === "toolResult" || msg.role === "tool_result") {
       cutIndex--;
     } else {
       break;
+    }
+  }
+
+  // Backward check: if the message just before the cut is an assistant with
+  // toolCall blocks, its results are in the kept portion but the call is not.
+  // Move cut back to include the assistant.
+  if (cutIndex > 0) {
+    const prev = messages[cutIndex - 1] as unknown as { role?: string; content?: unknown[] };
+    if (prev.role === "assistant" && Array.isArray(prev.content) &&
+        prev.content.some((b: unknown) => {
+          const block = b as { type?: string };
+          return block.type === "toolCall" || block.type === "tool_call" || block.type === "tool_use";
+        })) {
+      cutIndex--;
     }
   }
 

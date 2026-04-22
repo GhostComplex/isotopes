@@ -6,7 +6,6 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
-import type { Message as PiMessage } from "@mariozechner/pi-ai";
 import type {
   Message,
   Session,
@@ -15,7 +14,7 @@ import type {
   SessionStoreConfig,
   SessionConfig,
 } from "./types.js";
-import { toAgentMessage, fromAgentMessage } from "./message-convert.js";
+import { toPiMessage, fromAgentMessage } from "./message-convert.js";
 import { createLogger } from "./logger.js";
 
 const log = createLogger("session-store");
@@ -113,8 +112,7 @@ export class DefaultSessionStore implements SessionStore {
     if (!session) throw new Error(`Session "${sessionId}" not found`);
 
     await this.ensureManagerLoaded(session);
-    const agentMsg = toAgentMessage(message) as unknown as PiMessage;
-    session.manager!.appendMessage(agentMsg);
+    session.manager!.appendMessage(toPiMessage(message));
     session.lastActiveAt = new Date();
 
     this.debouncedPersistIndex();
@@ -176,7 +174,7 @@ export class DefaultSessionStore implements SessionStore {
     await fs.writeFile(this.transcriptFile(sessionId), "");
     const manager = SessionManager.open(this.transcriptFile(sessionId));
     for (const msg of messages) {
-      manager.appendMessage(toAgentMessage(msg) as unknown as PiMessage);
+      manager.appendMessage(toPiMessage(msg));
     }
     session.manager = manager;
     session.managerLoaded = true;
@@ -351,15 +349,31 @@ export class DefaultSessionStore implements SessionStore {
           const entries = manager.getBranch();
           if (entries.length === 0) continue;
 
+          // Extract metadata from first message if available
+          const firstMsg = entries.find((e) => e.type === "message");
+          const messages = entries.filter((e) => e.type === "message");
+          const lastEntry = entries[entries.length - 1];
+          const lastTimestamp = lastEntry && "timestamp" in lastEntry && typeof lastEntry.timestamp === "string"
+            ? new Date(lastEntry.timestamp) : new Date();
+
+          let agentId = "unknown";
+          let metadata: SessionMetadata | undefined;
+          if (firstMsg && "message" in firstMsg) {
+            const msg = fromAgentMessage(firstMsg.message);
+            if (typeof msg.metadata?.agentId === "string") agentId = msg.metadata.agentId;
+            if (msg.metadata?.sessionMetadata) metadata = msg.metadata.sessionMetadata as SessionMetadata;
+          }
+
           const session: StoredSession = {
             id,
-            agentId: "unknown",
-            lastActiveAt: new Date(),
+            agentId,
+            metadata,
+            lastActiveAt: lastTimestamp,
             manager,
             managerLoaded: true,
           };
           this.sessions.set(id, session);
-          log.info(`Recovered orphan session: ${id} (${entries.length} entries)`);
+          log.info(`Recovered orphan session: ${id} (${messages.length} messages)`);
         } catch {
           log.debug(`Could not recover orphan session ${id}`);
         }
