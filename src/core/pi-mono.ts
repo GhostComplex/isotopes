@@ -5,6 +5,7 @@
 // the SDK's AgentSession.
 
 import { getModel, type Model, type Api } from "@mariozechner/pi-ai";
+import { truncateToolResultText } from "./tool-result-truncation.js";
 import {
   type AgentSession,
   AuthStorage,
@@ -112,7 +113,7 @@ function toToolDefinition(tool: Tool, handler: (args: unknown) => Promise<string
     execute: async (_toolCallId, params) => {
       const result = await handler(params);
       return {
-        content: [{ type: "text", text: result }],
+        content: [{ type: "text", text: truncateToolResultText(result) }],
         details: {},
       };
     },
