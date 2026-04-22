@@ -59,7 +59,7 @@ describe("runAgentLoop", () => {
       "s1",
       expect.objectContaining({
         role: "assistant",
-        content: ("Reply"),
+        content: [{ type: "text", text: "Reply" }],
       }),
     );
   });
@@ -153,10 +153,12 @@ describe("runAgentLoop", () => {
     });
 
     expect(onToolComplete).toHaveBeenCalledTimes(1);
-    expect(agent.steer).toHaveBeenCalledWith({
-      role: "user",
-      content: ("[Messages arrived]\nuser1: hello"),
-    });
+    expect(agent.steer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "user",
+        content: "[Messages arrived]\nuser1: hello",
+      }),
+    );
   });
 
   it("does not call steer if onToolComplete returns null", async () => {
@@ -224,27 +226,21 @@ describe("runAgentLoop", () => {
 
     // Turn 1: assistant with text + tool_call
     expect(calls[0][0]).toBe("s1");
-    expect(calls[0][1].role).toBe("assistant");
-    expect(calls[0][1].content).toEqual([
+    expect(((calls[0][1]) as any).role).toBe("assistant");
+    expect(((calls[0][1]) as any).content).toEqual([
       { type: "text", text: "Let me check." },
-      { type: "tool_call", id: "call-1", name: "shell", input: { cmd: "ls" } },
+      { type: "toolCall", id: "call-1", name: "shell", input: { cmd: "ls" } },
     ]);
 
     // Turn 1: tool_result-role message paired to call-1, with toolName
-    expect(calls[1][1].role).toBe("tool_result");
-    expect(calls[1][1].content).toEqual([
-      {
-        type: "tool_result",
-        output: "a.txt\nb.txt",
-        toolCallId: "call-1",
-        toolName: "shell",
-      },
-    ]);
-    expect(calls[1][1].metadata).toMatchObject({ toolCallId: "call-1", toolName: "shell" });
+    expect(((calls[1][1]) as any).role).toBe("toolResult");
+    expect((calls[1][1] as any).content).toBe("a.txt\nb.txt");
+    expect((calls[1][1] as any).toolCallId).toBe("call-1");
+    expect((calls[1][1] as any).toolName).toBe("shell");
 
     // Turn 2: text-only assistant
-    expect(calls[2][1].role).toBe("assistant");
-    expect(calls[2][1].content).toEqual([{ type: "text", text: "Done." }]);
+    expect(((calls[2][1]) as any).role).toBe("assistant");
+    expect(((calls[2][1]) as any).content).toEqual([{ type: "text", text: "Done." }]);
   });
 
   it("truncates oversized tool_result output when persisting", async () => {
@@ -269,7 +265,7 @@ describe("runAgentLoop", () => {
       (c) => c[1].role === "toolResult",
     );
     expect(toolResultCall).toBeDefined();
-    const output = toolResultCall![1].content[0].output as string;
+    const output = (toolResultCall![1] as any).content as string;
     expect(output.length).toBeLessThan(big.length);
     expect(output).toContain("[truncated");
   });
@@ -294,7 +290,7 @@ describe("runAgentLoop", () => {
     const toolResultCall = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => c[1].role === "toolResult",
     );
-    expect(toolResultCall![1].content[0].isError).toBe(true);
+    expect((toolResultCall![1] as any).isError).toBe(true);
   });
 
   it("flushes accumulated tool_calls at agent_end when turn_end is missing", async () => {
@@ -315,10 +311,10 @@ describe("runAgentLoop", () => {
 
     const calls = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls).toHaveLength(1);
-    expect(calls[0][1].role).toBe("assistant");
-    expect(calls[0][1].content).toEqual([
+    expect(((calls[0][1]) as any).role).toBe("assistant");
+    expect(((calls[0][1]) as any).content).toEqual([
       { type: "text", text: "partial" },
-      { type: "tool_call", id: "c", name: "t", input: {} },
+      { type: "toolCall", id: "c", name: "t", input: {} },
     ]);
   });
 });
