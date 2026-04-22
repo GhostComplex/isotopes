@@ -33,13 +33,13 @@ export interface DiscordAnswers {
   groupAllowlist?: string[];
 }
 
-export type SubagentPermissionModeChoice = "allowlist" | "skip" | "default";
+import type { SubagentPermissionMode } from "../core/config.js";
 export type SubagentEnableShellChoice = "yes" | "no";
 export type SubagentTypeChoice = "claude" | "builtin" | "both";
 
 export interface SubagentAnswers {
   allowedTypes: ("claude" | "builtin")[];
-  permissionMode: SubagentPermissionModeChoice;
+  permissionMode: SubagentPermissionMode;
   enableShell: boolean;
 }
 
@@ -100,7 +100,7 @@ function InitWizard({ onDone }: Props) {
 
   const [subagent, setSubagent] = useState<SubagentChoice>("skip");
   const [subagentTypes, setSubagentTypes] = useState<("claude" | "builtin")[]>(["claude", "builtin"]);
-  const [subagentPermissionMode, setSubagentPermissionMode] = useState<SubagentPermissionModeChoice>("allowlist");
+  const [subagentPermissionMode, setSubagentPermissionMode] = useState<SubagentPermissionMode>("allowlist");
   const [subagentEnableShell, setSubagentEnableShell] = useState(false);
 
   useInput((_input, key) => {
@@ -390,7 +390,7 @@ function InitWizard({ onDone }: Props) {
               { label: "default (claude CLI defaults, interactive prompts)", value: "default" as const },
               { label: "skip (--dangerously-skip-permissions, full access)", value: "skip" as const },
             ]}
-            onSelect={(item: { value: SubagentPermissionModeChoice }) => {
+            onSelect={(item: { value: SubagentPermissionMode }) => {
               setSubagentPermissionMode(item.value);
               setStep({ kind: "subagent-enableShell" });
             }}

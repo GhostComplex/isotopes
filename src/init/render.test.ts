@@ -119,7 +119,7 @@ describe("renderConfig", () => {
       subagentConfig: { allowedTypes: ["claude"], permissionMode: "skip", enableShell: true },
     });
     expect(yaml).toContain("allowedTypes: [claude]");
-    expect(yaml).toContain("permissionMode: skip");
+    expect(yaml).toContain("permissionMode: skip  # --dangerously-skip-permissions");
     expect(yaml).toContain("enableShell: true");
   });
 

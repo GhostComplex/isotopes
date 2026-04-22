@@ -50,7 +50,7 @@ function renderSubagent(answers: InitAnswers): string {
   const hasClaude = allowedTypes.includes("claude");
   const claudeBlock = hasClaude
     ? `  claude:
-    permissionMode: ${permissionMode}
+    permissionMode: ${permissionMode}${permissionMode === "skip" ? "  # --dangerously-skip-permissions" : ""}
     enableShell: ${enableShell}
 `
     : "";
