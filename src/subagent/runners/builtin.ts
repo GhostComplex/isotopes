@@ -196,4 +196,3 @@ async function* bridgeSessionToSubagentEvents(
     }
   }
 }
-}
