@@ -13,7 +13,7 @@ import type { CompactionConfig, CompactionMode } from "./types.js";
 // ---------------------------------------------------------------------------
 
 const DEFAULT_CONTEXT_WINDOW = 200_000;
-const DEFAULT_RESERVE_TOKENS = 16_384;
+const DEFAULT_RESERVE_TOKENS = 20_000;
 
 const DEFAULT_THRESHOLDS: Record<CompactionMode, number> = {
   off: 1,

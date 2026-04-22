@@ -52,7 +52,7 @@ describe("resolveCompactionConfig", () => {
     expect(config.mode).toBe("safeguard");
     expect(config.contextWindow).toBe(200_000);
     expect(config.threshold).toBe(0.8);
-    expect(config.reserveTokens).toBe(16_384);
+    expect(config.reserveTokens).toBe(20_000);
   });
 
   it("applies aggressive defaults for aggressive mode", () => {

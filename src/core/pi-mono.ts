@@ -189,7 +189,7 @@ export class AgentServiceCache {
           reserveTokens: this.compactionConfig.reserveTokens ?? 16_384,
           keepRecentTokens: 20_000,
         }
-      : { enabled: false, reserveTokens: 16_384, keepRecentTokens: 20_000 };
+      : { enabled: false, reserveTokens: 20_000, keepRecentTokens: 20_000 };
 
     const settingsManager = SettingsManager.inMemory({
       compaction: compactionSettings,
