@@ -10,15 +10,9 @@ import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, ToolCallEntry, TuiOptions, Screen } from "./types.js";
 import { SessionManager, type AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import { AGENT_EVENT_TYPES } from "../core/agent-events.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
-
-const AGENT_EVENT_TYPES = new Set([
-  "agent_start", "agent_end",
-  "turn_start", "turn_end",
-  "message_start", "message_update", "message_end",
-  "tool_execution_start", "tool_execution_update", "tool_execution_end",
-]);
 
 interface Props {
   options: TuiOptions;

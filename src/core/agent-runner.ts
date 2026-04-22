@@ -8,6 +8,7 @@ import { userMessage, assistantMessage, getAgentEndMeta, getUsage } from "./mess
 import type { Logger } from "./logger.js";
 import type { UsageTracker } from "./usage-tracker.js";
 import type { HookRegistry } from "../plugins/hooks.js";
+import { isAgentEvent } from "./agent-events.js";
 
 export interface AgentRunResult {
   responseText: string;
@@ -30,16 +31,6 @@ export interface RunAgentOptions {
   hooks?: HookRegistry;
 }
 
-const AGENT_EVENT_TYPES = new Set([
-  "agent_start", "agent_end",
-  "turn_start", "turn_end",
-  "message_start", "message_update", "message_end",
-  "tool_execution_start", "tool_execution_update", "tool_execution_end",
-]);
-
-function isAgentEvent(e: { type: string }): e is AgentEvent {
-  return AGENT_EVENT_TYPES.has(e.type);
-}
 
 export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
   const { cache, sessionStore, sessionId, systemPrompt, textInput, log, onTextDelta, usageTracker, onToolComplete, agentId, hooks } = opts;
@@ -177,7 +168,7 @@ async function runSessionEvents(
   let errorMessage: string | null = null;
 
   return new Promise<AgentRunResult>((resolve, reject) => {
-    const unsub = session.subscribe((event: AgentSessionEvent) => {
+    const unsub = session.subscribe(async (event: AgentSessionEvent) => {
       if (!isAgentEvent(event)) return;
       const e = event as AgentEvent;
 
@@ -200,13 +191,15 @@ async function runSessionEvents(
         }
 
         if (onToolComplete) {
-          void (async () => {
+          try {
             const pendingContext = await onToolComplete();
             if (pendingContext) {
               log.debug("Injecting pending messages via steer()");
-              void session.steer(pendingContext);
+              await session.steer(pendingContext);
             }
-          })();
+          } catch (err) {
+            log.warn("onToolComplete failed", { error: err });
+          }
         }
       } else if (e.type === "agent_end") {
         const { stopReason, errorMessage: errMsg } = getAgentEndMeta(e.messages);

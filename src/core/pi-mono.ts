@@ -185,7 +185,7 @@ export class AgentServiceCache {
     const compactionSettings = this.compactionConfig
       ? {
           enabled: true,
-          reserveTokens: this.compactionConfig.reserveTokens ?? 16_384,
+          reserveTokens: this.compactionConfig.reserveTokens ?? 20_000,
           keepRecentTokens: 20_000,
         }
       : { enabled: false, reserveTokens: 20_000, keepRecentTokens: 20_000 };
