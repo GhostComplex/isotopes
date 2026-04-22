@@ -210,10 +210,6 @@ export interface ClaudeSubagentConfigFile {
   settingSources?: SettingSource[];
 }
 
-/** Builtin-specific sub-agent configuration (extensible) */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface BuiltinSubagentConfigFile {}
-
 /** Sub-agent execution configuration in config file */
 export interface SubagentConfigFile {
   /** Whether subagent backend is enabled. Default: false */
@@ -230,8 +226,6 @@ export interface SubagentConfigFile {
   showToolCalls?: boolean;
   /** Claude Agent SDK runner configuration */
   claude?: ClaudeSubagentConfigFile;
-  /** Built-in runner configuration */
-  builtin?: BuiltinSubagentConfigFile;
 }
 
 /** Resolved claude-specific subagent config with defaults applied */

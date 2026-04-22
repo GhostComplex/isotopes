@@ -188,7 +188,6 @@ subagent:
     #   - LS
     # enableShell: false              # appends Bash to allowedTools
     # settingSources: [user]          # loads ~/.claude/settings.json; use [] to opt out
-  # builtin: {}                       # built-in runner config (extensible)
 
 # =============================================================================
 # CRON — channel-level scheduled jobs (per-agent cron lives under agents.<id>.cron)
