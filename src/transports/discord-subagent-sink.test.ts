@@ -1,7 +1,7 @@
 // src/subagent/discord-sink.test.ts — Tests for Discord sink formatters
 import { describe, it, expect, vi } from "vitest";
-import { truncate, formatEvent, formatSummary, DiscordSink } from "./discord-sink.js";
-import type { SubagentEvent, SubagentResult, DiscordSinkConfig } from "./types.js";
+import { truncate, formatEvent, formatSummary, DiscordSink } from "./discord-subagent-sink.js";
+import type { SubagentEvent, SubagentResult, DiscordSinkConfig } from "../subagent/types.js";
 
 const showAll: DiscordSinkConfig = { showToolCalls: true, showThinking: false, useThread: false };
 const hideTools: DiscordSinkConfig = { showToolCalls: false, showThinking: false, useThread: false };

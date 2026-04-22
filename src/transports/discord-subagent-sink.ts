@@ -2,7 +2,7 @@
 // Formats SubagentEvents and sends them to a Discord channel or thread.
 
 import { createLogger } from "../core/logger.js";
-import type { SubagentEvent, SubagentResult, DiscordSinkConfig } from "./types.js";
+import type { SubagentEvent, SubagentResult, DiscordSinkConfig } from "../subagent/types.js";
 
 const log = createLogger("subagent:discord-sink");
 

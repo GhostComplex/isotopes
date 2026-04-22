@@ -2,7 +2,7 @@
 // Provides a way to pass Discord channel/thread context to subagent tool handlers.
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { SendMessageFn, CreateThreadFn } from "../subagent/discord-sink.js";
+import type { SendMessageFn, CreateThreadFn } from "../transports/discord-subagent-sink.js";
 
 // ---------------------------------------------------------------------------
 // Types

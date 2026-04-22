@@ -7,7 +7,7 @@ import {
   DiscordSink,
   type SendMessageFn,
   type CreateThreadFn,
-} from "./discord-sink.js";
+} from "../transports/discord-subagent-sink.js";
 import type {
   SubagentEvent,
   SubagentResult,
@@ -41,8 +41,8 @@ export {
   truncate,
   formatEvent,
   formatSummary,
-} from "./discord-sink.js";
-export type { SendMessageFn, CreateThreadFn } from "./discord-sink.js";
+} from "../transports/discord-subagent-sink.js";
+export type { SendMessageFn, CreateThreadFn } from "../transports/discord-subagent-sink.js";
 
 export { TaskRegistry, taskRegistry } from "./task-registry.js";
 export type { TaskInfo } from "./task-registry.js";

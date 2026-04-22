@@ -8,7 +8,7 @@ import type { FsLike } from "../sandbox/fs-bridge.js";
 import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import type { SubagentAgent, SubagentEvent, DiscordSinkConfig } from "../subagent/types.js";
-import { DiscordSink } from "../subagent/discord-sink.js";
+import { DiscordSink } from "../transports/discord-subagent-sink.js";
 import { getSubagentContext } from "./subagent-context.js";
 import { failureTracker } from "../subagent/failure-tracker.js";
 import { createLogger } from "./logger.js";
