@@ -1,20 +1,13 @@
-// src/core/agent-runner.ts — Shared agent event loop
+// src/core/agent-runner.ts — Shared agent event loop using AgentSession
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type {  SessionStore } from "./types.js";
-import type { PiMonoInstance } from "./pi-mono.js";
-import { userMessage, assistantMessage, toolResultMessage, getAgentEndMeta, getUsage } from "./messages.js";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import type { AgentSession, AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+import type { SessionStore } from "./types.js";
+import type { AgentServiceCache } from "./pi-mono.js";
+import { userMessage, assistantMessage, getAgentEndMeta, getUsage } from "./messages.js";
 import type { Logger } from "./logger.js";
 import type { UsageTracker } from "./usage-tracker.js";
 import type { HookRegistry } from "../plugins/hooks.js";
-
-export const MAX_TOOL_RESULT_CHARS = 16_000;
-
-function truncateToolResult(output: string): string {
-  if (output.length <= MAX_TOOL_RESULT_CHARS) return output;
-  const head = output.slice(0, MAX_TOOL_RESULT_CHARS);
-  return `${head}\n...[truncated ${output.length - MAX_TOOL_RESULT_CHARS} chars]`;
-}
 
 export interface AgentRunResult {
   responseText: string;
@@ -24,10 +17,11 @@ export interface AgentRunResult {
 export type OnTextDelta = (currentText: string) => void | Promise<void>;
 
 export interface RunAgentOptions {
-  agent: PiMonoInstance;
-  input: string | AgentMessage[];
-  sessionId: string;
+  cache: AgentServiceCache;
   sessionStore: SessionStore;
+  sessionId: string;
+  systemPrompt: string;
+  textInput?: string;
   log: Logger;
   onTextDelta?: OnTextDelta;
   usageTracker?: UsageTracker;
@@ -36,118 +30,201 @@ export interface RunAgentOptions {
   hooks?: HookRegistry;
 }
 
-export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
-  const { agent, input, sessionId, sessionStore, log, onTextDelta, usageTracker, onToolComplete, agentId, hooks } = opts;
+const AGENT_EVENT_TYPES = new Set([
+  "agent_start", "agent_end",
+  "turn_start", "turn_end",
+  "message_start", "message_update", "message_end",
+  "tool_execution_start", "tool_execution_update", "tool_execution_end",
+]);
 
-  if (hooks && agentId) {
+function isAgentEvent(e: { type: string }): e is AgentEvent {
+  return AGENT_EVENT_TYPES.has(e.type);
+}
+
+export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
+  const { cache, sessionStore, sessionId, systemPrompt, textInput, log, onTextDelta, usageTracker, onToolComplete, agentId, hooks } = opts;
+
+  if (hooks && agentId && textInput) {
     await hooks.emit("message_received", {
       agentId,
       sessionId,
-      message: typeof input === "string"
-        ? userMessage(input)
-        : input[input.length - 1],
+      message: userMessage(textInput),
     });
   }
+
+  const sessionManager = await sessionStore.getSessionManager(sessionId);
+  if (!sessionManager) {
+    throw new Error(`Session "${sessionId}" not found or has no SessionManager`);
+  }
+
+  const session = await cache.createSession({
+    sessionManager,
+    systemPrompt,
+  });
+
+  let responseText = "";
+  let errorMessage: string | null = null;
+  let activeSession: AgentSession | undefined = session;
+
+  try {
+    const result = await runSessionEvents(session, {
+      textInput,
+      log,
+      onTextDelta,
+      usageTracker,
+      sessionId,
+      onToolComplete,
+    });
+    responseText = result.responseText;
+    errorMessage = result.errorMessage;
+
+    if (hooks && agentId && responseText) {
+      await hooks.emit("message_sending", {
+        agentId,
+        sessionId,
+        message: assistantMessage(responseText),
+      });
+    }
+
+    if (hooks && agentId) {
+      await hooks.emit("agent_end", { agentId, stopReason: errorMessage ? "error" : "end" });
+    }
+  } finally {
+    activeSession?.dispose();
+    activeSession = undefined;
+  }
+
+  return { responseText, errorMessage };
+}
+
+/** Returned handle for callers that need to steer/abort a running session */
+export interface ActiveAgentHandle {
+  session: AgentSession;
+  done: Promise<AgentRunResult>;
+  abort(): void;
+}
+
+/**
+ * Start an agent loop and return a handle for mid-run control (steer, abort).
+ * The session is NOT disposed automatically — caller must dispose.
+ */
+export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgentHandle> {
+  const { cache, sessionStore, sessionId, systemPrompt, textInput, log, onTextDelta, usageTracker, onToolComplete, agentId, hooks } = opts;
+
+  if (hooks && agentId && textInput) {
+    await hooks.emit("message_received", {
+      agentId,
+      sessionId,
+      message: userMessage(textInput),
+    });
+  }
+
+  const sessionManager = await sessionStore.getSessionManager(sessionId);
+  if (!sessionManager) {
+    throw new Error(`Session "${sessionId}" not found or has no SessionManager`);
+  }
+
+  const session = await cache.createSession({ sessionManager, systemPrompt });
+
+  const done = runSessionEvents(session, {
+    textInput,
+    log,
+    onTextDelta,
+    usageTracker,
+    sessionId,
+    onToolComplete,
+  }).then(async (result) => {
+    if (hooks && agentId && result.responseText) {
+      await hooks.emit("message_sending", {
+        agentId,
+        sessionId,
+        message: assistantMessage(result.responseText),
+      });
+    }
+    if (hooks && agentId) {
+      await hooks.emit("agent_end", { agentId, stopReason: result.errorMessage ? "error" : "end" });
+    }
+    return result;
+  });
+
+  return {
+    session,
+    done,
+    abort: () => session.abort(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Internal: drive a session and collect events
+// ---------------------------------------------------------------------------
+
+interface SessionRunOpts {
+  textInput?: string;
+  log: Logger;
+  onTextDelta?: OnTextDelta;
+  usageTracker?: UsageTracker;
+  sessionId: string;
+  onToolComplete?: () => Promise<string | null>;
+}
+
+async function runSessionEvents(
+  session: AgentSession,
+  opts: SessionRunOpts,
+): Promise<AgentRunResult> {
+  const { textInput, log, onTextDelta, usageTracker, sessionId, onToolComplete } = opts;
 
   let responseText = "";
   let errorMessage: string | null = null;
 
-  let turnText = "";
-  interface ToolCallEntry { type: string; id: string; name: string; input: unknown }
-  let turnToolCalls: ToolCallEntry[] = [];
-  let turnToolResults: AgentMessage[] = [];
-  const toolNameById = new Map<string, string>();
+  return new Promise<AgentRunResult>((resolve, reject) => {
+    const unsub = session.subscribe((event: AgentSessionEvent) => {
+      if (!isAgentEvent(event)) return;
+      const e = event as AgentEvent;
 
-  const flushTurn = async (): Promise<void> => {
-    if (turnText || turnToolCalls.length > 0) {
-      const content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }> = [];
-      if (turnText) content.push({ type: "text", text: turnText });
-      for (const tc of turnToolCalls) {
-        content.push({ type: "toolCall", id: tc.id, name: tc.name, input: tc.input });
-      }
-      await sessionStore.addMessage(sessionId, {
-        role: "assistant",
-        content,
-        timestamp: Date.now(),
-      } as AgentMessage);
-    }
-    for (const msg of turnToolResults) {
-      await sessionStore.addMessage(sessionId, msg);
-    }
-    turnText = "";
-    turnToolCalls = [];
-    turnToolResults = [];
-  };
-
-  for await (const event of agent.prompt(input)) {
-    if (event.type === "message_update") {
-      const ame = event.assistantMessageEvent;
-      if (ame.type === "text_delta") {
-        responseText += ame.delta;
-        turnText += ame.delta;
-        if (onTextDelta) {
-          await onTextDelta(responseText);
+      if (e.type === "message_update") {
+        const ame = e.assistantMessageEvent;
+        if (ame.type === "text_delta") {
+          responseText += ame.delta;
+          if (onTextDelta) {
+            void onTextDelta(responseText);
+          }
         }
-      }
-    } else if (event.type === "tool_execution_start") {
-      log.debug(`Tool call: ${event.toolName}`, { id: event.toolCallId });
-      toolNameById.set(event.toolCallId, event.toolName);
-      turnToolCalls.push({
-        type: "toolCall",
-        id: event.toolCallId,
-        name: event.toolName,
-        input: event.args,
-      });
-    } else if (event.type === "tool_execution_end") {
-      log.debug(`Tool result: ${event.toolCallId}`);
-      const toolName = toolNameById.get(event.toolCallId) ?? "unknown";
-      const output = typeof event.result === "string" ? event.result : JSON.stringify(event.result);
-      turnToolResults.push(
-        toolResultMessage(
-          truncateToolResult(output),
-          event.toolCallId,
-          toolName,
-          { isError: event.isError },
-        ),
-      );
-    } else if (event.type === "turn_end") {
-      const usage = getUsage(event.message);
-      if (usageTracker && usage) {
-        usageTracker.record(sessionId, usage as Parameters<typeof usageTracker.record>[1]);
-      }
-
-      await flushTurn();
-
-      if (onToolComplete) {
-        const pendingContext = await onToolComplete();
-        if (pendingContext) {
-          log.debug(`Injecting pending messages via steer()`);
-          agent.steer(userMessage(pendingContext));
+      } else if (e.type === "tool_execution_start") {
+        log.debug(`Tool call: ${e.toolName}`, { id: e.toolCallId });
+      } else if (e.type === "tool_execution_end") {
+        log.debug(`Tool result: ${e.toolCallId}`);
+      } else if (e.type === "turn_end") {
+        const usage = getUsage(e.message);
+        if (usageTracker && usage) {
+          usageTracker.record(sessionId, usage as Parameters<typeof usageTracker.record>[1]);
         }
-      }
-    } else if (event.type === "agent_end") {
-      await flushTurn();
 
-      if (hooks && agentId && responseText) {
-        await hooks.emit("message_sending", {
-          agentId,
-          sessionId,
-          message: assistantMessage(responseText),
-        });
-      }
+        if (onToolComplete) {
+          void (async () => {
+            const pendingContext = await onToolComplete();
+            if (pendingContext) {
+              log.debug("Injecting pending messages via steer()");
+              void session.steer(pendingContext);
+            }
+          })();
+        }
+      } else if (e.type === "agent_end") {
+        const { stopReason, errorMessage: errMsg } = getAgentEndMeta(e.messages);
+        if (stopReason === "error") {
+          const msg = errMsg ?? "Unknown agent error";
+          log.error(`Agent ended with error: ${msg}`);
+          errorMessage = msg;
+        }
 
-      const { stopReason, errorMessage: errMsg } = getAgentEndMeta(event.messages);
-      if (stopReason === "error") {
-        const msg = errMsg ?? "Unknown agent error";
-        log.error(`Agent ended with error: ${msg}`);
-        errorMessage = msg;
+        unsub();
+        resolve({ responseText, errorMessage });
       }
+    });
 
-      if (hooks && agentId) {
-        await hooks.emit("agent_end", { agentId, stopReason });
-      }
-    }
-  }
-
-  return { responseText, errorMessage };
+    // Start the prompt
+    session.prompt(textInput ?? "").catch((err) => {
+      unsub();
+      reject(err);
+    });
+  });
 }

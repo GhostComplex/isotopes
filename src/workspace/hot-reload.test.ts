@@ -11,7 +11,7 @@ import {
   type WorkspaceReloadedEvent,
 } from "./hot-reload.js";
 import type { AgentConfig } from "../core/types.js";
-import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 
 // ---------------------------------------------------------------------------
@@ -23,17 +23,17 @@ function createMockDefaultAgentManager(): DefaultAgentManager & { reloadWorkspac
 
   return {
     reloadWorkspaceCalls,
-    async create(config: AgentConfig): Promise<PiMonoInstance> {
-      return { id: config.id } as unknown as PiMonoInstance;
+    async create(config: AgentConfig): Promise<AgentServiceCache> {
+      return { id: config.id } as unknown as AgentServiceCache;
     },
-    get(id: string): PiMonoInstance | undefined {
-      return { id } as unknown as PiMonoInstance;
+    get(id: string): AgentServiceCache | undefined {
+      return { id } as unknown as AgentServiceCache;
     },
     list(): AgentConfig[] {
       return [];
     },
-    async update(_id: string, _updates: Partial<AgentConfig>): Promise<PiMonoInstance> {
-      return { id: _id } as unknown as PiMonoInstance;
+    async update(_id: string, _updates: Partial<AgentConfig>): Promise<AgentServiceCache> {
+      return { id: _id } as unknown as AgentServiceCache;
     },
     async delete(_id: string): Promise<void> {},
     async getPrompt(_id: string): Promise<string> {

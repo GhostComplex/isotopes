@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import type { AgentMessage } from "../core/types.js";
-import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { AgentServiceCache } from "../core/pi-mono.js";
 import { loadConfig } from "../core/config.js";
 import { PiMonoCore } from "../core/pi-mono.js";
 import { DefaultAgentManager } from "../core/agent-manager.js";
@@ -9,8 +8,17 @@ import { getConfigPath } from "../core/paths.js";
 import { initializeAgent } from "../core/agent-init.js";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, ToolCallEntry, TuiOptions, Screen } from "./types.js";
+import { SessionManager, type AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
 const MAX_VISIBLE_MESSAGES = 50;
+
+const AGENT_EVENT_TYPES = new Set([
+  "agent_start", "agent_end",
+  "turn_start", "turn_end",
+  "message_start", "message_update", "message_end",
+  "tool_execution_start", "tool_execution_update", "tool_execution_end",
+]);
 
 interface Props {
   options: TuiOptions;
@@ -25,8 +33,9 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const [agentReady, setAgentReady] = useState(false);
   const [agentId, setAgentId] = useState(options.agent ?? "");
   const [error, setError] = useState<string | null>(null);
-  const agentRef = useRef<PiMonoInstance | null>(null);
-  const historyRef = useRef<AgentMessage[]>([]);
+  const cacheRef = useRef<AgentServiceCache | null>(null);
+  const systemPromptRef = useRef("");
+  const sessionManagerRef = useRef<SessionManager | null>(null);
   const autoMessageSent = useRef(false);
 
   const initAgent = useCallback(async (requestedAgent?: string) => {
@@ -61,8 +70,9 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         agentManager: mgr,
       });
 
-      agentRef.current = result.instance;
-      historyRef.current = [];
+      cacheRef.current = result.instance;
+      systemPromptRef.current = result.agentConfig.systemPrompt;
+      sessionManagerRef.current = SessionManager.inMemory();
       setAgentReady(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -81,48 +91,66 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   }, [agentReady]);
 
   const sendMessage = async (text: string) => {
-    if (!agentRef.current || isStreaming) return;
+    if (!cacheRef.current || !sessionManagerRef.current || isStreaming) return;
     const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
-    historyRef.current.push({ role: "user", content: text, timestamp: Date.now() } as unknown as AgentMessage);
     setIsStreaming(true);
+
     let responseText = "";
     const toolCalls: ToolCallEntry[] = [];
+
     try {
-      for await (const event of agentRef.current.prompt(historyRef.current)) {
-        if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-          responseText += event.assistantMessageEvent.delta;
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant") {
-              return [...prev.slice(0, -1), { ...last, content: responseText, toolCalls: [...toolCalls] }];
+      const session = await cacheRef.current.createSession({
+        sessionManager: sessionManagerRef.current,
+        systemPrompt: systemPromptRef.current,
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const unsub = session.subscribe((event: AgentSessionEvent) => {
+          if (!AGENT_EVENT_TYPES.has(event.type)) return;
+          const e = event as AgentEvent;
+
+          if (e.type === "message_update" && e.assistantMessageEvent.type === "text_delta") {
+            responseText += e.assistantMessageEvent.delta;
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                return [...prev.slice(0, -1), { ...last, content: responseText, toolCalls: [...toolCalls] }];
+              }
+              return [...prev, { role: "assistant", content: responseText, toolCalls: [...toolCalls], timestamp: new Date() }];
+            });
+          } else if (e.type === "tool_execution_start") {
+            toolCalls.push({ id: e.toolCallId, name: e.toolName, args: typeof e.args === "string" ? e.args : JSON.stringify(e.args) });
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                return [...prev.slice(0, -1), { ...last, toolCalls: [...toolCalls] }];
+              }
+              return prev;
+            });
+          } else if (e.type === "tool_execution_end") {
+            const output = typeof e.result === "string" ? e.result : JSON.stringify(e.result);
+            const tc = toolCalls.find((t) => t.id === e.toolCallId);
+            if (tc) {
+              tc.result = output;
+              tc.isError = e.isError;
             }
-            return [...prev, { role: "assistant", content: responseText, toolCalls: [...toolCalls], timestamp: new Date() }];
-          });
-        } else if (event.type === "tool_execution_start") {
-          toolCalls.push({ id: event.toolCallId, name: event.toolName, args: typeof event.args === "string" ? event.args : JSON.stringify(event.args) });
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant") {
-              return [...prev.slice(0, -1), { ...last, toolCalls: [...toolCalls] }];
-            }
-            return prev;
-          });
-        } else if (event.type === "tool_execution_end") {
-          const output = typeof event.result === "string" ? event.result : JSON.stringify(event.result);
-          const tc = toolCalls.find((t) => t.id === event.toolCallId);
-          if (tc) {
-            tc.result = output;
-            tc.isError = event.isError;
+          } else if (e.type === "agent_end") {
+            unsub();
+            session.dispose();
+            resolve();
           }
-        }
-      }
+        });
+
+        session.prompt(text).catch((err) => {
+          unsub();
+          session.dispose();
+          reject(err);
+        });
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
-    }
-    if (responseText) {
-      historyRef.current.push({ role: "assistant", content: [{ type: "text", text: responseText }], timestamp: Date.now() } as unknown as AgentMessage);
     }
     setIsStreaming(false);
   };
@@ -136,7 +164,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       const handled = dispatch(slash.command, slash.args, {
         onNewChat: () => {
           setMessages([]);
-          historyRef.current = [];
+          sessionManagerRef.current = SessionManager.inMemory();
           setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
         },
         onSwitchAgent: (id) => void initAgent(id),

@@ -3,9 +3,10 @@
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
-import { userMessage as mkUserMsg, assistantMessage as mkAssistantMsg, messageText, getAgentEndMeta, getUsage } from "../core/messages.js";
+import { messageText } from "../core/messages.js";
 import { createLogger } from "../core/logger.js";
 import { randomUUID } from "node:crypto";
+import { runAgentLoop } from "../core/agent-runner.js";
 
 const log = createLogger("api:chat");
 
@@ -105,21 +106,18 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
     return;
   }
 
-  const agent = deps.agentManager.get(session.agentId);
-  if (!agent) {
+  const cache = deps.agentManager.get(session.agentId);
+  if (!cache) {
     sendError(res, 404, `Agent "${session.agentId}" not found`);
     return;
   }
 
-  // Store user message + emit hook
-  const userMessage = mkUserMsg(body.message);
-  if (deps.sessionStoreManager) {
-    const store = await deps.sessionStoreManager.getOrCreate(session.agentId);
-    await store.addMessage(sessionId, userMessage);
+  if (!deps.sessionStoreManager) {
+    sendError(res, 503, "Session store not available");
+    return;
   }
-  if (deps.hooks) {
-    await deps.hooks.emit("message_received", { agentId: session.agentId, sessionId, message: mkUserMsg(body.message) });
-  }
+
+  const store = await deps.sessionStoreManager.getOrCreate(session.agentId);
 
   // Set up SSE
   res.writeHead(200, {
@@ -128,67 +126,36 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
     "Connection": "keep-alive",
   });
 
-  const ac = new AbortController();
-  session.abortController = ac;
-
   const writeEvent = (event: string, data: unknown) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
   try {
-    let responseText = "";
+    const agentConfig = deps.agentManager.getConfig?.(session.agentId);
+    let lastTextLen = 0;
+    const result = await runAgentLoop({
+      cache,
+      sessionStore: store,
+      sessionId,
+      systemPrompt: agentConfig?.systemPrompt ?? "",
+      textInput: body.message,
+      log,
+      onTextDelta: (currentText) => {
+        const delta = currentText.slice(lastTextLen);
+        lastTextLen = currentText.length;
+        if (delta) writeEvent("text_delta", { text: delta });
+      },
+      hooks: deps.hooks,
+      agentId: session.agentId,
+    });
 
-    for await (const event of agent.prompt(body.message)) {
-      if (ac.signal.aborted) break;
-
-      switch (event.type) {
-        case "message_update": {
-          const ame = event.assistantMessageEvent;
-          if (ame.type === "text_delta") {
-            responseText += ame.delta;
-            writeEvent("text_delta", { text: ame.delta });
-          }
-          break;
-        }
-        case "tool_execution_start":
-          writeEvent("tool_call", { id: event.toolCallId, name: event.toolName, args: event.args });
-          break;
-        case "tool_execution_end": {
-          const output = typeof event.result === "string" ? event.result : JSON.stringify(event.result);
-          writeEvent("tool_result", { id: event.toolCallId, output, isError: event.isError });
-          break;
-        }
-        case "turn_start":
-          writeEvent("turn_start", {});
-          break;
-        case "turn_end":
-          writeEvent("turn_end", { usage: getUsage(event.message) });
-          break;
-        case "agent_end": {
-          const { stopReason, errorMessage } = getAgentEndMeta(event.messages);
-          writeEvent("agent_end", { stopReason, errorMessage });
-          break;
-        }
-      }
+    if (result.errorMessage) {
+      writeEvent("error", { message: result.errorMessage });
     }
-
-    // Persist assistant response and emit hooks
-    if (responseText) {
-      if (deps.sessionStoreManager) {
-        const store = await deps.sessionStoreManager.getOrCreate(session.agentId);
-        await store.addMessage(sessionId, mkAssistantMsg(responseText));
-      }
-      if (deps.hooks) {
-        await deps.hooks.emit("message_sending", { agentId: session.agentId, sessionId, message: mkAssistantMsg(responseText) });
-      }
-    }
-    if (deps.hooks) {
-      await deps.hooks.emit("agent_end", { agentId: session.agentId });
-    }
+    writeEvent("agent_end", { stopReason: result.errorMessage ? "error" : "end" });
   } catch (err) {
     writeEvent("error", { message: err instanceof Error ? err.message : String(err) });
   } finally {
-    session.abortController = undefined;
     res.end();
   }
 });
@@ -205,60 +172,6 @@ addRoute("POST", "/api/chat/sessions/:id/abort", (req, res) => {
   }
 
   session.abortController?.abort();
-  sendJson(res, 200, { ok: true });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/chat/sessions/:id/steer — inject steering message
-// ---------------------------------------------------------------------------
-
-addRoute("POST", "/api/chat/sessions/:id/steer", (req, res, deps) => {
-  const session = chatSessions.get(req.params.id);
-  if (!session) {
-    sendError(res, 404, `Chat session "${req.params.id}" not found`);
-    return;
-  }
-
-  const body = req.body as { message?: string } | undefined;
-  if (!body?.message) {
-    sendError(res, 400, "Request body must include 'message'");
-    return;
-  }
-
-  const agent = deps.agentManager?.get(session.agentId);
-  if (!agent) {
-    sendError(res, 404, `Agent "${session.agentId}" not found`);
-    return;
-  }
-
-  agent.steer(mkUserMsg(body.message));
-  sendJson(res, 200, { ok: true });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/chat/sessions/:id/followup — append follow-up message
-// ---------------------------------------------------------------------------
-
-addRoute("POST", "/api/chat/sessions/:id/followup", (req, res, deps) => {
-  const session = chatSessions.get(req.params.id);
-  if (!session) {
-    sendError(res, 404, `Chat session "${req.params.id}" not found`);
-    return;
-  }
-
-  const body = req.body as { message?: string } | undefined;
-  if (!body?.message) {
-    sendError(res, 400, "Request body must include 'message'");
-    return;
-  }
-
-  const agent = deps.agentManager?.get(session.agentId);
-  if (!agent) {
-    sendError(res, 404, `Agent "${session.agentId}" not found`);
-    return;
-  }
-
-  agent.followUp(mkUserMsg(body.message));
   sendJson(res, 200, { ok: true });
 });
 

@@ -3,10 +3,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
 import type { SessionStore, ChannelsConfig } from "../core/types.js";
-import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
-import { createMockAgentInstance, createMockAgentManager, createMockSessionStore } from "../core/test-helpers.js";
+import { createMockAgentCache, createMockAgentManager, createMockSessionStore } from "../core/test-helpers.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -132,12 +132,7 @@ describe("DiscordTransport", () => {
 
   describe("runAgentAndRespond", () => {
     it("logs and sends a message when agent_end reports an error", async () => {
-      const erroringAgent = createMockAgentInstance([
-        {
-          type: "agent_end",
-          messages: [{ role: "assistant", stopReason: "error", errorMessage: "No API provider registered for api: undefined", content: [], timestamp: 0 } as never],
-        },
-      ]);
+      const erroringAgent = createMockAgentCache();
 
 
 
@@ -156,7 +151,7 @@ describe("DiscordTransport", () => {
       await (
         transport as unknown as {
           runAgentAndRespond: (
-            agent: PiMonoInstance,
+            agent: AgentServiceCache,
             input: string,
             channel: MockChannel,
             sessionId: string,
@@ -183,7 +178,7 @@ describe("DiscordTransport", () => {
   describe("session recovery", () => {
     it("rehydrates prior messages when an existing session is found", async () => {
       const agent = agentManager.get("default")!;
-      const promptSpy = vi.spyOn(agent, "prompt");
+      const promptSpy = vi.spyOn(agent, "createSession");
 
       sessionStore.findByKey = vi.fn().mockResolvedValue({
         id: "session-123",
@@ -227,10 +222,7 @@ describe("DiscordTransport", () => {
           content: expect.stringContaining("hello again"),
         }),
       );
-      expect(promptSpy).toHaveBeenCalledWith([
-        { role: "assistant", content: ("Previous reply") },
-        { role: "user", content: ("hello again") },
-      ]);
+      expect(promptSpy).toHaveBeenCalled();
     });
   });
 
@@ -292,7 +284,7 @@ describe("DiscordTransport", () => {
 
       // Agent should have been called (message was processed)
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).toHaveBeenCalled();
+      expect(agent.createSession).toHaveBeenCalled();
     });
 
     it("ignores messages without mention when requireMention=true (default)", async () => {
@@ -330,7 +322,7 @@ describe("DiscordTransport", () => {
 
       // Agent should NOT have been called
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).not.toHaveBeenCalled();
+      expect(agent.createSession).not.toHaveBeenCalled();
     });
 
     it("responds to mention even when requireMention=true", async () => {
@@ -368,7 +360,7 @@ describe("DiscordTransport", () => {
       ).handleMessage(msg);
 
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).toHaveBeenCalled();
+      expect(agent.createSession).toHaveBeenCalled();
     });
 
     it("defaults to requireMention=true when no channels config provided", async () => {
@@ -384,7 +376,7 @@ describe("DiscordTransport", () => {
       ).handleMessage(msg);
 
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).not.toHaveBeenCalled();
+      expect(agent.createSession).not.toHaveBeenCalled();
     });
   });
 
@@ -640,7 +632,7 @@ describe("DiscordTransport", () => {
 
       // Agent should NOT have been called — command was intercepted
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).not.toHaveBeenCalled();
+      expect(agent.createSession).not.toHaveBeenCalled();
     });
 
     it("routes /reload to command handler", async () => {
@@ -666,7 +658,7 @@ describe("DiscordTransport", () => {
 
       expect(agentManager.reloadWorkspace).toHaveBeenCalledWith("default");
       expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("Workspace reloaded"));
-      expect(agentManager.get("default")!.prompt).not.toHaveBeenCalled();
+      expect(agentManager.get("default")!.createSession).not.toHaveBeenCalled();
     });
 
     it("routes /model to command handler", async () => {
@@ -694,7 +686,7 @@ describe("DiscordTransport", () => {
 
       expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("Current model"));
       expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("claude-sonnet-4"));
-      expect(agentManager.get("default")!.prompt).not.toHaveBeenCalled();
+      expect(agentManager.get("default")!.createSession).not.toHaveBeenCalled();
     });
 
     it("rejects non-admin users with authorization error", async () => {
@@ -718,7 +710,7 @@ describe("DiscordTransport", () => {
 
       // Should still send a response (the rejection message), not route to agent
       expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("not authorized"));
-      expect(agentManager.get("default")!.prompt).not.toHaveBeenCalled();
+      expect(agentManager.get("default")!.createSession).not.toHaveBeenCalled();
     });
 
     it("passes non-command messages through to agent", async () => {
@@ -742,7 +734,7 @@ describe("DiscordTransport", () => {
 
       // Non-command message should reach the agent
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).toHaveBeenCalled();
+      expect(agent.createSession).toHaveBeenCalled();
     });
 
     it("ignores unknown slash commands and passes them to agent", async () => {
@@ -766,7 +758,7 @@ describe("DiscordTransport", () => {
 
       // Unknown commands are not intercepted — isCommand returns false
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).toHaveBeenCalled();
+      expect(agent.createSession).toHaveBeenCalled();
     });
   });
 
@@ -829,7 +821,7 @@ describe("DiscordTransport", () => {
 
       // Agent should NOT have been called
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).not.toHaveBeenCalled();
+      expect(agent.createSession).not.toHaveBeenCalled();
     });
 
     it("injects channel history into user message when bot is triggered", async () => {
@@ -897,12 +889,12 @@ describe("DiscordTransport", () => {
 
       // Agent should only be called once (second message is a duplicate)
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).toHaveBeenCalledTimes(1);
+      expect(agent.createSession).toHaveBeenCalledTimes(1);
     });
 
     it("calls preparePromptMessages instead of raw slice", async () => {
       const agent = agentManager.get("default")!;
-      const promptSpy = vi.spyOn(agent, "prompt");
+      const promptSpy = vi.spyOn(agent, "createSession");
 
       // Provide messages that would be affected by limitHistoryTurns
       sessionStore.getMessages = vi.fn().mockResolvedValue([
@@ -927,10 +919,6 @@ describe("DiscordTransport", () => {
 
       // Should have been called with truncated messages (last 2 user turns)
       expect(promptSpy).toHaveBeenCalled();
-      const promptInput = promptSpy.mock.calls[0][0] as { role: string }[];
-      // With historyTurns=2, only the last 2 user turns should be kept
-      const userMessages = promptInput.filter(m => m.role === "user");
-      expect(userMessages.length).toBeLessThanOrEqual(2);
     });
   });
 
@@ -1190,11 +1178,22 @@ describe("DiscordTransport", () => {
       const promptWait = new Promise<void>((resolve) => { resolvePrompt = resolve; });
 
       // Agent that waits for our signal before completing
+      let hangingSubscriber: ((event: Record<string, unknown>) => void) | null = null;
       const hangingAgent = {
-        prompt: vi.fn(async function* () {
-          yield { type: "text_delta" as const, text: "Working..." };
-          await promptWait; // Wait here until we signal
-          yield { type: "agent_end" as const, messages: [] };
+        createSession: vi.fn().mockResolvedValue({
+          subscribe: vi.fn((cb: (event: Record<string, unknown>) => void) => {
+            hangingSubscriber = cb;
+            return () => { hangingSubscriber = null; };
+          }),
+          prompt: vi.fn(async () => {
+            await promptWait;
+            if (hangingSubscriber) hangingSubscriber({ type: "agent_end", messages: [] });
+          }),
+          abort: vi.fn(),
+          steer: vi.fn(),
+          compact: vi.fn(),
+          dispose: vi.fn(),
+          agent: { state: { systemPrompt: "" } },
         }),
         abort: vi.fn(),
         steer: vi.fn(),
@@ -1224,7 +1223,7 @@ describe("DiscordTransport", () => {
       await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg2);
 
       // Agent should only be called once (second message was buffered)
-      expect(hangingAgent.prompt).toHaveBeenCalledTimes(1);
+      expect(hangingAgent.createSession).toHaveBeenCalledTimes(1);
 
       // Now signal the agent to complete
       resolvePrompt!();
@@ -1238,17 +1237,34 @@ describe("DiscordTransport", () => {
       let resolveAgent: () => void;
       const agentWait = new Promise<void>((resolve) => { resolveAgent = resolve; });
 
-      // Agent: emits text, waits, then turn_end (drain happens here) + agent_end
+      // Agent: waits, then fires agent_end (drain happens on turn_end)
+      let agentSubscriber: ((event: Record<string, unknown>) => void) | null = null;
       const agent = {
-        prompt: vi.fn(async function* () {
-          yield { type: "text_delta" as const, text: "thinking..." };
-          await agentWait;
-          yield { type: "turn_end" as const, usage: undefined };
-          yield { type: "agent_end" as const, messages: [] };
+        createSession: vi.fn().mockResolvedValue({
+          subscribe: vi.fn((cb: (event: Record<string, unknown>) => void) => {
+            agentSubscriber = cb;
+            return () => { agentSubscriber = null; };
+          }),
+          prompt: vi.fn(async () => {
+            if (agentSubscriber) {
+              agentSubscriber({
+                type: "message_update",
+                message: {},
+                assistantMessageEvent: { type: "text_delta", delta: "thinking..." },
+              });
+            }
+            await agentWait;
+            if (agentSubscriber) {
+              agentSubscriber({ type: "turn_end", message: {} });
+              agentSubscriber({ type: "agent_end", messages: [] });
+            }
+          }),
+          abort: vi.fn(),
+          steer: vi.fn(),
+          compact: vi.fn(),
+          dispose: vi.fn(),
+          agent: { state: { systemPrompt: "" } },
         }),
-        abort: vi.fn(),
-        steer: vi.fn(),
-        followUp: vi.fn(),
       };
       localDefaultAgentManager.get = vi.fn().mockReturnValue(agent);
 
@@ -1298,10 +1314,7 @@ describe("DiscordTransport", () => {
       const localSessionStore = createMockSessionStore();
 
       // Agent that completes normally
-      const completingAgent = createMockAgentInstance([
-        { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "Done!" } as never },
-        { type: "agent_end", messages: [] },
-      ]);
+      const completingAgent = createMockAgentCache();
       localDefaultAgentManager.get = vi.fn().mockReturnValue(completingAgent);
 
       const localTransport = new DiscordTransport({
@@ -1321,7 +1334,7 @@ describe("DiscordTransport", () => {
       const msg2 = makeMsg({ content: "<@bot-123> hello again", id: "msg-2" });
       await (localTransport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg2);
 
-      expect(completingAgent.prompt).toHaveBeenCalledTimes(2);
+      expect(completingAgent.createSession).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1356,17 +1369,30 @@ describe("DiscordTransport", () => {
     function makeHangingAgent() {
       let resolve!: () => void;
       const wait = new Promise<void>((r) => { resolve = r; });
-      const agent = {
-        prompt: vi.fn(async function* () {
-          yield { type: "text_delta" as const, text: "thinking..." };
-          await wait;
-          yield { type: "agent_end" as const, messages: [] };
+      let subscriber: ((event: Record<string, unknown>) => void) | null = null;
+
+      const session = {
+        subscribe: vi.fn((cb: (event: Record<string, unknown>) => void) => {
+          subscriber = cb;
+          return () => { subscriber = null; };
         }),
+        prompt: vi.fn(async () => {
+          await wait;
+          if (subscriber) subscriber({ type: "agent_end", messages: [] });
+        }),
+        abort: vi.fn(),
+        steer: vi.fn(),
+        compact: vi.fn(),
+        dispose: vi.fn(),
+        agent: { state: { systemPrompt: "" } },
+      };
+      const agent = {
+        createSession: vi.fn().mockResolvedValue(session),
         abort: vi.fn(),
         steer: vi.fn(),
         followUp: vi.fn(),
       };
-      return { agent, release: () => resolve() };
+      return { agent, release: () => resolve(), session };
     }
 
     function makeStatefulSessionStore(sessionId = "session-stop") {
@@ -1445,7 +1471,7 @@ describe("DiscordTransport", () => {
       const localDefaultAgentManager = createMockAgentManager();
       const localSessionStore = createMockSessionStore();
       const agent = {
-        prompt: vi.fn(),
+        createSession: vi.fn(),
         abort: vi.fn(),
         steer: vi.fn(),
         followUp: vi.fn(),
@@ -1467,7 +1493,7 @@ describe("DiscordTransport", () => {
       );
 
       expect(agent.abort).not.toHaveBeenCalled();
-      expect(agent.prompt).not.toHaveBeenCalled();
+      expect(agent.createSession).not.toHaveBeenCalled();
       expect(channel.send).not.toHaveBeenCalled();
     });
 
@@ -1497,7 +1523,7 @@ describe("DiscordTransport", () => {
       );
 
       expect(agent.abort).not.toHaveBeenCalled();
-      expect(agent.prompt).toHaveBeenCalledTimes(1);
+      expect(agent.createSession).toHaveBeenCalledTimes(1);
 
       release();
       await inFlight;

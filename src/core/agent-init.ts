@@ -35,7 +35,7 @@ import { createReactTools, LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import { SandboxExecutor, SandboxFs, shouldSandbox, type FsLike } from "../sandbox/index.js";
 import * as nodeFs from "node:fs/promises";
-import { PiMonoCore, PiMonoInstance } from "./pi-mono.js";
+import { PiMonoCore, type AgentServiceCache } from "./pi-mono.js";
 import type { DefaultAgentManager } from "./agent-manager.js";
 import type { AgentConfig } from "./types.js";
 import { createLogger } from "./logger.js";
@@ -76,7 +76,7 @@ export interface InitAgentOptions {
 
 export interface InitAgentResult {
   agentConfig: AgentConfig;
-  instance: PiMonoInstance;
+  instance: AgentServiceCache;
   workspacePath: string;
   toolRegistry: ToolRegistry;
   processRegistry: ProcessRegistry;

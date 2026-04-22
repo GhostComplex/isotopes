@@ -2,7 +2,7 @@
 // Parses and dispatches /status, /reload, /model commands from chat messages.
 
 import type { SessionStore } from "../core/types.js";
-import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import { createLogger } from "../core/logger.js";
 import { failureTracker } from "../subagent/failure-tracker.js";
@@ -30,7 +30,7 @@ export interface CommandContext {
   /** Current session key (if available) */
   sessionKey?: string;
   /** Agent instance (if available) */
-  agentInstance?: PiMonoInstance;
+  agentCache?: AgentServiceCache;
 }
 
 /** Result of executing a slash command */
@@ -195,8 +195,6 @@ export class SlashCommandHandler {
 
     try {
       await ctx.sessionStore.clearMessages(ctx.sessionId);
-      ctx.agentInstance?.clearMessages?.();
-      // Clear failure tracker for this session (allow re-attempting previously failed tasks)
       failureTracker.clearSession(ctx.sessionId);
 
       log.info(`Session reset by ${ctx.username} (${ctx.userId})`);
@@ -208,34 +206,38 @@ export class SlashCommandHandler {
     }
   }
 
-  private async handleCompact(ctx: CommandContext, instructions: string): Promise<CommandResult> {
+  private async handleCompact(ctx: CommandContext, _instructions: string): Promise<CommandResult> {
     if (!ctx.sessionId) {
       return { response: "ℹ️ No active session to compact." };
     }
 
-    if (!ctx.agentInstance?.forceCompact) {
-      return { response: "❌ Compaction not supported for this agent." };
+    if (!ctx.agentCache) {
+      return { response: "❌ No agent cache available for compaction." };
+    }
+
+    const sessionManager = await ctx.sessionStore.getSessionManager(ctx.sessionId);
+    if (!sessionManager) {
+      return { response: "❌ Session manager not found." };
     }
 
     try {
       const messagesBefore = (await ctx.sessionStore.getMessages(ctx.sessionId)).length;
-      const compacted = await ctx.agentInstance.forceCompact();
 
-      if (!compacted) {
-        return { response: "ℹ️ Nothing to compact (context too small)." };
-      }
+      const session = await ctx.agentCache.createSession({
+        sessionManager,
+        systemPrompt: "",
+      });
 
-      // Sync compacted messages back to SessionStore
-      if (ctx.agentInstance.getMessages) {
-        const compactedMessages = ctx.agentInstance.getMessages();
-        await ctx.sessionStore.setMessages(ctx.sessionId, compactedMessages);
+      try {
+        const compacted = await session.compact();
+        if (!compacted) {
+          return { response: "ℹ️ Nothing to compact (context too small)." };
+        }
+      } finally {
+        session.dispose();
       }
 
       const messagesAfter = (await ctx.sessionStore.getMessages(ctx.sessionId)).length;
-
-      if (instructions) {
-        log.info(`Compact instructions (not used yet): ${instructions}`);
-      }
 
       return {
         response: `✅ Compacted: ${messagesBefore} → ${messagesAfter} messages`,

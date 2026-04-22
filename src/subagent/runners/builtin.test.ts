@@ -1,11 +1,12 @@
 // src/subagent/runners/builtin.test.ts — Tests for BuiltinRunner
 
-import { describe, it, expect } from "vitest";
-import type { AgentConfig, AgentEvent, ProviderConfig } from "../../core/types.js";
+import { describe, it, expect, vi } from "vitest";
+import type { AgentConfig, ProviderConfig } from "../../core/types.js";
 import { ToolRegistry } from "../../core/tools.js";
 import type { SubagentEvent } from "../types.js";
 import { BuiltinRunner, type BuiltinPiMonoCore } from "./builtin.js";
-import type { PiMonoInstance } from "../../core/pi-mono.js";
+import type { AgentServiceCache } from "../../core/pi-mono.js";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
 function makeRegistry(names: string[]): ToolRegistry {
   const r = new ToolRegistry("test");
@@ -34,20 +35,26 @@ function makeCore(events: AgentEvent[]): {
   let capturedConfig: AgentConfig | undefined;
   let abortCalled = 0;
 
-  const instance: PiMonoInstance = {
-    async *[Symbol.asyncIterator]() {
-      // unused
-    },
-    prompt: () =>
-      (async function* () {
-        for (const e of events) yield e;
-      })(),
-    abort: () => {
-      abortCalled++;
-    },
-    steer: () => {},
-    followUp: () => {},
-  } as unknown as PiMonoInstance;
+  const mockSession = {
+    subscribe: vi.fn((cb: (event: { type: string }) => void) => {
+      // Fire events asynchronously when prompt is called
+      (mockSession as unknown as Record<string, unknown>)._cb = cb;
+      return () => {};
+    }),
+    prompt: vi.fn(async () => {
+      const cb = (mockSession as unknown as Record<string, (event: { type: string }) => void>)._cb;
+      if (cb) {
+        for (const e of events) cb(e);
+      }
+    }),
+    abort: vi.fn(() => { abortCalled++; }),
+    dispose: vi.fn(),
+    agent: { state: { systemPrompt: "" } },
+  };
+
+  const cache = {
+    createSession: vi.fn().mockResolvedValue(mockSession),
+  } as unknown as AgentServiceCache;
 
   const core = {
     setToolRegistry: (id: string) => {
@@ -56,9 +63,9 @@ function makeCore(events: AgentEvent[]): {
     clearToolRegistry: (id: string) => {
       clearedIds.push(id);
     },
-    createAgent: (config: AgentConfig) => {
+    createServiceCache: (config: AgentConfig) => {
       capturedConfig = config;
-      return instance;
+      return cache;
     },
   } as unknown as BuiltinPiMonoCore;
 
@@ -98,10 +105,10 @@ describe("BuiltinRunner", () => {
 
   it("registers a filtered tool registry, runs, and clears it", async () => {
     const harness = makeCore([
-      { type: "turn_start" },
-      { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "ok" } as never },
-      { type: "turn_end", message: {} as never, toolResults: [] },
-      { type: "agent_end", messages: [] },
+      { type: "turn_start" } as AgentEvent,
+      { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "ok" } as never } as AgentEvent,
+      { type: "turn_end", message: {} as never, toolResults: [] } as AgentEvent,
+      { type: "agent_end", messages: [] } as AgentEvent,
     ]);
     const runner = new BuiltinRunner(harness.core);
     const tools = makeRegistry(["read_file", "write_file", "shell"]);
@@ -133,10 +140,10 @@ describe("BuiltinRunner", () => {
     ]);
   });
 
-  it("aborts the underlying instance when the abort signal fires", async () => {
+  it("aborts the underlying session when the abort signal fires", async () => {
     const harness = makeCore([
-      { type: "turn_start" },
-      { type: "agent_end", messages: [] },
+      { type: "turn_start" } as AgentEvent,
+      { type: "agent_end", messages: [] } as AgentEvent,
     ]);
     const runner = new BuiltinRunner(harness.core);
     const ac = new AbortController();
@@ -161,20 +168,20 @@ describe("BuiltinRunner", () => {
   it("clears the tool registry even if the agent throws", async () => {
     const setIds: string[] = [];
     const clearedIds: string[] = [];
-    const errInstance: PiMonoInstance = {
-      prompt: () =>
-        (async function* () {
-          throw new Error("boom");
-          yield undefined as never;
-        })(),
-      abort: () => {},
-      steer: () => {},
-      followUp: () => {},
-    } as unknown as PiMonoInstance;
+    const errSession = {
+      subscribe: vi.fn(() => () => {}),
+      prompt: vi.fn(async () => { throw new Error("boom"); }),
+      abort: vi.fn(),
+      dispose: vi.fn(),
+      agent: { state: { systemPrompt: "" } },
+    };
+    const errCache = {
+      createSession: vi.fn().mockResolvedValue(errSession),
+    } as unknown as AgentServiceCache;
     const core = {
       setToolRegistry: (id: string) => setIds.push(id),
       clearToolRegistry: (id: string) => clearedIds.push(id),
-      createAgent: () => errInstance,
+      createServiceCache: () => errCache,
     } as unknown as BuiltinPiMonoCore;
     const runner = new BuiltinRunner(core);
 

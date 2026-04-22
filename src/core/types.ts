@@ -149,6 +149,8 @@ export interface SessionStore {
   clearMessages(sessionId: string): Promise<void>;
   setMessages(sessionId: string, messages: AgentMessage[]): Promise<void>;
   setMetadata(sessionId: string, patch: Partial<SessionMetadata>): Promise<void>;
+  /** Get the underlying SDK SessionManager for a session (for AgentSession creation). */
+  getSessionManager(sessionId: string): Promise<import("@mariozechner/pi-coding-agent").SessionManager | undefined>;
 }
 
 // ---------------------------------------------------------------------------

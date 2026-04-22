@@ -9,20 +9,17 @@ import { PiMonoCore } from "./pi-mono.js";
 // Mock setup
 // ---------------------------------------------------------------------------
 
-import type { PiMonoInstance } from "./pi-mono.js";
+import type { AgentServiceCache } from "./pi-mono.js";
 
-function createMockInstance(): PiMonoInstance {
+function createMockCache(): AgentServiceCache {
   return {
-    prompt: vi.fn(),
-    abort: vi.fn(),
-    steer: vi.fn(),
-    followUp: vi.fn(),
-  } as unknown as PiMonoInstance;
+    createSession: vi.fn(),
+  } as unknown as AgentServiceCache;
 }
 
 function createMockCore(): PiMonoCore {
   return {
-    createAgent: vi.fn(() => createMockInstance()),
+    createServiceCache: vi.fn(() => createMockCache()),
   } as unknown as PiMonoCore;
 }
 
@@ -53,7 +50,7 @@ describe("DefaultAgentManager", () => {
       const instance = await manager.create(config);
 
       expect(instance).toBeDefined();
-      expect(core.createAgent).toHaveBeenCalledWith(config);
+      expect(core.createServiceCache).toHaveBeenCalledWith(config);
     });
 
     it("stores the agent config", async () => {
@@ -115,7 +112,7 @@ describe("DefaultAgentManager", () => {
       });
 
       expect(updated).toBeDefined();
-      expect(core.createAgent).toHaveBeenCalledTimes(2);
+      expect(core.createServiceCache).toHaveBeenCalledTimes(2);
 
       const configs = manager.list();
       expect(configs[0].systemPrompt).toBe("Updated prompt");

@@ -28,77 +28,6 @@ export function limitHistoryTurns(messages: AgentMessage[], limit: number): Agen
 }
 
 // ---------------------------------------------------------------------------
-// sanitizeToolUseResultPairing — fix broken pairs after truncation
-// ---------------------------------------------------------------------------
-
-interface ToolUseBlock {
-  type: "tool_use" | "tool_call" | "toolCall";
-  id: string;
-  name?: string;
-}
-
-function isToolUseBlock(block: unknown): block is ToolUseBlock {
-  if (typeof block !== "object" || block === null) return false;
-  const t = (block as Record<string, unknown>).type;
-  return (
-    (t === "tool_use" || t === "tool_call" || t === "toolCall") &&
-    typeof (block as Record<string, unknown>).id === "string"
-  );
-}
-
-function getToolUseIds(msg: AgentMessage): ToolUseBlock[] {
-  if (msg.role !== "assistant") return [];
-  const m = msg as unknown as { content?: unknown[] };
-  if (!Array.isArray(m.content)) return [];
-  return m.content.filter(isToolUseBlock);
-}
-
-export function sanitizeToolUseResultPairing(messages: AgentMessage[]): AgentMessage[] {
-  if (messages.length === 0) return messages;
-
-  let startIdx = 0;
-  while (startIdx < messages.length && messages[startIdx].role === "toolResult") {
-    startIdx++;
-  }
-  const trimmed = startIdx > 0 ? messages.slice(startIdx) : messages;
-  if (trimmed.length === 0) return [];
-
-  const result: AgentMessage[] = [];
-  for (let i = 0; i < trimmed.length; i++) {
-    const msg = trimmed[i];
-    result.push(msg);
-
-    const toolUses = getToolUseIds(msg);
-    if (toolUses.length === 0) continue;
-
-    const foundResultIds = new Set<string>();
-    for (let j = i + 1; j < trimmed.length; j++) {
-      if (trimmed[j].role === "user") break;
-      if (trimmed[j].role === "assistant" && getToolUseIds(trimmed[j]).length > 0) break;
-      if (trimmed[j].role === "toolResult") {
-        const m = trimmed[j] as unknown as { toolCallId?: string };
-        if (m.toolCallId) foundResultIds.add(m.toolCallId);
-      }
-    }
-
-    for (const tu of toolUses) {
-      if (!foundResultIds.has(tu.id)) {
-        result.push({
-          role: "toolResult",
-          content: "[Tool result unavailable — conversation truncated]",
-          toolCallId: tu.id,
-          toolName: tu.name ?? "unknown",
-          isError: true,
-          timestamp: Date.now(),
-        } as unknown as AgentMessage);
-      }
-    }
-  }
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
 // pruneToolResults — trim old tool results to save tokens
 // ---------------------------------------------------------------------------
 
@@ -201,33 +130,4 @@ export function pruneImages(messages: AgentMessage[], opts?: PruneImagesOptions)
       }),
     } as unknown as AgentMessage;
   });
-}
-
-// ---------------------------------------------------------------------------
-// preparePromptMessages — orchestration entry point
-// ---------------------------------------------------------------------------
-
-export interface PromptPrepareOptions {
-  historyTurns?: number;
-  protectRecentAssistant?: number;
-  toolResultHeadChars?: number;
-  toolResultTailChars?: number;
-  keepRecentImageTurns?: number;
-}
-
-export function preparePromptMessages(
-  messages: AgentMessage[],
-  opts?: PromptPrepareOptions,
-): AgentMessage[] {
-  let result = limitHistoryTurns(messages, opts?.historyTurns ?? 20);
-  result = sanitizeToolUseResultPairing(result);
-  result = pruneToolResults(result, {
-    protectRecent: opts?.protectRecentAssistant ?? 3,
-    headChars: opts?.toolResultHeadChars ?? 1500,
-    tailChars: opts?.toolResultTailChars ?? 1500,
-  });
-  result = pruneImages(result, {
-    keepRecentTurns: opts?.keepRecentImageTurns ?? 3,
-  });
-  return result;
 }

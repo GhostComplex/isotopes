@@ -18,14 +18,14 @@ import {
   type ThreadBindingConfig,
   type Transport,
 } from "../core/types.js";
-import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import { userMessage as mkUserMsg, assistantMessage as mkAssistantMsg } from "../core/messages.js";
 import type { ContextConfigFile } from "../core/config.js";
 import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
-import { runAgentLoop } from "../core/agent-runner.js";
+import { startAgentLoop, type ActiveAgentHandle } from "../core/agent-runner.js";
 import { isSilentReply } from "./silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
@@ -35,7 +35,6 @@ import {
   runWithSubagentContextAsync,
   type SubagentDiscordContext,
 } from "../core/subagent-context.js";
-import { preparePromptMessages } from "../core/context.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../core/channel-history.js";
 import { DedupeCache } from "../core/dedupe.js";
 import { InboundDebouncer } from "../core/debounce.js";
@@ -217,7 +216,7 @@ export class DiscordTransport implements Transport {
   private commandHandler: SlashCommandHandler;
 
   // Track which sessions are currently in a prompt turn
-  private activeSessions = new Set<string>();
+  private activeHandles = new Map<string, ActiveAgentHandle>();
   // Buffer messages that arrive while a session is prompting
   private pendingMessages = new Map<string, Array<{ content: string; sender: string; timestamp: number }>>();
 
@@ -406,11 +405,11 @@ export class DiscordTransport implements Transport {
       const sessionStore = this.getSessionStore(agentId);
       const sessionKey = this.getSessionKey(msg, agentId);
       const session = await sessionStore.findByKey(sessionKey);
-      if (session && this.activeSessions.has(session.id)) {
-        const agent = this.config.agentManager.get(agentId);
-        if (agent) {
+      if (session && this.activeHandles.has(session.id)) {
+        const handle = this.activeHandles.get(session.id);
+        if (handle) {
           log.info(`Main-agent /stop`, { sessionId: session.id, agentId });
-          agent.abort();
+          handle.abort();
           this.pendingMessages.delete(session.id);
           await (msg.channel as SendableChannel).send("🛑 Stopped.");
           return;
@@ -477,7 +476,7 @@ export class DiscordTransport implements Transport {
         username: msg.author.username,
         sessionId: session?.id,
         sessionKey,
-        agentInstance: agent,
+        agentCache: agent,
       });
       await (msg.channel as SendableChannel).send(result.response);
       return;
@@ -511,7 +510,7 @@ export class DiscordTransport implements Transport {
     // 6.5. If session is currently active (in a prompt turn), buffer this message instead.
     // The buffer is drained at turn_end via onToolComplete, where each message is
     // also persisted to SessionStore so future prompt() invocations replay them.
-    if (this.activeSessions.has(session.id)) {
+    if (this.activeHandles.has(session.id)) {
       log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
       const pending = this.pendingMessages.get(session.id) ?? [];
       pending.push({
@@ -545,21 +544,10 @@ export class DiscordTransport implements Transport {
     } as unknown as AgentMessage;
     await sessionStore.addMessage(session.id, userMsg);
 
-    // 9. Prepare prompt — limitHistoryTurns + sanitize + prune
-    const allMessages = await sessionStore.getMessages(session.id);
-    const ctx = this.config.context;
-    const promptInput = preparePromptMessages(allMessages, {
-      historyTurns: ctx?.historyTurns ?? 20,
-      protectRecentAssistant: ctx?.pruning?.protectRecent ?? 3,
-      toolResultHeadChars: ctx?.pruning?.headChars ?? 1500,
-      toolResultTailChars: ctx?.pruning?.tailChars ?? 1500,
-    });
-
-    log.debug(`Session ${session.id}: total=${allMessages.length}, sending=${promptInput.length}`);
-
-    // 10. Clear agent internal state and run
-    agent.clearMessages?.();
-    await this.runAgentAndRespond(agent, promptInput, msg.channel as SendableChannel, session.id, sessionStore, msg.id);
+    // 9. Run agent — SDK loads history from SessionManager automatically
+    const agentConfig = this.config.agentManager.getConfig(agentId);
+    const systemPrompt = agentConfig?.systemPrompt ?? "";
+    await this.runAgentAndRespond(agent, session.id, sessionStore, systemPrompt, msg.channel as SendableChannel, msg.id);
   }
 
   private isDmAllowed(userId: string): boolean {
@@ -808,17 +796,17 @@ export class DiscordTransport implements Transport {
   // ---------------------------------------------------------------------------
 
   private async runAgentAndRespond(
-    agent: PiMonoInstance,    input: string | AgentMessage[],
-    channel: SendableChannel,
+    cache: AgentServiceCache,
     sessionId: string,
     sessionStore: SessionStore,
+    systemPrompt: string,
+    channel: SendableChannel,
     triggerMessageId?: string,
   ): Promise<void> {
     // Start typing indicator
     const typing = this.startTyping(channel);
 
     // Mark session as active
-    this.activeSessions.add(sessionId);
 
     // Reply-marker resolver: applied to each outbound chunk. Default mode is
     // "off" — no reply marker unless the agent emits an inline directive.
@@ -852,11 +840,11 @@ export class DiscordTransport implements Transport {
 
       // Create the agent loop runner function
       const runLoop = async () => {
-        return runAgentLoop({
-          agent,
-          input,
-          sessionId,
+        const handle = await startAgentLoop({
+          cache,
           sessionStore,
+          sessionId,
+          systemPrompt,
           log,
           onTextDelta: async (currentText) => {
             // Extract only the new delta text since last callback
@@ -887,6 +875,12 @@ export class DiscordTransport implements Transport {
             return `[Messages arrived while you were working]\n${formatted}`;
           },
         });
+        this.activeHandles.set(sessionId, handle);
+        try {
+          return await handle.done;
+        } finally {
+          handle.session.dispose();
+        }
       };
 
       // Run with or without subagent context based on config
@@ -933,9 +927,7 @@ export class DiscordTransport implements Transport {
       }
     } finally {
       typing.stop();
-      // Mark session as no longer active
-      this.activeSessions.delete(sessionId);
-      // Clean up any remaining pending messages (shouldn't happen, but safety)
+      this.activeHandles.delete(sessionId);
       this.pendingMessages.delete(sessionId);
     }
   }

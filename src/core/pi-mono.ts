@@ -1,18 +1,17 @@
 // src/core/pi-mono.ts — Agent session factory backed by pi-coding-agent SDK
 //
-// Replaces the old PiMonoCore/PiMonoInstance with createAgentSession().
-// Model resolution is handled here; compaction, overflow recovery, and
-// event streaming are all delegated to the SDK's AgentSession.
+// Model resolution and AgentServiceCache (cached SDK dependencies per agent).
+// Compaction, overflow recovery, and event streaming are all delegated to
+// the SDK's AgentSession.
 
-import { type AgentEvent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
+import { type AgentTool } from "@mariozechner/pi-agent-core";
 import { getModel, type Model, type Api } from "@mariozechner/pi-ai";
 import {
   type AgentSession,
-  type AgentSessionEvent,
   AuthStorage,
   createAgentSession,
   ModelRegistry,
-  SessionManager,
+  type SessionManager,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 
@@ -234,177 +233,4 @@ export class PiMonoCore {
     });
   }
 
-  /**
-   * @deprecated Use createServiceCache() instead. This creates a backward-compatible
-   * PiMonoInstance wrapper for consumers not yet migrated to AgentSession.
-   */
-  createAgent(config: AgentConfig): PiMonoInstance {
-    const cache = this.createServiceCache(config);
-    return new PiMonoInstance(cache, config);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// PiMonoInstance — backward-compatible wrapper around AgentServiceCache
-//
-// Provides the same AsyncIterable<AgentEvent> interface as the old
-// PiMonoInstance by wrapping AgentSession.subscribe() + prompt().
-// Consumers should migrate to using AgentSession directly.
-// ---------------------------------------------------------------------------
-
-export class PiMonoInstance {
-  private activeSession?: AgentSession;
-  private promptQueue: Promise<void> = Promise.resolve();
-
-  constructor(
-    private cache: AgentServiceCache,
-    private config: AgentConfig,
-  ) {}
-
-  async *prompt(input: string | AgentMessage[]): AsyncIterable<AgentEvent> {
-    let releaseQueue: (() => void) | undefined;
-    const waitForTurn = this.promptQueue.catch(() => undefined);
-    this.promptQueue = new Promise<void>((resolve) => {
-      releaseQueue = resolve;
-    });
-
-    await waitForTurn;
-
-    try {
-      // Create a temporary session with an in-memory SessionManager
-      const sessionManager = SessionManager.open(
-        path.join(this.cache.agentDir, "tmp-session.jsonl"),
-      );
-
-      const session = await this.cache.createSession({
-        sessionManager,
-        systemPrompt: this.config.systemPrompt,
-      });
-
-      this.activeSession = session;
-
-      // If input is messages, load them into the session
-      if (Array.isArray(input)) {
-        session.agent.state.messages = input;
-      }
-
-      // Bridge AgentSession events to AsyncIterable<AgentEvent>
-      yield* this.bridgeSessionEvents(session, typeof input === "string" ? input : undefined);
-    } finally {
-      this.activeSession?.dispose();
-      this.activeSession = undefined;
-      releaseQueue?.();
-    }
-  }
-
-  private async *bridgeSessionEvents(
-    session: AgentSession,
-    textInput?: string,
-  ): AsyncIterable<AgentEvent> {
-    const events: (AgentEvent | null)[] = [];
-    let resolve: (() => void) | null = null;
-
-    const unsub = session.subscribe((e: AgentSessionEvent) => {
-      // AgentSessionEvent is a superset of AgentEvent — forward matching types
-      if ("type" in e && isAgentEvent(e)) {
-        events.push(e as AgentEvent);
-        resolve?.();
-      }
-    });
-
-    const done = (async () => {
-      if (textInput) {
-        await session.prompt(textInput);
-      } else {
-        // Messages already loaded, trigger a turn by sending empty follow-up
-        // Actually for message-based input the agent should already have messages set.
-        // We need to trigger the agent loop. Use the Agent directly.
-        await session.agent.prompt([]);
-      }
-    })().then(
-      () => { events.push(null); resolve?.(); },
-      (err) => { events.push(null); resolve?.(); throw err; },
-    );
-
-    try {
-      let finished = false;
-      while (!finished) {
-        if (events.length === 0) {
-          await new Promise<void>((r) => { resolve = r; });
-        }
-        while (events.length > 0) {
-          const ev = events.shift()!;
-          if (ev === null) { finished = true; break; }
-          yield ev;
-        }
-      }
-      await done;
-    } finally {
-      unsub();
-    }
-  }
-
-  abort(): void {
-    this.activeSession?.abort();
-  }
-
-  steer(msg: AgentMessage): void {
-    if (this.activeSession) {
-      const text = extractText(msg);
-      if (text) this.activeSession.steer(text);
-    }
-  }
-
-  followUp(msg: AgentMessage): void {
-    if (this.activeSession) {
-      const text = extractText(msg);
-      if (text) this.activeSession.followUp(text);
-    }
-  }
-
-  clearMessages(): void {
-    // No-op — sessions are per-prompt now
-  }
-
-  getMessages(): AgentMessage[] {
-    return this.activeSession?.messages ?? [];
-  }
-
-  async forceCompact(): Promise<boolean> {
-    if (!this.activeSession) return false;
-    try {
-      await this.activeSession.compact();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const AGENT_EVENT_TYPES = new Set([
-  "agent_start", "agent_end",
-  "turn_start", "turn_end",
-  "message_start", "message_update", "message_end",
-  "tool_execution_start", "tool_execution_update", "tool_execution_end",
-]);
-
-function isAgentEvent(e: { type: string }): boolean {
-  return AGENT_EVENT_TYPES.has(e.type);
-}
-
-function extractText(msg: AgentMessage): string | undefined {
-  const m = msg as unknown as { content?: unknown };
-  if (typeof m.content === "string") return m.content;
-  if (Array.isArray(m.content)) {
-    for (const block of m.content) {
-      if (block && typeof block === "object" && "type" in block && block.type === "text" && "text" in block) {
-        return (block as { text: string }).text;
-      }
-    }
-  }
-  return undefined;
 }

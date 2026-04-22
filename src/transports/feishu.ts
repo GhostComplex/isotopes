@@ -10,7 +10,7 @@ import {
   type SessionStore,
   type Transport,
 } from "../core/types.js";
-import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { ContextConfigFile } from "../core/config.js";
 import { resolveBinding } from "../core/bindings.js";
@@ -19,7 +19,6 @@ import { runAgentLoop } from "../core/agent-runner.js";
 import { isSilentReply } from "./silent-reply.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey, type SessionScope } from "../core/session-keys.js";
-import { preparePromptMessages } from "../core/context.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../core/channel-history.js";
 import { DedupeCache } from "../core/dedupe.js";
 import { InboundDebouncer } from "../core/debounce.js";
@@ -415,21 +414,10 @@ export class FeishuTransport implements Transport {
     } as unknown as AgentMessage;
     await this.config.sessionStore.addMessage(session.id, userMsg);
 
-    // Prepare prompt — limitHistoryTurns + sanitize + prune
-    const allMessages = await this.config.sessionStore.getMessages(session.id);
-    const ctx = this.config.context;
-    const promptInput = preparePromptMessages(allMessages, {
-      historyTurns: ctx?.historyTurns ?? 20,
-      protectRecentAssistant: ctx?.pruning?.protectRecent ?? 3,
-      toolResultHeadChars: ctx?.pruning?.headChars ?? 1500,
-      toolResultTailChars: ctx?.pruning?.tailChars ?? 1500,
-    });
-
-    // Clear agent internal state before prompting with fresh context
-    agent.clearMessages?.();
-
-    // Run agent and send reply
-    await this.runAgentAndReply(agent, promptInput, message.chat_id, session.id);
+    // Run agent — SDK loads history from SessionManager automatically
+    const agentConfig = this.config.agentManager.getConfig?.(agentId);
+    const systemPrompt = agentConfig?.systemPrompt ?? "";
+    await this.runAgentAndReply(agent, session.id, systemPrompt, message.chat_id);
   }
 
   private async findOrCreateSession(sessionKey: string, agentId: string) {
@@ -449,16 +437,17 @@ export class FeishuTransport implements Transport {
   // ---------------------------------------------------------------------------
 
   private async runAgentAndReply(
-    agent: PiMonoInstance,    input: AgentMessage[],
-    chatId: string,
+    cache: AgentServiceCache,
     sessionId: string,
+    systemPrompt: string,
+    chatId: string,
   ): Promise<void> {
     try {
       const { responseText, errorMessage } = await runAgentLoop({
-        agent,
-        input,
-        sessionId,
+        cache,
         sessionStore: this.config.sessionStore,
+        sessionId,
+        systemPrompt,
         log,
         usageTracker: this.config.usageTracker,
       });

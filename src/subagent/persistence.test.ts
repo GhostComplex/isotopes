@@ -135,6 +135,7 @@ function fakeStore(): SessionStore & {
     setMetadata: vi.fn(async (_id, patch) => {
       session.metadata = { ...(session.metadata ?? {}), ...patch };
     }),
+    getSessionManager: vi.fn(async () => undefined),
   };
 }
 

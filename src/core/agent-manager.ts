@@ -1,7 +1,7 @@
 // src/core/agent-manager.ts — Agent lifecycle management
 
 import type { AgentConfig } from "./types.js";
-import { PiMonoCore, PiMonoInstance } from "./pi-mono.js";
+import { PiMonoCore, AgentServiceCache } from "./pi-mono.js";
 import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 import {
   buildSystemPrompt,
@@ -20,10 +20,10 @@ export interface AgentCreateOptions {
   baseSystemPrompt?: string;
 }
 
-/** Internal entry combining config, instance, and workspace */
+/** Internal entry combining config, cache, and workspace */
 interface AgentEntry {
   config: AgentConfig;
-  instance: PiMonoInstance;
+  cache: AgentServiceCache;
   workspace: WorkspaceContext | null;
   /** Base system prompt before workspace assembly (for hot-reload) */
   baseSystemPrompt: string;
@@ -34,47 +34,43 @@ interface AgentEntry {
 }
 
 /**
- * DefaultAgentManager — in-memory {@link AgentManager} implementation.
+ * DefaultAgentManager — in-memory agent registry.
  *
- * Manages agent configs and instances backed by an {@link PiMonoCore}.
- * Each agent can optionally have its own workspace directory containing
- * SOUL.md, MEMORY.md, and other context files that are merged into
- * the system prompt.
+ * Manages agent configs and {@link AgentServiceCache} instances backed by
+ * a {@link PiMonoCore}. Each agent can optionally have its own workspace
+ * directory containing SOUL.md, MEMORY.md, and other context files that
+ * are merged into the system prompt.
  */
 export class DefaultAgentManager {
   private agents = new Map<string, AgentEntry>();
 
   constructor(private core: PiMonoCore) {}
 
-  /**
-   * Create a new agent.
-   *
-   * When called from cli.ts, the system prompt is already fully assembled
-   * (workspace context + tool guards included). The options provide workspace
-   * metadata needed for hot-reload.
-   */
-  async create(config: AgentConfig, options?: AgentCreateOptions): Promise<PiMonoInstance> {
+  async create(config: AgentConfig, options?: AgentCreateOptions): Promise<AgentServiceCache> {
     if (this.agents.has(config.id)) {
       throw new Error(`Agent "${config.id}" already exists`);
     }
 
-    const instance = this.core.createAgent(config);
+    const cache = this.core.createServiceCache(config);
     this.agents.set(config.id, {
       config,
-      instance,
+      cache,
       workspace: null,
       baseSystemPrompt: options?.baseSystemPrompt ?? config.systemPrompt,
       workspacePath: options?.workspacePath,
       toolGuardPrompt: options?.toolGuardPrompt,
     });
-    return instance;
+    return cache;
   }
 
-  get(id: string): PiMonoInstance | undefined {
-    return this.agents.get(id)?.instance;
+  get(id: string): AgentServiceCache | undefined {
+    return this.agents.get(id)?.cache;
   }
 
-  /** Get the workspace context for an agent */
+  getConfig(id: string): AgentConfig | undefined {
+    return this.agents.get(id)?.config;
+  }
+
   getWorkspace(id: string): WorkspaceContext | undefined {
     return this.agents.get(id)?.workspace ?? undefined;
   }
@@ -83,27 +79,25 @@ export class DefaultAgentManager {
     return Array.from(this.agents.values()).map((e) => e.config);
   }
 
-  async update(id: string, updates: Partial<AgentConfig>): Promise<PiMonoInstance> {
+  async update(id: string, updates: Partial<AgentConfig>): Promise<AgentServiceCache> {
     const entry = this.agents.get(id);
     if (!entry) {
       throw new Error(`Agent "${id}" not found`);
     }
 
-    // Merge updates into existing config
     const updated: AgentConfig = {
       ...entry.config,
       ...updates,
-      id, // id cannot be changed
+      id,
     };
 
-    // Re-create instance with new config
-    const instance = this.core.createAgent(updated);
+    const cache = this.core.createServiceCache(updated);
     this.agents.set(id, {
       ...entry,
       config: updated,
-      instance,
+      cache,
     });
-    return instance;
+    return cache;
   }
 
   async delete(id: string): Promise<void> {
@@ -125,12 +119,6 @@ export class DefaultAgentManager {
     await this.update(id, { systemPrompt: prompt });
   }
 
-  /**
-   * Reload workspace context for an agent (hot-reload support).
-   *
-   * Re-reads workspace files from disk, rebuilds the system prompt from
-   * the base prompt + fresh workspace context + stored tool guard prompt.
-   */
   async reloadWorkspace(id: string): Promise<void> {
     const entry = this.agents.get(id);
     if (!entry) {

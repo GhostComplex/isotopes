@@ -3,7 +3,7 @@ import { initializeAgent } from "./agent-init.js";
 import type { AgentConfigFile } from "./config.js";
 import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";
-import { createMockAgentInstance } from "./test-helpers.js";
+import { createMockAgentCache } from "./test-helpers.js";
 import type { SandboxExecutor } from "../sandbox/executor.js";
 
 function makeMockSandboxExecutor(): SandboxExecutor {
@@ -26,13 +26,13 @@ function makeMinimalAgentFile(overrides?: Partial<AgentConfigFile>): AgentConfig
 describe("initializeAgent", () => {
   let core: PiMonoCore;
   let agentManager: DefaultAgentManager;
-  const mockInstance = createMockAgentInstance();
+  const mockCache = createMockAgentCache();
 
   beforeEach(() => {
     core = new PiMonoCore();
     vi.spyOn(core, "setToolRegistry");
     agentManager = new DefaultAgentManager(core);
-    vi.spyOn(agentManager, "create").mockResolvedValue(mockInstance);
+    vi.spyOn(agentManager, "create").mockResolvedValue(mockCache);
   });
 
   it("registers workspace tools and returns them", async () => {
@@ -42,7 +42,7 @@ describe("initializeAgent", () => {
       agentManager,
     });
 
-    expect(result.instance).toBe(mockInstance);
+    expect(result.instance).toBe(mockCache);
     expect(result.toolRegistry.list().length).toBeGreaterThan(0);
 
     const toolNames = result.toolRegistry.list().map((t) => t.name);

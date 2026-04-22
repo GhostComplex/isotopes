@@ -32,6 +32,7 @@ import { HeartbeatManager } from "../automation/heartbeat.js";
 import { UsageTracker } from "./usage-tracker.js";
 import { PluginManager } from "../plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
+import { runAgentLoop } from "./agent-runner.js";
 
 const log = createLogger("runtime");
 
@@ -172,15 +173,21 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       workspacePath,
       config: { ...agentFile.heartbeat, enabled: true },
       runAgentLoop: async (agentId, prompt, _sessionKey) => {
-        const agent = agentManager.get(agentId);
-        if (!agent) throw new Error(`Agent "${agentId}" not found`);
-        let responseText = "";
-        for await (const event of agent.prompt(prompt)) {
-          if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-            responseText += event.assistantMessageEvent.delta;
-          }
-        }
-        return responseText;
+        const cache = agentManager.get(agentId);
+        if (!cache) throw new Error(`Agent "${agentId}" not found`);
+        const agentConfig = agentManager.getConfig(agentId);
+        const store = await sessionStoreManager.getOrCreate(agentId);
+        const sessionKey = `heartbeat:${agentId}`;
+        const session = (await store.findByKey(sessionKey)) ?? (await store.create(agentId, { key: sessionKey }));
+        const result = await runAgentLoop({
+          cache,
+          sessionStore: store,
+          sessionId: session.id,
+          systemPrompt: agentConfig?.systemPrompt ?? "",
+          textInput: prompt,
+          log,
+        });
+        return result.responseText;
       },
     });
 
@@ -222,8 +229,8 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   cronScheduler.onTrigger(async (job) => {
-    const agent = agentManager.get(job.agentId);
-    if (!agent) {
+    const cache = agentManager.get(job.agentId);
+    if (!cache) {
       log.error(`Cron job "${job.name}" references unknown agent "${job.agentId}"`);
       return;
     }
@@ -242,13 +249,18 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
 
     try {
-      let responseText = "";
-      for await (const event of agent.prompt(prompt)) {
-        if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-          responseText += event.assistantMessageEvent.delta;
-        }
-      }
-      log.info(`Cron "${job.name}" completed (${responseText.length} chars)`);
+      const agentConfig = agentManager.getConfig(job.agentId);
+      const store = await sessionStoreManager.getOrCreate(job.agentId);
+      const session = (await store.findByKey(sessionKey)) ?? (await store.create(job.agentId, { key: sessionKey }));
+      const result = await runAgentLoop({
+        cache,
+        sessionStore: store,
+        sessionId: session.id,
+        systemPrompt: agentConfig?.systemPrompt ?? "",
+        textInput: prompt,
+        log,
+      });
+      log.info(`Cron "${job.name}" completed (${result.responseText.length} chars)`);
     } catch (err) {
       log.error(`Cron "${job.name}" failed:`, err);
     }

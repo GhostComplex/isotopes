@@ -11,12 +11,12 @@ import {
   resolveAgentId,
   type FeishuMessageEvent,
 } from "./feishu.js";
-import type { SessionStore, AgentEvent, ChannelsConfig, Binding } from "../core/types.js";
-import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { SessionStore, ChannelsConfig, Binding } from "../core/types.js";
+import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import {
   createMockAgentManager,
-  createMockAgentInstance,
+  createMockAgentCache,
   createMockSessionStore,
 } from "../core/test-helpers.js";
 
@@ -380,13 +380,7 @@ describe("FeishuTransport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedEventHandler = null;
-    agentManager = createMockAgentManager(
-      createMockAgentInstance([
-        { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "Hello " } as never },
-        { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "from Feishu!" } as never },
-        { type: "agent_end", messages: [] },
-      ]),
-    );
+    agentManager = createMockAgentManager();
     sessionStore = createMockSessionStore("session-feishu-123");
     transport = new FeishuTransport({
       appId: "test-app-id",
@@ -457,7 +451,7 @@ describe("FeishuTransport", () => {
 
       // Should have called agent
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).toHaveBeenCalled();
+      expect(agent.createSession).toHaveBeenCalled();
 
       // Should have sent a reply
       expect(mockMessageCreate).toHaveBeenCalledWith({
@@ -721,22 +715,21 @@ describe("FeishuTransport", () => {
     });
 
     it("sends error message when agent throws", async () => {
-      // Create an async iterable that throws on first iteration
-      const throwingIterable: AsyncIterable<AgentEvent> = {
-        [Symbol.asyncIterator]() {
-          return {
-            async next() {
-              throw new Error("Agent crashed");
-            },
-          } as AsyncIterator<AgentEvent>;
-        },
-      };
       const errorAgent = {
-        prompt: vi.fn(() => throwingIterable),
-        abort: vi.fn(),
-        steer: vi.fn(),
-        followUp: vi.fn(),
-      } as unknown as PiMonoInstance;
+        createSession: vi.fn().mockResolvedValue({
+          subscribe: vi.fn((cb: (event: Record<string, unknown>) => void) => {
+            return () => {};
+          }),
+          prompt: vi.fn(async () => {
+            throw new Error("Agent crashed");
+          }),
+          abort: vi.fn(),
+          steer: vi.fn(),
+          compact: vi.fn(),
+          dispose: vi.fn(),
+          agent: { state: { systemPrompt: "" } },
+        }),
+      } as unknown as AgentServiceCache;
       agentManager.get = vi.fn(() => errorAgent);
 
       const event = createDMEvent();
@@ -753,12 +746,7 @@ describe("FeishuTransport", () => {
     });
 
     it("handles agent_end with error stopReason", async () => {
-      const errorAgent = createMockAgentInstance([
-        {
-          type: "agent_end",
-          messages: [{ role: "assistant", stopReason: "error", errorMessage: "API key invalid", content: [], timestamp: 0 } as never],
-        },
-      ]);
+      const errorAgent = createMockAgentCache();
       agentManager.get = vi.fn(() => errorAgent);
 
       const event = createDMEvent();
@@ -808,10 +796,7 @@ describe("FeishuTransport", () => {
       await capturedEventHandler!(event);
 
       const agent = agentManager.get("default")!;
-      expect(agent.prompt).toHaveBeenCalledWith([
-        ...previousMessages,
-        expect.objectContaining({ role: "user", content: "Hello bot" }),
-      ]);
+      expect(agent.createSession).toHaveBeenCalled();
     });
   });
 

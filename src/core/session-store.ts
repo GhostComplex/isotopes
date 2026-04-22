@@ -107,6 +107,13 @@ export class DefaultSessionStore implements SessionStore {
     return this.get(sessionId);
   }
 
+  async getSessionManager(sessionId: string): Promise<SessionManager | undefined> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return undefined;
+    await this.ensureManagerLoaded(session);
+    return session.manager;
+  }
+
   async addMessage(sessionId: string, message: AgentMessage): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session "${sessionId}" not found`);
@@ -261,10 +268,6 @@ export class DefaultSessionStore implements SessionStore {
     if (this.indexDebounceTimer) { clearTimeout(this.indexDebounceTimer); this.indexDebounceTimer = null; }
   }
 
-  /** Expose the underlying SessionManager for a session (for compaction wiring). */
-  getSessionManager(sessionId: string): SessionManager | undefined {
-    return this.sessions.get(sessionId)?.manager;
-  }
 
   // -------------------------------------------------------------------------
   // Persistence helpers
