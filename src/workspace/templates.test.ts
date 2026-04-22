@@ -85,7 +85,7 @@ describe("Workspace Templates", () => {
 
       // Verify files exist with content
       const soul = await fs.readFile(path.join(tempDir, "SOUL.md"), "utf-8");
-      expect(soul).toContain("Your Core");
+      expect(soul).toContain("Who You Are");
     });
 
     it("never overwrites existing files", async () => {
@@ -121,7 +121,7 @@ describe("Workspace Templates", () => {
 
       expect(created).toContain("BOOTSTRAP.md");
       const bootstrap = await fs.readFile(path.join(tempDir, "BOOTSTRAP.md"), "utf-8");
-      expect(bootstrap).toContain("First Boot");
+      expect(bootstrap).toContain("Hello, World");
     });
 
     it("BOOTSTRAP.md contains anti-hallucination guard", async () => {
