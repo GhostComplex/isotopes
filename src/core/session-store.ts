@@ -6,15 +6,15 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
+import type { Message as PiMessage } from "@mariozechner/pi-ai";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {
-  Message,
   Session,
   SessionMetadata,
   SessionStore,
   SessionStoreConfig,
   SessionConfig,
 } from "./types.js";
-import { toPiMessage, fromAgentMessage } from "./message-convert.js";
 import { createLogger } from "./logger.js";
 
 const log = createLogger("session-store");
@@ -107,27 +107,27 @@ export class DefaultSessionStore implements SessionStore {
     return this.get(sessionId);
   }
 
-  async addMessage(sessionId: string, message: Message): Promise<void> {
+  async addMessage(sessionId: string, message: AgentMessage): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session "${sessionId}" not found`);
 
     await this.ensureManagerLoaded(session);
-    session.manager!.appendMessage(toPiMessage(message));
+    session.manager!.appendMessage(message as unknown as PiMessage);
     session.lastActiveAt = new Date();
 
     this.debouncedPersistIndex();
   }
 
-  async getMessages(sessionId: string): Promise<Message[]> {
+  async getMessages(sessionId: string): Promise<AgentMessage[]> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session "${sessionId}" not found`);
 
     await this.ensureManagerLoaded(session);
     const entries = session.manager!.getBranch();
-    const messages: Message[] = [];
+    const messages: AgentMessage[] = [];
     for (const entry of entries) {
       if (entry.type === "message" && entry.message) {
-        messages.push(fromAgentMessage(entry.message));
+        messages.push(entry.message);
       }
     }
     return messages;
@@ -165,7 +165,7 @@ export class DefaultSessionStore implements SessionStore {
     await this.persistIndex();
   }
 
-  async setMessages(sessionId: string, messages: Message[]): Promise<void> {
+  async setMessages(sessionId: string, messages: AgentMessage[]): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session "${sessionId}" not found`);
 
@@ -174,7 +174,7 @@ export class DefaultSessionStore implements SessionStore {
     await fs.writeFile(this.transcriptFile(sessionId), "");
     const manager = SessionManager.open(this.transcriptFile(sessionId));
     for (const msg of messages) {
-      manager.appendMessage(toPiMessage(msg));
+      manager.appendMessage(msg as unknown as PiMessage);
     }
     session.manager = manager;
     session.managerLoaded = true;
@@ -357,11 +357,11 @@ export class DefaultSessionStore implements SessionStore {
             ? new Date(lastEntry.timestamp) : new Date();
 
           let agentId = "unknown";
-          let metadata: SessionMetadata | undefined;
+          const metadata: SessionMetadata | undefined = undefined;
           if (firstMsg && "message" in firstMsg) {
-            const msg = fromAgentMessage(firstMsg.message);
-            if (typeof msg.metadata?.agentId === "string") agentId = msg.metadata.agentId;
-            if (msg.metadata?.sessionMetadata) metadata = msg.metadata.sessionMetadata as SessionMetadata;
+            const msg = firstMsg.message as unknown as Record<string, unknown>;
+            const meta = msg.metadata as Record<string, unknown> | undefined;
+            if (typeof meta?.agentId === "string") agentId = meta.agentId;
           }
 
           const session: StoredSession = {

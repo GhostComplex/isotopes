@@ -1,66 +1,17 @@
 // src/core/types.ts — Core interfaces for the Isotopes agent framework
-// Zero coupling to any specific agent SDK — these are OUR types.
 
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { SandboxConfig } from "../sandbox/config.js";
 import type { ReplyToMode } from "../transports/reply-directive.js";
 
 // ---------------------------------------------------------------------------
-// Messages
+// Messages — re-export AgentMessage as the canonical message type
 // ---------------------------------------------------------------------------
 
-/** A text content block within a message. */
-export interface TextContentBlock {
-  type: 'text';
-  text: string;
-}
+export type { AgentMessage } from "@mariozechner/pi-agent-core";
 
-/** A tool call (the model's request to invoke a tool) inside an assistant message. */
-export interface ToolCallContentBlock {
-  type: 'tool_call';
-  id: string;
-  name: string;
-  input: unknown;
-}
-
-/** A tool result content block within a message. */
-export interface ToolResultContentBlock {
-  type: 'tool_result';
-  output: string;
-  isError?: boolean;
-  toolCallId?: string;
-  toolName?: string;
-}
-
-/** Union of content block types that can appear in a {@link Message}. */
-export type MessageContentBlock = TextContentBlock | ToolCallContentBlock | ToolResultContentBlock;
-
-/** Wrap a plain text string into a single-element {@link MessageContentBlock} array. */
-export function textContent(text: string): MessageContentBlock[] {
-  return [{ type: 'text', text }];
-}
-
-/** Flatten an array of content blocks into a single plain-text string. */
-export function messageContentToPlainText(content: MessageContentBlock[]): string {
-  return content
-    .map((block) => {
-      if (block.type === 'text') {
-        return block.text;
-      }
-      if (block.type === 'tool_call') {
-        return `[tool: ${block.name}]`;
-      }
-      return block.output;
-    })
-    .join("\n");
-}
-
-/** A single message in a conversation between user, assistant, and tools. */
-export interface Message {
-  role: 'user' | 'assistant' | 'tool_result';
-  content: MessageContentBlock[];
-  timestamp?: number;
-  metadata?: Record<string, unknown>;
-}
+/** Alias for code that references "Message" — this IS AgentMessage. */
+export type Message = AgentMessage;
 
 // ---------------------------------------------------------------------------
 // Tools
@@ -127,7 +78,7 @@ export type AgentEvent =
   | { type: 'tool_call'; id: string; name: string; args: unknown }
   | { type: 'tool_result'; id: string; output: string; isError?: boolean }
   | { type: 'turn_end'; usage?: Usage }
-  | { type: 'agent_end'; messages: Message[]; stopReason?: string; errorMessage?: string }
+  | { type: 'agent_end'; messages: AgentMessage[]; stopReason?: string; errorMessage?: string }
   | { type: 'error'; error: Error };
 
 // ---------------------------------------------------------------------------
@@ -177,16 +128,13 @@ export interface AgentConfig {
  * Created by {@link AgentCore.createAgent} and managed by {@link AgentManager}.
  */
 export interface AgentInstance {
-  prompt(input: string | Message[]): AsyncIterable<AgentEvent>;
+  prompt(input: string | AgentMessage[]): AsyncIterable<AgentEvent>;
   abort(): void;
-  steer(msg: Message): void;
-  followUp(msg: Message): void;
-  /** Force context compaction for overflow recovery. Returns true if compaction occurred. */
+  steer(msg: AgentMessage): void;
+  followUp(msg: AgentMessage): void;
   forceCompact?(): Promise<boolean>;
-  /** Clear internal message state before prompting with fresh context */
   clearMessages?(): void;
-  /** Get current messages from the agent instance (for persisting to SessionStore) */
-  getMessages?(): Message[];
+  getMessages?(): AgentMessage[];
 }
 
 // ---------------------------------------------------------------------------
@@ -282,16 +230,12 @@ export interface SessionStore {
   create(agentId: string, metadata?: SessionMetadata): Promise<Session>;
   get(sessionId: string): Promise<Session | undefined>;
   findByKey(key: string): Promise<Session | undefined>;
-  addMessage(sessionId: string, message: Message): Promise<void>;
-  getMessages(sessionId: string): Promise<Message[]>;
+  addMessage(sessionId: string, message: AgentMessage): Promise<void>;
+  getMessages(sessionId: string): Promise<AgentMessage[]>;
   delete(sessionId: string): Promise<void>;
-  /** List all sessions (lightweight, no message bodies). */
   list(): Promise<Session[]>;
-  /** Clear all messages from a session (keeps session metadata, clears history) */
   clearMessages(sessionId: string): Promise<void>;
-  /** Replace all messages in a session (used by compaction) */
-  setMessages(sessionId: string, messages: Message[]): Promise<void>;
-  /** Merge fields into the session metadata (e.g. write terminal subagent state). */
+  setMessages(sessionId: string, messages: AgentMessage[]): Promise<void>;
   setMetadata(sessionId: string, patch: Partial<SessionMetadata>): Promise<void>;
 }
 
