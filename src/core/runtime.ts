@@ -78,10 +78,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   if (config.subagent?.enabled) {
     const subagentConfig = resolveSubagentConfig(config.subagent);
     initSubagentBackend({
-      permissionMode: subagentConfig.claude.permissionMode,
-      allowedTools: subagentConfig.claude.allowedTools,
-      settingSources: subagentConfig.claude.settingSources,
-      allowedTypes: subagentConfig.allowedTypes,
+      config: subagentConfig,
       core,
     });
     log.info(`Subagent backend initialized (allowedTypes: ${[...subagentConfig.allowedTypes].join(",")}, claude.permissionMode: ${subagentConfig.claude.permissionMode})`);

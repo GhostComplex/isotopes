@@ -13,7 +13,7 @@ import type { BuiltinPiMonoCore } from "../subagent/runners/builtin.js";
 import { taskRegistry } from "../subagent/task-registry.js";
 import { createSubagentRecorder } from "../subagent/persistence.js";
 import type { SessionStore } from "../core/types.js";
-import type { SettingSource, SubagentPermissionMode, SubagentType } from "../core/config.js";
+import type { ResolvedSubagentConfig } from "../core/config.js";
 
 const log = createLogger("tools:subagent");
 
@@ -21,16 +21,10 @@ const log = createLogger("tools:subagent");
 // Types
 // ---------------------------------------------------------------------------
 
-/** Configuration for the subagent backend (from `subagent` in config) */
+/** Configuration for the subagent backend */
 export interface SubagentBackendConfig {
-  /** Permission mode for claude runner tool execution */
-  permissionMode?: SubagentPermissionMode;
-  /** Allowed tools for claude runner allowlist mode */
-  allowedTools?: string[];
-  /** Settings sources passed to the Claude Agent SDK. Default: ["user"]. */
-  settingSources?: SettingSource[];
-  /** Runner types allowed to be spawned */
-  allowedTypes?: Set<SubagentType>;
+  /** Resolved subagent config from config.ts */
+  config?: ResolvedSubagentConfig;
   /** AgentCore used to host in-process builtin subagents. */
   core?: BuiltinPiMonoCore;
 }
@@ -119,21 +113,21 @@ export function initSubagentBackend(config: SubagentBackendConfig): void {
   sharedBackend = undefined;
   sharedBackendKey = undefined;
   log.info("Subagent backend initialized", {
-    allowedTypes: config.allowedTypes ? [...config.allowedTypes] : undefined,
-    permissionMode: config.permissionMode ?? "allowlist",
-    allowedTools: config.allowedTools,
+    allowedTypes: config.config?.allowedTypes ? [...config.config.allowedTypes] : undefined,
+    claudePermissionMode: config.config?.claude.permissionMode,
   });
 }
 
 function getBackend(allowedWorkspaces?: string[]): SubagentBackend {
   const key = allowedWorkspaces?.sort().join(":") ?? "";
   if (!sharedBackend || sharedBackendKey !== key) {
+    const cfg = backendConfig.config;
     sharedBackend = new SubagentBackend({
       allowedWorkspaceRoots: allowedWorkspaces,
-      permissionMode: backendConfig.permissionMode,
-      allowedTools: backendConfig.allowedTools,
-      settingSources: backendConfig.settingSources,
-      allowedTypes: backendConfig.allowedTypes,
+      permissionMode: cfg?.claude.permissionMode,
+      allowedTools: cfg?.claude.allowedTools,
+      settingSources: cfg?.claude.settingSources,
+      allowedTypes: cfg?.allowedTypes,
       core: backendConfig.core,
     });
     sharedBackendKey = key;
@@ -149,7 +143,7 @@ let taskCounter = 0;
  * Returns undefined if the backend hasn't been initialized.
  */
 export function getSubagentBackend(allowedWorkspaces?: string[]): SubagentBackend | undefined {
-  if (!backendConfig.allowedTypes) {
+  if (!backendConfig.config) {
     return undefined;
   }
   return getBackend(allowedWorkspaces);
@@ -315,6 +309,6 @@ export function getActiveSubagentCount(): number {
  * Get list of supported agent backends from config.
  */
 export function getSupportedAgents(): readonly string[] {
-  return backendConfig.allowedTypes ? [...backendConfig.allowedTypes] : ["claude", "builtin"];
+  return backendConfig.config?.allowedTypes ? [...backendConfig.config.allowedTypes] : ["claude", "builtin"];
 }
 
