@@ -4,17 +4,22 @@ import path from "node:path";
 import { createLogger } from "../core/logger.js";
 import type { HookRegistry } from "./hooks.js";
 import type { UIRegistry } from "./ui-registry.js";
+import type { ToolPluginRegistry } from "./tool-registry.js";
+import type { Tool } from "../core/types.js";
+import type { ToolHandler } from "../core/tools.js";
 import type {
   IsotopesPluginApi,
   TransportFactory,
   UIPluginConfig,
   PluginManifest,
+  PluginToolFactory,
 } from "./types.js";
 
 export interface CreatePluginApiDeps {
   hooks: HookRegistry;
   uiRegistry: UIRegistry;
   transportFactories: Map<string, TransportFactory>;
+  toolPluginRegistry: ToolPluginRegistry;
   pluginConfig?: Record<string, unknown>;
 }
 
@@ -45,6 +50,16 @@ export function createPluginApi(
       };
       deps.uiRegistry.register(resolved);
       log.info(`Registered UI "${config.id}" at ${resolved.mountPath ?? `/ui/${config.id}`}`);
+    },
+
+    registerTool(
+      tool: { tool: Tool; handler: ToolHandler } | PluginToolFactory,
+    ): void {
+      const factory: PluginToolFactory =
+        typeof tool === "function" ? tool : () => tool;
+      deps.toolPluginRegistry.register(manifest.id, factory);
+      cleanup.push(() => deps.toolPluginRegistry.remove(manifest.id));
+      log.info(`Registered tool from plugin "${manifest.id}"`);
     },
 
     on(hook, handler) {

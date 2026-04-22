@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { HookRegistry } from "./hooks.js";
 import { UIRegistry } from "./ui-registry.js";
+import { ToolPluginRegistry } from "./tool-registry.js";
 import { createPluginApi } from "./api.js";
-import type { PluginManifest, TransportFactory } from "./types.js";
+import type { PluginManifest, TransportFactory, PluginToolContext } from "./types.js";
+import type { Tool } from "../core/types.js";
 import fs from "node:fs";
 
 // ---------------------------------------------------------------------------
@@ -113,10 +115,13 @@ describe("createPluginApi", () => {
     const uiRegistry = new UIRegistry();
     const transportFactories = new Map<string, TransportFactory>();
 
+    const toolPluginRegistry = new ToolPluginRegistry();
+
     const { api, cleanup } = createPluginApi(manifest, "/tmp/plugin", {
       hooks,
       uiRegistry,
       transportFactories,
+      toolPluginRegistry,
     });
 
     const factory: TransportFactory = async () => ({ start: async () => {}, stop: async () => {} });
@@ -132,11 +137,13 @@ describe("createPluginApi", () => {
     const hooks = new HookRegistry();
     const uiRegistry = new UIRegistry();
     const transportFactories = new Map<string, TransportFactory>();
+    const toolPluginRegistry = new ToolPluginRegistry();
 
     const { api, cleanup } = createPluginApi(manifest, "/tmp/plugin", {
       hooks,
       uiRegistry,
       transportFactories,
+      toolPluginRegistry,
     });
 
     const handler = vi.fn();
@@ -154,11 +161,13 @@ describe("createPluginApi", () => {
     const hooks = new HookRegistry();
     const uiRegistry = new UIRegistry();
     const transportFactories = new Map<string, TransportFactory>();
+    const toolPluginRegistry = new ToolPluginRegistry();
 
     const { api } = createPluginApi(manifest, "/tmp/plugin", {
       hooks,
       uiRegistry,
       transportFactories,
+      toolPluginRegistry,
       pluginConfig: { theme: "dark" },
     });
 
@@ -169,14 +178,125 @@ describe("createPluginApi", () => {
     const hooks = new HookRegistry();
     const uiRegistry = new UIRegistry();
     const transportFactories = new Map<string, TransportFactory>();
+    const toolPluginRegistry = new ToolPluginRegistry();
 
     const { api } = createPluginApi(manifest, "/tmp/plugin", {
       hooks,
       uiRegistry,
       transportFactories,
+      toolPluginRegistry,
     });
 
     expect(api.log).toBeDefined();
     expect(api.log.info).toBeInstanceOf(Function);
+  });
+
+  it("registers tool and tracks cleanup", () => {
+    const hooks = new HookRegistry();
+    const uiRegistry = new UIRegistry();
+    const transportFactories = new Map<string, TransportFactory>();
+    const toolPluginRegistry = new ToolPluginRegistry();
+
+    const { api, cleanup } = createPluginApi(manifest, "/tmp/plugin", {
+      hooks,
+      uiRegistry,
+      transportFactories,
+      toolPluginRegistry,
+    });
+
+    const tool: Tool = { name: "my-tool", description: "test", parameters: {} };
+    api.registerTool({ tool, handler: async () => "ok" });
+
+    const ctx: PluginToolContext = { agentId: "a1", workspacePath: "/tmp" };
+    expect(toolPluginRegistry.resolve(ctx)).toHaveLength(1);
+
+    for (const fn of cleanup) fn();
+    expect(toolPluginRegistry.resolve(ctx)).toHaveLength(0);
+  });
+
+  it("registers tool factory and tracks cleanup", () => {
+    const hooks = new HookRegistry();
+    const uiRegistry = new UIRegistry();
+    const transportFactories = new Map<string, TransportFactory>();
+    const toolPluginRegistry = new ToolPluginRegistry();
+
+    const { api, cleanup } = createPluginApi(manifest, "/tmp/plugin", {
+      hooks,
+      uiRegistry,
+      transportFactories,
+      toolPluginRegistry,
+    });
+
+    api.registerTool((ctx) => ({
+      tool: { name: `tool-${ctx.agentId}`, description: "dynamic", parameters: {} },
+      handler: async () => "ok",
+    }));
+
+    const result = toolPluginRegistry.resolve({ agentId: "bot1", workspacePath: "/tmp" });
+    expect(result).toHaveLength(1);
+    expect(result[0].tool.name).toBe("tool-bot1");
+
+    for (const fn of cleanup) fn();
+    expect(toolPluginRegistry.resolve({ agentId: "bot1", workspacePath: "/tmp" })).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ToolPluginRegistry
+// ---------------------------------------------------------------------------
+
+describe("ToolPluginRegistry", () => {
+  let registry: ToolPluginRegistry;
+  const ctx: PluginToolContext = { agentId: "a1", workspacePath: "/tmp/ws" };
+
+  beforeEach(() => {
+    registry = new ToolPluginRegistry();
+  });
+
+  it("resolves a static tool", () => {
+    const tool: Tool = { name: "echo", description: "echo", parameters: {} };
+    registry.register("p1", () => ({ tool, handler: async () => "ok" }));
+    const result = registry.resolve(ctx);
+    expect(result).toHaveLength(1);
+    expect(result[0].tool.name).toBe("echo");
+  });
+
+  it("resolves a factory returning array", () => {
+    registry.register("p1", () => [
+      { tool: { name: "t1", description: "", parameters: {} }, handler: async () => "1" },
+      { tool: { name: "t2", description: "", parameters: {} }, handler: async () => "2" },
+    ]);
+    expect(registry.resolve(ctx)).toHaveLength(2);
+  });
+
+  it("skips factory returning null", () => {
+    registry.register("p1", () => null);
+    expect(registry.resolve(ctx)).toHaveLength(0);
+  });
+
+  it("catches and skips factory errors", () => {
+    registry.register("p1", () => { throw new Error("boom"); });
+    expect(registry.resolve(ctx)).toHaveLength(0);
+  });
+
+  it("detects name conflicts", () => {
+    registry.register("p1", () => ({ tool: { name: "dup", description: "", parameters: {} }, handler: async () => "" }));
+    registry.register("p2", () => ({ tool: { name: "dup", description: "", parameters: {} }, handler: async () => "" }));
+    expect(registry.resolve(ctx)).toHaveLength(1);
+  });
+
+  it("removes entries by pluginId", () => {
+    registry.register("p1", () => ({ tool: { name: "t1", description: "", parameters: {} }, handler: async () => "" }));
+    registry.register("p2", () => ({ tool: { name: "t2", description: "", parameters: {} }, handler: async () => "" }));
+    registry.remove("p1");
+    const result = registry.resolve(ctx);
+    expect(result).toHaveLength(1);
+    expect(result[0].tool.name).toBe("t2");
+  });
+
+  it("clears all entries", () => {
+    registry.register("p1", () => ({ tool: { name: "t1", description: "", parameters: {} }, handler: async () => "" }));
+    registry.clear();
+    expect(registry.resolve(ctx)).toHaveLength(0);
   });
 });

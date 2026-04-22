@@ -3,7 +3,8 @@
 
 import type { Logger } from "../core/logger.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { Transport } from "../core/types.js";
+import type { Tool, Transport } from "../core/types.js";
+import type { ToolHandler } from "../core/tools.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { IsotopesConfigFile } from "../core/config.js";
@@ -83,12 +84,29 @@ export interface TransportFactoryContext {
 }
 
 // ---------------------------------------------------------------------------
+// Tool plugin types
+// ---------------------------------------------------------------------------
+
+export interface PluginToolContext {
+  agentId: string;
+  workspacePath: string;
+  config?: Record<string, unknown>;
+}
+
+export type PluginToolFactory = (
+  ctx: PluginToolContext,
+) => { tool: Tool; handler: ToolHandler } | { tool: Tool; handler: ToolHandler }[] | null | undefined;
+
+// ---------------------------------------------------------------------------
 // Plugin API — the object passed to plugin.register()
 // ---------------------------------------------------------------------------
 
 export interface IsotopesPluginApi {
   registerTransport(id: string, factory: TransportFactory): void;
   registerUI(config: UIPluginConfig): void;
+  registerTool(
+    tool: { tool: Tool; handler: ToolHandler } | PluginToolFactory,
+  ): void;
   on<H extends HookName>(
     hook: H,
     handler: (payload: HookPayloads[H]) => void | Promise<void>,

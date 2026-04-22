@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { createLogger } from "../core/logger.js";
 import { HookRegistry } from "./hooks.js";
 import { UIRegistry } from "./ui-registry.js";
+import { ToolPluginRegistry } from "./tool-registry.js";
 import { discoverPlugins } from "./discovery.js";
 import { createPluginApi } from "./api.js";
 import type {
@@ -28,6 +29,7 @@ export class PluginManager {
   private hooks = new HookRegistry();
   private uiRegistry = new UIRegistry();
   private transportFactories = new Map<string, TransportFactory>();
+  private toolPluginRegistry = new ToolPluginRegistry();
 
   async discoverAndLoad(
     searchDirs: string[],
@@ -73,6 +75,7 @@ export class PluginManager {
       hooks: this.hooks,
       uiRegistry: this.uiRegistry,
       transportFactories: this.transportFactories,
+      toolPluginRegistry: this.toolPluginRegistry,
       pluginConfig,
     });
 
@@ -94,6 +97,10 @@ export class PluginManager {
     return this.transportFactories;
   }
 
+  getToolPluginRegistry(): ToolPluginRegistry {
+    return this.toolPluginRegistry;
+  }
+
   getLoadedPlugins(): PluginManifest[] {
     return [...this.plugins.values()].map((p) => p.manifest);
   }
@@ -111,5 +118,6 @@ export class PluginManager {
     }
     this.plugins.clear();
     this.hooks.clear();
+    this.toolPluginRegistry.clear();
   }
 }

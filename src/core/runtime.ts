@@ -19,6 +19,7 @@ import { ThreadBindingManager } from "./thread-bindings.js";
 import { createLogger } from "./logger.js";
 import { LazyTransportContext } from "../tools/react.js";
 import { ProcessRegistry } from "../tools/exec.js";
+import { ToolRegistry } from "./tools.js";
 import { ContainerManager, SandboxExecutor } from "../sandbox/index.js";
 import { initializeAgent } from "./agent-init.js";
 import {
@@ -91,6 +92,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
   const processRegistries = new Map<string, ProcessRegistry>();
+  const toolRegistries = new Map<string, ToolRegistry>();
 
   // Build sandbox executor if any agent uses sandboxing
   let sandboxExecutor: SandboxExecutor | undefined;
@@ -139,6 +141,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     agentWorkspaces.set(result.agentConfig.id, result.workspacePath);
     transportContexts.set(result.agentConfig.id, transportCtx);
     processRegistries.set(result.agentConfig.id, result.processRegistry);
+    toolRegistries.set(result.agentConfig.id, result.toolRegistry);
   }
 
   // Hot-reload workspace files
@@ -151,6 +154,25 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     ...[...agentWorkspaces.values()].map((w) => path.join(w, "plugins")),
   ];
   await pluginManager.discoverAndLoad(pluginDirs, config.plugins);
+
+  // Inject plugin-registered tools into each agent's tool registry
+  const toolPluginRegistry = pluginManager.getToolPluginRegistry();
+  for (const [agentId, toolRegistry] of toolRegistries) {
+    const resolved = toolPluginRegistry.resolve({
+      agentId,
+      workspacePath: agentWorkspaces.get(agentId)!,
+    });
+    for (const { tool, handler } of resolved) {
+      if (toolRegistry.has(tool.name)) {
+        log.warn(`Plugin tool "${tool.name}" conflicts with existing tool for agent "${agentId}" — skipping`);
+        continue;
+      }
+      toolRegistry.register(tool, handler);
+    }
+    if (resolved.length > 0) {
+      log.info(`Injected ${resolved.length} plugin tool(s) into agent "${agentId}"`);
+    }
+  }
 
   for (const [agentId, workspacePath] of agentWorkspaces) {
     hotReload.register(agentId, workspacePath);
