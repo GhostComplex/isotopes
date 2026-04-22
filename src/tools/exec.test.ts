@@ -1,6 +1,8 @@
 // src/tools/exec.test.ts — Tests for exec + process tools
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import type { ChildProcess } from "node:child_process";
 
 vi.mock("../core/logger.js", () => ({
   createLogger: () => ({
@@ -10,6 +12,80 @@ vi.mock("../core/logger.js", () => ({
     debug: vi.fn(),
   }),
 }));
+
+// ---------------------------------------------------------------------------
+// Mock child_process — avoid real process spawning on macOS (exit 143/144)
+// CI (Linux) validates real spawn; these tests verify registry/tool logic.
+// ---------------------------------------------------------------------------
+
+/** Create a fake ChildProcess that auto-exits after `delayMs`. */
+function createFakeChild(delayMs: number, exitCode = 0): ChildProcess {
+  const child = new EventEmitter() as ChildProcess & { _killed: boolean };
+  const stdout = new EventEmitter();
+  const stderr = new EventEmitter();
+  Object.assign(child, {
+    stdout,
+    stderr,
+    pid: Math.floor(Math.random() * 90000) + 10000,
+    _killed: false,
+    kill: vi.fn((signal?: string) => {
+      if (!child._killed) {
+        child._killed = true;
+        child.emit("exit", signal === "SIGTERM" ? 137 : exitCode, signal ?? null);
+      }
+      return true;
+    }),
+  });
+
+  if (delayMs >= 0) {
+    setTimeout(() => {
+      if (!child._killed) {
+        child._killed = true;
+        child.emit("exit", exitCode, null);
+      }
+    }, delayMs);
+  }
+
+  return child;
+}
+
+/** Mapping of command patterns to fake child behavior. */
+function fakeChildForCommand(cmd: string): ChildProcess {
+  if (cmd.startsWith("echo ")) {
+    const text = cmd.slice(5);
+    const child = createFakeChild(0, 0);
+    // Emit stdout on next tick so listeners can attach
+    process.nextTick(() => {
+      child.stdout!.emit("data", Buffer.from(text + "\n"));
+    });
+    return child;
+  }
+  if (cmd.startsWith("sleep ")) {
+    // Keep alive for 10s (tests kill or clear before that)
+    return createFakeChild(10_000, 0);
+  }
+  if (cmd === "exit 42") {
+    return createFakeChild(0, 42);
+  }
+  // default: instant success
+  return createFakeChild(0, 0);
+}
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("node:child_process")>();
+  // Only mock spawn on macOS where process-group signals kill the vitest worker.
+  // CI (Linux) continues to use real spawn for full integration coverage.
+  if (process.platform !== "darwin") return orig;
+  return {
+    ...orig,
+    spawn: vi.fn(
+      (command: string, args: string[], _opts?: Record<string, unknown>) => {
+        const fullCmd = args.length === 0 ? command : `${command} ${args.join(" ")}`;
+        return fakeChildForCommand(fullCmd);
+      },
+    ),
+  };
+});
 
 import {
   ProcessRegistry,
@@ -81,7 +157,7 @@ describe("ProcessRegistry", () => {
   it("tracks completed process count", async () => {
     const a = registry.spawn("echo a", process.cwd());
     const b = registry.spawn("sleep 60", process.cwd());
-    
+
     // Wait for first process to complete
     await new Promise((r) => setTimeout(r, 100));
     expect(a.status).toBe("exited");
