@@ -121,13 +121,9 @@ export function initSubagentBackend(config: SubagentBackendConfig): void {
 function getBackend(allowedWorkspaces?: string[]): SubagentBackend {
   const key = allowedWorkspaces?.sort().join(":") ?? "";
   if (!sharedBackend || sharedBackendKey !== key) {
-    const cfg = backendConfig.config;
     sharedBackend = new SubagentBackend({
       allowedWorkspaceRoots: allowedWorkspaces,
-      permissionMode: cfg?.claude.permissionMode,
-      allowedTools: cfg?.claude.allowedTools,
-      settingSources: cfg?.claude.settingSources,
-      allowedTypes: cfg?.allowedTypes,
+      config: backendConfig.config,
       core: backendConfig.core,
     });
     sharedBackendKey = key;

@@ -12,7 +12,7 @@ import {
   type SubagentResult,
   type SubagentSpawnOptions,
 } from "./types.js";
-import type { SettingSource, SubagentPermissionMode, SubagentType } from "../core/config.js";
+import type { ResolvedSubagentConfig, SubagentType } from "../core/config.js";
 import type { SubagentRunner } from "./runner.js";
 import { ClaudeRunner } from "./runners/claude.js";
 import { BuiltinRunner, type BuiltinPiMonoCore } from "./runners/builtin.js";
@@ -37,14 +37,8 @@ const runs = new Map<string, RunHandle>();
 export interface SubagentBackendOptions {
   /** Allowed workspace roots for cwd validation. Empty = unrestricted. */
   allowedWorkspaceRoots?: string[];
-  /** Default permission mode for the Claude runner. Default: "allowlist" */
-  permissionMode?: SubagentPermissionMode;
-  /** Default tool allowlist for the Claude runner. */
-  allowedTools?: string[];
-  /** Settings sources passed to the Claude Agent SDK. Default: ["user"]. */
-  settingSources?: SettingSource[];
-  /** Runner types allowed to be spawned. Default: ["claude", "builtin"] */
-  allowedTypes?: Set<SubagentType>;
+  /** Resolved subagent configuration */
+  config?: ResolvedSubagentConfig;
   /**
    * Core used to host in-process builtin subagents. When provided, a
    * BuiltinRunner is registered for the "builtin" agent. When omitted,
@@ -77,17 +71,18 @@ export class SubagentBackend {
 
     this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
     this.workspacesKey = this.allowedRoots.slice().sort().join(":");
-    this.allowedTypes = opts.allowedTypes ?? new Set(["claude", "builtin"]);
+    this.allowedTypes = opts.config?.allowedTypes ?? new Set(["claude", "builtin"]);
 
     if (opts.runners) {
       this.runners = { ...opts.runners };
     } else {
       this.runners = {};
       if (this.allowedTypes.has("claude")) {
+        const claude = opts.config?.claude;
         this.runners.claude = new ClaudeRunner({
-          permissionMode: opts.permissionMode,
-          allowedTools: opts.allowedTools,
-          settingSources: opts.settingSources,
+          permissionMode: claude?.permissionMode,
+          allowedTools: claude?.allowedTools,
+          settingSources: claude?.settingSources,
         });
       }
       if (this.allowedTypes.has("builtin") && opts.core) {
