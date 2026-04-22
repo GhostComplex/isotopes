@@ -129,11 +129,14 @@ describe("shouldCompact", () => {
 // ---------------------------------------------------------------------------
 
 describe("createSummaryMessage", () => {
-  it("creates a user message with array content", () => {
+  it("creates a user message with array content containing the summary", () => {
     const msg = createSummaryMessage("The user asked about math.");
+
     const m = msg as unknown as { role: string; content: Array<{ type: string; text: string }> };
     expect(m.role).toBe("user");
     expect(Array.isArray(m.content)).toBe(true);
+    expect(m.content).toHaveLength(1);
+    expect(m.content[0].type).toBe("text");
     expect(m.content[0].text).toContain("[Previous conversation summary]");
     expect(m.content[0].text).toContain("The user asked about math.");
   });
@@ -207,7 +210,7 @@ describe("compactMessages", () => {
     expect(result.length).toBeLessThan(messages.length);
     expect(mockGenerateSummary).toHaveBeenCalledOnce();
 
-    const summary = result[0] as unknown as { role: string; content: Array<{ text: string }> };
+    const summary = result[0] as unknown as { role: string; content: Array<{ type: string; text: string }> };
     expect(summary.role).toBe("user");
     expect(summary.content[0].text).toContain("[Previous conversation summary]");
   });
@@ -320,7 +323,8 @@ describe("forceCompact", () => {
     expect(result.length).toBeLessThan(messages.length);
     expect(mockGenerateSummary).toHaveBeenCalledOnce();
 
-    const summary = result[0] as unknown as { content: Array<{ text: string }> };
+    const summary = result[0] as unknown as { content: Array<{ type: string; text: string }> };
+    expect(summary.content[0].text).toContain("[Previous conversation summary]");
     expect(summary.content[0].text).toContain("forced summary");
   });
 
