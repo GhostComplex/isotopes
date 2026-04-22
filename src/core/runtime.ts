@@ -80,7 +80,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     initSubagentBackend({
       permissionMode: subagentConfig.permissionMode,
       allowedTools: subagentConfig.allowedTools,
-      claude: subagentConfig.claude,
+      settingSources: subagentConfig.settingSources,
       core,
     });
     log.info(`Subagent backend initialized (permissionMode: ${subagentConfig.permissionMode})`);

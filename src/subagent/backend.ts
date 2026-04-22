@@ -13,7 +13,7 @@ import {
   type SubagentResult,
   type SubagentSpawnOptions,
 } from "./types.js";
-import type { SubagentClaudeConfigFile, SubagentPermissionMode } from "../core/config.js";
+import type { SettingSource, SubagentPermissionMode } from "../core/config.js";
 import type { SubagentRunner } from "./runner.js";
 import { ClaudeRunner } from "./runners/claude.js";
 import { BuiltinRunner, type BuiltinAgentCore } from "./runners/builtin.js";
@@ -42,8 +42,8 @@ export interface SubagentBackendOptions {
   permissionMode?: SubagentPermissionMode;
   /** Default tool allowlist for the Claude runner. */
   allowedTools?: string[];
-  /** Claude-specific settings (auth, base URL, executable path). */
-  claude?: SubagentClaudeConfigFile;
+  /** Settings sources passed to the Claude Agent SDK. Default: ["user"]. */
+  settingSources?: SettingSource[];
   /**
    * Core used to host in-process builtin subagents. When provided, a
    * BuiltinRunner is registered for the "builtin" agent. When omitted,
@@ -82,7 +82,7 @@ export class SubagentBackend {
       const claude = new ClaudeRunner({
         permissionMode: opts.permissionMode,
         allowedTools: opts.allowedTools,
-        claude: opts.claude,
+        settingSources: opts.settingSources,
       });
       this.runners = { claude };
       if (opts.core) {

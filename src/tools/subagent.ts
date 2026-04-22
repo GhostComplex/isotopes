@@ -14,7 +14,7 @@ import type { BuiltinAgentCore } from "../subagent/runners/builtin.js";
 import { taskRegistry } from "../subagent/task-registry.js";
 import { createSubagentRecorder } from "../subagent/persistence.js";
 import type { SessionStore } from "../core/types.js";
-import type { SubagentClaudeConfigFile, SubagentPermissionMode } from "../core/config.js";
+import type { SettingSource, SubagentPermissionMode } from "../core/config.js";
 
 const log = createLogger("tools:subagent");
 
@@ -28,8 +28,8 @@ export interface SubagentBackendConfig {
   permissionMode?: SubagentPermissionMode;
   /** Allowed tools for allowlist mode */
   allowedTools?: string[];
-  /** Claude-specific settings (auth, base URL, executable path) */
-  claude?: SubagentClaudeConfigFile;
+  /** Settings sources passed to the Claude Agent SDK. Default: ["user"]. */
+  settingSources?: SettingSource[];
   /** AgentCore used to host in-process builtin subagents. */
   core?: BuiltinAgentCore;
 }
@@ -132,7 +132,7 @@ function getBackend(allowedWorkspaces?: string[]): SubagentBackend {
       allowedWorkspaceRoots: allowedWorkspaces,
       permissionMode: backendConfig.permissionMode,
       allowedTools: backendConfig.allowedTools,
-      claude: backendConfig.claude,
+      settingSources: backendConfig.settingSources,
       core: backendConfig.core,
     });
     sharedBackendKey = key;

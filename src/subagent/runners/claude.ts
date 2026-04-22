@@ -6,7 +6,7 @@ import { query, type Options, type PermissionMode, type SDKMessage } from "@anth
 import { createLogger } from "../../core/logger.js";
 import {
   DEFAULT_SUBAGENT_ALLOWED_TOOLS,
-  type SubagentClaudeConfigFile,
+  type SettingSource,
   type SubagentPermissionMode,
 } from "../../core/config.js";
 import type { SubagentAgent, SubagentEvent, SubagentSpawnOptions } from "../types.js";
@@ -20,8 +20,8 @@ export interface ClaudeRunnerOptions {
   permissionMode?: SubagentPermissionMode;
   /** Default allowlist used when permissionMode is "allowlist". */
   allowedTools?: string[];
-  /** Claude-specific settings (auth, base URL, executable path). */
-  claude?: SubagentClaudeConfigFile;
+  /** Settings sources passed to the Claude Agent SDK. Default: ["user"]. */
+  settingSources?: SettingSource[];
 }
 
 // ---------------------------------------------------------------------------
@@ -130,12 +130,12 @@ export class ClaudeRunner implements SubagentRunner {
 
   private permissionMode: SubagentPermissionMode;
   private allowedTools: string[];
-  private claude?: SubagentClaudeConfigFile;
+  private settingSources: SettingSource[];
 
   constructor(options?: ClaudeRunnerOptions) {
     this.permissionMode = options?.permissionMode ?? "allowlist";
     this.allowedTools = options?.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
-    this.claude = options?.claude;
+    this.settingSources = options?.settingSources ?? ["user"];
   }
 
   /** Build the SDK Options object for one spawn. */
@@ -148,22 +148,11 @@ export class ClaudeRunner implements SubagentRunner {
       cwd: options.cwd,
       abortController: abort,
       permissionMode: translated.permissionMode,
+      settingSources: this.settingSources,
     };
     if (translated.allowedTools) sdkOptions.allowedTools = translated.allowedTools;
     if (options.model) sdkOptions.model = options.model;
     if (options.maxTurns !== undefined) sdkOptions.maxTurns = options.maxTurns;
-    if (this.claude?.pathToClaudeCodeExecutable) {
-      sdkOptions.pathToClaudeCodeExecutable = this.claude.pathToClaudeCodeExecutable;
-    }
-
-    sdkOptions.settingSources = this.claude?.settingSources ?? ["user"];
-
-    const envOverrides: Record<string, string> = {};
-    if (this.claude?.authToken) envOverrides.ANTHROPIC_AUTH_TOKEN = this.claude.authToken;
-    if (this.claude?.baseUrl) envOverrides.ANTHROPIC_BASE_URL = this.claude.baseUrl;
-    if (Object.keys(envOverrides).length > 0) {
-      sdkOptions.env = { ...process.env, ...envOverrides };
-    }
 
     return sdkOptions;
   }

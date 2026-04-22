@@ -178,40 +178,24 @@ describe("SubagentBackend", () => {
   });
 });
 
-describe("ClaudeRunner.buildSdkOptions claude env", () => {
-  it("does not set env when no claude config given", () => {
+describe("ClaudeRunner.buildSdkOptions settingSources", () => {
+  it("defaults settingSources to ['user']", () => {
     const runner = new ClaudeRunner({});
     const opts = runner.buildSdkOptions(
       { agent: "claude", cwd: "/tmp", prompt: "hi" },
       new AbortController(),
     );
+    expect(opts.settingSources).toEqual(["user"]);
     expect(opts.env).toBeUndefined();
-    expect(opts.pathToClaudeCodeExecutable).toBeUndefined();
   });
 
-  it("injects ANTHROPIC_AUTH_TOKEN/BASE_URL via Options.env without mutating process.env", () => {
-    const before = process.env.ANTHROPIC_AUTH_TOKEN;
-    const runner = new ClaudeRunner({
-      claude: { authToken: "sk-test-123", baseUrl: "https://proxy.example/v1" },
-    });
+  it("forwards explicit settingSources, including empty array (opt-out)", () => {
+    const runner = new ClaudeRunner({ settingSources: [] });
     const opts = runner.buildSdkOptions(
       { agent: "claude", cwd: "/tmp", prompt: "hi" },
       new AbortController(),
     );
-    expect(opts.env?.ANTHROPIC_AUTH_TOKEN).toBe("sk-test-123");
-    expect(opts.env?.ANTHROPIC_BASE_URL).toBe("https://proxy.example/v1");
-    expect(process.env.ANTHROPIC_AUTH_TOKEN).toBe(before);
-  });
-
-  it("forwards pathToClaudeCodeExecutable", () => {
-    const runner = new ClaudeRunner({
-      claude: { pathToClaudeCodeExecutable: "/custom/claude" },
-    });
-    const opts = runner.buildSdkOptions(
-      { agent: "claude", cwd: "/tmp", prompt: "hi" },
-      new AbortController(),
-    );
-    expect(opts.pathToClaudeCodeExecutable).toBe("/custom/claude");
+    expect(opts.settingSources).toEqual([]);
   });
 });
 

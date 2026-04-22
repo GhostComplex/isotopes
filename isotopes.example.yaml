@@ -175,11 +175,7 @@ subagent:
   defaultAgent: main
   allowedAgents:
     - main
-  # claude:                           # Claude Code SDK credentials
-  #   authToken: ${ANTHROPIC_AUTH_TOKEN}     # → ANTHROPIC_AUTH_TOKEN for spawned process
-  #   baseUrl: ${ANTHROPIC_BASE_URL}         # → ANTHROPIC_BASE_URL for spawned process
-  #   pathToClaudeCodeExecutable: /custom/path/to/claude
-  #   settingSources: [user]            # default; loads ~/.claude/settings.json (env, model, permissions). Use [] to opt out.
+  # settingSources: [user]            # default; loads ~/.claude/settings.json (env, model, permissions). Use [] to opt out.
   # timeout: 900                      # seconds; backend default 15min
   # maxTurns: 50
   # permissionMode: allowlist         # skip | allowlist | default
