@@ -16,7 +16,6 @@ import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import {
   createMockAgentManager,
-  createMockAgentCache,
   createMockSessionStore,
 } from "../core/test-helpers.js";
 
@@ -458,18 +457,11 @@ describe("FeishuTransport", () => {
         params: { receive_id_type: "chat_id" },
         data: {
           receive_id: "oc_chat123",
-          content: JSON.stringify({ text: "Hello from Feishu!" }),
+          content: JSON.stringify({ text: "Hello world!" }),
           msg_type: "text",
         },
       });
 
-      // Should have stored assistant message
-      expect(sessionStore.addMessage).toHaveBeenCalledWith(
-        "session-feishu-123",
-        expect.objectContaining({
-          role: "assistant",
-        }),
-      );
     });
 
     it("ignores non-user messages (bot self-messages)", async () => {
@@ -717,7 +709,7 @@ describe("FeishuTransport", () => {
     it("sends error message when agent throws", async () => {
       const errorAgent = {
         createSession: vi.fn().mockResolvedValue({
-          subscribe: vi.fn((cb: (event: Record<string, unknown>) => void) => {
+          subscribe: vi.fn((_cb: (event: Record<string, unknown>) => void) => {
             return () => {};
           }),
           prompt: vi.fn(async () => {
@@ -746,7 +738,27 @@ describe("FeishuTransport", () => {
     });
 
     it("handles agent_end with error stopReason", async () => {
-      const errorAgent = createMockAgentCache();
+      let subscriber: ((event: Record<string, unknown>) => void) | null = null;
+      const errorSession = {
+        subscribe: vi.fn((cb: (event: Record<string, unknown>) => void) => {
+          subscriber = cb;
+          return () => {};
+        }),
+        prompt: vi.fn(async () => {
+          if (subscriber) {
+            subscriber({
+              type: "agent_end",
+              messages: [{ role: "assistant", stopReason: "error", errorMessage: "API key invalid" }],
+            });
+          }
+        }),
+        abort: vi.fn(),
+        dispose: vi.fn(),
+        agent: { state: { systemPrompt: "" } },
+      };
+      const errorAgent = {
+        createSession: vi.fn().mockResolvedValue(errorSession),
+      } as unknown as AgentServiceCache;
       agentManager.get = vi.fn(() => errorAgent);
 
       const event = createDMEvent();

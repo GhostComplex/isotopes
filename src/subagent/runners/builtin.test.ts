@@ -185,8 +185,7 @@ describe("BuiltinRunner", () => {
     } as unknown as BuiltinPiMonoCore;
     const runner = new BuiltinRunner(core);
 
-    await expect(
-      collect(
+    const out = await collect(
         runner.run(
           "task-4",
           {
@@ -197,9 +196,10 @@ describe("BuiltinRunner", () => {
           },
           { abort: new AbortController().signal },
         ),
-      ),
-    ).rejects.toThrow("boom");
+      );
 
+    expect(out.some((e) => e.type === "error")).toBe(true);
+    expect(out.at(-1)).toEqual({ type: "done", exitCode: 1 });
     expect(clearedIds).toEqual(setIds);
   });
 });
