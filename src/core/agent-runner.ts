@@ -16,7 +16,7 @@ export interface AgentRunResult {
 }
 
 export type OnTextDelta = (currentText: string) => void | Promise<void>;
-export type OnToolEvent = (event: { type: "start" | "end"; toolName: string; args?: unknown; result?: unknown }) => void;
+export type OnToolEvent = (event: { type: "start" | "end"; toolName: string; args?: unknown; result?: unknown; isError?: boolean }) => void;
 
 export interface RunAgentOptions {
   cache: AgentServiceCache;
@@ -190,7 +190,7 @@ async function runSessionEvents(
         onToolEvent?.({ type: "start", toolName: e.toolName, args: e.args });
       } else if (e.type === "tool_execution_end") {
         log.debug(`Tool result: ${e.toolCallId}`);
-        onToolEvent?.({ type: "end", toolName: e.toolName, result: e.result });
+        onToolEvent?.({ type: "end", toolName: e.toolName, result: e.result, isError: e.isError });
       } else if (e.type === "turn_end") {
         const usage = getUsage(e.message);
         if (usageTracker && usage) {

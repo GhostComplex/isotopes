@@ -149,7 +149,7 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
         if (event.type === "start") {
           writeEvent("tool_call", { toolName: event.toolName, args: event.args });
         } else {
-          writeEvent("tool_result", { toolName: event.toolName, result: event.result });
+          writeEvent("tool_result", { toolName: event.toolName, result: event.result, isError: event.isError });
         }
       },
       hooks: deps.hooks,
