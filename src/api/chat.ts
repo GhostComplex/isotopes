@@ -145,6 +145,13 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
         lastTextLen = currentText.length;
         if (delta) writeEvent("text_delta", { text: delta });
       },
+      onToolEvent: (event) => {
+        if (event.type === "start") {
+          writeEvent("tool_call", { toolName: event.toolName, args: event.args });
+        } else {
+          writeEvent("tool_result", { toolName: event.toolName, result: event.result });
+        }
+      },
       hooks: deps.hooks,
       agentId: session.agentId,
     });

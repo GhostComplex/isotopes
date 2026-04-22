@@ -16,6 +16,7 @@ export interface AgentRunResult {
 }
 
 export type OnTextDelta = (currentText: string) => void | Promise<void>;
+export type OnToolEvent = (event: { type: "start" | "end"; toolName: string; args?: unknown; result?: unknown }) => void;
 
 export interface RunAgentOptions {
   cache: AgentServiceCache;
@@ -25,6 +26,7 @@ export interface RunAgentOptions {
   textInput?: string;
   log: Logger;
   onTextDelta?: OnTextDelta;
+  onToolEvent?: OnToolEvent;
   usageTracker?: UsageTracker;
   onToolComplete?: () => Promise<string | null>;
   agentId?: string;
@@ -33,7 +35,7 @@ export interface RunAgentOptions {
 
 
 export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
-  const { cache, sessionStore, sessionId, systemPrompt, textInput, log, onTextDelta, usageTracker, onToolComplete, agentId, hooks } = opts;
+  const { cache, sessionStore, sessionId, systemPrompt, textInput, log, onTextDelta, onToolEvent, usageTracker, onToolComplete, agentId, hooks } = opts;
 
   if (hooks && agentId && textInput) {
     await hooks.emit("message_received", {
@@ -62,6 +64,7 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
       textInput,
       log,
       onTextDelta,
+      onToolEvent,
       usageTracker,
       sessionId,
       onToolComplete,
@@ -100,7 +103,7 @@ export interface ActiveAgentHandle {
  * The session is NOT disposed automatically — caller must dispose.
  */
 export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgentHandle> {
-  const { cache, sessionStore, sessionId, systemPrompt, textInput, log, onTextDelta, usageTracker, onToolComplete, agentId, hooks } = opts;
+  const { cache, sessionStore, sessionId, systemPrompt, textInput, log, onTextDelta, onToolEvent, usageTracker, onToolComplete, agentId, hooks } = opts;
 
   if (hooks && agentId && textInput) {
     await hooks.emit("message_received", {
@@ -121,6 +124,7 @@ export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgent
     textInput,
     log,
     onTextDelta,
+    onToolEvent,
     usageTracker,
     sessionId,
     onToolComplete,
@@ -153,6 +157,7 @@ interface SessionRunOpts {
   textInput?: string;
   log: Logger;
   onTextDelta?: OnTextDelta;
+  onToolEvent?: OnToolEvent;
   usageTracker?: UsageTracker;
   sessionId: string;
   onToolComplete?: () => Promise<string | null>;
@@ -162,7 +167,7 @@ async function runSessionEvents(
   session: AgentSession,
   opts: SessionRunOpts,
 ): Promise<AgentRunResult> {
-  const { textInput, log, onTextDelta, usageTracker, sessionId, onToolComplete } = opts;
+  const { textInput, log, onTextDelta, onToolEvent, usageTracker, sessionId, onToolComplete } = opts;
 
   let responseText = "";
   let errorMessage: string | null = null;
@@ -182,8 +187,10 @@ async function runSessionEvents(
         }
       } else if (e.type === "tool_execution_start") {
         log.debug(`Tool call: ${e.toolName}`, { id: e.toolCallId });
+        onToolEvent?.({ type: "start", toolName: e.toolName, args: e.args });
       } else if (e.type === "tool_execution_end") {
         log.debug(`Tool result: ${e.toolCallId}`);
+        onToolEvent?.({ type: "end", toolName: e.toolName, result: e.result });
       } else if (e.type === "turn_end") {
         const usage = getUsage(e.message);
         if (usageTracker && usage) {
