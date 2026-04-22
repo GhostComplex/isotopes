@@ -14,14 +14,15 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const user = (text: string): Message => ({ role: "user", content: text, timestamp: Date.now() } as unknown as Message);
-const assistant = (text: string): Message => ({ role: "assistant", content: [{ type: "text", text }], timestamp: Date.now() } as unknown as Message);
+const TS = 1000;
+const user = (text: string): Message => ({ role: "user", content: text, timestamp: TS } as unknown as Message);
+const assistant = (text: string): Message => ({ role: "assistant", content: [{ type: "text", text }], timestamp: TS } as unknown as Message);
 const toolResult = (output: string, toolCallId?: string): Message => ({
   role: "toolResult",
   content: output,
   toolCallId: toolCallId ?? "unknown",
   toolName: "test",
-  timestamp: Date.now(),
+  timestamp: TS,
 } as unknown as Message);
 
 function assistantWithToolUse(text: string, toolUses: Array<{ id: string; name?: string }>): Message {
@@ -29,7 +30,7 @@ function assistantWithToolUse(text: string, toolUses: Array<{ id: string; name?:
   for (const tu of toolUses) {
     content.push({ type: "toolCall", id: tu.id, name: tu.name ?? "test_tool" });
   }
-  return { role: "assistant", content, timestamp: Date.now() } as unknown as Message;
+  return { role: "assistant", content, timestamp: TS } as unknown as Message;
 }
 
 // ---------------------------------------------------------------------------
