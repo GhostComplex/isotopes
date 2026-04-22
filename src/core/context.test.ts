@@ -2,6 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import type { AgentMessage as Message } from "@mariozechner/pi-agent-core";
+import { msgField } from "./messages.js";
 import {
   limitHistoryTurns,
   sanitizeToolUseResultPairing,
@@ -169,7 +170,7 @@ describe("sanitizeToolUseResultPairing", () => {
     expect((result[2] as unknown as {toolCallId:string}).toolCallId).toBe("t2");
     // The real t1 result is preserved
     expect(result[3].role).toBe("toolResult");
-    expect((result[3] as any).content).toBe("ok1");
+    expect(msgField(result[3], "content")).toBe("ok1");
   });
 
   it("no-op for clean messages", () => {
@@ -222,7 +223,7 @@ describe("pruneToolResults", () => {
       assistant("e"),
     ];
     const result = pruneToolResults(msgs, { protectRecent: 3 });
-    const trimmedContent = (result[1] as any).content as string;
+    const trimmedContent = msgField(result[1], "content") as string;
     expect(trimmedContent.length).toBeLessThan(longOutput.length);
     expect(trimmedContent).toContain("middle content omitted");
   });
@@ -248,7 +249,7 @@ describe("pruneToolResults", () => {
     const shortOutput = "ok";
     const msgs = [user("a"), toolResult(shortOutput, "t1"), assistant("b"), assistant("c"), assistant("d"), assistant("e")];
     const result = pruneToolResults(msgs, { protectRecent: 3 });
-    const content = (result[1] as any).content as string;
+    const content = msgField(result[1], "content") as string;
     expect(content).toBe(shortOutput);
   });
 
@@ -273,7 +274,7 @@ describe("pruneImages", () => {
       user("more recent 3"), assistant("r3"),
     ];
     const result = pruneImages(msgs, { keepRecentTurns: 3 });
-    const content = (result[0] as any).content as Array<{type: string; text?: string}>;
+    const content = msgField(result[0], "content") as Array<{type: string; text?: string}>;
     expect(content[0].type).toBe("text");
     expect(content[0].text).toContain("image data removed");
   });
@@ -285,7 +286,7 @@ describe("pruneImages", () => {
       assistant("nice"),
     ];
     const result = pruneImages(msgs, { keepRecentTurns: 3 });
-    const content = (result[0] as any).content as Array<{type: string}>;
+    const content = msgField(result[0], "content") as Array<{type: string}>;
     expect(content[0].type).toBe("image");
   });
 

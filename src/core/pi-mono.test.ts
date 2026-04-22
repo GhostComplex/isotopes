@@ -1,6 +1,7 @@
 // src/core/pi-mono.test.ts — Unit tests for PiMonoCore
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AgentConfig, AgentEvent, AgentMessage } from "./types.js";
+import { msgField } from "./messages.js";
 
 // ---------------------------------------------------------------------------
 // Mock setup
@@ -328,14 +329,12 @@ describe("prompt() event mapping", () => {
   function setupEvents(coreEvents: unknown[]) {
     let listener: ((e: unknown) => void) | null = null;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockAgent.subscribe as any).mockImplementation((fn: (e: unknown) => void) => {
+    (mockAgent.subscribe as ReturnType<typeof vi.fn>).mockImplementation((fn: (e: unknown) => void) => {
       listener = fn;
       return vi.fn();
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockAgent.prompt as any).mockImplementation(() => {
+    (mockAgent.prompt as ReturnType<typeof vi.fn>).mockImplementation(() => {
       for (const ev of coreEvents) {
         listener!(ev);
       }
@@ -455,11 +454,11 @@ describe("prompt() event mapping", () => {
     expect(agentEnd.type).toBe("agent_end");
     expect(agentEnd.messages).toHaveLength(3);
     expect(agentEnd.messages[0].role).toBe("user");
-    expect((agentEnd.messages[0] as any).content).toBe("hi");
+    expect(msgField(agentEnd.messages[0], "content")).toBe("hi");
     expect(agentEnd.messages[1].role).toBe("assistant");
-    expect((agentEnd.messages[1] as any).content).toEqual([{ type: "text", text: "hello" }]);
+    expect(msgField(agentEnd.messages[1], "content")).toEqual([{ type: "text", text: "hello" }]);
     expect(agentEnd.messages[2].role).toBe("toolResult");
-    expect((agentEnd.messages[2] as any).content).toBe("result data");
+    expect(msgField(agentEnd.messages[2], "content")).toBe("result data");
   });
 
   it("maps agent_end error metadata from assistant message", async () => {
@@ -481,8 +480,8 @@ describe("prompt() event mapping", () => {
     const agentEnd = events[0] as Extract<AgentEvent, { type: "agent_end" }>;
     expect(agentEnd.stopReason).toBe("error");
     expect(agentEnd.errorMessage).toBe("No API provider registered for api: undefined");
-    expect((agentEnd.messages[0] as any).stopReason).toBe("error");
-    expect((agentEnd.messages[0] as any).errorMessage).toBe("No API provider registered for api: undefined");
+    expect(msgField(agentEnd.messages[0], "stopReason")).toBe("error");
+    expect(msgField(agentEnd.messages[0], "errorMessage")).toBe("No API provider registered for api: undefined");
   });
 
   it("skips unknown event types", async () => {
@@ -531,8 +530,7 @@ describe("prompt() event mapping", () => {
 
   it("queues concurrent prompts on the same agent instance", async () => {
     const listeners: Array<(e: unknown) => void> = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockAgent.subscribe as any).mockImplementation((fn: (e: unknown) => void) => {
+    (mockAgent.subscribe as ReturnType<typeof vi.fn>).mockImplementation((fn: (e: unknown) => void) => {
       listeners.push(fn);
       return vi.fn();
     });
@@ -586,8 +584,7 @@ describe("prompt() event mapping", () => {
     const listeners: Array<(e: unknown) => void> = [];
     const unsubs: Array<ReturnType<typeof vi.fn>> = [];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockAgent.subscribe as any).mockImplementation((fn: (e: unknown) => void) => {
+    (mockAgent.subscribe as ReturnType<typeof vi.fn>).mockImplementation((fn: (e: unknown) => void) => {
       listeners.push(fn);
       const unsub = vi.fn();
       unsubs.push(unsub);

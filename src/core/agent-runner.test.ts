@@ -3,6 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runAgentLoop } from "./agent-runner.js";
 import { createMockAgentInstance, createMockSessionStore } from "./test-helpers.js";
+import { msgField } from "./messages.js";
 import type { Logger } from "./logger.js";
 
 // Suppress console output
@@ -225,21 +226,21 @@ describe("runAgentLoop", () => {
 
     // Turn 1: assistant with text + tool_call
     expect(calls[0][0]).toBe("s1");
-    expect(((calls[0][1]) as any).role).toBe("assistant");
-    expect(((calls[0][1]) as any).content).toEqual([
+    expect(msgField(calls[0][1], "role")).toBe("assistant");
+    expect(msgField(calls[0][1], "content")).toEqual([
       { type: "text", text: "Let me check." },
       { type: "toolCall", id: "call-1", name: "shell", input: { cmd: "ls" } },
     ]);
 
     // Turn 1: tool_result-role message paired to call-1, with toolName
-    expect(((calls[1][1]) as any).role).toBe("toolResult");
-    expect((calls[1][1] as any).content).toBe("a.txt\nb.txt");
-    expect((calls[1][1] as any).toolCallId).toBe("call-1");
-    expect((calls[1][1] as any).toolName).toBe("shell");
+    expect(msgField(calls[1][1], "role")).toBe("toolResult");
+    expect(msgField(calls[1][1], "content")).toBe("a.txt\nb.txt");
+    expect(msgField(calls[1][1], "toolCallId")).toBe("call-1");
+    expect(msgField(calls[1][1], "toolName")).toBe("shell");
 
     // Turn 2: text-only assistant
-    expect(((calls[2][1]) as any).role).toBe("assistant");
-    expect(((calls[2][1]) as any).content).toEqual([{ type: "text", text: "Done." }]);
+    expect(msgField(calls[2][1], "role")).toBe("assistant");
+    expect(msgField(calls[2][1], "content")).toEqual([{ type: "text", text: "Done." }]);
   });
 
   it("truncates oversized tool_result output when persisting", async () => {
@@ -264,7 +265,7 @@ describe("runAgentLoop", () => {
       (c) => c[1].role === "toolResult",
     );
     expect(toolResultCall).toBeDefined();
-    const output = (toolResultCall![1] as any).content as string;
+    const output = msgField(toolResultCall![1], "content") as string;
     expect(output.length).toBeLessThan(big.length);
     expect(output).toContain("[truncated");
   });
@@ -289,7 +290,7 @@ describe("runAgentLoop", () => {
     const toolResultCall = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => c[1].role === "toolResult",
     );
-    expect((toolResultCall![1] as any).isError).toBe(true);
+    expect(msgField(toolResultCall![1], "isError")).toBe(true);
   });
 
   it("flushes accumulated tool_calls at agent_end when turn_end is missing", async () => {
@@ -310,8 +311,8 @@ describe("runAgentLoop", () => {
 
     const calls = (sessionStore.addMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls).toHaveLength(1);
-    expect(((calls[0][1]) as any).role).toBe("assistant");
-    expect(((calls[0][1]) as any).content).toEqual([
+    expect(msgField(calls[0][1], "role")).toBe("assistant");
+    expect(msgField(calls[0][1], "content")).toEqual([
       { type: "text", text: "partial" },
       { type: "toolCall", id: "c", name: "t", input: {} },
     ]);

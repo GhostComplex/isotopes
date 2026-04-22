@@ -7,6 +7,7 @@ import {
   buildSubagentSessionKey,
 } from "./persistence.js";
 import type { SubagentEvent } from "./types.js";
+import { msgField } from "../core/messages.js";
 import type { SessionStore, AgentMessage, Session } from "../core/types.js";
 
 describe("buildSubagentSessionKey", () => {
@@ -31,8 +32,8 @@ describe("eventToMessage", () => {
 
   it("converts message events to assistant text", () => {
     const msg = eventToMessage({ type: "message", content: "hello" });
-    expect((msg as any)?.role).toBe("assistant");
-    expect((msg as any)?.content).toEqual([{ type: "text", text: "hello" }]);
+    expect(msg?.role).toBe("assistant");
+    expect(msg ? msgField(msg, "content") : undefined).toEqual([{ type: "text", text: "hello" }]);
   });
 
   it("skips empty messages", () => {
@@ -46,8 +47,8 @@ describe("eventToMessage", () => {
       toolName: "Read",
       toolInput: { path: "x" },
     });
-    expect((msg as any)?.role).toBe("assistant");
-    const text = ((msg as any)?.content?.[0] as { type: "text"; text: string }).text;
+    expect(msg?.role).toBe("assistant");
+    const text = (msgField<Array<{text:string}>>(msg!, "content") ?? [])[0]?.text;
     expect(text).toContain("🔧 Read(");
     expect(text).toContain("\"path\"");
   });
@@ -58,22 +59,22 @@ describe("eventToMessage", () => {
       toolName: "Read",
       toolResult: "file contents",
     });
-    expect((msg as any)?.role).toBe("toolResult");
-    expect((msg as any)?.content).toBe("file contents");
-    expect((msg as any)?.toolName).toBe("Read");
+    expect(msg?.role).toBe("toolResult");
+    expect(msg ? msgField(msg, "content") : undefined).toBe("file contents");
+    expect(msg ? msgField(msg, "toolName") : undefined).toBe("Read");
   });
 
   it("flags error events with error text in content", () => {
     const msg = eventToMessage({ type: "error", error: "boom" });
-    expect((msg as any)?.role).toBe("assistant");
-    const content = (msg as any)?.content;
+    expect(msg?.role).toBe("assistant");
+    const content = msg ? msgField<Array<{text: string}>>(msg, "content") : [];
     expect(content[0].text).toContain("boom");
   });
 
   it("truncates oversized tool_result", () => {
     const long = "x".repeat(10_000);
     const msg = eventToMessage({ type: "tool_result", toolResult: long });
-    const content = (msg as any)?.content as string;
+    const content = msg ? msgField<string>(msg, "content") : "";
     expect(content.length).toBeLessThan(long.length);
     expect(content.endsWith("…")).toBe(true);
   });
