@@ -16,7 +16,7 @@ import {
 import type { SubagentClaudeConfigFile, SubagentPermissionMode } from "../core/config.js";
 import type { SubagentRunner } from "./runner.js";
 import { ClaudeRunner } from "./runners/claude.js";
-import { BuiltinRunner, type BuiltinAgentCore } from "./runners/builtin.js";
+import { BuiltinRunner, type PiMonoCore } from "../core/pi-mono.js";
 
 const log = createLogger("subagent:backend");
 
@@ -49,7 +49,7 @@ export interface SubagentBackendOptions {
    * BuiltinRunner is registered for the "builtin" agent. When omitted,
    * spawning a "builtin" agent throws.
    */
-  core?: BuiltinAgentCore;
+  core?: PiMonoCore;
   /**
    * Pre-built runners. When provided, replaces the runners that would have
    * been built from the other options. Primarily a hook for tests.

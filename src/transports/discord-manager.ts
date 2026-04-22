@@ -7,6 +7,7 @@ import type {
   DiscordAccountConfig,
   SessionStore,
 } from "../core/types.js";
+import type { DefaultAgentManager } from "../core/agent-manager.js";
 import { getDiscordToken } from "../core/config.js";
 import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";

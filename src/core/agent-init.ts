@@ -38,6 +38,7 @@ import * as nodeFs from "node:fs/promises";
 import type { PiMonoCore } from "./pi-mono.js";
 import type { DefaultAgentManager } from "./agent-manager.js";
 import type { AgentConfig, PiMonoInstance } from "./types.js";
+import { PiMonoInstance } from "./pi-mono.js";
 import { createLogger } from "./logger.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 

@@ -1,7 +1,9 @@
 // src/commands/slash-commands.ts — Slash command handler for admin operations
 // Parses and dispatches /status, /reload, /model commands from chat messages.
 
-import type { AgentManager, SessionStore, AgentInstance } from "../core/types.js";
+import type { SessionStore, PiMonoInstance } from "../core/types.js";
+import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { DefaultAgentManager } from "../core/agent-manager.js";
 import { createLogger } from "../core/logger.js";
 import { failureTracker } from "../subagent/failure-tracker.js";
 
@@ -28,7 +30,7 @@ export interface CommandContext {
   /** Current session key (if available) */
   sessionKey?: string;
   /** Agent instance (if available) */
-  agentInstance?: AgentInstance;
+  agentInstance?: PiMonoInstance;
 }
 
 /** Result of executing a slash command */

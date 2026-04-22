@@ -3,7 +3,9 @@
 // and SessionStore mocks. Centralise them here.
 
 import { vi } from "vitest";
-import type {  AgentManager, SessionStore, AgentEvent } from "./types.js";
+import type {  SessionStore, AgentEvent } from "./types.js";
+import type { PiMonoInstance } from "./pi-mono.js";
+import type { DefaultAgentManager } from "./agent-manager.js";
 
 /**
  * Create a mock PiMonoInstance whose prompt() yields the given events.

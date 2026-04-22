@@ -4,10 +4,9 @@ import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 
 import type {
   AgentConfig,
-  PiMonoCore,
   
-  AgentManager,
 } from "./types.js";
+import { PiMonoCore, PiMonoInstance } from "./pi-mono.js";
 import { PiMonoCore } from "./pi-mono.js";
 import {
   buildSystemPrompt,

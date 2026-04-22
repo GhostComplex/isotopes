@@ -80,35 +80,40 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
   };
 
   for await (const event of agent.prompt(input)) {
-    if (event.type === "text_delta") {
-      responseText += event.text;
-      turnText += event.text;
-      if (onTextDelta) {
-        await onTextDelta(responseText);
+    if (event.type === "message_update") {
+      const ame = event.assistantMessageEvent;
+      if (ame.type === "text_delta") {
+        responseText += ame.delta;
+        turnText += ame.delta;
+        if (onTextDelta) {
+          await onTextDelta(responseText);
+        }
       }
-    } else if (event.type === "tool_call") {
-      log.debug(`Tool call: ${event.name}`, { id: event.id });
-      toolNameById.set(event.id, event.name);
+    } else if (event.type === "tool_execution_start") {
+      log.debug(`Tool call: ${event.toolName}`, { id: event.toolCallId });
+      toolNameById.set(event.toolCallId, event.toolName);
       turnToolCalls.push({
         type: "toolCall",
-        id: event.id,
-        name: event.name,
+        id: event.toolCallId,
+        name: event.toolName,
         input: event.args,
       });
-    } else if (event.type === "tool_result") {
-      log.debug(`Tool result: ${event.id}`);
-      const toolName = toolNameById.get(event.id) ?? "unknown";
+    } else if (event.type === "tool_execution_end") {
+      log.debug(`Tool result: ${event.toolCallId}`);
+      const toolName = toolNameById.get(event.toolCallId) ?? "unknown";
+      const output = typeof event.result === "string" ? event.result : JSON.stringify(event.result);
       turnToolResults.push(
         toolResultMessage(
-          truncateToolResult(event.output),
-          event.id,
+          truncateToolResult(output),
+          event.toolCallId,
           toolName,
           { isError: event.isError },
         ),
       );
     } else if (event.type === "turn_end") {
-      if (usageTracker && event.usage) {
-        usageTracker.record(sessionId, event.usage);
+      const msg = event.message;
+      if (usageTracker && msg && "usage" in msg) {
+        usageTracker.record(sessionId, (msg as unknown as { usage: unknown }).usage as Parameters<typeof usageTracker.record>[1]);
       }
 
       await flushTurn();
@@ -131,8 +136,11 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
         });
       }
 
-      if (event.stopReason === "error") {
-        const msg = event.errorMessage ?? "Unknown agent error";
+      const lastAssistant = [...event.messages].reverse().find((m) => m.role === "assistant");
+      const stopReason = (lastAssistant as unknown as { stopReason?: string })?.stopReason;
+      const errMsg = (lastAssistant as unknown as { errorMessage?: string })?.errorMessage;
+      if (stopReason === "error") {
+        const msg = errMsg ?? "Unknown agent error";
         log.error(`Agent ended with error: ${msg}`);
         errorMessage = msg;
       }
