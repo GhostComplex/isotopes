@@ -12,14 +12,14 @@ import {
   type ThreadChannel,
 } from "discord.js";
 import {
-  type AgentInstance,
-  type AgentManager,
   type ChannelsConfig,
   type AgentMessage,
   type SessionStore,
   type ThreadBindingConfig,
   type Transport,
 } from "../core/types.js";
+import type { PiMonoInstance } from "../core/pi-mono.js";
+import type { DefaultAgentManager } from "../core/agent-manager.js";
 import { userMessage as mkUserMsg, assistantMessage as mkAssistantMsg } from "../core/messages.js";
 import type { ContextConfigFile } from "../core/config.js";
 import { shouldRespondToMessage } from "../core/mention.js";
@@ -808,8 +808,7 @@ export class DiscordTransport implements Transport {
   // ---------------------------------------------------------------------------
 
   private async runAgentAndRespond(
-    agent: AgentInstance,
-    input: string | AgentMessage[],
+    agent: PiMonoInstance,    input: string | AgentMessage[],
     channel: SendableChannel,
     sessionId: string,
     sessionStore: SessionStore,

@@ -1,82 +1,36 @@
 // src/core/types.ts — Core interfaces for the Isotopes agent framework
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { SandboxConfig } from "../sandbox/config.js";
 import type { ReplyToMode } from "../transports/reply-directive.js";
 
 // ---------------------------------------------------------------------------
-// Messages — re-export AgentMessage as the canonical message type
+// Re-exports from SDK
 // ---------------------------------------------------------------------------
 
-export type { AgentMessage } from "@mariozechner/pi-agent-core";
+export type { AgentMessage, AgentEvent } from "@mariozechner/pi-agent-core";
+export type { Usage } from "@mariozechner/pi-ai";
 
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
 
-/** Schema definition for a tool exposed to an agent. */
 export interface Tool {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
 }
 
-/** File system access policy for agent tools. */
 export interface FileToolPolicy {
   workspaceOnly?: boolean;
 }
 
-/** Per-agent tool policy (CLI access, file system restrictions, per-tool allow/deny). */
 export interface AgentToolSettings {
-  /** Enable web_search and web_fetch tools */
   web?: boolean;
   cli?: boolean;
   fs?: FileToolPolicy;
-  /** Tool names to explicitly allow (if set, only these are available) */
   allow?: string[];
-  /** Tool names to explicitly deny (takes precedence over allow) */
   deny?: string[];
 }
-
-// ---------------------------------------------------------------------------
-// Usage — token consumption and cost tracking
-// ---------------------------------------------------------------------------
-
-/** Token usage and cost breakdown for a single LLM turn. */
-export interface Usage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  totalTokens: number;
-  cost: {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-    total: number;
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Events (streamed from AgentInstance.prompt)
-// ---------------------------------------------------------------------------
-
-/**
- * Discriminated union of events streamed from {@link AgentInstance.prompt}.
- *
- * Lifecycle events bracket turns (`turn_start` / `turn_end`) and the overall
- * agent run (`agent_end`). Content events carry text deltas, tool calls, and
- * tool results as they happen.
- */
-export type AgentEvent =
-  | { type: 'turn_start' }
-  | { type: 'text_delta'; text: string }
-  | { type: 'tool_call'; id: string; name: string; args: unknown }
-  | { type: 'tool_result'; id: string; output: string; isError?: boolean }
-  | { type: 'turn_end'; usage?: Usage }
-  | { type: 'agent_end'; messages: AgentMessage[]; stopReason?: string; errorMessage?: string }
-  | { type: 'error'; error: Error };
 
 // ---------------------------------------------------------------------------
 // Provider config
@@ -117,47 +71,6 @@ export interface AgentConfig {
    * - 'auto': Agent chooses based on task complexity (default)
    */
   codingMode?: "subagent" | "direct" | "auto";
-}
-
-/**
- * A running agent instance that can be prompted and yields streaming events.
- *
- * Created by {@link AgentCore.createAgent} and managed by {@link AgentManager}.
- */
-export interface AgentInstance {
-  prompt(input: string | AgentMessage[]): AsyncIterable<AgentEvent>;
-  abort(): void;
-  steer(msg: AgentMessage): void;
-  followUp(msg: AgentMessage): void;
-  forceCompact?(): Promise<boolean>;
-  clearMessages?(): void;
-  getMessages?(): AgentMessage[];
-}
-
-// ---------------------------------------------------------------------------
-// Agent core — pluggable backend
-// ---------------------------------------------------------------------------
-
-/** Pluggable backend that creates {@link AgentInstance}s from configuration. */
-export interface AgentCore {
-  createAgent(config: AgentConfig): AgentInstance;
-}
-
-// ---------------------------------------------------------------------------
-// Agent manager
-// ---------------------------------------------------------------------------
-
-/** Registry for creating, retrieving, updating, and deleting agents. */
-export interface AgentManager {
-  create(config: AgentConfig): Promise<AgentInstance>;
-  get(id: string): AgentInstance | undefined;
-  list(): AgentConfig[];
-  update(id: string, updates: Partial<AgentConfig>): Promise<AgentInstance>;
-  delete(id: string): Promise<void>;
-  getPrompt(id: string): Promise<string>;
-  updatePrompt(id: string, prompt: string): Promise<void>;
-  /** Reload workspace context for an agent (hot-reload support) */
-  reloadWorkspace(id: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

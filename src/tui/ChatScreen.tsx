@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import type { AgentMessage, AgentInstance } from "../core/types.js";
+import type { AgentMessage, PiMonoInstance } from "../core/types.js";
 import { loadConfig } from "../core/config.js";
 import { PiMonoCore } from "../core/pi-mono.js";
 import { DefaultAgentManager } from "../core/agent-manager.js";
@@ -24,7 +24,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const [agentReady, setAgentReady] = useState(false);
   const [agentId, setAgentId] = useState(options.agent ?? "");
   const [error, setError] = useState<string | null>(null);
-  const agentRef = useRef<AgentInstance | null>(null);
+  const agentRef = useRef<PiMonoInstance | null>(null);
   const historyRef = useRef<AgentMessage[]>([]);
   const autoMessageSent = useRef(false);
 

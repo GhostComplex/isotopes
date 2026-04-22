@@ -1,16 +1,11 @@
-// src/core/pi-mono.ts — Thin wrapper around @mariozechner/pi-agent-core Agent
-// Implements the AgentCore / AgentInstance interfaces from types.ts.
+// src/core/pi-mono.ts — Wrapper around @mariozechner/pi-agent-core Agent
 
-import { Agent, type AgentEvent as CoreEvent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
+import { Agent, type AgentEvent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
 import { getModel, type Model, type Api } from "@mariozechner/pi-ai";
 
 import {
   type AgentConfig,
-  type AgentCore,
-  type AgentEvent,
-  type AgentInstance,
   type Tool,
-  type Usage,
 } from "./types.js";
 import type { ToolRegistry } from "./tools.js";
 import {
@@ -99,18 +94,6 @@ function resolveModel(config: AgentConfig): Model<Api> {
   return model;
 }
 
-function getAgentEndMetadata(messages: AgentMessage[]): {
-  stopReason?: string;
-  errorMessage?: string;
-} {
-  const last = [...messages].reverse().find((m) => m.role === "assistant");
-  if (!last) return {};
-  const m = last as unknown as { stopReason?: string; errorMessage?: string };
-  return {
-    stopReason: typeof m.stopReason === "string" ? m.stopReason : undefined,
-    errorMessage: typeof m.errorMessage === "string" ? m.errorMessage : undefined,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Orphaned toolResult stripping (#146)
@@ -193,7 +176,7 @@ interface CompactionContext {
  * {@link AgentInstance}s that stream {@link AgentEvent}s. Supports
  * context compaction, tool registries, and configurable LLM providers.
  */
-export class PiMonoCore implements AgentCore {
+export class PiMonoCore {
   private toolRegistries = new Map<string, ToolRegistry>();
 
   /**
@@ -211,7 +194,7 @@ export class PiMonoCore implements AgentCore {
     this.toolRegistries.delete(agentId);
   }
 
-  createAgent(config: AgentConfig): AgentInstance {
+  createAgent(config: AgentConfig): PiMonoInstance {
     const model = resolveModel(config);
 
     // Convert registered tools to AgentTools
@@ -282,7 +265,7 @@ export class PiMonoCore implements AgentCore {
 /** Maximum number of overflow recovery attempts */
 const MAX_OVERFLOW_RETRIES = 2;
 
-class PiMonoInstance implements AgentInstance {
+export class PiMonoInstance {
   private promptQueue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -291,7 +274,7 @@ class PiMonoInstance implements AgentInstance {
   ) {
     // Debug payload logger — logs LLM request context on each turn
     if (process.env.LOG_LEVEL === "debug" || process.env.DEBUG) {
-      this.agent.subscribe((e: CoreEvent) => {
+      this.agent.subscribe((e: AgentEvent) => {
         if (e.type === "agent_start") {
           this.logDebugPayload();
         }
@@ -361,19 +344,18 @@ class PiMonoInstance implements AgentInstance {
     input: string | AgentMessage[],
     retryCount = 0,
   ): AsyncIterable<AgentEvent> {
-    const events: (CoreEvent | null)[] = [];
+    const events: (AgentEvent | null)[] = [];
     let resolve: (() => void) | null = null;
     let overflowDetected = false;
     let overflowErrorMessage: string | undefined;
 
-    const unsub = this.agent.subscribe((e: CoreEvent) => {
-      // Check for overflow in agent_end events
+    const unsub = this.agent.subscribe((e: AgentEvent) => {
       if (e.type === "agent_end") {
-        const messages = e.messages;
-        const { errorMessage } = getAgentEndMetadata(messages);
-        if (errorMessage && isContextOverflow(errorMessage)) {
+        const last = [...e.messages].reverse().find((m) => m.role === "assistant");
+        const err = (last as unknown as { errorMessage?: string })?.errorMessage;
+        if (err && isContextOverflow(err)) {
           overflowDetected = true;
-          overflowErrorMessage = errorMessage;
+          overflowErrorMessage = err;
         }
       }
       events.push(e);
@@ -419,10 +401,7 @@ class PiMonoInstance implements AgentInstance {
             finished = true;
             break;
           }
-          const mapped = mapEvent(ev);
-          if (mapped) {
-            collectedEvents.push(mapped);
-          }
+          collectedEvents.push(ev);
         }
       }
 
@@ -563,71 +542,3 @@ class PiMonoInstance implements AgentInstance {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Event mapping: pi-agent-core AgentEvent → our AgentEvent
-// ---------------------------------------------------------------------------
-
-function mapEvent(e: CoreEvent): AgentEvent | null {
-  switch (e.type) {
-    case "turn_start":
-      return { type: "turn_start" };
-
-    case "turn_end": {
-      const msg = e.message;
-      if (msg && "role" in msg && msg.role === "assistant" && "usage" in msg) {
-        return { type: "turn_end", usage: msg.usage as Usage };
-      }
-      return { type: "turn_end" };
-    }
-
-    case "message_update": {
-      // Extract text deltas from the assistant message event
-      const ame = e.assistantMessageEvent;
-      if (ame.type === "text_delta") {
-        return { type: "text_delta", text: ame.delta };
-      }
-      // Other sub-events (thinking, toolcall deltas) — skip for now
-      return null;
-    }
-
-    case "tool_execution_start":
-      return {
-        type: "tool_call",
-        id: e.toolCallId,
-        name: e.toolName,
-        args: e.args,
-      };
-
-    case "tool_execution_end":
-      return {
-        type: "tool_result",
-        id: e.toolCallId,
-        output:
-          typeof e.result === "string"
-            ? e.result
-            : JSON.stringify(e.result),
-        isError: e.isError,
-      };
-
-    case "agent_end": {
-      const messages = e.messages;
-      const { stopReason, errorMessage } = getAgentEndMetadata(messages);
-      return {
-        type: "agent_end",
-        messages,
-        stopReason,
-        errorMessage,
-      };
-    }
-
-    // Events we intentionally skip
-    case "agent_start":
-    case "message_start":
-    case "message_end":
-    case "tool_execution_update":
-      return null;
-
-    default:
-      return null;
-  }
-}

@@ -1,7 +1,8 @@
 // src/core/agent-runner.ts — Shared agent event loop
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { AgentInstance, SessionStore } from "./types.js";
+import type {  SessionStore } from "./types.js";
+import type { PiMonoInstance } from "./pi-mono.js";
 import { userMessage, assistantMessage, toolResultMessage } from "./messages.js";
 import type { Logger } from "./logger.js";
 import type { UsageTracker } from "./usage-tracker.js";
@@ -23,7 +24,7 @@ export interface AgentRunResult {
 export type OnTextDelta = (currentText: string) => void | Promise<void>;
 
 export interface RunAgentOptions {
-  agent: AgentInstance;
+  agent: PiMonoInstance;
   input: string | AgentMessage[];
   sessionId: string;
   sessionStore: SessionStore;

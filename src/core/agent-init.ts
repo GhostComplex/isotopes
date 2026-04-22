@@ -37,7 +37,7 @@ import { SandboxExecutor, SandboxFs, shouldSandbox, type FsLike } from "../sandb
 import * as nodeFs from "node:fs/promises";
 import type { PiMonoCore } from "./pi-mono.js";
 import type { DefaultAgentManager } from "./agent-manager.js";
-import type { AgentConfig, AgentInstance } from "./types.js";
+import type { AgentConfig, PiMonoInstance } from "./types.js";
 import { createLogger } from "./logger.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 
@@ -62,7 +62,7 @@ export interface InitAgentOptions {
   sandbox?: SandboxConfigFile;
   /** Subagent config */
   subagent?: SubagentConfigFile;
-  /** AgentCore implementation */
+  /** PiMonoCore implementation */
   core: PiMonoCore;
   /** Agent manager */
   agentManager: DefaultAgentManager;
@@ -76,7 +76,7 @@ export interface InitAgentOptions {
 
 export interface InitAgentResult {
   agentConfig: AgentConfig;
-  instance: AgentInstance;
+  instance: PiMonoInstance;
   workspacePath: string;
   toolRegistry: ToolRegistry;
   processRegistry: ProcessRegistry;

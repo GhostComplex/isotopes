@@ -3,15 +3,15 @@
 // and SessionStore mocks. Centralise them here.
 
 import { vi } from "vitest";
-import type { AgentInstance, AgentManager, SessionStore, AgentEvent } from "./types.js";
+import type {  AgentManager, SessionStore, AgentEvent } from "./types.js";
 
 /**
- * Create a mock AgentInstance whose prompt() yields the given events.
+ * Create a mock PiMonoInstance whose prompt() yields the given events.
  *
  * If no events are provided, yields two text_delta events ("Hello ", "world!")
  * followed by an agent_end event.
  */
-export function createMockAgentInstance(events?: AgentEvent[]): AgentInstance {
+export function createMockPiMonoInstance(events?: AgentEvent[]): PiMonoInstance {
   const defaultEvents: AgentEvent[] = [
     { type: "text_delta", text: "Hello " },
     { type: "text_delta", text: "world!" },
@@ -33,14 +33,14 @@ export function createMockAgentInstance(events?: AgentEvent[]): AgentInstance {
 }
 
 /**
- * Create a mock AgentManager that returns a single shared AgentInstance
+ * Create a mock AgentManager that returns a single shared PiMonoInstance
  * from get().
  *
  * @param instance — optional pre-built mock instance; defaults to
- *   createMockAgentInstance() with the standard text_delta sequence.
+ *   createMockPiMonoInstance() with the standard text_delta sequence.
  */
-export function createMockAgentManager(instance?: AgentInstance): AgentManager {
-  const mockInstance = instance ?? createMockAgentInstance();
+export function createMockAgentManager(instance?: PiMonoInstance): AgentManager {
+  const mockInstance = instance ?? createMockPiMonoInstance();
 
   return {
     create: vi.fn(),

@@ -1,33 +1,35 @@
-// src/subagent/runners/builtin.ts — In-process subagent runner backed by AgentCore
+// src/subagent/runners/builtin.ts — In-process subagent runner backed by PiMonoCore
 // Reuses the parent agent's pi-mono core, provider config, and (filtered) tool
 // registry — no separate API key, no separate SDK process.
 
 import { randomUUID } from "node:crypto";
 import { createLogger } from "../../core/logger.js";
-import type { AgentCore } from "../../core/types.js";
+import type { PiMonoCore } from "../../core/types.js";
+import { PiMonoCore } from "./pi-mono.js";
 import type { ToolRegistry } from "../../core/tools.js";
 import { bridgeAgentEvents } from "../builtin/event-bridge.js";
 import { buildBuiltinSubagentSystemPrompt } from "../builtin/system-prompt.js";
 import { filterToolRegistry, resolveBuiltinToolPolicy } from "../builtin/tool-policy.js";
 import type { RunnerSignals, SubagentRunner } from "../runner.js";
 import type { SubagentAgent, SubagentEvent, SubagentSpawnOptions } from "../types.js";
+import { PiMonoCore } from "./pi-mono.js";
 
 const log = createLogger("subagent:runner:builtin");
 
 /**
- * Narrow shape over {@link AgentCore} that supports per-agent tool registries.
+ * Narrow shape over {@link PiMonoCore} that supports per-agent tool registries.
  * `PiMonoCore` satisfies this interface.
  */
-export interface BuiltinAgentCore extends AgentCore {
+export interface BuiltinPiMonoCore extends PiMonoCore {
   setToolRegistry(agentId: string, registry: ToolRegistry): void;
   clearToolRegistry(agentId: string): void;
 }
 
-/** Runner that runs a subagent in-process via the supplied AgentCore. */
+/** Runner that runs a subagent in-process via the supplied PiMonoCore. */
 export class BuiltinRunner implements SubagentRunner {
   readonly agent: SubagentAgent = "builtin";
 
-  constructor(private readonly core: BuiltinAgentCore) {}
+  constructor(private readonly core: BuiltinPiMonoCore) {}
 
   async *run(
     taskId: string,
