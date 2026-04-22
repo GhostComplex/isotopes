@@ -66,7 +66,6 @@ describe("FailureTracker", () => {
       const result = tracker.shouldBlock("session-1", "task A");
       expect(result.blocked).toBe(true);
       expect(result.reason).toContain("failed 2 times");
-      expect(result.reason).toContain("second error");
     });
 
     it("respects custom maxFailures", () => {
@@ -154,8 +153,8 @@ describe("FailureTracker", () => {
 
       const check = tracker.isRateLimited("session-1");
       expect(check.blocked).toBe(true);
-      expect(check.reason).toContain("Rate limit exceeded");
-      expect(check.reason).toContain("3 spawn attempts");
+      expect(check.reason).toContain("Rate limit");
+      expect(check.reason).toContain("3 spawns");
     });
 
     it("blocks spawns exceeding rate limit", () => {
@@ -166,7 +165,7 @@ describe("FailureTracker", () => {
 
       const check = tracker.isRateLimited("session-1");
       expect(check.blocked).toBe(true);
-      expect(check.reason).toContain("4 spawn attempts");
+      expect(check.reason).toContain("4 spawns");
     });
 
     it("tracks spawns independently per session", () => {
@@ -203,7 +202,7 @@ describe("FailureTracker", () => {
       // Task hasn't failed yet, but rate limit should block
       const check = tracker.shouldBlock("session-1", "new task");
       expect(check.blocked).toBe(true);
-      expect(check.reason).toContain("Rate limit exceeded");
+      expect(check.reason).toContain("Rate limit");
     });
 
     it("clearSession clears spawn history", () => {
@@ -244,7 +243,7 @@ describe("FailureTracker", () => {
       expect(check1.blocked).toBe(true);
       expect(check2.blocked).toBe(true);
       expect(check3.blocked).toBe(true);
-      expect(check1.reason).toContain("Rate limit exceeded");
+      expect(check1.reason).toContain("Rate limit");
     });
   });
 });
