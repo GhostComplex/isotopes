@@ -8,12 +8,14 @@
 | --- | --- |
 | `docs/prd/` | 产品需求、功能规划、待落地方案 |
 | `docs/research/` | 调研、对比分析、可行性分析、RCA |
-| `docs/archive/` | 已过时、已完成、仅保留历史记录的文档 |
+
+> 已过时、仅保留历史的文档已迁出本仓库，统一放在
+> [`GhostComplex/docs` → `isotopes/archive/`](https://github.com/GhostComplex/docs/tree/main/isotopes/archive)。
 
 ## 放置规则
 
 1. 新文档优先放到 `prd / research` 之一。
-2. 只有明确不再维护、但又需要保留历史时，才放进 `archive/`。
+2. 已不再维护、仅作历史保留的文档不要放回本仓库，提交到 `GhostComplex/docs` 的 `isotopes/archive/`。
 3. 不再新增 `docs/<type>/<subtype>/...` 这类多层嵌套目录。
 4. 草稿 PRD 也直接放在 `docs/prd/`，不再单独建 `wip/`。
 5. 设计方案如果仍处于需求和方案阶段，也统一放在 `docs/prd/`。
