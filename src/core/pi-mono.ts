@@ -17,6 +17,7 @@ import {
   estimateTotalTokens,
 } from "./compaction.js";
 import { sanitizeToolUseResultPairing } from "./context.js";
+import { getAgentEndMeta } from "./messages.js";
 import { createLogger } from "./logger.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -351,8 +352,7 @@ export class PiMonoInstance {
 
     const unsub = this.agent.subscribe((e: AgentEvent) => {
       if (e.type === "agent_end") {
-        const last = [...e.messages].reverse().find((m) => m.role === "assistant");
-        const err = (last as unknown as { errorMessage?: string })?.errorMessage;
+        const { errorMessage: err } = getAgentEndMeta(e.messages);
         if (err && isContextOverflow(err)) {
           overflowDetected = true;
           overflowErrorMessage = err;

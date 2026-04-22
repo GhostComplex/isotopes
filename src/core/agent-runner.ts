@@ -3,7 +3,7 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type {  SessionStore } from "./types.js";
 import type { PiMonoInstance } from "./pi-mono.js";
-import { userMessage, assistantMessage, toolResultMessage } from "./messages.js";
+import { userMessage, assistantMessage, toolResultMessage, getAgentEndMeta, getUsage } from "./messages.js";
 import type { Logger } from "./logger.js";
 import type { UsageTracker } from "./usage-tracker.js";
 import type { HookRegistry } from "../plugins/hooks.js";
@@ -111,9 +111,9 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
         ),
       );
     } else if (event.type === "turn_end") {
-      const msg = event.message;
-      if (usageTracker && msg && "usage" in msg) {
-        usageTracker.record(sessionId, (msg as unknown as { usage: unknown }).usage as Parameters<typeof usageTracker.record>[1]);
+      const usage = getUsage(event.message);
+      if (usageTracker && usage) {
+        usageTracker.record(sessionId, usage as Parameters<typeof usageTracker.record>[1]);
       }
 
       await flushTurn();
@@ -136,9 +136,7 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
         });
       }
 
-      const lastAssistant = [...event.messages].reverse().find((m) => m.role === "assistant");
-      const stopReason = (lastAssistant as unknown as { stopReason?: string })?.stopReason;
-      const errMsg = (lastAssistant as unknown as { errorMessage?: string })?.errorMessage;
+      const { stopReason, errorMessage: errMsg } = getAgentEndMeta(event.messages);
       if (stopReason === "error") {
         const msg = errMsg ?? "Unknown agent error";
         log.error(`Agent ended with error: ${msg}`);
