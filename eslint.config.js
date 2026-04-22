@@ -14,5 +14,11 @@ export default tseslint.config(
       '@typescript-eslint/explicit-function-return-type': 'off',
       'no-console': 'off',
     },
+  },
+  {
+    files: ['**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
   }
 );
