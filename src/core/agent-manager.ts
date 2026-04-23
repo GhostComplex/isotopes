@@ -16,8 +16,6 @@ export interface AgentCreateOptions {
   workspacePath?: string;
   /** Tool guard prompt section (stored for hot-reload persistence) */
   toolGuardPrompt?: string;
-  /** Base system prompt before workspace assembly (for hot-reload rebuild) */
-  baseSystemPrompt?: string;
   /** Fully assembled system prompt (workspace + tool guards already merged) */
   initialSystemPrompt?: string;
 }
@@ -61,7 +59,7 @@ export class DefaultAgentManager {
       cache,
       workspace: null,
       systemPrompt: options?.initialSystemPrompt ?? "",
-      baseSystemPrompt: options?.baseSystemPrompt ?? "",
+      baseSystemPrompt: "",
       workspacePath: options?.workspacePath,
       toolGuardPrompt: options?.toolGuardPrompt,
     });

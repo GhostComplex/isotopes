@@ -137,7 +137,7 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
       cache,
       sessionStore: store,
       sessionId,
-      systemPrompt: systemPrompt,
+      systemPrompt,
       textInput: body.message,
       log,
       onTextDelta: (currentText) => {

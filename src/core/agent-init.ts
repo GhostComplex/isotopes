@@ -81,7 +81,6 @@ export interface InitAgentResult {
   toolRegistry: ToolRegistry;
   processRegistry: ProcessRegistry;
   transportContext?: LazyTransportContext;
-  baseSystemPrompt: string;
   toolGuardPrompt: string;
   systemPrompt: string;
 }
@@ -132,8 +131,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
 
   // 6. Load workspace context (SOUL.md, TOOLS.md, MEMORY.md, etc.)
   const workspaceContext = await loadWorkspaceContext(workspacePath, { bundledPath: resolveBundledSkillsDir() });
-  const baseSystemPrompt = "";
-  let systemPrompt = buildSystemPrompt(baseSystemPrompt, workspaceContext);
+  let systemPrompt = buildSystemPrompt("", workspaceContext);
   log.debug(`Loaded workspace context for ${agentConfig.id}: systemPrompt=${workspaceContext.systemPromptAdditions.length > 0}, memory=${workspaceContext.memory !== null}`);
 
   // 7. Create tool registry and process registry
@@ -211,7 +209,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     toolRegistry.setHooks(opts.hooks);
     await opts.hooks.emit("before_agent_start", { agentId: agentConfig.id });
   }
-  const instance = await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, baseSystemPrompt, initialSystemPrompt: systemPrompt });
+  const instance = await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, initialSystemPrompt: systemPrompt });
   log.info(`Created agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${toolRegistry.list().length})`);
 
   return {
@@ -221,7 +219,6 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     toolRegistry,
     processRegistry,
     transportContext,
-    baseSystemPrompt,
     toolGuardPrompt,
     systemPrompt,
   };

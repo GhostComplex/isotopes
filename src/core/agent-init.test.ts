@@ -109,7 +109,7 @@ describe("initializeAgent", () => {
       expect.objectContaining({
         workspacePath: expect.any(String),
         toolGuardPrompt: expect.any(String),
-        baseSystemPrompt: expect.any(String),
+        initialSystemPrompt: expect.any(String),
       }),
     );
   });
