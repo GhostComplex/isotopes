@@ -17,6 +17,39 @@ import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import { getIsotopesHome, getLogsDir } from "../core/paths.js";
 import { sendJson, sendError, handleRouteError, type ApiRequest } from "./middleware.js";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+
+// ---------------------------------------------------------------------------
+// Message mapping — enriches API responses with tool metadata
+// ---------------------------------------------------------------------------
+
+/** Map an AgentMessage to a JSON-safe API response object. */
+function mapMessage(m: AgentMessage): Record<string, unknown> {
+  const raw = m as unknown as Record<string, unknown>;
+  const base: Record<string, unknown> = {
+    role: m.role,
+    content: messageText(m),
+    timestamp: "timestamp" in m && typeof m.timestamp === "number"
+      ? new Date(m.timestamp).toISOString() : undefined,
+  };
+
+  // toolResult messages carry toolName and toolCallId
+  if (m.role === "toolResult") {
+    if (raw.toolName) base.toolName = raw.toolName;
+    if (raw.toolCallId) base.toolCallId = raw.toolCallId;
+    if (raw.isError !== undefined) base.isError = raw.isError;
+  }
+
+  // assistant messages may contain toolCall content blocks
+  if (m.role === "assistant" && Array.isArray(raw.content)) {
+    const toolCalls = (raw.content as Array<Record<string, unknown>>)
+      .filter((b) => b.type === "toolCall")
+      .map((b) => ({ id: b.id, name: b.name, arguments: b.arguments }));
+    if (toolCalls.length > 0) base.toolCalls = toolCalls;
+  }
+
+  return base;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -165,12 +198,7 @@ addRoute("GET", "/api/sessions/:id", async (req, res, deps) => {
           createdAt: discordSession.lastActiveAt.toISOString(),
           lastActivityAt: discordSession.lastActiveAt.toISOString(),
           source: "discord",
-          history: messages.map((m) => ({
-            role: m.role,
-            content: messageText(m),
-            timestamp: "timestamp" in m && typeof m.timestamp === "number"
-              ? new Date(m.timestamp).toISOString() : undefined,
-          })),
+          history: messages.map((m) => mapMessage(m)),
         });
         return;
       }
@@ -191,12 +219,7 @@ addRoute("GET", "/api/sessions/:id/messages", async (req, res, deps) => {
       if (discordSession) {
         const messages = await store.getMessages(req.params.id);
         sendJson(res, 200, {
-          messages: messages.map((m) => ({
-            role: m.role,
-            content: messageText(m),
-            timestamp: "timestamp" in m && typeof m.timestamp === "number"
-              ? new Date(m.timestamp).toISOString() : undefined,
-          })),
+          messages: messages.map((m) => mapMessage(m)),
         });
         return;
       }

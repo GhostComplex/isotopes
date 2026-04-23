@@ -1,9 +1,10 @@
 // src/api/routes.test.ts — Unit tests for REST route handlers
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
 import { CronScheduler } from "../automation/cron-job.js";
+import type { SessionStore } from "../core/types.js";
 
 function request(
   port: number,
@@ -207,6 +208,166 @@ describe("API routes", () => {
       expect(status).toBe(200);
       const body = data as { cronJobs: number };
       expect(body.cronJobs).toBe(1);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests for session messages with tool metadata
+// ---------------------------------------------------------------------------
+
+describe("API routes — session messages with tool metadata", () => {
+  let server: ApiServer;
+  let cronScheduler: CronScheduler;
+
+  afterEach(async () => {
+    await server.stop();
+  });
+
+  function getPort(): number {
+    const addr = server.address();
+    if (!addr) throw new Error("Server not listening");
+    return addr.port;
+  }
+
+  describe("GET /api/sessions/:id/messages", () => {
+    it("returns tool metadata for assistant and toolResult messages", async () => {
+      cronScheduler = new CronScheduler();
+      const now = new Date();
+
+      const mockMessages = [
+        {
+          role: "user",
+          content: "Hello",
+          timestamp: now.getTime(),
+        },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Let me check." },
+            { type: "toolCall", id: "tc-1", name: "read_file", arguments: { path: "README.md" } },
+          ],
+          timestamp: now.getTime() + 1000,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tc-1",
+          toolName: "read_file",
+          content: [{ type: "text", text: "file contents here" }],
+          isError: false,
+          timestamp: now.getTime() + 2000,
+        },
+      ];
+
+      const mockStore: SessionStore = {
+        create: vi.fn(),
+        get: vi.fn().mockResolvedValue({
+          id: "sess-1",
+          agentId: "main",
+          lastActiveAt: now,
+          metadata: { key: "k" },
+        }),
+        findByKey: vi.fn(),
+        addMessage: vi.fn(),
+        getMessages: vi.fn().mockResolvedValue(mockMessages),
+        delete: vi.fn(),
+        list: vi.fn().mockResolvedValue([]),
+        clearMessages: vi.fn(),
+        setMessages: vi.fn(),
+        setMetadata: vi.fn(),
+        getSessionManager: vi.fn(),
+      };
+      const discordSessionStores = new Map([["main", mockStore]]);
+
+      server = new ApiServer({ port: 0 }, { cronScheduler, discordSessionStores });
+      await server.start();
+
+      const { status, data } = await request(getPort(), "GET", "/api/sessions/sess-1/messages");
+      expect(status).toBe(200);
+
+      const body = data as { messages: Array<Record<string, unknown>> };
+      expect(body.messages).toHaveLength(3);
+
+      // User message — plain text
+      expect(body.messages[0].role).toBe("user");
+      expect(body.messages[0].content).toBe("Hello");
+
+      // Assistant message — should include toolCalls array
+      expect(body.messages[1].role).toBe("assistant");
+      expect(body.messages[1].toolCalls).toBeDefined();
+      const toolCalls = body.messages[1].toolCalls as Array<Record<string, unknown>>;
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0].id).toBe("tc-1");
+      expect(toolCalls[0].name).toBe("read_file");
+
+      // toolResult message — should include toolName, toolCallId, isError
+      expect(body.messages[2].role).toBe("toolResult");
+      expect(body.messages[2].toolName).toBe("read_file");
+      expect(body.messages[2].toolCallId).toBe("tc-1");
+      expect(body.messages[2].isError).toBe(false);
+    });
+  });
+
+  describe("GET /api/sessions/:id", () => {
+    it("returns history with tool metadata", async () => {
+      cronScheduler = new CronScheduler();
+      const now = new Date();
+
+      const mockMessages = [
+        {
+          role: "assistant",
+          content: [
+            { type: "toolCall", id: "tc-2", name: "shell", arguments: { command: "ls" } },
+          ],
+          timestamp: now.getTime(),
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tc-2",
+          toolName: "shell",
+          content: [{ type: "text", text: "file1.txt" }],
+          isError: false,
+          timestamp: now.getTime() + 1000,
+        },
+      ];
+
+      const mockStore: SessionStore = {
+        create: vi.fn(),
+        get: vi.fn().mockResolvedValue({
+          id: "sess-2",
+          agentId: "main",
+          lastActiveAt: now,
+          metadata: { key: "k2", threadId: "t-1", channelName: "general", guildName: "Guild" },
+        }),
+        findByKey: vi.fn(),
+        addMessage: vi.fn(),
+        getMessages: vi.fn().mockResolvedValue(mockMessages),
+        delete: vi.fn(),
+        list: vi.fn().mockResolvedValue([]),
+        clearMessages: vi.fn(),
+        setMessages: vi.fn(),
+        setMetadata: vi.fn(),
+        getSessionManager: vi.fn(),
+      };
+      const discordSessionStores = new Map([["main", mockStore]]);
+
+      server = new ApiServer({ port: 0 }, { cronScheduler, discordSessionStores });
+      await server.start();
+
+      const { status, data } = await request(getPort(), "GET", "/api/sessions/sess-2");
+      expect(status).toBe(200);
+
+      const body = data as { history: Array<Record<string, unknown>> };
+      expect(body.history).toHaveLength(2);
+
+      // Assistant with toolCalls
+      const toolCalls = body.history[0].toolCalls as Array<Record<string, unknown>>;
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0].name).toBe("shell");
+
+      // toolResult with metadata
+      expect(body.history[1].toolName).toBe("shell");
+      expect(body.history[1].toolCallId).toBe("tc-2");
     });
   });
 });
