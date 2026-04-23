@@ -57,7 +57,6 @@ export class UsageTracker {
 }
 
 function accumulate(acc: AccumulatedUsage, usage: Usage): void {
-  if (!usage) return;
   acc.totalTokens += usage.totalTokens;
   acc.input += usage.input;
   acc.output += usage.output;
