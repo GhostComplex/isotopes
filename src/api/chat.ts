@@ -66,7 +66,18 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
     return;
   }
 
-  const sessionKey = body?.sessionKey ?? `chat:${agentId}:${randomUUID()}`;
+  const SESSION_KEY_RE = /^[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+$/;
+
+  let sessionKey: string;
+  if (body?.sessionKey) {
+    if (!SESSION_KEY_RE.test(body.sessionKey)) {
+      sendError(res, 400, "Invalid sessionKey format — expected 'namespace:identifier'");
+      return;
+    }
+    sessionKey = `${agentId}:${body.sessionKey}`;
+  } else {
+    sessionKey = `chat:${agentId}:${randomUUID()}`;
+  }
 
   let sessionId: string;
   let resumed = false;
