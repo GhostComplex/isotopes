@@ -67,9 +67,14 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
   }
 
   const SESSION_KEY_RE = /^[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+$/;
+  const SESSION_KEY_MAX_LEN = 128;
 
   let sessionKey: string;
   if (body?.sessionKey) {
+    if (body.sessionKey.length > SESSION_KEY_MAX_LEN) {
+      sendError(res, 400, `sessionKey exceeds max length of ${SESSION_KEY_MAX_LEN}`);
+      return;
+    }
     if (!SESSION_KEY_RE.test(body.sessionKey)) {
       sendError(res, 400, "Invalid sessionKey format — expected 'namespace:identifier'");
       return;
@@ -81,11 +86,13 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
 
   let sessionId: string;
   let resumed = false;
+  let createdAt = new Date();
   if (deps.sessionStoreManager) {
     const store = await deps.sessionStoreManager.getOrCreate(agentId);
     const existing = await store.findByKey(sessionKey);
     if (existing) {
       sessionId = existing.id;
+      createdAt = existing.lastActiveAt ?? createdAt;
       resumed = true;
     } else {
       const session = await store.create(agentId, { key: sessionKey });
@@ -96,7 +103,7 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
   }
 
   evictStaleSessions();
-  chatSessions.set(sessionId, { id: sessionId, agentId, createdAt: new Date(), lastActivity: Date.now() });
+  chatSessions.set(sessionId, { id: sessionId, agentId, createdAt, lastActivity: Date.now() });
 
   log.info(`Chat session ${resumed ? "resumed" : "created"}: ${sessionId} (agent: ${agentId}, key: ${sessionKey})`);
   sendJson(res, resumed ? 200 : 201, { sessionId, agentId, resumed });
