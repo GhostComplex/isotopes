@@ -546,7 +546,7 @@ export class DiscordTransport implements Transport {
 
     // 9. Run agent — SDK loads history from SessionManager automatically
     const systemPrompt = this.config.agentManager.getSystemPrompt(agentId) ?? "";
-    const cwd = this.config.agentManager.getWorkspacePath?.(agentId);
+    const cwd = this.config.agentManager.getWorkspacePath(agentId);
     await this.runAgentAndRespond(agent, session.id, sessionStore, systemPrompt, cwd, msg.channel as SendableChannel, msg.id);
   }
 

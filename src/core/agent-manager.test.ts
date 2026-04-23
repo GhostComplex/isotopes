@@ -151,6 +151,17 @@ describe("DefaultAgentManager", () => {
     });
   });
 
+  describe("getWorkspacePath", () => {
+    it("returns workspacePath for an existing agent", async () => {
+      await manager.create(makeConfig(), { workspacePath: "/home/agent" });
+      expect(manager.getWorkspacePath("test-agent")).toBe("/home/agent");
+    });
+
+    it("returns undefined for unknown agent", () => {
+      expect(manager.getWorkspacePath("non-existent")).toBeUndefined();
+    });
+  });
+
   describe("getPrompt / updatePrompt", () => {
     it("getPrompt returns system prompt", async () => {
       await manager.create(makeConfig(), { initialSystemPrompt: "Hello world" });

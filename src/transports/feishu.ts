@@ -416,7 +416,7 @@ export class FeishuTransport implements Transport {
 
     // Run agent — SDK loads history from SessionManager automatically
     const systemPrompt = this.config.agentManager.getSystemPrompt?.(agentId) ?? "";
-    const cwd = this.config.agentManager.getWorkspacePath?.(agentId);
+    const cwd = this.config.agentManager.getWorkspacePath(agentId);
     await this.runAgentAndReply(agent, session.id, systemPrompt, cwd, message.chat_id);
   }
 
