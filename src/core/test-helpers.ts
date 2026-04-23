@@ -54,6 +54,7 @@ export function createMockAgentManager(cache?: AgentServiceCache): DefaultAgentM
     get: vi.fn(() => mockCache),
     getConfig: vi.fn(() => ({})),
     getSystemPrompt: vi.fn(() => "test prompt"),
+    getWorkspacePath: vi.fn(() => undefined),
     list: vi.fn(() => []),
     update: vi.fn(),
     delete: vi.fn(),
