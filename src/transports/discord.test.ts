@@ -98,7 +98,7 @@ describe("DiscordTransport", () => {
       const { Client } = await import("discord.js");
       const mockClient = (Client as unknown as ReturnType<typeof vi.fn>).mock.results[0].value;
 
-      expect(mockClient.on).toHaveBeenCalledWith("ready", expect.any(Function));
+      expect(mockClient.on).toHaveBeenCalledWith("clientReady", expect.any(Function));
       expect(mockClient.on).toHaveBeenCalledWith("messageCreate", expect.any(Function));
     });
   });

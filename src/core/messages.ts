@@ -70,5 +70,8 @@ export function getAgentEndMeta(messages: AgentMessage[]): { stopReason?: string
 /** Extract usage from an assistant message (SDK turn_end.message). */
 export function getUsage(msg: AgentMessage | undefined): unknown {
   if (!msg || !("usage" in msg)) return undefined;
-  return (msg as unknown as { usage: unknown }).usage;
+  const usage = (msg as unknown as { usage: unknown }).usage;
+  // Guard against malformed usage objects (e.g. during connection errors)
+  if (!usage || typeof usage !== "object" || !("totalTokens" in usage)) return undefined;
+  return usage;
 }

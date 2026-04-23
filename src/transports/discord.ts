@@ -20,7 +20,7 @@ import {
 } from "../core/types.js";
 import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
-import { userMessage as mkUserMsg, assistantMessage as mkAssistantMsg } from "../core/messages.js";
+import { userMessage as mkUserMsg } from "../core/messages.js";
 import type { ContextConfigFile } from "../core/config.js";
 import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
@@ -243,7 +243,7 @@ export class DiscordTransport implements Transport {
   }
 
   async start(): Promise<void> {
-    this.client.on("ready", () => {
+    this.client.on("clientReady", () => {
       log.info(`Logged in as ${this.client.user?.tag}`);
       this.ready = true;
     });
@@ -913,12 +913,18 @@ export class DiscordTransport implements Transport {
 
       if (errorMessage) {
         const finalErrorMessage = `❌ ${errorMessage}`;
-        await sessionStore.addMessage(sessionId, mkAssistantMsg(finalErrorMessage));
+        // NOTE: Do NOT persist this as an assistant message. The SDK already
+        // persists its own error assistant message (with proper usage/stopReason).
+        // Adding a second one without those fields corrupts the session and
+        // causes the SDK to crash on the next prompt (usage.totalTokens undefined).
         await channel.send(finalErrorMessage);
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       log.error(`Agent error: ${errorMsg}`);
+      if (error instanceof Error && error.stack) {
+        log.debug(`Agent error stack: ${error.stack}`);
+      }
       try {
         await channel.send("❌ An error occurred while processing your request.");
       } catch (sendErr) {
