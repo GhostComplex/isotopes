@@ -47,7 +47,7 @@ function evictStaleSessions() {
 // ---------------------------------------------------------------------------
 
 addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
-  const body = req.body as { agentId?: string } | undefined;
+  const body = req.body as { agentId?: string; sessionKey?: string } | undefined;
   if (!deps.agentManager) {
     sendError(res, 503, "Agent manager not available");
     return;
@@ -66,11 +66,20 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
     return;
   }
 
+  const sessionKey = body?.sessionKey ?? `chat:${agentId}:${randomUUID()}`;
+
   let sessionId: string;
+  let resumed = false;
   if (deps.sessionStoreManager) {
     const store = await deps.sessionStoreManager.getOrCreate(agentId);
-    const session = await store.create(agentId, { key: `chat:${agentId}:${randomUUID()}` });
-    sessionId = session.id;
+    const existing = await store.findByKey(sessionKey);
+    if (existing) {
+      sessionId = existing.id;
+      resumed = true;
+    } else {
+      const session = await store.create(agentId, { key: sessionKey });
+      sessionId = session.id;
+    }
   } else {
     sessionId = randomUUID();
   }
@@ -78,8 +87,8 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
   evictStaleSessions();
   chatSessions.set(sessionId, { id: sessionId, agentId, createdAt: new Date(), lastActivity: Date.now() });
 
-  log.info(`Chat session created: ${sessionId} (agent: ${agentId})`);
-  sendJson(res, 201, { sessionId, agentId });
+  log.info(`Chat session ${resumed ? "resumed" : "created"}: ${sessionId} (agent: ${agentId}, key: ${sessionKey})`);
+  sendJson(res, resumed ? 200 : 201, { sessionId, agentId, resumed });
 });
 
 // ---------------------------------------------------------------------------
