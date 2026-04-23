@@ -1609,4 +1609,209 @@ describe("DiscordTransport", () => {
       await inFlight;
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Image attachment handling
+  // ---------------------------------------------------------------------------
+
+  describe("image attachments", () => {
+    function makeChannel(): MockChannel {
+      return {
+        sendTyping: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }),
+        isThread: vi.fn().mockReturnValue(false),
+      };
+    }
+
+    function makeMsg(overrides: Partial<MockIncomingMessage> = {}): MockIncomingMessage {
+      return {
+        author: { bot: false, username: "tester", id: "user-1" },
+        content: "<@bot-123> hello",
+        createdTimestamp: Date.now(),
+        guild: { id: "guild-1" },
+        channelId: "channel-1",
+        channel: makeChannel(),
+        mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        attachments: new Map(),
+        thread: undefined,
+        id: `msg-${Date.now()}`,
+        ...overrides,
+      };
+    }
+
+    it("extracts image attachments and creates multimodal user message", async () => {
+      const sessionStore = createMockSessionStore();
+      const agentManager = createMockAgentManager();
+      const transport = new DiscordTransport({
+        groupAccess: { policy: "open" },
+        token: "test-token",
+        agentManager: agentManager as unknown as DefaultAgentManager,
+        sessionStore,
+        defaultAgentId: "default",
+      });
+      await transport.start();
+
+      const pngBytes = Buffer.from("fakepng");
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(pngBytes, { status: 200 }),
+      );
+
+      const attachments = new Map([
+        ["1", { contentType: "image/png", size: 100, url: "https://cdn.discord.com/img.png" }],
+      ]);
+
+      const msg = makeMsg({ attachments: attachments as Map<string, unknown> });
+      await (transport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      expect(fetchSpy).toHaveBeenCalledWith("https://cdn.discord.com/img.png");
+      expect(sessionStore.addMessage).toHaveBeenCalledWith(
+        "session-123",
+        expect.objectContaining({
+          role: "user",
+          content: expect.arrayContaining([
+            expect.objectContaining({ type: "text" }),
+            expect.objectContaining({ type: "image", data: pngBytes.toString("base64"), mimeType: "image/png" }),
+          ]),
+        }),
+      );
+
+      fetchSpy.mockRestore();
+    });
+
+    it("skips oversized attachments (>10MB)", async () => {
+      const sessionStore = createMockSessionStore();
+      const agentManager = createMockAgentManager();
+      const transport = new DiscordTransport({
+        groupAccess: { policy: "open" },
+        token: "test-token",
+        agentManager: agentManager as unknown as DefaultAgentManager,
+        sessionStore,
+        defaultAgentId: "default",
+      });
+      await transport.start();
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      const attachments = new Map([
+        ["1", { contentType: "image/png", size: 11 * 1024 * 1024, url: "https://cdn.discord.com/big.png" }],
+      ]);
+
+      const msg = makeMsg({ attachments: attachments as Map<string, unknown> });
+      await (transport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      // Should still create a plain string message (no images extracted)
+      expect(sessionStore.addMessage).toHaveBeenCalledWith(
+        "session-123",
+        expect.objectContaining({
+          role: "user",
+          content: expect.any(String),
+        }),
+      );
+
+      fetchSpy.mockRestore();
+    });
+
+    it("skips non-image attachments", async () => {
+      const sessionStore = createMockSessionStore();
+      const agentManager = createMockAgentManager();
+      const transport = new DiscordTransport({
+        groupAccess: { policy: "open" },
+        token: "test-token",
+        agentManager: agentManager as unknown as DefaultAgentManager,
+        sessionStore,
+        defaultAgentId: "default",
+      });
+      await transport.start();
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      const attachments = new Map([
+        ["1", { contentType: "application/pdf", size: 1000, url: "https://cdn.discord.com/doc.pdf" }],
+      ]);
+
+      const msg = makeMsg({ attachments: attachments as Map<string, unknown> });
+      await (transport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(sessionStore.addMessage).toHaveBeenCalledWith(
+        "session-123",
+        expect.objectContaining({
+          role: "user",
+          content: expect.any(String),
+        }),
+      );
+
+      fetchSpy.mockRestore();
+    });
+
+    it("handles image-only messages (no text content)", async () => {
+      const sessionStore = createMockSessionStore();
+      const agentManager = createMockAgentManager();
+      const transport = new DiscordTransport({
+        groupAccess: { policy: "open" },
+        dmAccess: { policy: "allowlist", allowlist: ["user-1"] },
+        token: "test-token",
+        agentManager: agentManager as unknown as DefaultAgentManager,
+        sessionStore,
+        defaultAgentId: "default",
+      });
+      await transport.start();
+
+      const pngBytes = Buffer.from("fakepng");
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(pngBytes, { status: 200 }),
+      );
+
+      const attachments = new Map([
+        ["1", { contentType: "image/png", size: 100, url: "https://cdn.discord.com/img.png" }],
+      ]);
+
+      const msg = makeMsg({
+        content: "",
+        guild: null,
+        attachments: attachments as Map<string, unknown>,
+        mentions: { has: vi.fn(() => false) },
+      });
+      await (transport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Should NOT be silently dropped — sessionStore.addMessage should be called
+      expect(sessionStore.addMessage).toHaveBeenCalled();
+
+      fetchSpy.mockRestore();
+    });
+
+    it("gracefully handles fetch failure for an attachment", async () => {
+      const sessionStore = createMockSessionStore();
+      const agentManager = createMockAgentManager();
+      const transport = new DiscordTransport({
+        groupAccess: { policy: "open" },
+        token: "test-token",
+        agentManager: agentManager as unknown as DefaultAgentManager,
+        sessionStore,
+        defaultAgentId: "default",
+      });
+      await transport.start();
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("network error"));
+
+      const attachments = new Map([
+        ["1", { contentType: "image/png", size: 100, url: "https://cdn.discord.com/fail.png" }],
+      ]);
+
+      const msg = makeMsg({ attachments: attachments as Map<string, unknown> });
+      await (transport as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
+
+      // Should still process the message (just without images)
+      expect(sessionStore.addMessage).toHaveBeenCalledWith(
+        "session-123",
+        expect.objectContaining({
+          role: "user",
+          content: expect.any(String),
+        }),
+      );
+
+      fetchSpy.mockRestore();
+    });
+  });
 });

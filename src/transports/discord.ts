@@ -971,7 +971,10 @@ export class DiscordTransport implements Transport {
   }
 
   private hasImageAttachments(msg: DiscordMessage): boolean {
-    return msg.attachments.some((a) => a.contentType?.startsWith("image/"));
+    for (const [, a] of msg.attachments) {
+      if (a.contentType?.startsWith("image/")) return true;
+    }
+    return false;
   }
 
   private async extractAttachmentImages(msg: DiscordMessage): Promise<Array<{ type: "image"; data: string; mimeType: string }>> {
@@ -1011,10 +1014,11 @@ export class DiscordTransport implements Transport {
     replyToId?: string,
   ): Promise<void> {
     const files = attachments.map((a) => new AttachmentBuilder(a.buffer, { name: a.name }));
-    const chunks = text ? this.chunkMessage(text) : [""];
+    const chunks = text ? this.chunkMessage(text) : [undefined];
 
     for (let i = 0; i < chunks.length; i++) {
-      const opts: Record<string, unknown> = { content: chunks[i] || undefined };
+      const opts: Record<string, unknown> = {};
+      if (chunks[i]) opts.content = chunks[i];
       if (i === chunks.length - 1) opts.files = files;
       if (i === 0 && replyToId) opts.reply = { messageReference: replyToId, failIfNotExists: false };
       await channel.send(opts as Parameters<typeof channel.send>[0]);
@@ -1028,11 +1032,11 @@ export class DiscordTransport implements Transport {
   async reply(messageId: string, content: string, channelId?: string, attachments?: Array<{ buffer: Buffer; name: string }>): Promise<{ messageId: string }> {
     if (!this.ready) throw new Error("Discord transport not ready");
 
-    const files = attachments?.map((a) => new AttachmentBuilder(a.buffer, { name: a.name }));
-    const replyOpts = (text: string) => ({
-      content: text,
-      ...(files?.length ? { files } : {}),
-    });
+    const files = attachments?.length
+      ? attachments.map((a) => new AttachmentBuilder(a.buffer, { name: a.name }))
+      : undefined;
+
+    const replyPayload = { content, ...(files ? { files } : {}) };
 
     // Fast path: fetch the channel directly when channelId is provided
     if (channelId) {
@@ -1040,7 +1044,7 @@ export class DiscordTransport implements Transport {
         const channel = await this.client.channels.fetch(channelId);
         if (channel && "messages" in channel) {
           const target = await (channel as SendableChannel).messages.fetch(messageId);
-          const sent = await target.reply(replyOpts(content));
+          const sent = await target.reply(replyPayload);
           return { messageId: sent.id };
         }
       } catch {
@@ -1055,7 +1059,7 @@ export class DiscordTransport implements Transport {
       try {
         const target = await (ch as SendableChannel).messages.fetch(messageId);
         if (target) {
-          const sent = await target.reply(replyOpts(content));
+          const sent = await target.reply(replyPayload);
           return { messageId: sent.id };
         }
       } catch {
