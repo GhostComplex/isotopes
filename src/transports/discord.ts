@@ -20,7 +20,7 @@ import {
 } from "../core/types.js";
 import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
-import { userMessage as mkUserMsg, assistantMessage as mkAssistantMsg } from "../core/messages.js";
+import { userMessage as mkUserMsg } from "../core/messages.js";
 import type { ContextConfigFile } from "../core/config.js";
 import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
@@ -913,7 +913,6 @@ export class DiscordTransport implements Transport {
 
       if (errorMessage) {
         const finalErrorMessage = `❌ ${errorMessage}`;
-        await sessionStore.addMessage(sessionId, mkAssistantMsg(finalErrorMessage));
         await channel.send(finalErrorMessage);
       }
     } catch (error) {
