@@ -211,6 +211,8 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
         return result.responseText;
       },
     });
+
+    hb.start();
     heartbeatManagers.push(hb);
     log.info(`Heartbeat enabled for "${agentFile.id}" (every ${agentFile.heartbeat.intervalSeconds ?? 300}s)`);
   }
