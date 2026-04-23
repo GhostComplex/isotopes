@@ -91,7 +91,7 @@ describe("POST /api/chat/sessions — sessionKey", () => {
   });
 
   it("resumes an existing session when same sessionKey is provided", async () => {
-    const key = "pet:testbot";
+    const key = `pet:test-${Date.now()}`;
     const first = await request(getPort(), "POST", "/api/chat/sessions", {
       agentId: agentId(),
       sessionKey: key,

@@ -13,7 +13,6 @@ const log = createLogger("api:chat");
 interface ChatSession {
   id: string;
   agentId: string;
-  createdAt: Date;
   lastActivity: number;
   abortController?: AbortController;
 }
@@ -86,13 +85,11 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
 
   let sessionId: string;
   let resumed = false;
-  let createdAt = new Date();
   if (deps.sessionStoreManager) {
     const store = await deps.sessionStoreManager.getOrCreate(agentId);
     const existing = await store.findByKey(sessionKey);
     if (existing) {
       sessionId = existing.id;
-      createdAt = existing.lastActiveAt ?? createdAt;
       resumed = true;
     } else {
       const session = await store.create(agentId, { key: sessionKey });
@@ -103,7 +100,7 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
   }
 
   evictStaleSessions();
-  chatSessions.set(sessionId, { id: sessionId, agentId, createdAt, lastActivity: Date.now() });
+  chatSessions.set(sessionId, { id: sessionId, agentId, lastActivity: Date.now() });
 
   log.info(`Chat session ${resumed ? "resumed" : "created"}: ${sessionId} (agent: ${agentId}, key: ${sessionKey})`);
   sendJson(res, resumed ? 200 : 201, { sessionId, agentId, resumed });
