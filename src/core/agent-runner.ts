@@ -23,6 +23,7 @@ export interface RunAgentOptions {
   sessionStore: SessionStore;
   sessionId: string;
   systemPrompt: string;
+  cwd?: string;
   textInput?: string;
   log: Logger;
   onTextDelta?: OnTextDelta;
@@ -35,7 +36,7 @@ export interface RunAgentOptions {
 
 
 export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
-  const { cache, sessionStore, sessionId, systemPrompt, textInput, log, onTextDelta, onToolEvent, usageTracker, onToolComplete, agentId, hooks } = opts;
+  const { cache, sessionStore, sessionId, systemPrompt, cwd, textInput, log, onTextDelta, onToolEvent, usageTracker, onToolComplete, agentId, hooks } = opts;
 
   if (hooks && agentId && textInput) {
     await hooks.emit("message_received", {
@@ -53,7 +54,10 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
   const session = await cache.createSession({
     sessionManager,
     systemPrompt,
+    cwd,
   });
+
+  log.debug(`Session started (id=${sessionId}, systemPrompt=${systemPrompt.length} chars)`, { systemPrompt });
 
   let responseText = "";
   let errorMessage: string | null = null;
@@ -103,7 +107,7 @@ export interface ActiveAgentHandle {
  * The session is NOT disposed automatically — caller must dispose.
  */
 export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgentHandle> {
-  const { cache, sessionStore, sessionId, systemPrompt, textInput, log, onTextDelta, onToolEvent, usageTracker, onToolComplete, agentId, hooks } = opts;
+  const { cache, sessionStore, sessionId, systemPrompt, cwd, textInput, log, onTextDelta, onToolEvent, usageTracker, onToolComplete, agentId, hooks } = opts;
 
   if (hooks && agentId && textInput) {
     await hooks.emit("message_received", {
@@ -118,7 +122,9 @@ export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgent
     throw new Error(`Session "${sessionId}" not found or has no SessionManager`);
   }
 
-  const session = await cache.createSession({ sessionManager, systemPrompt });
+  const session = await cache.createSession({ sessionManager, systemPrompt, cwd });
+
+  log.debug(`Session started (id=${sessionId}, systemPrompt=${systemPrompt.length} chars)`, { systemPrompt });
 
   const done = runSessionEvents(session, {
     textInput,

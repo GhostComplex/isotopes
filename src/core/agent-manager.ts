@@ -82,6 +82,10 @@ export class DefaultAgentManager {
     return this.agents.get(id)?.workspace ?? undefined;
   }
 
+  getWorkspacePath(id: string): string | undefined {
+    return this.agents.get(id)?.workspacePath;
+  }
+
   list(): AgentConfig[] {
     return Array.from(this.agents.values()).map((e) => e.config);
   }

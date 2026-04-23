@@ -546,7 +546,8 @@ export class DiscordTransport implements Transport {
 
     // 9. Run agent — SDK loads history from SessionManager automatically
     const systemPrompt = this.config.agentManager.getSystemPrompt(agentId) ?? "";
-    await this.runAgentAndRespond(agent, session.id, sessionStore, systemPrompt, msg.channel as SendableChannel, msg.id);
+    const cwd = this.config.agentManager.getWorkspacePath?.(agentId);
+    await this.runAgentAndRespond(agent, session.id, sessionStore, systemPrompt, cwd, msg.channel as SendableChannel, msg.id);
   }
 
   private isDmAllowed(userId: string): boolean {
@@ -799,6 +800,7 @@ export class DiscordTransport implements Transport {
     sessionId: string,
     sessionStore: SessionStore,
     systemPrompt: string,
+    cwd: string | undefined,
     channel: SendableChannel,
     triggerMessageId?: string,
   ): Promise<void> {
@@ -844,6 +846,7 @@ export class DiscordTransport implements Transport {
           sessionStore,
           sessionId,
           systemPrompt,
+          cwd,
           log,
           onTextDelta: async (currentText) => {
             // Extract only the new delta text since last callback

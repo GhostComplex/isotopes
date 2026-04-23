@@ -167,10 +167,11 @@ describe("DiscordTransport", () => {
             sessionId: string,
             sessionStore: SessionStore,
             systemPrompt: string,
+            cwd: string | undefined,
             channel: MockChannel,
           ) => Promise<void>;
         }
-      ).runAgentAndRespond(erroringAgent, "session-123", sessionStore, "", channel);
+      ).runAgentAndRespond(erroringAgent, "session-123", sessionStore, "", undefined, channel);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Agent ended with error: No API provider registered for api: undefined"),

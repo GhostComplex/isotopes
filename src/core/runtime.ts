@@ -205,6 +205,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
           sessionStore: store,
           sessionId: session.id,
           systemPrompt: agentManager.getSystemPrompt(agentId) ?? "",
+          cwd: agentManager.getWorkspacePath(agentId),
           textInput: prompt,
           log,
         });
@@ -277,6 +278,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
         sessionStore: store,
         sessionId: session.id,
         systemPrompt: agentManager.getSystemPrompt(job.agentId) ?? "",
+        cwd: agentManager.getWorkspacePath(job.agentId),
         textInput: prompt,
         log,
       });
