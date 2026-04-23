@@ -13,7 +13,7 @@ afterEach(() => {
 
 describe("fetchStatus", () => {
   it("returns parsed status", async () => {
-    const data = { version: "0.0.2", uptime: 123, cronJobs: 2 };
+    const data = { version: "0.1.0", uptime: 123, cronJobs: 2 };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
     const result = await fetchStatus();
     expect(result).toEqual(data);
