@@ -193,6 +193,16 @@ describe("API routes", () => {
     });
   });
 
+  describe("POST /api/restart", () => {
+    it("returns 200 from localhost", async () => {
+      // Note: we don't actually let the process exit — just verify the response.
+      // The setTimeout(process.exit, 500) fires after the test tears down.
+      const { status, data } = await request(getPort(), "POST", "/api/restart");
+      expect(status).toBe(200);
+      expect((data as { ok: boolean }).ok).toBe(true);
+    });
+  });
+
   describe("GET /api/status", () => {
     it("reflects cron count", async () => {
       cronScheduler.register({
