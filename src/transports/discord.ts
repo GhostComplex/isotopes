@@ -2,6 +2,7 @@
 // Handles Discord bot connection, message routing, and response streaming.
 
 import {
+  AttachmentBuilder,
   Client,
   GatewayIntentBits,
   Partials,
@@ -20,7 +21,7 @@ import {
 } from "../core/types.js";
 import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
-import { userMessage as mkUserMsg } from "../core/messages.js";
+import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../core/messages.js";
 import type { ContextConfigFile } from "../core/config.js";
 import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
@@ -376,7 +377,7 @@ export class DiscordTransport implements Transport {
 
     // 3. Extract content early for subagent thread interception
     let content = this.extractContent(msg);
-    if (!content.trim()) return;
+    if (!content.trim() && !this.hasImageAttachments(msg)) return;
 
     // 3.5. Subagent thread interception — handle /stop in subagent threads BEFORE shouldRespond check
     // This allows /stop to work without @mention in subagent threads
@@ -536,12 +537,11 @@ export class DiscordTransport implements Transport {
     const chatType = msg.guild ? "group" : "direct";
     const inboundMeta = formatInboundMeta(messageMetadata, chatType);
     const contentWithMeta = `${inboundMeta}\n\n${enrichedContent}`;
-    
-    const userMsg: AgentMessage = {
-      role: "user",
-      content: contentWithMeta,
-      timestamp: msg.createdTimestamp,
-    } as unknown as AgentMessage;
+
+    const images = await this.extractAttachmentImages(msg);
+    const userMsg: AgentMessage = images.length > 0
+      ? mkUserMsgWithImages(contentWithMeta, images, msg.createdTimestamp)
+      : mkUserMsg(contentWithMeta, msg.createdTimestamp);
     await sessionStore.addMessage(session.id, userMsg);
 
     // 9. Run agent — SDK loads history from SessionManager automatically
@@ -970,12 +970,69 @@ export class DiscordTransport implements Transport {
       .trim();
   }
 
+  private hasImageAttachments(msg: DiscordMessage): boolean {
+    return msg.attachments.some((a) => a.contentType?.startsWith("image/"));
+  }
+
+  private async extractAttachmentImages(msg: DiscordMessage): Promise<Array<{ type: "image"; data: string; mimeType: string }>> {
+    const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+    const MAX_BYTES = 10 * 1024 * 1024; // 10MB
+
+    const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
+
+    for (const [, attachment] of msg.attachments) {
+      const ct = attachment.contentType;
+      if (!ct || !IMAGE_TYPES.has(ct)) continue;
+      if (attachment.size > MAX_BYTES) {
+        log.warn(`Skipping oversized image attachment (${attachment.size} bytes)`);
+        continue;
+      }
+
+      try {
+        const res = await fetch(attachment.url);
+        if (!res.ok) {
+          log.warn(`Failed to fetch attachment ${attachment.url}: ${res.status}`);
+          continue;
+        }
+        const buffer = Buffer.from(await res.arrayBuffer());
+        images.push({ type: "image", data: buffer.toString("base64"), mimeType: ct });
+      } catch (err) {
+        log.warn(`Error downloading attachment: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    return images;
+  }
+
+  private async sendWithAttachments(
+    channel: SendableChannel,
+    text: string,
+    attachments: Array<{ buffer: Buffer; name: string }>,
+    replyToId?: string,
+  ): Promise<void> {
+    const files = attachments.map((a) => new AttachmentBuilder(a.buffer, { name: a.name }));
+    const chunks = text ? this.chunkMessage(text) : [""];
+
+    for (let i = 0; i < chunks.length; i++) {
+      const opts: Record<string, unknown> = { content: chunks[i] || undefined };
+      if (i === chunks.length - 1) opts.files = files;
+      if (i === 0 && replyToId) opts.reply = { messageReference: replyToId, failIfNotExists: false };
+      await channel.send(opts as Parameters<typeof channel.send>[0]);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Reply & reaction
   // ---------------------------------------------------------------------------
 
-  async reply(messageId: string, content: string, channelId?: string): Promise<{ messageId: string }> {
+  async reply(messageId: string, content: string, channelId?: string, attachments?: Array<{ buffer: Buffer; name: string }>): Promise<{ messageId: string }> {
     if (!this.ready) throw new Error("Discord transport not ready");
+
+    const files = attachments?.map((a) => new AttachmentBuilder(a.buffer, { name: a.name }));
+    const replyOpts = (text: string) => ({
+      content: text,
+      ...(files?.length ? { files } : {}),
+    });
 
     // Fast path: fetch the channel directly when channelId is provided
     if (channelId) {
@@ -983,7 +1040,7 @@ export class DiscordTransport implements Transport {
         const channel = await this.client.channels.fetch(channelId);
         if (channel && "messages" in channel) {
           const target = await (channel as SendableChannel).messages.fetch(messageId);
-          const sent = await target.reply(content);
+          const sent = await target.reply(replyOpts(content));
           return { messageId: sent.id };
         }
       } catch {
@@ -998,7 +1055,7 @@ export class DiscordTransport implements Transport {
       try {
         const target = await (ch as SendableChannel).messages.fetch(messageId);
         if (target) {
-          const sent = await target.reply(content);
+          const sent = await target.reply(replyOpts(content));
           return { messageId: sent.id };
         }
       } catch {

@@ -25,6 +25,7 @@ type MockIncomingMessage = {
   channelId: string;
   channel: MockChannel;
   mentions: { has: ReturnType<typeof vi.fn> };
+  attachments: Map<string, unknown>;
   thread?: undefined;
   id?: string;
 };
@@ -42,6 +43,7 @@ vi.mock("discord.js", () => {
   };
 
   return {
+    AttachmentBuilder: vi.fn(),
     Client: vi.fn(() => mockClient),
     GatewayIntentBits: {
       Guilds: 1,
@@ -211,6 +213,7 @@ describe("DiscordTransport", () => {
         channelId: "channel-1",
         channel,
         mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        attachments: new Map(),
         thread: undefined,
       };
 
@@ -251,6 +254,7 @@ describe("DiscordTransport", () => {
         channelId: "channel-1",
         channel: makeChannel(),
         mentions: { has: vi.fn(() => false) },
+        attachments: new Map(),
         thread: undefined,
         ...overrides,
       };
@@ -609,6 +613,7 @@ describe("DiscordTransport", () => {
         channelId: "channel-1",
         channel: makeChannel(),
         mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        attachments: new Map(),
         thread: undefined,
         id: `msg-${Date.now()}`,
         ...overrides,
@@ -791,6 +796,7 @@ describe("DiscordTransport", () => {
         channelId: "channel-1",
         channel: makeChannel(),
         mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        attachments: new Map(),
         thread: undefined,
         id: `msg-${Date.now()}`,
         ...overrides,
@@ -951,6 +957,7 @@ describe("DiscordTransport", () => {
         channelId: "channel-1",
         channel: makeChannel(),
         mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        attachments: new Map(),
         thread: undefined,
       };
 
@@ -1017,6 +1024,7 @@ describe("DiscordTransport", () => {
         channelId: "dm-channel",
         channel: { ...makeChannel(), type: 1 }, // DM channel type
         mentions: { has: vi.fn(() => false) },
+        attachments: new Map(),
         thread: undefined,
       };
 
@@ -1054,6 +1062,7 @@ describe("DiscordTransport", () => {
         channelId: "channel-1",
         channel: makeChannel(false),
         mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        attachments: new Map(),
         id: `msg-${Date.now()}`,
         ...overrides,
       };
@@ -1170,6 +1179,7 @@ describe("DiscordTransport", () => {
         channelId: "channel-1",
         channel: makeChannel(),
         mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        attachments: new Map(),
         thread: undefined,
         id: `msg-${Date.now()}`,
         ...overrides,
@@ -1367,6 +1377,7 @@ describe("DiscordTransport", () => {
         channelId: "channel-1",
         channel: makeChannel(),
         mentions: { has: vi.fn((id: string) => id === "bot-123") },
+        attachments: new Map(),
         thread: undefined,
         id: `msg-${Date.now()}`,
         ...overrides,

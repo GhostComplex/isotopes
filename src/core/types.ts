@@ -10,7 +10,7 @@ import type { ReplyToMode } from "../transports/reply-directive.js";
 // ---------------------------------------------------------------------------
 
 export type { AgentMessage, AgentEvent } from "@mariozechner/pi-agent-core";
-export type { Usage } from "@mariozechner/pi-ai";
+export type { Usage, ImageContent } from "@mariozechner/pi-ai";
 
 // ---------------------------------------------------------------------------
 // Tools
@@ -341,7 +341,7 @@ export interface Transport {
   start(): Promise<void>;
   stop(): Promise<void>;
   /** Reply to a specific message by ID. If channelId is provided, skip O(n) channel scan. */
-  reply?(messageId: string, content: string, channelId?: string): Promise<{ messageId: string }>;
+  reply?(messageId: string, content: string, channelId?: string, attachments?: Array<{ buffer: Buffer; name: string }>): Promise<{ messageId: string }>;
   /** Add a reaction emoji to a specific message by ID. If channelId is provided, skip O(n) channel scan. */
   react?(messageId: string, emoji: string, channelId?: string): Promise<void>;
 }
