@@ -57,8 +57,6 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
     cwd,
   });
 
-  log.debug(`Session started (id=${sessionId}, systemPrompt=${systemPrompt.length} chars)`, { systemPrompt });
-
   let responseText = "";
   let errorMessage: string | null = null;
   let activeSession: AgentSession | undefined = session;
@@ -123,8 +121,6 @@ export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgent
   }
 
   const session = await cache.createSession({ sessionManager, systemPrompt, cwd });
-
-  log.debug(`Session started (id=${sessionId}, systemPrompt=${systemPrompt.length} chars)`, { systemPrompt });
 
   const done = runSessionEvents(session, {
     textInput,
