@@ -27,6 +27,7 @@ import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
 import { startAgentLoop, type ActiveAgentHandle } from "../core/agent-runner.js";
+import { AgentEventBus } from "../core/agent-event-bus.js";
 import { isSilentReply } from "./silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
@@ -178,6 +179,8 @@ export interface DiscordTransportConfig {
   enableSubagentStreaming?: boolean;
   /** Whether to show tool calls in subagent threads (default: true) */
   subagentShowToolCalls?: boolean;
+  /** Whether to show tool call info in agent responses (default: false) */
+  showToolCalls?: boolean;
   /** Whether to respond to messages from other bots. Default: false */
   allowBots?: boolean;
   /** Context management configuration */
@@ -840,6 +843,17 @@ export class DiscordTransport implements Transport {
       });
 
       // Create the agent loop runner function
+      const eventBus = new AgentEventBus();
+      const toolSummaries: string[] = [];
+
+      if (this.config.showToolCalls) {
+        eventBus.on((e) => {
+          if (e.type === "tool_execution_start") {
+            toolSummaries.push(`🔧 ${e.toolName}`);
+          }
+        });
+      }
+
       const runLoop = async () => {
         const handle = await startAgentLoop({
           cache,
@@ -848,6 +862,7 @@ export class DiscordTransport implements Transport {
           systemPrompt,
           cwd,
           log,
+          eventBus,
           onTextDelta: async (currentText) => {
             // Extract only the new delta text since last callback
             const delta = currentText.slice(lastSentLength);
@@ -913,6 +928,10 @@ export class DiscordTransport implements Transport {
 
       // Flush any remaining content in the buffer
       await streamBuffer.flushRemaining();
+
+      if (toolSummaries.length > 0) {
+        await channel.send(toolSummaries.join("\n"));
+      }
 
       if (errorMessage) {
         const finalErrorMessage = `❌ ${errorMessage}`;
