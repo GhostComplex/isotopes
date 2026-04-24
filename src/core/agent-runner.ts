@@ -9,15 +9,12 @@ import type { Logger } from "./logger.js";
 import type { UsageTracker } from "./usage-tracker.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import { isAgentEvent } from "./agent-events.js";
-import type { AgentEventBus } from "./agent-event-bus.js";
+import { agentEventBus } from "./agent-event-bus.js";
 
 export interface AgentRunResult {
   responseText: string;
   errorMessage: string | null;
 }
-
-export type OnTextDelta = (currentText: string) => void | Promise<void>;
-export type OnToolEvent = (event: { type: "start" | "end"; toolName: string; args?: unknown; result?: unknown; isError?: boolean }) => void;
 
 export interface RunAgentOptions {
   cache: AgentServiceCache;
@@ -27,18 +24,15 @@ export interface RunAgentOptions {
   cwd?: string;
   textInput?: string;
   log: Logger;
-  onTextDelta?: OnTextDelta;
-  onToolEvent?: OnToolEvent;
   usageTracker?: UsageTracker;
   onToolComplete?: () => Promise<string | null>;
   agentId?: string;
   hooks?: HookRegistry;
-  eventBus?: AgentEventBus;
 }
 
 
 export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
-  const { cache, sessionStore, sessionId, systemPrompt, cwd, textInput, log, onTextDelta, onToolEvent, usageTracker, onToolComplete, agentId, hooks, eventBus } = opts;
+  const { cache, sessionStore, sessionId, systemPrompt, cwd, textInput, log, usageTracker, onToolComplete, agentId, hooks } = opts;
 
   if (hooks && agentId && textInput) {
     await hooks.emit("message_received", {
@@ -67,12 +61,9 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
     const result = await runSessionEvents(session, {
       textInput,
       log,
-      onTextDelta,
-      onToolEvent,
       usageTracker,
       sessionId,
       onToolComplete,
-      eventBus,
     });
     responseText = result.responseText;
     errorMessage = result.errorMessage;
@@ -108,7 +99,7 @@ export interface ActiveAgentHandle {
  * The session is NOT disposed automatically — caller must dispose.
  */
 export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgentHandle> {
-  const { cache, sessionStore, sessionId, systemPrompt, cwd, textInput, log, onTextDelta, onToolEvent, usageTracker, onToolComplete, agentId, hooks, eventBus } = opts;
+  const { cache, sessionStore, sessionId, systemPrompt, cwd, textInput, log, usageTracker, onToolComplete, agentId, hooks } = opts;
 
   if (hooks && agentId && textInput) {
     await hooks.emit("message_received", {
@@ -128,12 +119,9 @@ export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgent
   const done = runSessionEvents(session, {
     textInput,
     log,
-    onTextDelta,
-    onToolEvent,
     usageTracker,
     sessionId,
     onToolComplete,
-    eventBus,
   }).then(async (result) => {
     if (hooks && agentId && result.responseText) {
       await hooks.emit("message_sending", {
@@ -162,19 +150,16 @@ export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgent
 interface SessionRunOpts {
   textInput?: string;
   log: Logger;
-  onTextDelta?: OnTextDelta;
-  onToolEvent?: OnToolEvent;
   usageTracker?: UsageTracker;
   sessionId: string;
   onToolComplete?: () => Promise<string | null>;
-  eventBus?: AgentEventBus;
 }
 
 async function runSessionEvents(
   session: AgentSession,
   opts: SessionRunOpts,
 ): Promise<AgentRunResult> {
-  const { textInput, log, onTextDelta, onToolEvent, usageTracker, sessionId, onToolComplete, eventBus } = opts;
+  const { textInput, log, usageTracker, sessionId, onToolComplete } = opts;
 
   let responseText = "";
   let errorMessage: string | null = null;
@@ -183,22 +168,17 @@ async function runSessionEvents(
     const unsub = session.subscribe(async (event: AgentSessionEvent) => {
       if (!isAgentEvent(event)) return;
       const e = event as AgentEvent;
-      eventBus?.emit(e);
+      agentEventBus.emit(sessionId, e);
 
       if (e.type === "message_update") {
         const ame = e.assistantMessageEvent;
         if (ame.type === "text_delta") {
           responseText += ame.delta;
-          if (onTextDelta) {
-            void onTextDelta(responseText);
-          }
         }
       } else if (e.type === "tool_execution_start") {
         log.debug(`Tool call: ${e.toolName}`, { id: e.toolCallId });
-        onToolEvent?.({ type: "start", toolName: e.toolName, args: e.args });
       } else if (e.type === "tool_execution_end") {
         log.debug(`Tool result: ${e.toolCallId}`);
-        onToolEvent?.({ type: "end", toolName: e.toolName, result: e.result, isError: e.isError });
       } else if (e.type === "turn_end") {
         const usage = getUsage(e.message);
         if (usageTracker && usage) {

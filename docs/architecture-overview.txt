@@ -1,0 +1,274 @@
+
+  ╔══════════════════════════════════════════════════════════════════════════════════════╗
+  ║                          I S O T O P E S   A R C H I T E C T U R E                ║
+  ║                                                                                    ║
+  ║  Self-hostable multi-agent framework for chat platforms                            ║
+  ║  101 source files · ~18.5k LOC · ESM-only · Node ≥ 20                             ║
+  ╚══════════════════════════════════════════════════════════════════════════════════════╝
+
+
+  ┌─── INTERFACE LAYER ───────────────────────────────────────────────────────────────────┐
+  │                                                                                      │
+  │   ┌──────────┐   ┌──────────┐   ┌────────────┐   ┌──────────────────┐               │
+  │   │    IM    │   │   CLI    │   │  API :2712 │   │   Plugin UIs     │               │
+  │   │ Discord  │   │ cli.ts   │   │ server.ts  │   │ (e.g. /ui/pet)   │               │
+  │   │ Feishu   │   │          │   │ routes.ts  │   │                  │               │
+  │   └────┬─────┘   └────┬─────┘   └─────┬──────┘   └────────┬─────────┘               │
+  │        │              │               │                    │                         │
+  └────────┼──────────────┼───────────────┼────────────────────┼─────────────────────────┘
+           │              │               │                    │
+           ▼              ▼               ▼                    ▼
+  ┌─── TRANSPORT LAYER ──────────────────────────────────────────────────────────────────┐
+  │                                                                                      │
+  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐        │
+  │   │   Discord    │  │    Feishu    │  │   HTTP/API   │  │ Plugin Transport │        │
+  │   │  Transport   │  │  Transport   │  │   Routes     │  │   (custom)       │        │
+  │   │              │  │              │  │              │  │                  │        │
+  │   │  multi-acct  │  │  groups+P2P  │  │  REST+SSE   │  │  registerTr-     │        │
+  │   │  threads/DMs │  │  WebSocket   │  │  /api/chat/* │  │  ansport()       │        │
+  │   │  images      │  │              │  │  /api/cron   │  │                  │        │
+  │   │  streaming   │  │              │  │  /api/status │  │                  │        │
+  │   │  slash cmds  │  │              │  │  /api/logs   │  │                  │        │
+  │   └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘        │
+  │          │                 │                  │                   │                  │
+  │          └─────────────────┴──────────────────┴───────────────────┘                  │
+  │                                      │                                              │
+  │                      Bindings: (channel, accountId, peer)                           │
+  │                      priority: ch+acct+peer > ch+acct > ch                          │
+  └──────────────────────────────────────┬───────────────────────────────────────────────┘
+                                         │
+                                         ▼
+  ┌─── CORE RUNTIME (createRuntime) ─────────────────────────────────────────────────────┐
+  │                                                                                      │
+  │  ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+  │  │                      Agent Manager (DefaultAgentManager)                       │  │
+  │  │                                                                                 │  │
+  │  │   ┌────────────┐    ┌────────────┐    ┌────────────┐                           │  │
+  │  │   │  Agent A   │    │  Agent B   │    │  Agent C   │    ...                    │  │
+  │  │   │            │    │            │    │            │                            │  │
+  │  │   │ config     │    │ config     │    │ config     │                            │  │
+  │  │   │ tools[]    │    │ tools[]    │    │ tools[]    │                            │  │
+  │  │   │ workspace  │    │ workspace  │    │ workspace  │                            │  │
+  │  │   │ SOUL.md    │    │ SOUL.md    │    │ SOUL.md    │                            │  │
+  │  │   │ MEMORY.md  │    │ MEMORY.md  │    │ MEMORY.md  │                            │  │
+  │  │   └─────┬──────┘    └─────┬──────┘    └─────┬──────┘                           │  │
+  │  │         │                 │                  │                                  │  │
+  │  └─────────┼─────────────────┼──────────────────┼─────────────────────────────────┘  │
+  │            │                 │                  │                                    │
+  │            └─────────────────┼──────────────────┘                                    │
+  │                              │                                                       │
+  │                              ▼                                                       │
+  │  ┌──────────────────────────────────────────────────────────────────┐                │
+  │  │               runAgentLoop() (agent-runner.ts)                  │                │
+  │  │                                                                  │                │
+  │  │   message ──► PiMonoCore ──► LLM API ──► stream events         │                │
+  │  │                  │                           │                   │                │
+  │  │          AgentServiceCache            ┌──────┴──────┐           │                │
+  │  │          (model, tools,               │  AgentEvent │           │                │
+  │  │           compaction)                  │  stream:    │           │                │
+  │  │                                        │             │           │                │
+  │  │   Providers:                           │ msg_update  │           │                │
+  │  │   ├─ anthropic                         │ tool_exec_* │           │                │
+  │  │   ├─ openai                            │ turn_end    │           │                │
+  │  │   └─ proxied variants                  │ agent_end   │           │                │
+  │  └────────────────────────────────────────┴──────┬──────┘──────────┘                │
+  │                                                  │                                   │
+  │            ┌─────────────────────────────────────┼──────────────────┐                │
+  │            │              TOOL DISPATCH           │                  │                │
+  │            │                                      ▼                  │                │
+  │            │  ┌────────┐ ┌────────┐ ┌────────┐ ┌─────────┐         │                │
+  │            │  │ file   │ │  git   │ │  exec  │ │  web    │         │                │
+  │            │  │ r/w/e  │ │ github │ │ shell  │ │ fetch   │  ...    │                │
+  │            │  │ ls     │ │        │ │ ps/kill│ │ search  │         │                │
+  │            │  └────────┘ └────────┘ └───┬────┘ └─────────┘         │                │
+  │            │                            │                           │                │
+  │            │  ┌─────────────────────────┼─────────────────────────┐ │                │
+  │            │  │  Plugin Tools           │   (ToolPluginRegistry)  │ │                │
+  │            │  └─────────────────────────┼─────────────────────────┘ │                │
+  │            │                            │                           │                │
+  │            │  Tool guards:  CLI allow/deny · FS allow/deny         │                │
+  │            │  Plugin hooks: before_tool_call · after_tool_call     │                │
+  │            └────────────────────────────┼───────────────────────────┘                │
+  │                                         │                                            │
+  │                          ┌──────────────▼──────────────┐                             │
+  │                          │      spawn_subagent()       │                             │
+  │                          └──────────────┬──────────────┘                             │
+  │                                         │                                            │
+  │  ┌──────────────────────────────────────▼───────────────────────────────────────────┐ │
+  │  │                  Subagent Backend (max 5 concurrent)                             │ │
+  │  │                                                                                  │ │
+  │  │   ┌──────────────────────────┐    ┌──────────────────────────┐                   │ │
+  │  │   │     ClaudeRunner         │    │     BuiltinRunner        │                   │ │
+  │  │   │                          │    │                          │                   │ │
+  │  │   │  claude-agent-sdk        │    │  in-process via          │                   │ │
+  │  │   │  → spawns Claude Code    │    │  parent PiMonoCore       │                   │ │
+  │  │   │  → permission modes      │    │  → filtered tools        │                   │ │
+  │  │   │    skip|allowlist|default │    │  → no write/edit/spawn   │                   │ │
+  │  │   │  → workspace isolation   │    │  → no extra API key      │                   │ │
+  │  │   └──────────────────────────┘    └──────────────────────────┘                   │ │
+  │  │                                                                                  │ │
+  │  │   ┌────────────────┐  ┌─────────────────┐  ┌──────────────────┐                 │ │
+  │  │   │ Task Registry  │  │ Failure Tracker  │  │   Persistence    │                 │ │
+  │  │   │ (active tasks) │  │ (block repeats)  │  │ (JSONL transcripts)│                │ │
+  │  │   └────────────────┘  └─────────────────┘  └──────────────────┘                 │ │
+  │  │                                                                                  │ │
+  │  │   Discord output: DiscordSink ──► subagent thread streaming                     │ │
+  │  │                    ThreadBindingManager ──► auto-unbind on done                  │ │
+  │  └──────────────────────────────────────────────────────────────────────────────────┘ │
+  │                                                                                      │
+  │  ┌─── AUTOMATION ────────────────────────────────────────────────────────────────┐   │
+  │  │                                                                                │   │
+  │  │   ┌──────────────────┐     ┌──────────────────┐                               │   │
+  │  │   │  CronScheduler   │     │ HeartbeatManager  │                              │   │
+  │  │   │                  │     │                    │                              │   │
+  │  │   │  croner lib      │     │  HEARTBEAT.md      │                             │   │
+  │  │   │  per-agent +     │     │  periodic wakeup   │                             │   │
+  │  │   │  global jobs     │     │  suppress NO_REPLY │                             │   │
+  │  │   │  ──► runAgent    │     │  ──► runAgent      │                             │   │
+  │  │   │      Loop()      │     │      Loop()        │                             │   │
+  │  │   └──────────────────┘     └──────────────────┘                               │   │
+  │  │                                                                                │   │
+  │  └────────────────────────────────────────────────────────────────────────────────┘   │
+  │                                                                                      │
+  └──────────────────────────────────────────────────────────────────────────────────────┘
+
+
+  ┌─── PLUGIN SYSTEM (PluginManager) ────────────────────────────────────────────────────┐
+  │                                                                                      │
+  │   Discovery: repo plugins/ · ISOTOPES_HOME/plugins/ · workspace plugins/             │
+  │   Manifest:  isotopes.plugin.json → register(api: IsotopesPluginApi)                 │
+  │                                                                                      │
+  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
+  │   │   Transport   │  │     UI       │  │    Tool      │  │   Lifecycle Hooks    │   │
+  │   │   Plugins     │  │   Plugins    │  │   Plugins    │  │                      │   │
+  │   │               │  │              │  │              │  │  before_agent_start  │   │
+  │   │  registerTr-  │  │  static dir  │  │  registerTo- │  │  agent_end           │   │
+  │   │  ansport()    │  │  mount path  │  │  ol()        │  │  before_tool_call   │   │
+  │   │               │  │  /ui/{id}/   │  │              │  │  after_tool_call    │   │
+  │   └──────────────┘  └──────────────┘  └──────────────┘  │  message_received   │   │
+  │                                                          │  message_sending    │   │
+  │                                                          │  session_start/end  │   │
+  │                                                          └──────────────────────┘   │
+  └──────────────────────────────────────────────────────────────────────────────────────┘
+
+
+  ┌─── PERSISTENCE & INFRASTRUCTURE ─────────────────────────────────────────────────────┐
+  │                                                                                      │
+  │   ┌───────────────────┐  ┌───────────────────┐  ┌────────────────────────────────┐  │
+  │   │  Session Store    │  │   Hot Reload       │  │     Sandbox (Docker)           │  │
+  │   │                   │  │                    │  │                                │  │
+  │   │  SessionStore-    │  │  WorkspaceWatcher  │  │  ContainerManager              │  │
+  │   │  Manager (per-    │  │   fs.watch per     │  │  ├─ create/start/stop/exec     │  │
+  │   │  agent cache)     │  │   agent workspace  │  │  ├─ volume mounts              │  │
+  │   │                   │  │                    │  │  ├─ resource limits             │  │
+  │   │  sessions.json    │  │  HotReloadManager  │  │  └─ capability hardening       │  │
+  │   │  + per-session    │  │   watches:         │  │                                │  │
+  │   │    .jsonl files   │  │   SOUL.md          │  │  SandboxExecutor               │  │
+  │   │                   │  │   IDENTITY.md      │  │  ├─ per-agent container        │  │
+  │   │  keys:            │  │   USER.md          │  │  └─ lazy creation              │  │
+  │   │  discord:{bot}:   │  │   TOOLS.md         │  │                                │  │
+  │   │   channel:{ch}:   │  │   AGENTS.md        │  │  SandboxFs                     │  │
+  │   │   {agentId}       │  │   MEMORY.md        │  │  └─ file ops through           │  │
+  │   │                   │  │   memory/*.md       │  │     docker exec                │  │
+  │   │  TTL cleanup      │  │   skills/**         │  │                                │  │
+  │   │  usage tracking   │  │                    │  │  Modes: off|non-main|all       │  │
+  │   │                   │  │  ConfigReloader    │  │                                │  │
+  │   │                   │  │   isotopes.yaml    │  │                                │  │
+  │   └───────────────────┘  └───────────────────┘  └────────────────────────────────┘  │
+  │                                                                                      │
+  │   ┌───────────────────┐  ┌───────────────────┐  ┌────────────────────────────────┐  │
+  │   │  Daemon Process   │  │  Skills System    │  │  Workspace Templates           │  │
+  │   │                   │  │                   │  │                                │  │
+  │   │  DaemonProcess    │  │  SkillDiscovery   │  │  Seed on first init:           │  │
+  │   │  ├─ fork/stop     │  │  ├─ workspace/    │  │  ├─ SOUL.md                    │  │
+  │   │  ├─ PID file      │  │  │  skills/       │  │  ├─ TOOLS.md                   │  │
+  │   │  └─ log redirect  │  │  ├─ ~/.isotopes/  │  │  ├─ IDENTITY.md                │  │
+  │   │                   │  │  │  skills/       │  │  ├─ MEMORY.md                   │  │
+  │   │  ServiceManager   │  │  └─ bundled/      │  │  └─ ...                         │  │
+  │   │  ├─ launchd (mac) │  │                   │  │                                │  │
+  │   │  ├─ systemd (lnx) │  │  SkillParser      │  │  WorkspaceState                │  │
+  │   │  └─ schtasks (win)│  │  └─ SKILL.md →    │  │  └─ reconcile workspace        │  │
+  │   │                   │  │     metadata       │  │     on agent create             │  │
+  │   │  LogRotation      │  │                   │  │                                │  │
+  │   │                   │  │  SkillLoader       │  │                                │  │
+  │   │                   │  │  └─ XML block →   │  │                                │  │
+  │   │                   │  │    system prompt   │  │                                │  │
+  │   └───────────────────┘  └───────────────────┘  └────────────────────────────────┘  │
+  │                                                                                      │
+  └──────────────────────────────────────────────────────────────────────────────────────┘
+
+
+  ┌─── DATA FLOW ────────────────────────────────────────────────────────────────────────┐
+  │                                                                                      │
+  │   User message (Discord / Feishu / API chat)                                         │
+  │        │                                                                             │
+  │        ▼                                                                             │
+  │   Transport.handleMessage()                                                          │
+  │        │                                                                             │
+  │        ├─ shouldRespond()      (DM policy, @mention, dedup, debounce)                │
+  │        ├─ resolveAgentId()     (binding lookup)                                      │
+  │        ├─ findOrCreateSession()                                                      │
+  │        │                                                                             │
+  │        ▼                                                                             │
+  │   runAgentLoop() ──► PiMonoCore ──► LLM API                                         │
+  │                                        │                                             │
+  │                                        ▼                                             │
+  │                                  tool_use event                                      │
+  │                                        │                                             │
+  │                    ┌───────────────────┼───────────────────┐                         │
+  │                    ▼                   ▼                   ▼                         │
+  │               built-in tool      plugin tool      spawn_subagent                    │
+  │               (file/git/exec/    (custom)         ┌───────┴────────┐                │
+  │                web/react)           │              ▼                ▼                │
+  │                    │                │         ClaudeRunner   BuiltinRunner           │
+  │                    │                │              │                │                │
+  │                    └────────────────┴──────────────┴────────────────┘                │
+  │                                        │                                             │
+  │                                        ▼                                             │
+  │                               tool_result ──► LLM API ──► response                  │
+  │                                                               │                     │
+  │                                        ┌──────────────────────┘                     │
+  │                                        ▼                                             │
+  │                               Transport.reply() ──► User                             │
+  │                               (streamed via SegmentedStreamBuffer)                   │
+  │                                                                                      │
+  │   Cron / Heartbeat ──► runAgentLoop() ──► (same flow)                                │
+  │                                                                                      │
+  └──────────────────────────────────────────────────────────────────────────────────────┘
+
+
+  ┌─── EXTERNAL DEPENDENCIES ────────────────────────────────────────────────────────────┐
+  │                                                                                      │
+  │   @mariozechner/pi-coding-agent ─── AgentSession, SessionManager, ToolDefinition     │
+  │   @mariozechner/pi-agent-core   ─── AgentMessage, AgentEvent types                   │
+  │   @mariozechner/pi-ai           ─── Model definitions, getModel()                    │
+  │   @anthropic-ai/claude-agent-sdk── query(), SDKMessage (ClaudeRunner)                │
+  │   discord.js                    ─── Discord client                                   │
+  │   croner                        ─── Cron expression parsing                          │
+  │   yaml · zod                    ─── Config parsing & validation                      │
+  │                                                                                      │
+  └──────────────────────────────────────────────────────────────────────────────────────┘
+
+
+  ┌─── FILE LAYOUT ──────────────────────────────────────────────────────────────────────┐
+  │                                                                                      │
+  │   ~/.isotopes/                         src/                                          │
+  │   ├─ isotopes.yaml  (config)           ├─ cli.ts           (entry point)             │
+  │   ├─ logs/                             ├─ core/            (runtime kernel)           │
+  │   ├─ sessions/                         ├─ transports/      (discord, feishu)          │
+  │   ├─ skills/        (user skills)      ├─ tools/           (git, exec, web...)        │
+  │   ├─ plugins/       (user plugins)     ├─ api/             (REST + SSE)               │
+  │   └─ workspaces/                       ├─ daemon/          (process, service)         │
+  │      └─ {agent-id}/                    ├─ automation/      (cron, heartbeat)          │
+  │         ├─ SOUL.md                     ├─ sandbox/         (docker isolation)         │
+  │         ├─ IDENTITY.md                 ├─ subagent/        (spawn framework)          │
+  │         ├─ USER.md                     ├─ workspace/       (watch, reload)            │
+  │         ├─ TOOLS.md                    ├─ skills/          (discover, parse)          │
+  │         ├─ AGENTS.md                   ├─ plugins/         (manager, hooks)           │
+  │         ├─ BOOTSTRAP.md                ├─ commands/        (slash commands)            │
+  │         ├─ MEMORY.md                   ├─ tui/             (terminal UI)              │
+  │         ├─ HEARTBEAT.md                └─ init/            (setup wizard)             │
+  │         ├─ memory/                                                                    │
+  │         └─ skills/                                                                    │
+  │                                                                                      │
+  └──────────────────────────────────────────────────────────────────────────────────────┘

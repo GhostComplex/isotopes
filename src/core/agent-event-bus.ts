@@ -1,6 +1,6 @@
 import type { AgentEvent } from "./types.js";
 
-type Listener = (event: AgentEvent) => void;
+type Listener = (sessionId: string, event: AgentEvent) => void;
 
 export class AgentEventBus {
   private listeners = new Set<Listener>();
@@ -10,7 +10,9 @@ export class AgentEventBus {
     return () => this.listeners.delete(listener);
   }
 
-  emit(event: AgentEvent): void {
-    for (const fn of this.listeners) fn(event);
+  emit(sessionId: string, event: AgentEvent): void {
+    for (const fn of this.listeners) fn(sessionId, event);
   }
 }
+
+export const agentEventBus = new AgentEventBus();

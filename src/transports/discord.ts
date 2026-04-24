@@ -27,7 +27,7 @@ import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
 import { startAgentLoop, type ActiveAgentHandle } from "../core/agent-runner.js";
-import { AgentEventBus } from "../core/agent-event-bus.js";
+import { agentEventBus } from "../core/agent-event-bus.js";
 import { isSilentReply } from "./silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
@@ -819,12 +819,25 @@ export class DiscordTransport implements Transport {
       triggerMessageId,
     });
 
-    try {
-      // Track what we've already sent via the segmented buffer
-      let lastSentLength = 0;
+    const toolSummaries: string[] = [];
+    let streamBuffer: SegmentedStreamBuffer | null = null;
 
+    const unsubBus = agentEventBus.on((sid, e) => {
+      if (sid !== sessionId) return;
+      if (e.type === "message_update" && streamBuffer) {
+        const ame = e.assistantMessageEvent;
+        if (ame.type === "text_delta" && ame.delta.length > 0) {
+          void streamBuffer.append(ame.delta);
+        }
+      }
+      if (this.config.showToolCalls && e.type === "tool_execution_start") {
+        toolSummaries.push(`🔧 ${e.toolName}`);
+      }
+    });
+
+    try {
       // Create segmented stream buffer that sends new messages at sentence boundaries
-      const streamBuffer = new SegmentedStreamBuffer(async (text: string) => {
+      streamBuffer = new SegmentedStreamBuffer(async (text: string) => {
         const { replyToId, stripped } = resolveReply(text);
         if (!stripped) return; // chunk was nothing but a directive
         // Chunk if needed and send. Reply marker (if any) goes on first chunk only.
@@ -843,17 +856,6 @@ export class DiscordTransport implements Transport {
       });
 
       // Create the agent loop runner function
-      const eventBus = new AgentEventBus();
-      const toolSummaries: string[] = [];
-
-      if (this.config.showToolCalls) {
-        eventBus.on((e) => {
-          if (e.type === "tool_execution_start") {
-            toolSummaries.push(`🔧 ${e.toolName}`);
-          }
-        });
-      }
-
       const runLoop = async () => {
         const handle = await startAgentLoop({
           cache,
@@ -862,16 +864,6 @@ export class DiscordTransport implements Transport {
           systemPrompt,
           cwd,
           log,
-          eventBus,
-          onTextDelta: async (currentText) => {
-            // Extract only the new delta text since last callback
-            const delta = currentText.slice(lastSentLength);
-            lastSentLength = currentText.length;
-
-            if (delta.length > 0) {
-              await streamBuffer.append(delta);
-            }
-          },
           usageTracker: this.config.usageTracker,
           onToolComplete: async () => {
             const pending = this.pendingMessages.get(sessionId);
@@ -946,6 +938,7 @@ export class DiscordTransport implements Transport {
         log.debug("Failed to send error message to Discord", sendErr);
       }
     } finally {
+      unsubBus();
       typing.stop();
       this.activeHandles.delete(sessionId);
       this.pendingMessages.delete(sessionId);

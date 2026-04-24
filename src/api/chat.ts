@@ -7,6 +7,7 @@ import { messageText } from "../core/messages.js";
 import { createLogger } from "../core/logger.js";
 import { randomUUID } from "node:crypto";
 import { runAgentLoop } from "../core/agent-runner.js";
+import { agentEventBus } from "../core/agent-event-bus.js";
 
 const log = createLogger("api:chat");
 
@@ -158,6 +159,23 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
     const systemPrompt = deps.agentManager.getSystemPrompt?.(session.agentId) ?? "";
     const cwd = deps.agentManager.getWorkspacePath?.(session.agentId);
     let lastTextLen = 0;
+
+    const unsub = agentEventBus.on((sid, e) => {
+      if (sid !== sessionId) return;
+      if (e.type === "message_update") {
+        const ame = e.assistantMessageEvent;
+        if (ame.type === "text_delta") {
+          const currentLen = lastTextLen + ame.delta.length;
+          writeEvent("text_delta", { text: ame.delta });
+          lastTextLen = currentLen;
+        }
+      } else if (e.type === "tool_execution_start") {
+        writeEvent("tool_call", { toolName: e.toolName, args: e.args });
+      } else if (e.type === "tool_execution_end") {
+        writeEvent("tool_result", { toolName: e.toolName, result: e.result, isError: e.isError });
+      }
+    });
+
     const result = await runAgentLoop({
       cache,
       sessionStore: store,
@@ -166,21 +184,11 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
       cwd,
       textInput: body.message,
       log,
-      onTextDelta: (currentText) => {
-        const delta = currentText.slice(lastTextLen);
-        lastTextLen = currentText.length;
-        if (delta) writeEvent("text_delta", { text: delta });
-      },
-      onToolEvent: (event) => {
-        if (event.type === "start") {
-          writeEvent("tool_call", { toolName: event.toolName, args: event.args });
-        } else {
-          writeEvent("tool_result", { toolName: event.toolName, result: event.result, isError: event.isError });
-        }
-      },
       hooks: deps.hooks,
       agentId: session.agentId,
     });
+
+    unsub();
 
     if (result.errorMessage) {
       writeEvent("error", { message: result.errorMessage });

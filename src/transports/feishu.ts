@@ -16,7 +16,7 @@ import type { ContextConfigFile } from "../core/config.js";
 import { resolveBinding } from "../core/bindings.js";
 import { loggers } from "../core/logger.js";
 import { runAgentLoop } from "../core/agent-runner.js";
-import { AgentEventBus } from "../core/agent-event-bus.js";
+import { agentEventBus } from "../core/agent-event-bus.js";
 import { isSilentReply } from "./silent-reply.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey, type SessionScope } from "../core/session-keys.js";
@@ -447,16 +447,14 @@ export class FeishuTransport implements Transport {
     chatId: string,
   ): Promise<void> {
     try {
-      const eventBus = new AgentEventBus();
       const toolSummaries: string[] = [];
 
-      if (this.config.showToolCalls) {
-        eventBus.on((e) => {
-          if (e.type === "tool_execution_start") {
-            toolSummaries.push(`🔧 ${e.toolName}`);
-          }
-        });
-      }
+      const unsubBus = agentEventBus.on((sid, e) => {
+        if (sid !== sessionId) return;
+        if (this.config.showToolCalls && e.type === "tool_execution_start") {
+          toolSummaries.push(`🔧 ${e.toolName}`);
+        }
+      });
 
       const { responseText, errorMessage } = await runAgentLoop({
         cache,
@@ -466,8 +464,9 @@ export class FeishuTransport implements Transport {
         cwd,
         log,
         usageTracker: this.config.usageTracker,
-        eventBus,
       });
+
+      unsubBus();
 
       // Check for silent reply tokens — suppress outbound delivery
       if (isSilentReply(responseText)) {
