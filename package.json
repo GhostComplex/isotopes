@@ -23,6 +23,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
+    "dev:watch": "tsx src/daemon/wrapper.ts -- tsx src/cli.ts",
     "start": "node dist/cli.js",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",

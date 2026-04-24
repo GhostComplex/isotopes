@@ -355,6 +355,27 @@ addRoute("GET", "/api/logs", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/restart — trigger a graceful process restart
+// ---------------------------------------------------------------------------
+// Convention: exit code 75 (EX_TEMPFAIL) tells the wrapper process
+// (src/daemon/wrapper.ts) to restart the child. The wrapper monitors
+// the exit code and loops on 75, stopping on anything else.
+
+addRoute("POST", "/api/restart", (req, res) => {
+  // Only accept from localhost to prevent remote restarts.
+  const addr = req.socket.remoteAddress;
+  if (addr !== "127.0.0.1" && addr !== "::1" && addr !== "::ffff:127.0.0.1") {
+    sendError(res, 403, "Restart only allowed from localhost");
+    return;
+  }
+
+  sendJson(res, 200, { ok: true, message: "Restarting..." });
+
+  // Delay so the HTTP response has time to flush before we exit.
+  setTimeout(() => process.exit(75), 500);
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/usage — global usage stats
 // ---------------------------------------------------------------------------
 
