@@ -170,9 +170,9 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
           lastTextLen = currentLen;
         }
       } else if (e.type === "tool_execution_start") {
-        writeEvent("tool_call", { toolName: e.toolName, args: e.args });
+        writeEvent("tool_call", { toolCallId: e.toolCallId, toolName: e.toolName, args: e.args });
       } else if (e.type === "tool_execution_end") {
-        writeEvent("tool_result", { toolName: e.toolName, result: e.result, isError: e.isError });
+        writeEvent("tool_result", { toolCallId: e.toolCallId, toolName: e.toolName, result: e.result, isError: e.isError });
       }
     });
 

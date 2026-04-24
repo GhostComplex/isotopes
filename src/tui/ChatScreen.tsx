@@ -8,11 +8,14 @@ import { getConfigPath } from "../core/paths.js";
 import { initializeAgent } from "../core/agent-init.js";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, ToolCallEntry, TuiOptions, Screen } from "./types.js";
-import { SessionManager, type AgentSessionEvent } from "@mariozechner/pi-coding-agent";
-import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { AGENT_EVENT_TYPES } from "../core/agent-events.js";
+import { createLogger } from "../core/logger.js";
+import { runAgentLoop } from "../core/agent-runner.js";
+import { agentEventBus } from "../core/agent-event-bus.js";
+import { createInMemorySessionStore } from "./in-memory-store.js";
+import type { SessionStore } from "../core/types.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
+const log = createLogger("tui");
 
 interface Props {
   options: TuiOptions;
@@ -29,7 +32,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const [error, setError] = useState<string | null>(null);
   const cacheRef = useRef<AgentServiceCache | null>(null);
   const systemPromptRef = useRef("");
-  const sessionManagerRef = useRef<SessionManager | null>(null);
+  const storeRef = useRef<{ store: SessionStore; sessionId: string } | null>(null);
   const autoMessageSent = useRef(false);
 
   const initAgent = useCallback(async (requestedAgent?: string) => {
@@ -66,7 +69,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
       cacheRef.current = result.instance;
       systemPromptRef.current = result.systemPrompt;
-      sessionManagerRef.current = SessionManager.inMemory();
+      storeRef.current = createInMemorySessionStore();
       setAgentReady(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -85,67 +88,64 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   }, [agentReady]);
 
   const sendMessage = async (text: string) => {
-    if (!cacheRef.current || !sessionManagerRef.current || isStreaming) return;
+    if (!cacheRef.current || !storeRef.current || isStreaming) return;
     const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
     setIsStreaming(true);
 
+    const { store, sessionId } = storeRef.current;
     let responseText = "";
     const toolCalls: ToolCallEntry[] = [];
 
-    try {
-      const session = await cacheRef.current.createSession({
-        sessionManager: sessionManagerRef.current,
-        systemPrompt: systemPromptRef.current,
-      });
+    const unsub = agentEventBus.on((sid, e) => {
+      if (sid !== sessionId) return;
 
-      await new Promise<void>((resolve, reject) => {
-        const unsub = session.subscribe((event: AgentSessionEvent) => {
-          if (!AGENT_EVENT_TYPES.has(event.type)) return;
-          const e = event as AgentEvent;
-
-          if (e.type === "message_update" && e.assistantMessageEvent.type === "text_delta") {
-            responseText += e.assistantMessageEvent.delta;
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              if (last?.role === "assistant") {
-                return [...prev.slice(0, -1), { ...last, content: responseText, toolCalls: [...toolCalls] }];
-              }
-              return [...prev, { role: "assistant", content: responseText, toolCalls: [...toolCalls], timestamp: new Date() }];
-            });
-          } else if (e.type === "tool_execution_start") {
-            toolCalls.push({ id: e.toolCallId, name: e.toolName, args: typeof e.args === "string" ? e.args : JSON.stringify(e.args) });
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              if (last?.role === "assistant") {
-                return [...prev.slice(0, -1), { ...last, toolCalls: [...toolCalls] }];
-              }
-              return prev;
-            });
-          } else if (e.type === "tool_execution_end") {
-            const output = typeof e.result === "string" ? e.result : JSON.stringify(e.result);
-            const tc = toolCalls.find((t) => t.id === e.toolCallId);
-            if (tc) {
-              tc.result = output;
-              tc.isError = e.isError;
+      if (e.type === "message_update") {
+        const ame = e.assistantMessageEvent;
+        if (ame.type === "text_delta") {
+          responseText += ame.delta;
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              return [...prev.slice(0, -1), { ...last, content: responseText, toolCalls: [...toolCalls] }];
             }
-          } else if (e.type === "agent_end") {
-            unsub();
-            session.dispose();
-            resolve();
+            return [...prev, { role: "assistant", content: responseText, toolCalls: [...toolCalls], timestamp: new Date() }];
+          });
+        }
+      } else if (e.type === "tool_execution_start") {
+        toolCalls.push({ id: e.toolCallId, name: e.toolName, args: typeof e.args === "string" ? e.args : JSON.stringify(e.args) });
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant") {
+            return [...prev.slice(0, -1), { ...last, toolCalls: [...toolCalls] }];
           }
+          return prev;
         });
+      } else if (e.type === "tool_execution_end") {
+        const output = typeof e.result === "string" ? e.result : JSON.stringify(e.result);
+        const tc = toolCalls.find((t) => t.id === e.toolCallId);
+        if (tc) {
+          tc.result = output;
+          tc.isError = e.isError;
+        }
+      }
+    });
 
-        session.prompt(text).catch((err) => {
-          unsub();
-          session.dispose();
-          reject(err);
-        });
+    try {
+      await runAgentLoop({
+        cache: cacheRef.current,
+        sessionStore: store,
+        sessionId,
+        systemPrompt: systemPromptRef.current,
+        textInput: text,
+        log,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
     }
+
+    unsub();
     setIsStreaming(false);
   };
 
@@ -158,7 +158,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       const handled = dispatch(slash.command, slash.args, {
         onNewChat: () => {
           setMessages([]);
-          sessionManagerRef.current = SessionManager.inMemory();
+          storeRef.current = createInMemorySessionStore();
           setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
         },
         onSwitchAgent: (id) => void initAgent(id),
