@@ -159,7 +159,7 @@ describe("web_fetch tool", () => {
       url: "https://httpbin.org/get",
     });
     expect(result).toContain("httpbin.org");
-  }, 15_000);
+  }, 30_000);
 
   it("returns error for invalid URL", async () => {
     const registry = new ToolRegistry("test");
