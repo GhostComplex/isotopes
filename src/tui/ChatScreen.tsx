@@ -11,7 +11,7 @@ import type { ChatMessage, ToolCallEntry, TuiOptions, Screen } from "./types.js"
 import { createLogger } from "../core/logger.js";
 import { runAgentLoop } from "../core/agent-runner.js";
 import { agentEventBus } from "../core/agent-event-bus.js";
-import { createInMemorySessionStore } from "./in-memory-store.js";
+import { SessionStoreManager } from "../core/session-store-manager.js";
 import type { SessionStore } from "../core/types.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
@@ -33,6 +33,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const cacheRef = useRef<AgentServiceCache | null>(null);
   const systemPromptRef = useRef("");
   const storeRef = useRef<{ store: SessionStore; sessionId: string } | null>(null);
+  const sessionStoreManagerRef = useRef(new SessionStoreManager());
   const autoMessageSent = useRef(false);
 
   const initAgent = useCallback(async (requestedAgent?: string) => {
@@ -69,7 +70,20 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
       cacheRef.current = result.instance;
       systemPromptRef.current = result.systemPrompt;
-      storeRef.current = createInMemorySessionStore();
+
+      const store = await sessionStoreManagerRef.current.getOrCreate(agentFile.id);
+      const mainKey = `tui:${agentFile.id}:main`;
+      const existing = await store.findByKey(mainKey);
+      let sessionId: string;
+      if (existing) {
+        sessionId = existing.id;
+        log.info(`Attached to existing main session: ${sessionId}`);
+      } else {
+        const session = await store.create(agentFile.id, { key: mainKey, transport: "web" });
+        sessionId = session.id;
+        log.info(`Created new main session: ${sessionId}`);
+      }
+      storeRef.current = { store, sessionId };
       setAgentReady(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -158,7 +172,13 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       const handled = dispatch(slash.command, slash.args, {
         onNewChat: () => {
           setMessages([]);
-          storeRef.current = createInMemorySessionStore();
+          void (async () => {
+            if (!storeRef.current) return;
+            const store = storeRef.current.store;
+            const newSession = await store.create(agentId, { transport: "web" });
+            storeRef.current = { store, sessionId: newSession.id };
+            log.info(`New chat session: ${newSession.id}`);
+          })();
           setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
         },
         onSwitchAgent: (id) => void initAgent(id),
