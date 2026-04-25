@@ -78,6 +78,9 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
   useEffect(() => {
     void initAgent(options.agent);
+    return () => {
+      abortRef.current?.abort();
+    };
   }, []);
 
   useEffect(() => {

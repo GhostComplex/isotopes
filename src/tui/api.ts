@@ -57,7 +57,10 @@ export async function isDaemonRunning(): Promise<boolean> {
 // -- Chat session management --
 
 export async function createSession(agentId?: string, sessionKey?: string): Promise<ChatSessionInfo> {
-  return postJson<ChatSessionInfo>("/api/chat/sessions", { agentId, sessionKey });
+  const body: Record<string, string> = {};
+  if (agentId !== undefined) body.agentId = agentId;
+  if (sessionKey !== undefined) body.sessionKey = sessionKey;
+  return postJson<ChatSessionInfo>("/api/chat/sessions", body);
 }
 
 export async function listChatSessions(): Promise<{ sessions: { sessionId: string; agentId: string; lastActivity: number }[] }> {
@@ -65,15 +68,15 @@ export async function listChatSessions(): Promise<{ sessions: { sessionId: strin
 }
 
 export async function getHistory(sessionId: string): Promise<{ messages: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
-  return fetchJson(`/api/chat/sessions/${sessionId}/messages`);
+  return fetchJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`);
 }
 
 export async function abortMessage(sessionId: string): Promise<void> {
-  await postJson(`/api/chat/sessions/${sessionId}/abort`);
+  await postJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}/abort`);
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  await deleteJson(`/api/chat/sessions/${sessionId}`);
+  await deleteJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}`);
 }
 
 // -- SSE streaming --
@@ -107,7 +110,7 @@ export async function sendMessage(
   onEvent: (event: SSEEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${getBaseUrl()}/api/chat/sessions/${sessionId}/message`, {
+  const res = await fetch(`${getBaseUrl()}/api/chat/sessions/${encodeURIComponent(sessionId)}/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
@@ -124,6 +127,7 @@ export async function sendMessage(
   const decoder = new TextDecoder();
   let buffer = "";
   let currentEvent = "";
+  let dataLines: string[] = [];
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -136,10 +140,17 @@ export async function sendMessage(
     for (const line of lines) {
       if (line.startsWith("event: ")) {
         currentEvent = line.slice(7).trim();
+        dataLines = [];
       } else if (line.startsWith("data: ")) {
-        const event = parseSSELine(currentEvent, line.slice(6));
-        if (event) onEvent(event);
+        dataLines.push(line.slice(6));
+      } else if (line === "") {
+        // Empty line = end of SSE event
+        if (currentEvent && dataLines.length > 0) {
+          const event = parseSSELine(currentEvent, dataLines.join("\n"));
+          if (event) onEvent(event);
+        }
         currentEvent = "";
+        dataLines = [];
       }
     }
   }
