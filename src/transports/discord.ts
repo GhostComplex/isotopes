@@ -26,7 +26,7 @@ import type { ContextConfigFile } from "../core/config.js";
 import { shouldRespondToMessage } from "../core/mention.js";
 import { loggers } from "../core/logger.js";
 import { ThreadBindingManager } from "../core/thread-bindings.js";
-import { startAgentLoop, type ActiveAgentHandle } from "../core/agent-runner.js";
+import { runAgentLoop, abortAgentSession, isAgentSessionActive } from "../core/agent-runner.js";
 import { agentEventBus } from "../core/agent-event-bus.js";
 import { isSilentReply } from "./silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -219,8 +219,6 @@ export class DiscordTransport implements Transport {
   private debouncer: InboundDebouncer;
   private commandHandler: SlashCommandHandler;
 
-  // Track which sessions are currently in a prompt turn
-  private activeHandles = new Map<string, ActiveAgentHandle>();
   // Buffer messages that arrive while a session is prompting
   private pendingMessages = new Map<string, Array<{ content: string; sender: string; timestamp: number }>>();
 
@@ -409,15 +407,12 @@ export class DiscordTransport implements Transport {
       const sessionStore = this.getSessionStore(agentId);
       const sessionKey = this.getSessionKey(msg, agentId);
       const session = await sessionStore.findByKey(sessionKey);
-      if (session && this.activeHandles.has(session.id)) {
-        const handle = this.activeHandles.get(session.id);
-        if (handle) {
-          log.info(`Main-agent /stop`, { sessionId: session.id, agentId });
-          handle.abort();
-          this.pendingMessages.delete(session.id);
-          await (msg.channel as SendableChannel).send("🛑 Stopped.");
-          return;
-        }
+      if (session && isAgentSessionActive(session.id)) {
+        log.info(`Main-agent /stop`, { sessionId: session.id, agentId });
+        abortAgentSession(session.id);
+        this.pendingMessages.delete(session.id);
+        await (msg.channel as SendableChannel).send("🛑 Stopped.");
+        return;
       }
       return;
     }
@@ -514,7 +509,7 @@ export class DiscordTransport implements Transport {
     // 6.5. If session is currently active (in a prompt turn), buffer this message instead.
     // The buffer is drained at turn_end via onToolComplete, where each message is
     // also persisted to SessionStore so future prompt() invocations replay them.
-    if (this.activeHandles.has(session.id)) {
+    if (isAgentSessionActive(session.id)) {
       log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
       const pending = this.pendingMessages.get(session.id) ?? [];
       pending.push({
@@ -855,8 +850,8 @@ export class DiscordTransport implements Transport {
       });
 
       // Create the agent loop runner function
-      const runLoop = async () => {
-        const handle = await startAgentLoop({
+      const runLoop = () => {
+        return runAgentLoop({
           cache,
           sessionStore,
           sessionId,
@@ -883,12 +878,6 @@ export class DiscordTransport implements Transport {
             return `[Messages arrived while you were working]\n${formatted}`;
           },
         });
-        this.activeHandles.set(sessionId, handle);
-        try {
-          return await handle.done;
-        } finally {
-          handle.session.dispose();
-        }
       };
 
       // Run with or without subagent context based on config
@@ -940,7 +929,6 @@ export class DiscordTransport implements Transport {
       unsubBus();
       agentEventBus.removeSession(sessionId);
       typing.stop();
-      this.activeHandles.delete(sessionId);
       this.pendingMessages.delete(sessionId);
     }
   }

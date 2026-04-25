@@ -11,6 +11,19 @@ import type { HookRegistry } from "../plugins/hooks.js";
 import { isAgentEvent } from "./agent-events.js";
 import { agentEventBus } from "./agent-event-bus.js";
 
+const activeSessions = new Map<string, AgentSession>();
+
+export function abortAgentSession(sessionId: string): boolean {
+  const session = activeSessions.get(sessionId);
+  if (!session) return false;
+  session.abort();
+  return true;
+}
+
+export function isAgentSessionActive(sessionId: string): boolean {
+  return activeSessions.has(sessionId);
+}
+
 export interface AgentRunResult {
   responseText: string;
   errorMessage: string | null;
@@ -29,7 +42,6 @@ export interface RunAgentOptions {
   agentId?: string;
   hooks?: HookRegistry;
 }
-
 
 export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResult> {
   const { cache, sessionStore, sessionId, systemPrompt, cwd, textInput, log, usageTracker, onToolComplete, agentId, hooks } = opts;
@@ -53,9 +65,7 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
     cwd,
   });
 
-  let responseText = "";
-  let errorMessage: string | null = null;
-  let activeSession: AgentSession | undefined = session;
+  activeSessions.set(sessionId, session);
 
   try {
     const result = await runSessionEvents(session, {
@@ -65,64 +75,7 @@ export async function runAgentLoop(opts: RunAgentOptions): Promise<AgentRunResul
       sessionId,
       onToolComplete,
     });
-    responseText = result.responseText;
-    errorMessage = result.errorMessage;
 
-    if (hooks && agentId && responseText) {
-      await hooks.emit("message_sending", {
-        agentId,
-        sessionId,
-        message: assistantMessage(responseText),
-      });
-    }
-
-    if (hooks && agentId) {
-      await hooks.emit("agent_end", { agentId, stopReason: errorMessage ? "error" : "end" });
-    }
-  } finally {
-    activeSession?.dispose();
-    activeSession = undefined;
-  }
-
-  return { responseText, errorMessage };
-}
-
-/** Returned handle for callers that need to steer/abort a running session */
-export interface ActiveAgentHandle {
-  session: AgentSession;
-  done: Promise<AgentRunResult>;
-  abort(): void;
-}
-
-/**
- * Start an agent loop and return a handle for mid-run control (steer, abort).
- * The session is NOT disposed automatically — caller must dispose.
- */
-export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgentHandle> {
-  const { cache, sessionStore, sessionId, systemPrompt, cwd, textInput, log, usageTracker, onToolComplete, agentId, hooks } = opts;
-
-  if (hooks && agentId && textInput) {
-    await hooks.emit("message_received", {
-      agentId,
-      sessionId,
-      message: userMessage(textInput),
-    });
-  }
-
-  const sessionManager = await sessionStore.getSessionManager(sessionId);
-  if (!sessionManager) {
-    throw new Error(`Session "${sessionId}" not found or has no SessionManager`);
-  }
-
-  const session = await cache.createSession({ sessionManager, systemPrompt, cwd });
-
-  const done = runSessionEvents(session, {
-    textInput,
-    log,
-    usageTracker,
-    sessionId,
-    onToolComplete,
-  }).then(async (result) => {
     if (hooks && agentId && result.responseText) {
       await hooks.emit("message_sending", {
         agentId,
@@ -130,17 +83,16 @@ export async function startAgentLoop(opts: RunAgentOptions): Promise<ActiveAgent
         message: assistantMessage(result.responseText),
       });
     }
+
     if (hooks && agentId) {
       await hooks.emit("agent_end", { agentId, stopReason: result.errorMessage ? "error" : "end" });
     }
-    return result;
-  });
 
-  return {
-    session,
-    done,
-    abort: () => session.abort(),
-  };
+    return result;
+  } finally {
+    activeSessions.delete(sessionId);
+    session.dispose();
+  }
 }
 
 // ---------------------------------------------------------------------------
