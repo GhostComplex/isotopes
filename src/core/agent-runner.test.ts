@@ -129,8 +129,8 @@ describe("runAgentLoop", () => {
     ]);
 
     const deltas: string[] = [];
-    const unsub = agentEventBus.on((sid, e) => {
-      if (sid === "s1" && e.type === "message_update") {
+    const unsub = agentEventBus.session("s1").on((e) => {
+      if (e.type === "message_update") {
         const ame = e.assistantMessageEvent;
         if (ame.type === "text_delta") {
           deltas.push(ame.delta);

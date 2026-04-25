@@ -111,9 +111,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     let responseText = "";
     const toolCalls: ToolCallEntry[] = [];
 
-    const unsub = agentEventBus.on((sid, e) => {
-      if (sid !== sessionId) return;
-
+    const unsub = agentEventBus.session(sessionId).on((e) => {
       if (e.type === "message_update") {
         const ame = e.assistantMessageEvent;
         if (ame.type === "text_delta") {

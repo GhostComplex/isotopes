@@ -1,8 +1,8 @@
 import type { AgentEvent } from "./types.js";
 
-type Listener = (sessionId: string, event: AgentEvent) => void;
+type Listener = (event: AgentEvent) => void;
 
-export class AgentEventBus {
+export class SessionEventEmitter {
   private listeners = new Set<Listener>();
 
   on(listener: Listener): () => void {
@@ -10,8 +10,43 @@ export class AgentEventBus {
     return () => this.listeners.delete(listener);
   }
 
-  emit(sessionId: string, event: AgentEvent): void {
-    for (const fn of this.listeners) fn(sessionId, event);
+  emit(event: AgentEvent): void {
+    for (const fn of this.listeners) {
+      try {
+        fn(event);
+      } catch {
+        // error isolation: one listener must not break others
+      }
+    }
+  }
+
+  removeAll(): void {
+    this.listeners.clear();
+  }
+
+  get size(): number {
+    return this.listeners.size;
+  }
+}
+
+export class AgentEventBus {
+  private sessions = new Map<string, SessionEventEmitter>();
+
+  session(sessionId: string): SessionEventEmitter {
+    let emitter = this.sessions.get(sessionId);
+    if (!emitter) {
+      emitter = new SessionEventEmitter();
+      this.sessions.set(sessionId, emitter);
+    }
+    return emitter;
+  }
+
+  removeSession(sessionId: string): void {
+    const emitter = this.sessions.get(sessionId);
+    if (emitter) {
+      emitter.removeAll();
+      this.sessions.delete(sessionId);
+    }
   }
 }
 

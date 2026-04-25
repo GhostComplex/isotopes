@@ -822,8 +822,7 @@ export class DiscordTransport implements Transport {
     const toolSummaries: string[] = [];
     let streamBuffer: SegmentedStreamBuffer | null = null;
 
-    const unsubBus = agentEventBus.on((sid, e) => {
-      if (sid !== sessionId) return;
+    const unsubBus = agentEventBus.session(sessionId).on((e) => {
       if (e.type === "message_update" && streamBuffer) {
         const ame = e.assistantMessageEvent;
         if (ame.type === "text_delta" && ame.delta.length > 0) {

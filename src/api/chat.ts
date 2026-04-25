@@ -158,16 +158,12 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
   try {
     const systemPrompt = deps.agentManager.getSystemPrompt?.(session.agentId) ?? "";
     const cwd = deps.agentManager.getWorkspacePath?.(session.agentId);
-    let lastTextLen = 0;
 
-    const unsub = agentEventBus.on((sid, e) => {
-      if (sid !== sessionId) return;
+    const unsub = agentEventBus.session(sessionId).on((e) => {
       if (e.type === "message_update") {
         const ame = e.assistantMessageEvent;
         if (ame.type === "text_delta") {
-          const currentLen = lastTextLen + ame.delta.length;
           writeEvent("text_delta", { text: ame.delta });
-          lastTextLen = currentLen;
         }
       } else if (e.type === "tool_execution_start") {
         writeEvent("tool_call", { toolCallId: e.toolCallId, toolName: e.toolName, args: e.args });

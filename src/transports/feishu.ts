@@ -446,16 +446,15 @@ export class FeishuTransport implements Transport {
     cwd: string | undefined,
     chatId: string,
   ): Promise<void> {
+    const toolSummaries: string[] = [];
+
+    const unsubBus = agentEventBus.session(sessionId).on((e) => {
+      if (this.config.showToolCalls && e.type === "tool_execution_start") {
+        toolSummaries.push(`🔧 ${e.toolName}`);
+      }
+    });
+
     try {
-      const toolSummaries: string[] = [];
-
-      const unsubBus = agentEventBus.on((sid, e) => {
-        if (sid !== sessionId) return;
-        if (this.config.showToolCalls && e.type === "tool_execution_start") {
-          toolSummaries.push(`🔧 ${e.toolName}`);
-        }
-      });
-
       const { responseText, errorMessage } = await runAgentLoop({
         cache,
         sessionStore: this.config.sessionStore,
@@ -465,8 +464,6 @@ export class FeishuTransport implements Transport {
         log,
         usageTracker: this.config.usageTracker,
       });
-
-      unsubBus();
 
       // Check for silent reply tokens — suppress outbound delivery
       if (isSilentReply(responseText)) {
@@ -490,6 +487,8 @@ export class FeishuTransport implements Transport {
       } catch {
         log.error("Failed to send error message to Feishu");
       }
+    } finally {
+      unsubBus();
     }
   }
 

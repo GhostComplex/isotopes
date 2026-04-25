@@ -168,7 +168,7 @@ async function runSessionEvents(
     const unsub = session.subscribe(async (event: AgentSessionEvent) => {
       if (!isAgentEvent(event)) return;
       const e = event as AgentEvent;
-      agentEventBus.emit(sessionId, e);
+      agentEventBus.session(sessionId).emit(e);
 
       if (e.type === "message_update") {
         const ame = e.assistantMessageEvent;
