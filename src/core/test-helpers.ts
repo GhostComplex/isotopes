@@ -1,5 +1,5 @@
 // src/core/test-helpers.ts — Shared test mocks for transport tests
-// DRY: both discord.test.ts and feishu.test.ts need identical AgentManager
+// DRY: transport tests need identical AgentManager
 // and SessionStore mocks. Centralise them here.
 
 import { vi } from "vitest";

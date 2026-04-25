@@ -23,14 +23,14 @@ describe("buildSessionKey", () => {
   });
 
   it("supports group scope", () => {
-    expect(buildSessionKey("feishu", "app-1", "group", "group-1", "agent-1")).toBe(
-      "feishu:app-1:group:group-1:agent-1",
+    expect(buildSessionKey("discord", "app-1", "group", "group-1", "agent-1")).toBe(
+      "discord:app-1:group:group-1:agent-1",
     );
   });
 
   it("produces unique keys for different transports", () => {
     const k1 = buildSessionKey("discord", "id", "dm", "u1", "a1");
-    const k2 = buildSessionKey("feishu", "id", "dm", "u1", "a1");
+    const k2 = buildSessionKey("slack", "id", "dm", "u1", "a1");
     expect(k1).not.toBe(k2);
   });
 

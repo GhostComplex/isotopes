@@ -23,7 +23,7 @@ underlying feature; channels without support silently ignore them.
 
 Place the tag at the start of your response, before any other text.
 Whitespace inside the brackets is allowed. Tags are channel-agnostic — each
-transport (Discord, Feishu, etc.) renders them in the platform's native
+transport (Discord, etc.) renders them in the platform's native
 reply / quote primitive where available.`;
 
 /**

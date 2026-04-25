@@ -37,7 +37,7 @@ describe("resolveBinding", () => {
 
   it("returns undefined when nothing matches", () => {
     const bindings = [binding("major", "discord", "major")];
-    const result = resolveBinding(bindings, { channel: "feishu" });
+    const result = resolveBinding(bindings, { channel: "slack" });
     expect(result).toBeUndefined();
   });
 
@@ -253,39 +253,39 @@ describe("resolveBinding", () => {
   it("resolves correct agent across different channels", () => {
     const bindings = [
       binding("discord-agent", "discord", "major"),
-      binding("feishu-agent", "feishu", "major"),
+      binding("slack-agent", "slack", "major"),
     ];
 
     const discord = resolveBinding(bindings, {
       channel: "discord",
       accountId: "major",
     });
-    const feishu = resolveBinding(bindings, {
-      channel: "feishu",
+    const slack = resolveBinding(bindings, {
+      channel: "slack",
       accountId: "major",
     });
 
     expect(discord?.agentId).toBe("discord-agent");
-    expect(feishu?.agentId).toBe("feishu-agent");
+    expect(slack?.agentId).toBe("slack-agent");
   });
 
   it("same agent bound to multiple channels", () => {
     const bindings = [
       binding("major", "discord", "major"),
-      binding("major", "feishu", "major"),
+      binding("major", "slack", "major"),
     ];
 
     const discord = resolveBinding(bindings, {
       channel: "discord",
       accountId: "major",
     });
-    const feishu = resolveBinding(bindings, {
-      channel: "feishu",
+    const slack = resolveBinding(bindings, {
+      channel: "slack",
       accountId: "major",
     });
 
     expect(discord?.agentId).toBe("major");
-    expect(feishu?.agentId).toBe("major");
+    expect(slack?.agentId).toBe("major");
   });
 
   // -----------------------------------------------------------------------
@@ -456,7 +456,7 @@ describe("toBindings", () => {
     const result = toBindings(
       [
         { agentId: "major", match: { channel: "discord", accountId: "major" } },
-        { agentId: "major", match: { channel: "feishu", accountId: "major" } },
+        { agentId: "major", match: { channel: "slack", accountId: "major" } },
         {
           agentId: "sac",
           match: {
@@ -470,7 +470,7 @@ describe("toBindings", () => {
     );
     expect(result).toHaveLength(3);
     expect(result[0].match.channel).toBe("discord");
-    expect(result[1].match.channel).toBe("feishu");
+    expect(result[1].match.channel).toBe("slack");
     expect(result[2].match.peer?.kind).toBe("group");
   });
 });
