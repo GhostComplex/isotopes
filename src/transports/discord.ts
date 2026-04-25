@@ -219,8 +219,6 @@ export class DiscordTransport implements Transport {
   private debouncer: InboundDebouncer;
   private commandHandler: SlashCommandHandler;
 
-  // Track which sessions are currently in a prompt turn (for /stop and pending message buffering)
-  private activeSessions = new Set<string>();
   // Buffer messages that arrive while a session is prompting
   private pendingMessages = new Map<string, Array<{ content: string; sender: string; timestamp: number }>>();
 
@@ -511,7 +509,7 @@ export class DiscordTransport implements Transport {
     // 6.5. If session is currently active (in a prompt turn), buffer this message instead.
     // The buffer is drained at turn_end via onToolComplete, where each message is
     // also persisted to SessionStore so future prompt() invocations replay them.
-    if (this.activeSessions.has(session.id)) {
+    if (isAgentSessionActive(session.id)) {
       log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
       const pending = this.pendingMessages.get(session.id) ?? [];
       pending.push({
@@ -853,7 +851,6 @@ export class DiscordTransport implements Transport {
 
       // Create the agent loop runner function
       const runLoop = () => {
-        this.activeSessions.add(sessionId);
         return runAgentLoop({
           cache,
           sessionStore,
@@ -932,7 +929,6 @@ export class DiscordTransport implements Transport {
       unsubBus();
       agentEventBus.removeSession(sessionId);
       typing.stop();
-      this.activeSessions.delete(sessionId);
       this.pendingMessages.delete(sessionId);
     }
   }

@@ -11,10 +11,6 @@ import type { HookRegistry } from "../plugins/hooks.js";
 import { isAgentEvent } from "./agent-events.js";
 import { agentEventBus } from "./agent-event-bus.js";
 
-// ---------------------------------------------------------------------------
-// Active session registry — allows external abort/steer by sessionId
-// ---------------------------------------------------------------------------
-
 const activeSessions = new Map<string, AgentSession>();
 
 export function abortAgentSession(sessionId: string): boolean {
@@ -24,20 +20,9 @@ export function abortAgentSession(sessionId: string): boolean {
   return true;
 }
 
-export function steerAgentSession(sessionId: string, text: string): boolean {
-  const session = activeSessions.get(sessionId);
-  if (!session) return false;
-  void session.steer(text);
-  return true;
-}
-
 export function isAgentSessionActive(sessionId: string): boolean {
   return activeSessions.has(sessionId);
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 export interface AgentRunResult {
   responseText: string;
