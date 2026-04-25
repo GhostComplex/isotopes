@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchStatus, fetchSessions, fetchUsage, isDaemonRunning, createSession, listChatSessions, getHistory, abortMessage, deleteSession, parseSSELine } from "./api.js";
+import { fetchStatus, fetchSessions, fetchUsage, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, parseSSELine } from "./api.js";
 
 const mockFetch = vi.fn();
 
@@ -23,15 +23,6 @@ describe("fetchStatus", () => {
   it("throws on non-ok response", async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 500, statusText: "Internal" });
     await expect(fetchStatus()).rejects.toThrow("API /api/status: 500 Internal");
-  });
-});
-
-describe("fetchSessions", () => {
-  it("returns session list", async () => {
-    const data = [{ id: "s1", agentId: "bot", source: "discord", status: "active", lastActivityAt: "" }];
-    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
-    const result = await fetchSessions();
-    expect(result).toEqual(data);
   });
 });
 
@@ -72,12 +63,13 @@ describe("createSession", () => {
   });
 });
 
-describe("listChatSessions", () => {
-  it("returns chat sessions", async () => {
-    const data = { sessions: [{ sessionId: "s1", agentId: "bot", lastActivity: 123 }] };
+describe("fetchSessions", () => {
+  it("returns all sessions", async () => {
+    const data = [{ id: "s1", agentId: "bot", source: "discord", status: "active", lastActivityAt: "" }];
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
-    const result = await listChatSessions();
+    const result = await fetchSessions();
     expect(result).toEqual(data);
+    expect(mockFetch).toHaveBeenCalledWith("http://127.0.0.1:2712/api/sessions");
   });
 });
 

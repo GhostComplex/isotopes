@@ -63,10 +63,6 @@ export async function createSession(agentId?: string, sessionKey?: string): Prom
   return postJson<ChatSessionInfo>("/api/chat/sessions", body);
 }
 
-export async function listChatSessions(): Promise<{ sessions: { sessionId: string; agentId: string; lastActivity: number }[] }> {
-  return fetchJson("/api/chat/sessions");
-}
-
 export async function getHistory(sessionId: string): Promise<{ messages: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
   return fetchJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`);
 }
