@@ -1,4 +1,4 @@
-import type { DaemonStatus, SessionSummary, UsageStats } from "./types.js";
+import type { ChatSessionInfo, DaemonStatus, SessionSummary, SSEEvent, UsageStats } from "./types.js";
 
 const DEFAULT_PORT = 2712;
 
@@ -14,6 +14,24 @@ async function fetchJson<T>(path: string): Promise<T> {
   if (!res.ok) throw new Error(`API ${path}: ${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
+
+async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`API ${path}: ${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
+}
+
+async function deleteJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${getBaseUrl()}${path}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`API ${path}: ${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
+}
+
+// -- Status / monitoring (existing) --
 
 export async function fetchStatus(): Promise<DaemonStatus> {
   return fetchJson<DaemonStatus>("/api/status");
@@ -33,5 +51,103 @@ export async function isDaemonRunning(): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+// -- Chat session management --
+
+export async function createSession(agentId?: string, sessionKey?: string): Promise<ChatSessionInfo> {
+  const body: Record<string, string> = {};
+  if (agentId !== undefined) body.agentId = agentId;
+  if (sessionKey !== undefined) body.sessionKey = sessionKey;
+  return postJson<ChatSessionInfo>("/api/chat/sessions", body);
+}
+
+export async function getHistory(sessionId: string): Promise<{ messages: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
+  return fetchJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`);
+}
+
+export async function abortMessage(sessionId: string): Promise<void> {
+  await postJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}/abort`);
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await deleteJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+// -- SSE streaming --
+
+export function parseSSELine(eventType: string, data: string): SSEEvent | null {
+  if (!eventType || !data) return null;
+  try {
+    const parsed = JSON.parse(data);
+    switch (eventType) {
+      case "text_delta":
+        return { type: "text_delta", text: parsed.text };
+      case "tool_call":
+        return { type: "tool_call", toolCallId: parsed.toolCallId, toolName: parsed.toolName, args: parsed.args };
+      case "tool_result":
+        return { type: "tool_result", toolCallId: parsed.toolCallId, toolName: parsed.toolName, result: parsed.result, isError: parsed.isError };
+      case "error":
+        return { type: "error", message: parsed.message };
+      case "agent_end":
+        return { type: "agent_end", stopReason: parsed.stopReason };
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+export async function sendMessage(
+  sessionId: string,
+  message: string,
+  onEvent: (event: SSEEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${getBaseUrl()}/api/chat/sessions/${encodeURIComponent(sessionId)}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+    signal,
+  });
+
+  if (!res.ok) {
+    throw new Error(`API chat message: ${res.status} ${res.statusText}`);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let currentEvent = "";
+  let dataLines: string[] = [];
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+        dataLines = [];
+      } else if (line.startsWith("data: ")) {
+        dataLines.push(line.slice(6));
+      } else if (line === "") {
+        // Empty line = end of SSE event
+        if (currentEvent && dataLines.length > 0) {
+          const event = parseSSELine(currentEvent, dataLines.join("\n"));
+          if (event) onEvent(event);
+        }
+        currentEvent = "";
+        dataLines = [];
+      }
+    }
   }
 }
