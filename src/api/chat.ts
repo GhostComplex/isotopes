@@ -107,6 +107,19 @@ addRoute("POST", "/api/chat/sessions", async (req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/chat/sessions — list active chat sessions
+// ---------------------------------------------------------------------------
+
+addRoute("GET", "/api/chat/sessions", (_req, res) => {
+  const sessions = [...chatSessions.values()].map((s) => ({
+    sessionId: s.id,
+    agentId: s.agentId,
+    lastActivity: s.lastActivity,
+  }));
+  sendJson(res, 200, { sessions });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/chat/sessions/:id/message — send message, stream response via SSE
 // ---------------------------------------------------------------------------
 

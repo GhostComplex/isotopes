@@ -37,6 +37,19 @@ export interface UsageStats {
   turns: number;
 }
 
+export interface ChatSessionInfo {
+  sessionId: string;
+  agentId: string;
+  resumed: boolean;
+}
+
+export type SSEEvent =
+  | { type: "text_delta"; text: string }
+  | { type: "tool_call"; toolCallId: string; toolName: string; args: unknown }
+  | { type: "tool_result"; toolCallId: string; toolName: string; result: unknown; isError: boolean }
+  | { type: "error"; message: string }
+  | { type: "agent_end"; stopReason: string };
+
 export type Screen = "chat" | "status";
 
 export interface TuiOptions {
