@@ -12,10 +12,38 @@ import { createLogger } from "../core/logger.js";
 import { runAgentLoop } from "../core/agent-runner.js";
 import { agentEventBus } from "../core/agent-event-bus.js";
 import { SessionStoreManager } from "../core/session-store-manager.js";
+import { messageText } from "../core/messages.js";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { SessionStore } from "../core/types.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
+const MAX_HISTORY_MESSAGES = 20;
 const log = createLogger("tui");
+
+function agentMessageToChatMessage(m: AgentMessage): ChatMessage | null {
+  const raw = m as unknown as Record<string, unknown>;
+  const role = m.role === "user" ? "user" as const
+    : m.role === "assistant" ? "assistant" as const
+    : null;
+  if (!role) return null;
+
+  const text = messageText(m);
+  const toolCalls: ToolCallEntry[] = [];
+  if (role === "assistant" && Array.isArray(raw.content)) {
+    for (const b of raw.content as Array<Record<string, unknown>>) {
+      if (b.type === "toolCall" && typeof b.id === "string" && typeof b.name === "string") {
+        toolCalls.push({
+          id: b.id,
+          name: b.name,
+          args: typeof b.arguments === "string" ? b.arguments : JSON.stringify(b.arguments ?? {}),
+        });
+      }
+    }
+  }
+
+  const ts = typeof raw.timestamp === "number" ? new Date(raw.timestamp) : new Date();
+  return { role, content: text, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, timestamp: ts };
+}
 
 interface Props {
   options: TuiOptions;
@@ -84,6 +112,22 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         log.info(`Created new main session: ${sessionId}`);
       }
       storeRef.current = { store, sessionId };
+
+      if (existing) {
+        const history = await store.getMessages(sessionId);
+        const chatMessages = history
+          .map(agentMessageToChatMessage)
+          .filter((m): m is ChatMessage => m !== null)
+          .slice(-MAX_HISTORY_MESSAGES);
+        if (chatMessages.length > 0) {
+          const skipped = history.length - chatMessages.length;
+          const prefix: ChatMessage[] = skipped > 0
+            ? [{ role: "system", content: `… ${skipped} earlier messages`, timestamp: chatMessages[0].timestamp }]
+            : [];
+          setMessages([...prefix, ...chatMessages]);
+        }
+      }
+
       setAgentReady(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
