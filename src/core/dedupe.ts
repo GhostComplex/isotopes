@@ -14,7 +14,6 @@ export interface DedupeCacheOptions {
  *
  * Transports build the key from their own identifiers:
  * - Discord: `${botId}:${channelId}:${messageId}`
- * - Feishu:  `${appId}:${chatId}:${messageId}`
  */
 export class DedupeCache {
   private cache = new Map<string, number>();

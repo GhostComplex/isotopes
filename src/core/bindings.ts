@@ -9,7 +9,7 @@ import type { Binding, BindingPeer } from "./types.js";
 
 /** Describes the source of an incoming message for binding resolution */
 export interface BindingQuery {
-  /** Transport channel type (e.g. "discord", "feishu") */
+  /** Transport channel type (e.g. "discord") */
   channel: string;
   /** Account identifier within that channel */
   accountId?: string;

@@ -103,13 +103,13 @@ export interface SubagentSessionMetadata {
 
 /**
  * Session metadata. `transport` is set for sessions originating from a chat
- * transport (discord/feishu/web). Subagent runs have `subagent` populated
+ * transport (discord/web). Subagent runs have `subagent` populated
  * and no `transport` — use `metadata.subagent !== undefined` as the
  * discriminator.
  */
 export interface SessionMetadata {
   key?: string;                        // Unique key for session lookup (e.g., discord:{botId}:channel:{id}:{agentId})
-  transport?: 'discord' | 'feishu' | 'web';
+  transport?: 'discord' | 'web';
   channelId?: string;
   channelName?: string;
   guildName?: string;
@@ -167,7 +167,7 @@ export interface BindingPeer {
 
 /** Match criteria for a binding rule */
 export interface BindingMatch {
-  /** Transport channel type (e.g. "discord", "feishu") */
+  /** Transport channel type (e.g. "discord") */
   channel: string;
   /** Account identifier within that channel */
   accountId?: string;
@@ -185,7 +185,7 @@ export interface Binding {
 // Channel config — per-guild/group settings
 // ---------------------------------------------------------------------------
 
-/** Per-guild (Discord) or per-group (Feishu) configuration */
+/** Per-guild (Discord) configuration */
 export interface GuildConfig {
   /** Whether the bot must be @mentioned to respond. Default: true */
   requireMention?: boolean;
@@ -268,11 +268,6 @@ export interface ChannelsConfig {
     enabled?: boolean;
     accounts?: Record<string, DiscordAccountConfig>;
   };
-  feishu?: {
-    enabled?: boolean;
-    accounts?: Record<string, unknown>;
-    groups?: Record<string, GuildConfig>;
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -336,7 +331,7 @@ export type CronActionConfig =
 // Transport
 // ---------------------------------------------------------------------------
 
-/** Lifecycle interface for a message transport (Discord, Feishu, etc.). */
+/** Lifecycle interface for a message transport (Discord, etc.). */
 export interface Transport {
   start(): Promise<void>;
   stop(): Promise<void>;

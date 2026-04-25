@@ -50,7 +50,6 @@ interface PendingBuffer {
  *
  * Key composition by transport:
  * - Discord: `discord:${channelId}:${authorId}`
- * - Feishu:  `feishu:${chatId}:${userId}`
  */
 export class InboundDebouncer {
   private buffers = new Map<string, PendingBuffer>();
