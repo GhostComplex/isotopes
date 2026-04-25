@@ -3,7 +3,6 @@
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
-import { messageText } from "../core/messages.js";
 import { createLogger } from "../core/logger.js";
 import { randomUUID } from "node:crypto";
 import { runAgentLoop } from "../core/agent-runner.js";
@@ -230,14 +229,7 @@ addRoute("GET", "/api/chat/sessions/:id/messages", async (req, res, deps) => {
 
   const store = await deps.sessionStoreManager.getOrCreate(session.agentId);
   const messages = await store.getMessages(req.params.id);
-  sendJson(res, 200, {
-    messages: messages.map((m) => ({
-      role: m.role,
-      content: messageText(m),
-      timestamp: "timestamp" in m && typeof m.timestamp === "number"
-        ? new Date(m.timestamp).toISOString() : undefined,
-    })),
-  });
+  sendJson(res, 200, { messages });
 });
 
 // ---------------------------------------------------------------------------

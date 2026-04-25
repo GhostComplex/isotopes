@@ -11,7 +11,6 @@ import type { CronScheduler, CronJobInput } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { SessionStore } from "../core/types.js";
-import { messageText } from "../core/messages.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { HookRegistry } from "../plugins/hooks.js";
@@ -165,12 +164,7 @@ addRoute("GET", "/api/sessions/:id", async (req, res, deps) => {
           createdAt: discordSession.lastActiveAt.toISOString(),
           lastActivityAt: discordSession.lastActiveAt.toISOString(),
           source: "discord",
-          history: messages.map((m) => ({
-            role: m.role,
-            content: messageText(m),
-            timestamp: "timestamp" in m && typeof m.timestamp === "number"
-              ? new Date(m.timestamp).toISOString() : undefined,
-          })),
+          history: messages,
         });
         return;
       }
@@ -190,14 +184,7 @@ addRoute("GET", "/api/sessions/:id/messages", async (req, res, deps) => {
       const discordSession = await store.get(req.params.id);
       if (discordSession) {
         const messages = await store.getMessages(req.params.id);
-        sendJson(res, 200, {
-          messages: messages.map((m) => ({
-            role: m.role,
-            content: messageText(m),
-            timestamp: "timestamp" in m && typeof m.timestamp === "number"
-              ? new Date(m.timestamp).toISOString() : undefined,
-          })),
-        });
+        sendJson(res, 200, { messages });
         return;
       }
     }
