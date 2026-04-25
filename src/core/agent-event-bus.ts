@@ -1,4 +1,7 @@
 import type { AgentEvent } from "./types.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("event-bus");
 
 type Listener = (event: AgentEvent) => void;
 
@@ -14,8 +17,8 @@ export class SessionEventEmitter {
     for (const fn of this.listeners) {
       try {
         fn(event);
-      } catch {
-        // error isolation: one listener must not break others
+      } catch (err) {
+        log.warn("Event listener threw", err);
       }
     }
   }
