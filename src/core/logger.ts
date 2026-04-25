@@ -104,7 +104,6 @@ export const logger = createLogger("isotopes");
 interface LoggerMap {
   core: Logger;
   discord: Logger;
-  feishu: Logger;
   agent: Logger;
   session: Logger;
   tools: Logger;

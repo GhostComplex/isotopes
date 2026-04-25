@@ -278,7 +278,7 @@ export interface IsotopesConfigFileRaw {
   agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[] };
   /** Agent ↔ Channel bindings */
   bindings?: BindingConfigFile[];
-  /** Channel configurations (Discord/Feishu accounts, per-guild settings) */
+  /** Channel configurations (Discord accounts, per-guild settings) */
   channels?: ChannelsConfig;
   /** Sub-agent (Claude Agent SDK) configuration */
   subagent?: SubagentConfigFile;

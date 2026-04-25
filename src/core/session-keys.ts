@@ -7,8 +7,6 @@
 //   discord:bot-123:channel:456:default
 //   discord:bot-123:thread:789:default
 //   discord:bot-123:dm:user-1:default
-//   feishu:app123:dm:user456:agent1
-//   feishu:app123:group:oc_group789:agent1
 
 export type SessionScope = "channel" | "thread" | "dm" | "group";
 
