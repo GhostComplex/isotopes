@@ -16,6 +16,7 @@ import type { ContextConfigFile } from "../core/config.js";
 import { resolveBinding } from "../core/bindings.js";
 import { loggers } from "../core/logger.js";
 import { runAgentLoop } from "../core/agent-runner.js";
+import { agentEventBus } from "../core/agent-event-bus.js";
 import { isSilentReply } from "./silent-reply.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import { buildSessionKey, type SessionScope } from "../core/session-keys.js";
@@ -156,6 +157,8 @@ export interface FeishuTransportConfig {
   context?: ContextConfigFile;
   /** Usage tracker for per-session/global token accumulation */
   usageTracker?: UsageTracker;
+  /** Whether to show tool call info in agent responses (default: false) */
+  showToolCalls?: boolean;
 }
 
 /** Shape of the `im.message.receive_v1` event data from the Feishu SDK. */
@@ -443,6 +446,14 @@ export class FeishuTransport implements Transport {
     cwd: string | undefined,
     chatId: string,
   ): Promise<void> {
+    const toolSummaries: string[] = [];
+
+    const unsubBus = agentEventBus.session(sessionId).on((e) => {
+      if (this.config.showToolCalls && e.type === "tool_execution_start") {
+        toolSummaries.push(`🔧 ${e.toolName}`);
+      }
+    });
+
     try {
       const { responseText, errorMessage } = await runAgentLoop({
         cache,
@@ -465,6 +476,9 @@ export class FeishuTransport implements Transport {
       if (replyText) {
         await this.sendTextMessage(chatId, replyText);
       }
+      if (toolSummaries.length > 0) {
+        await this.sendTextMessage(chatId, toolSummaries.join("\n"));
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       log.error(`Agent error: ${errorMsg}`);
@@ -473,6 +487,9 @@ export class FeishuTransport implements Transport {
       } catch {
         log.error("Failed to send error message to Feishu");
       }
+    } finally {
+      unsubBus();
+      agentEventBus.removeSession(sessionId);
     }
   }
 

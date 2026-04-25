@@ -2,6 +2,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { runAgentLoop } from "./agent-runner.js";
+import { agentEventBus } from "./agent-event-bus.js";
 import { createMockSessionStore } from "./test-helpers.js";
 import type { AgentServiceCache } from "./pi-mono.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
@@ -120,7 +121,7 @@ describe("runAgentLoop", () => {
     expect(result.errorMessage).toBe("Unknown agent error");
   });
 
-  it("calls onTextDelta with accumulated text", async () => {
+  it("emits text_delta events via global bus", async () => {
     const { cache } = createMockCache([
       { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "a" } as never },
       { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "b" } as never },
@@ -128,6 +129,15 @@ describe("runAgentLoop", () => {
     ]);
 
     const deltas: string[] = [];
+    const unsub = agentEventBus.session("s1").on((e) => {
+      if (e.type === "message_update") {
+        const ame = e.assistantMessageEvent;
+        if (ame.type === "text_delta") {
+          deltas.push(ame.delta);
+        }
+      }
+    });
+
     await runAgentLoop({
       cache,
       sessionStore: createMockSessionStoreWithManager(),
@@ -135,10 +145,10 @@ describe("runAgentLoop", () => {
       systemPrompt: "test",
       textInput: "hi",
       log: createMockLogger(),
-      onTextDelta: (text) => { deltas.push(text); },
     });
 
-    expect(deltas).toEqual(["a", "ab"]);
+    unsub();
+    expect(deltas).toEqual(["a", "b"]);
   });
 
   it("calls onToolComplete after turn_end and injects via steer", async () => {

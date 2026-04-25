@@ -3,10 +3,10 @@
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
-import { messageText } from "../core/messages.js";
 import { createLogger } from "../core/logger.js";
 import { randomUUID } from "node:crypto";
 import { runAgentLoop } from "../core/agent-runner.js";
+import { agentEventBus } from "../core/agent-event-bus.js";
 
 const log = createLogger("api:chat");
 
@@ -154,10 +154,24 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
+  const sessionEmitter = agentEventBus.session(sessionId);
+  const unsub = sessionEmitter.on((e) => {
+    if (e.type === "message_update") {
+      const ame = e.assistantMessageEvent;
+      if (ame.type === "text_delta") {
+        writeEvent("text_delta", { text: ame.delta });
+      }
+    } else if (e.type === "tool_execution_start") {
+      writeEvent("tool_call", { toolCallId: e.toolCallId, toolName: e.toolName, args: e.args });
+    } else if (e.type === "tool_execution_end") {
+      writeEvent("tool_result", { toolCallId: e.toolCallId, toolName: e.toolName, result: e.result, isError: e.isError });
+    }
+  });
+
   try {
     const systemPrompt = deps.agentManager.getSystemPrompt?.(session.agentId) ?? "";
     const cwd = deps.agentManager.getWorkspacePath?.(session.agentId);
-    let lastTextLen = 0;
+
     const result = await runAgentLoop({
       cache,
       sessionStore: store,
@@ -166,18 +180,6 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
       cwd,
       textInput: body.message,
       log,
-      onTextDelta: (currentText) => {
-        const delta = currentText.slice(lastTextLen);
-        lastTextLen = currentText.length;
-        if (delta) writeEvent("text_delta", { text: delta });
-      },
-      onToolEvent: (event) => {
-        if (event.type === "start") {
-          writeEvent("tool_call", { toolName: event.toolName, args: event.args });
-        } else {
-          writeEvent("tool_result", { toolName: event.toolName, result: event.result, isError: event.isError });
-        }
-      },
       hooks: deps.hooks,
       agentId: session.agentId,
     });
@@ -189,6 +191,8 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
   } catch (err) {
     writeEvent("error", { message: err instanceof Error ? err.message : String(err) });
   } finally {
+    unsub();
+    agentEventBus.removeSession(sessionId);
     res.end();
   }
 });
@@ -226,14 +230,7 @@ addRoute("GET", "/api/chat/sessions/:id/messages", async (req, res, deps) => {
 
   const store = await deps.sessionStoreManager.getOrCreate(session.agentId);
   const messages = await store.getMessages(req.params.id);
-  sendJson(res, 200, {
-    messages: messages.map((m) => ({
-      role: m.role,
-      content: messageText(m),
-      timestamp: "timestamp" in m && typeof m.timestamp === "number"
-        ? new Date(m.timestamp).toISOString() : undefined,
-    })),
-  });
+  sendJson(res, 200, { messages });
 });
 
 // ---------------------------------------------------------------------------
