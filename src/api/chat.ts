@@ -154,22 +154,23 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
+  const sessionEmitter = agentEventBus.session(sessionId);
+  const unsub = sessionEmitter.on((e) => {
+    if (e.type === "message_update") {
+      const ame = e.assistantMessageEvent;
+      if (ame.type === "text_delta") {
+        writeEvent("text_delta", { text: ame.delta });
+      }
+    } else if (e.type === "tool_execution_start") {
+      writeEvent("tool_call", { toolCallId: e.toolCallId, toolName: e.toolName, args: e.args });
+    } else if (e.type === "tool_execution_end") {
+      writeEvent("tool_result", { toolCallId: e.toolCallId, toolName: e.toolName, result: e.result, isError: e.isError });
+    }
+  });
+
   try {
     const systemPrompt = deps.agentManager.getSystemPrompt?.(session.agentId) ?? "";
     const cwd = deps.agentManager.getWorkspacePath?.(session.agentId);
-
-    const unsub = agentEventBus.session(sessionId).on((e) => {
-      if (e.type === "message_update") {
-        const ame = e.assistantMessageEvent;
-        if (ame.type === "text_delta") {
-          writeEvent("text_delta", { text: ame.delta });
-        }
-      } else if (e.type === "tool_execution_start") {
-        writeEvent("tool_call", { toolCallId: e.toolCallId, toolName: e.toolName, args: e.args });
-      } else if (e.type === "tool_execution_end") {
-        writeEvent("tool_result", { toolCallId: e.toolCallId, toolName: e.toolName, result: e.result, isError: e.isError });
-      }
-    });
 
     const result = await runAgentLoop({
       cache,
@@ -183,8 +184,6 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
       agentId: session.agentId,
     });
 
-    unsub();
-
     if (result.errorMessage) {
       writeEvent("error", { message: result.errorMessage });
     }
@@ -192,6 +191,8 @@ addRoute("POST", "/api/chat/sessions/:id/message", async (req, res, deps) => {
   } catch (err) {
     writeEvent("error", { message: err instanceof Error ? err.message : String(err) });
   } finally {
+    unsub();
+    agentEventBus.removeSession(sessionId);
     res.end();
   }
 });

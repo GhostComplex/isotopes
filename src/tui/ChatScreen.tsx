@@ -199,10 +199,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
+    } finally {
+      unsub();
+      setIsStreaming(false);
     }
-
-    unsub();
-    setIsStreaming(false);
   };
 
   const handleSubmit = () => {
@@ -214,14 +214,19 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       const handled = dispatch(slash.command, slash.args, {
         onNewChat: () => {
           setMessages([]);
-          void (async () => {
-            if (!storeRef.current) return;
-            const store = storeRef.current.store;
-            const newSession = await store.create(agentId, { transport: "web" });
-            storeRef.current = { store, sessionId: newSession.id };
-            log.info(`New chat session: ${newSession.id}`);
+          setIsStreaming(true);
+          (async () => {
+            try {
+              if (!storeRef.current) return;
+              const store = storeRef.current.store;
+              const newSession = await store.create(agentId, { transport: "web" });
+              storeRef.current = { store, sessionId: newSession.id };
+              log.info(`New chat session: ${newSession.id}`);
+              setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
+            } finally {
+              setIsStreaming(false);
+            }
           })();
-          setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
         },
         onSwitchAgent: (id) => void initAgent(id),
         onExit: () => exit(),

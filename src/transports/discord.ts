@@ -938,6 +938,7 @@ export class DiscordTransport implements Transport {
       }
     } finally {
       unsubBus();
+      agentEventBus.removeSession(sessionId);
       typing.stop();
       this.activeHandles.delete(sessionId);
       this.pendingMessages.delete(sessionId);

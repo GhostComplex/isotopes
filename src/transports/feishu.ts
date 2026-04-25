@@ -489,6 +489,7 @@ export class FeishuTransport implements Transport {
       }
     } finally {
       unsubBus();
+      agentEventBus.removeSession(sessionId);
     }
   }
 
