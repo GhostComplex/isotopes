@@ -22,7 +22,6 @@ export interface DaemonStatus {
 export interface SessionSummary {
   id: string;
   agentId: string;
-  source: string;
   status: string;
   lastActivityAt: string;
 }
