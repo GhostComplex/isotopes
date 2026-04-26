@@ -34,20 +34,11 @@ function isAgentEvent(e: { type: string }): e is AgentEvent {
   return AGENT_EVENT_TYPES.has(e.type);
 }
 
-/**
- * Narrow shape over {@link PiMonoCore} that supports per-agent tool registries.
- * `PiMonoCore` satisfies this interface.
- */
-export interface BuiltinPiMonoCore extends PiMonoCore {
-  setToolRegistry(agentId: string, registry: ToolRegistry): void;
-  clearToolRegistry(agentId: string): void;
-}
-
 /** Runner that runs a subagent in-process via the supplied PiMonoCore. */
 export class BuiltinRunner implements SubagentRunner {
   readonly agent: SubagentAgent = "builtin";
 
-  constructor(private readonly core: BuiltinPiMonoCore) {}
+  constructor(private readonly core: PiMonoCore) {}
 
   async *run(
     taskId: string,

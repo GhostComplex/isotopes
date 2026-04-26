@@ -4,8 +4,8 @@ import { describe, it, expect, vi } from "vitest";
 import type { AgentConfig, ProviderConfig } from "../../core/types.js";
 import { ToolRegistry } from "../../core/tools.js";
 import type { SubagentEvent } from "../types.js";
-import { BuiltinRunner, type BuiltinPiMonoCore } from "./builtin.js";
-import type { AgentServiceCache } from "../../core/pi-mono.js";
+import { BuiltinRunner } from "./builtin.js";
+import type { AgentServiceCache, PiMonoCore } from "../../core/pi-mono.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
 function makeRegistry(names: string[]): ToolRegistry {
@@ -24,7 +24,7 @@ function fakeProvider(): ProviderConfig {
 }
 
 function makeCore(events: AgentEvent[]): {
-  core: BuiltinPiMonoCore;
+  core: PiMonoCore;
   setIds: string[];
   clearedIds: string[];
   capturedConfig: AgentConfig | undefined;
@@ -67,7 +67,7 @@ function makeCore(events: AgentEvent[]): {
       capturedConfig = config;
       return cache;
     },
-  } as unknown as BuiltinPiMonoCore;
+  } as unknown as PiMonoCore;
 
   return {
     core,
@@ -164,6 +164,72 @@ describe("BuiltinRunner", () => {
     expect(harness.abortCalled).toBeGreaterThanOrEqual(1);
   });
 
+  it("skips empty text messages", async () => {
+    const harness = makeCore([
+      { type: "turn_start" } as AgentEvent,
+      { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "   " } as never } as AgentEvent,
+      { type: "turn_end", message: {} as never, toolResults: [] } as AgentEvent,
+      { type: "agent_end", messages: [] } as AgentEvent,
+    ]);
+    const runner = new BuiltinRunner(harness.core);
+    const out = await collect(
+      runner.run("task-skip", {
+        agent: "builtin", prompt: "p", cwd: "/tmp",
+        builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
+      }, { abort: new AbortController().signal }),
+    );
+    expect(out).toEqual([{ type: "done", exitCode: 0 }]);
+  });
+
+  it("translates tool_execution_start to tool_use", async () => {
+    const harness = makeCore([
+      { type: "tool_execution_start", toolCallId: "1", toolName: "shell", args: { cmd: "ls" } } as AgentEvent,
+      { type: "agent_end", messages: [] } as AgentEvent,
+    ]);
+    const runner = new BuiltinRunner(harness.core);
+    const out = await collect(
+      runner.run("task-tool", {
+        agent: "builtin", prompt: "p", cwd: "/tmp",
+        builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
+      }, { abort: new AbortController().signal }),
+    );
+    expect(out[0]).toEqual({ type: "tool_use", toolName: "shell", toolInput: { cmd: "ls" } });
+  });
+
+  it("translates tool_execution_end to tool_result with error flag", async () => {
+    const harness = makeCore([
+      { type: "tool_execution_end", toolCallId: "1", toolName: "test", result: "ok", isError: false } as AgentEvent,
+      { type: "tool_execution_end", toolCallId: "2", toolName: "test", result: "boom", isError: true } as AgentEvent,
+      { type: "agent_end", messages: [] } as AgentEvent,
+    ]);
+    const runner = new BuiltinRunner(harness.core);
+    const out = await collect(
+      runner.run("task-tresult", {
+        agent: "builtin", prompt: "p", cwd: "/tmp",
+        builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
+      }, { abort: new AbortController().signal }),
+    );
+    expect(out[0]).toEqual({ type: "tool_result", toolResult: "ok" });
+    expect(out[1]).toEqual({ type: "tool_result", toolResult: "boom", error: "tool error" });
+  });
+
+  it("emits error+done(1) when agent_end carries errorMessage", async () => {
+    const harness = makeCore([
+      { type: "agent_end", messages: [{ role: "assistant", errorMessage: "kaboom", content: [], timestamp: 0 }] } as unknown as AgentEvent,
+    ]);
+    const runner = new BuiltinRunner(harness.core);
+    const out = await collect(
+      runner.run("task-err", {
+        agent: "builtin", prompt: "p", cwd: "/tmp",
+        builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
+      }, { abort: new AbortController().signal }),
+    );
+    expect(out).toEqual([
+      { type: "error", error: "kaboom" },
+      { type: "done", exitCode: 1 },
+    ]);
+  });
+
   it("clears the tool registry even if the agent throws", async () => {
     const setIds: string[] = [];
     const clearedIds: string[] = [];
@@ -181,7 +247,7 @@ describe("BuiltinRunner", () => {
       setToolRegistry: (id: string) => setIds.push(id),
       clearToolRegistry: (id: string) => clearedIds.push(id),
       createServiceCache: () => errCache,
-    } as unknown as BuiltinPiMonoCore;
+    } as unknown as PiMonoCore;
     const runner = new BuiltinRunner(core);
 
     const out = await collect(

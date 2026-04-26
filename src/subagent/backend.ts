@@ -13,18 +13,15 @@ import {
   type SubagentSpawnOptions,
 } from "./types.js";
 import type { ResolvedSubagentConfig, SubagentType } from "../core/config.js";
+import type { PiMonoCore } from "../core/pi-mono.js";
 import type { SubagentRunner } from "./runner.js";
 import { ClaudeRunner } from "./runners/claude.js";
-import { BuiltinRunner, type BuiltinPiMonoCore } from "./runners/builtin.js";
+import { BuiltinRunner } from "./runners/builtin.js";
 
 const log = createLogger("subagent:backend");
 
 /** Maximum concurrent sub-agent runs allowed */
 export const MAX_CONCURRENT_AGENTS = 5;
-
-// Re-exported for backward compatibility with consumers that imported
-// `mapSdkMessage` from this module before the runner split.
-export { mapSdkMessage } from "./runners/claude.js";
 
 /** Tracks an in-flight run so it can be cancelled. */
 interface RunHandle {
@@ -44,7 +41,7 @@ export interface SubagentBackendOptions {
    * BuiltinRunner is registered for the "builtin" agent. When omitted,
    * spawning a "builtin" agent throws.
    */
-  core?: BuiltinPiMonoCore;
+  core?: PiMonoCore;
   /**
    * Pre-built runners. When provided, replaces the runners that would have
    * been built from the other options. Primarily a hook for tests.

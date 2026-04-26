@@ -11,8 +11,8 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: (...args: unknown[]) => mockQuery(...args),
 }));
 
-import { SubagentBackend, mapSdkMessage, collectResult, MAX_CONCURRENT_AGENTS } from "./backend.js";
-import { ClaudeRunner } from "./runners/claude.js";
+import { SubagentBackend, collectResult, MAX_CONCURRENT_AGENTS } from "./backend.js";
+import { ClaudeRunner, mapSdkMessage } from "./runners/claude.js";
 import type { SubagentEvent } from "./types.js";
 
 describe("mapSdkMessage", () => {

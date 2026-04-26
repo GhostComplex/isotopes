@@ -162,16 +162,6 @@ export class HotReloadManager {
   }
 
   /**
-   * Manually trigger reload for all registered agents.
-   */
-  async reloadAll(): Promise<void> {
-    const promises = Array.from(this.agentWorkspaces.keys()).map((agentId) =>
-      this.reload(agentId),
-    );
-    await Promise.all(promises);
-  }
-
-  /**
    * Register an event handler for reload events.
    */
   onReload(handler: ReloadEventHandler): () => void {
@@ -180,20 +170,6 @@ export class HotReloadManager {
       const idx = this.eventHandlers.indexOf(handler);
       if (idx !== -1) this.eventHandlers.splice(idx, 1);
     };
-  }
-
-  /**
-   * Check if hot-reload is active.
-   */
-  isActive(): boolean {
-    return this.started && this.config.enabled;
-  }
-
-  /**
-   * Get list of registered agents.
-   */
-  getRegisteredAgents(): string[] {
-    return Array.from(this.agentWorkspaces.keys());
   }
 
   // -----------------------------------------------------------------------

@@ -10,11 +10,11 @@ export type {
   SubagentEventType,
   SubagentEvent,
   SubagentResult,
-  DiscordSinkConfig,
   SubagentTask,
 } from "./types.js";
 
-export { SubagentBackend, collectResult, summarizeEvents, mapSdkMessage, MAX_CONCURRENT_AGENTS } from "./backend.js";
+export { SubagentBackend, collectResult, summarizeEvents, MAX_CONCURRENT_AGENTS } from "./backend.js";
+export { mapSdkMessage } from "./runners/claude.js";
 export type { SubagentBackendOptions } from "./backend.js";
 
 export type { SubagentStreamSink, SubagentStreamContext } from "../core/subagent-context.js";

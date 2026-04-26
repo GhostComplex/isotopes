@@ -17,8 +17,13 @@ export class FailureTracker {
   // sessionId → spawn count in current window
   private spawnCounts = new Map<string, { count: number; windowStart: number }>();
 
-  private maxSpawnsPerWindow = 5;
-  private windowMs = 5 * 60 * 1000;
+  private maxSpawnsPerWindow: number;
+  private windowMs: number;
+
+  constructor(options?: { maxSpawnsPerWindow?: number; windowMs?: number }) {
+    this.maxSpawnsPerWindow = options?.maxSpawnsPerWindow ?? 5;
+    this.windowMs = options?.windowMs ?? 5 * 60 * 1000;
+  }
 
   recordFailure(sessionId: string, task: string, _error: string): void {
     const key = taskKey(task);
@@ -81,27 +86,6 @@ export class FailureTracker {
     this.spawnCounts.delete(sessionId);
   }
 
-  getFailureCount(sessionId: string, task: string): number {
-    return this.failures.get(sessionId)?.get(taskKey(task)) ?? 0;
-  }
-
-  isCancelled(sessionId: string, task: string): boolean {
-    return this.cancelled.get(sessionId)?.has(taskKey(task)) ?? false;
-  }
-
-  setRateLimitConfig(config: { maxSpawnsPerWindow?: number; windowMs?: number }): void {
-    if (config.maxSpawnsPerWindow !== undefined) this.maxSpawnsPerWindow = config.maxSpawnsPerWindow;
-    if (config.windowMs !== undefined) this.windowMs = config.windowMs;
-    log.info("Updated rate limit config", { maxSpawnsPerWindow: this.maxSpawnsPerWindow, windowMs: this.windowMs });
-  }
-
-  isRateLimited(sessionId: string): BlockCheck {
-    const entry = this.spawnCounts.get(sessionId);
-    if (entry && Date.now() - entry.windowStart <= this.windowMs && entry.count >= this.maxSpawnsPerWindow) {
-      return { blocked: true, reason: `Rate limit: ${entry.count} spawns in ${this.windowMs / 60000} min window.` };
-    }
-    return { blocked: false };
-  }
 }
 
 function taskKey(task: string): string {
