@@ -29,8 +29,15 @@ export interface WorkspaceTemplate {
 
 const TEMPLATE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "template-files");
 
+const templateCache = new Map<string, string>();
+
 function loadTemplate(filename: string): string {
-  return readFileSync(path.join(TEMPLATE_DIR, filename), "utf-8");
+  let content = templateCache.get(filename);
+  if (content === undefined) {
+    content = readFileSync(path.join(TEMPLATE_DIR, filename), "utf-8");
+    templateCache.set(filename, content);
+  }
+  return content;
 }
 
 // ---------------------------------------------------------------------------
