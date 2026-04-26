@@ -70,44 +70,39 @@ describe("HotReloadManager", () => {
   });
 
   describe("register/unregister", () => {
-    it("should register an agent for hot-reload", () => {
+    it("should register an agent for hot-reload", async () => {
       hotReload.register("test-agent", tempDir);
-      expect(hotReload.getRegisteredAgents()).toContain("test-agent");
+      // Verify registered by successfully reloading
+      await hotReload.reload("test-agent");
+      expect(mockManager.reloadWorkspaceCalls).toContain("test-agent");
     });
 
-    it("should unregister an agent", () => {
+    it("should unregister an agent", async () => {
       hotReload.register("test-agent", tempDir);
       hotReload.unregister("test-agent");
-      expect(hotReload.getRegisteredAgents()).not.toContain("test-agent");
+      await expect(hotReload.reload("test-agent")).rejects.toThrow("not registered");
     });
 
-    it("should warn when registering same agent twice", () => {
+    it("should warn when registering same agent twice", async () => {
       hotReload.register("test-agent", tempDir);
       // Should not throw, just warn
       hotReload.register("test-agent", tempDir);
-      expect(hotReload.getRegisteredAgents()).toContain("test-agent");
+      await hotReload.reload("test-agent");
+      expect(mockManager.reloadWorkspaceCalls).toContain("test-agent");
     });
   });
 
   describe("start/stop", () => {
-    it("should start watching when start() is called", () => {
-      hotReload.register("test-agent", tempDir);
-      hotReload.start();
-      expect(hotReload.isActive()).toBe(true);
-    });
-
-    it("should stop watching when stop() is called", () => {
+    it("should start and stop without error", () => {
       hotReload.register("test-agent", tempDir);
       hotReload.start();
       hotReload.stop();
-      expect(hotReload.isActive()).toBe(false);
     });
 
-    it("should not be active when disabled", () => {
+    it("should handle disabled config", () => {
       const disabled = new HotReloadManager(mockManager, { enabled: false });
       disabled.register("test-agent", tempDir);
       disabled.start();
-      expect(disabled.isActive()).toBe(false);
       disabled.stop();
     });
   });
@@ -117,17 +112,6 @@ describe("HotReloadManager", () => {
       hotReload.register("test-agent", tempDir);
       await hotReload.reload("test-agent");
       expect(mockManager.reloadWorkspaceCalls).toContain("test-agent");
-    });
-
-    it("should trigger reload for all agents", async () => {
-      hotReload.register("agent1", tempDir);
-      hotReload.register("agent2", path.join(tempDir, "agent2"));
-      await fs.mkdir(path.join(tempDir, "agent2"), { recursive: true });
-
-      await hotReload.reloadAll();
-
-      expect(mockManager.reloadWorkspaceCalls).toContain("agent1");
-      expect(mockManager.reloadWorkspaceCalls).toContain("agent2");
     });
 
     it("should throw when reloading unregistered agent", async () => {

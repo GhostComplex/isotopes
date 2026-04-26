@@ -4,6 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createLogger } from "../core/logger.js";
+import { isBrandNewWorkspace } from "./templates.js";
 
 const log = createLogger("workspace:state");
 
@@ -114,8 +115,8 @@ export async function reconcileWorkspaceState(workspacePath: string): Promise<Wo
 
   // Legacy detection: workspace has content but no bootstrap tracking
   if (!state.bootstrapSeededAt && !bootstrapExists) {
-    const hasContent = await hasExistingContent(workspacePath);
-    if (hasContent) {
+    const brandNew = await isBrandNewWorkspace(workspacePath);
+    if (!brandNew) {
       state.setupCompletedAt = new Date().toISOString();
       await writeWorkspaceState(workspacePath, state);
       log.info(`Marked legacy workspace as setup-complete: ${workspacePath}`);
@@ -123,35 +124,4 @@ export async function reconcileWorkspaceState(workspacePath: string): Promise<Wo
   }
 
   return state;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Check if workspace has user-created content (not just empty directories). */
-async function hasExistingContent(workspacePath: string): Promise<boolean> {
-  const contentFiles = ["SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md", "AGENTS.md", "MEMORY.md"];
-
-  for (const filename of contentFiles) {
-    try {
-      await fs.access(path.join(workspacePath, filename));
-      return true;
-    } catch {
-      // continue
-    }
-  }
-
-  // Check for memory files
-  try {
-    const memoryDir = path.join(workspacePath, "memory");
-    const entries = await fs.readdir(memoryDir);
-    if (entries.some((e) => e.endsWith(".md"))) {
-      return true;
-    }
-  } catch {
-    // no memory dir
-  }
-
-  return false;
 }

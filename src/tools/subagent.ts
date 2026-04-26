@@ -9,7 +9,7 @@ import {
   type SubagentEvent,
 } from "../subagent/index.js";
 import type { BuiltinSubagentOptions } from "../subagent/types.js";
-import type { BuiltinPiMonoCore } from "../subagent/runners/builtin.js";
+import type { PiMonoCore } from "../core/pi-mono.js";
 import { taskRegistry } from "../subagent/task-registry.js";
 import { createSubagentRecorder } from "../subagent/persistence.js";
 import type { SessionStore } from "../core/types.js";
@@ -26,7 +26,7 @@ export interface SubagentBackendConfig {
   /** Resolved subagent config from config.ts */
   config?: ResolvedSubagentConfig;
   /** AgentCore used to host in-process builtin subagents. */
-  core?: BuiltinPiMonoCore;
+  core?: PiMonoCore;
 }
 
 /** Options for spawning a sub-agent */

@@ -4,8 +4,8 @@ import { describe, it, expect, vi } from "vitest";
 import type { AgentConfig, ProviderConfig } from "../../core/types.js";
 import { ToolRegistry } from "../../core/tools.js";
 import type { SubagentEvent } from "../types.js";
-import { BuiltinRunner, type BuiltinPiMonoCore } from "./builtin.js";
-import type { AgentServiceCache } from "../../core/pi-mono.js";
+import { BuiltinRunner } from "./builtin.js";
+import type { AgentServiceCache, PiMonoCore } from "../../core/pi-mono.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
 function makeRegistry(names: string[]): ToolRegistry {
@@ -24,7 +24,7 @@ function fakeProvider(): ProviderConfig {
 }
 
 function makeCore(events: AgentEvent[]): {
-  core: BuiltinPiMonoCore;
+  core: PiMonoCore;
   setIds: string[];
   clearedIds: string[];
   capturedConfig: AgentConfig | undefined;
@@ -67,7 +67,7 @@ function makeCore(events: AgentEvent[]): {
       capturedConfig = config;
       return cache;
     },
-  } as unknown as BuiltinPiMonoCore;
+  } as unknown as PiMonoCore;
 
   return {
     core,
@@ -181,7 +181,7 @@ describe("BuiltinRunner", () => {
       setToolRegistry: (id: string) => setIds.push(id),
       clearToolRegistry: (id: string) => clearedIds.push(id),
       createServiceCache: () => errCache,
-    } as unknown as BuiltinPiMonoCore;
+    } as unknown as PiMonoCore;
     const runner = new BuiltinRunner(core);
 
     const out = await collect(

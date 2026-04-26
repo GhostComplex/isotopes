@@ -109,47 +109,17 @@ export interface SubagentResult {
 }
 
 // ---------------------------------------------------------------------------
-// Discord sink config
-// ---------------------------------------------------------------------------
-
-/** Configuration for how sub-agent output is displayed in Discord */
-export interface DiscordSinkConfig {
-  /** Whether to show tool call details */
-  showToolCalls: boolean;
-  /** Whether to show thinking/reasoning content */
-  showThinking: boolean;
-  /** Whether to create a thread for sub-agent output */
-  useThread: boolean;
-}
-
-// ---------------------------------------------------------------------------
 // Task
 // ---------------------------------------------------------------------------
 
 /** A sub-agent task combining spawn options with Discord routing */
-export interface SubagentTask {
+export interface SubagentTask extends Pick<SubagentSpawnOptions, "agent" | "prompt" | "cwd" | "model" | "permissionMode" | "allowedTools" | "timeout" | "maxTurns"> {
   /** Unique task identifier */
   id: string;
-  /** Which agent backend to use */
-  agent: SubagentAgent;
-  /** The prompt to send to the agent */
-  prompt: string;
-  /** Working directory for the agent */
-  cwd: string;
   /** Discord channel to send output to */
   channelId: string;
   /** Whether to create a thread for output */
   useThread?: boolean;
   /** Whether to show tool call details */
   showToolCalls?: boolean;
-  /** Model override */
-  model?: string;
-  /** Permission mode for tool execution */
-  permissionMode?: SubagentPermissionMode;
-  /** Tool allowlist for "allowlist" permission mode */
-  allowedTools?: string[];
-  /** Timeout in seconds */
-  timeout?: number;
-  /** Maximum number of agent turns */
-  maxTurns?: number;
 }

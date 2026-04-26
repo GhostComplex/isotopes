@@ -2,10 +2,22 @@
 // Formats SubagentEvents and sends them to a Discord channel or thread.
 
 import { createLogger } from "../../core/logger.js";
-import type { SubagentEvent, SubagentResult, DiscordSinkConfig } from "../../subagent/types.js";
+import type { SubagentEvent, SubagentResult } from "../../subagent/types.js";
 import type { SubagentStreamSink } from "../../core/subagent-context.js";
 
 const log = createLogger("subagent:discord-sink");
+
+// ---------------------------------------------------------------------------
+
+/** Configuration for how sub-agent output is displayed in Discord */
+export interface DiscordSinkConfig {
+  /** Whether to show tool call details */
+  showToolCalls: boolean;
+  /** Whether to show thinking/reasoning content */
+  showThinking: boolean;
+  /** Whether to create a thread for sub-agent output */
+  useThread: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Types for Discord message sending
