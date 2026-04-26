@@ -1,8 +1,11 @@
 // src/api/sessions.ts — Unified session endpoints (read, create, stream, abort, delete)
 //
-// /api/sessions              — list all sessions
-// /api/sessions/:agentId     — list sessions for one agent
-// /api/sessions/:agentId/:id — single session (detail, messages, usage, etc.)
+// /api/sessions                        — list all sessions
+// /api/sessions/:agentId               — list sessions for one agent
+// /api/sessions/:agentId/:key          — single session (detail, messages, usage, etc.)
+//
+// All endpoints use sessionKey as the external identifier. sessionId (UUID) is
+// an internal implementation detail of the session store.
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
@@ -10,6 +13,7 @@ import { createLogger } from "../core/logger.js";
 import { randomUUID } from "node:crypto";
 import { runAgentLoop } from "../core/agent-runner.js";
 import { agentEventBus } from "../core/agent-event-bus.js";
+import type { DefaultSessionStore } from "../core/session-store.js";
 
 const log = createLogger("api:sessions");
 
@@ -18,7 +22,8 @@ const log = createLogger("api:sessions");
 // ---------------------------------------------------------------------------
 
 interface ActiveSession {
-  id: string;
+  sessionKey: string;
+  sessionId: string;
   agentId: string;
   lastActivity: number;
   abortController?: AbortController;
@@ -30,22 +35,33 @@ const MAX_SESSIONS = 100;
 
 function evictStaleSessions() {
   const now = Date.now();
-  for (const [id, session] of activeSessions) {
+  for (const [key, session] of activeSessions) {
     if (now - session.lastActivity > SESSION_TTL_MS) {
       session.abortController?.abort();
-      activeSessions.delete(id);
-      log.debug(`Evicted stale session: ${id}`);
+      activeSessions.delete(key);
+      log.debug(`Evicted stale session: ${key}`);
     }
   }
   if (activeSessions.size > MAX_SESSIONS) {
     const sorted = [...activeSessions.entries()].sort((a, b) => a[1].lastActivity - b[1].lastActivity);
     const toRemove = sorted.slice(0, activeSessions.size - MAX_SESSIONS);
-    for (const [id, session] of toRemove) {
+    for (const [key, session] of toRemove) {
       session.abortController?.abort();
-      activeSessions.delete(id);
-      log.debug(`Evicted session (capacity): ${id}`);
+      activeSessions.delete(key);
+      log.debug(`Evicted session (capacity): ${key}`);
     }
   }
+}
+
+async function resolveSessionKey(
+  store: DefaultSessionStore,
+  agentId: string,
+  urlKey: string,
+): Promise<{ sessionKey: string; sessionId: string } | undefined> {
+  const sessionKey = `${agentId}:${urlKey}`;
+  const session = await store.findByKey(sessionKey);
+  if (!session) return undefined;
+  return { sessionKey, sessionId: session.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -59,8 +75,7 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
   }
 
   const items: Array<{
-    id: string;
-    key?: string;
+    sessionKey: string;
     agentId: string;
     status: string;
     createdAt: string;
@@ -70,9 +85,9 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
   for (const [agentId, store] of deps.sessionStoreManager.all()) {
     const sessions = await store.list();
     for (const s of sessions) {
+      if (!s.metadata?.key) continue;
       items.push({
-        id: s.id,
-        key: s.metadata?.key,
+        sessionKey: s.metadata.key,
         agentId: s.agentId || agentId,
         status: "active",
         createdAt: s.lastActiveAt.toISOString(),
@@ -101,23 +116,24 @@ addRoute("GET", "/api/sessions/:agentId", async (req, res, deps) => {
   }
 
   const sessions = await store.list();
-  const items = sessions.map((s) => ({
-    id: s.id,
-    key: s.metadata?.key,
-    agentId: s.agentId || req.params.agentId,
-    status: "active",
-    createdAt: s.lastActiveAt.toISOString(),
-    lastActivityAt: s.lastActiveAt.toISOString(),
-  }));
+  const items = sessions
+    .filter((s) => s.metadata?.key)
+    .map((s) => ({
+      sessionKey: s.metadata!.key!,
+      agentId: s.agentId || req.params.agentId,
+      status: "active",
+      createdAt: s.lastActiveAt.toISOString(),
+      lastActivityAt: s.lastActiveAt.toISOString(),
+    }));
 
   sendJson(res, 200, { items });
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/sessions/:agentId/:id — get session details
+// GET /api/sessions/:agentId/:key — get session details
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/sessions/:agentId/:id", async (req, res, deps) => {
+addRoute("GET", "/api/sessions/:agentId/:key", async (req, res, deps) => {
   if (!deps.sessionStoreManager) {
     sendError(res, 503, "Session store not available");
     return;
@@ -125,33 +141,31 @@ addRoute("GET", "/api/sessions/:agentId/:id", async (req, res, deps) => {
 
   const store = deps.sessionStoreManager.peek(req.params.agentId);
   if (!store) {
-    sendError(res, 404, `Session "${req.params.id}" not found`);
+    sendError(res, 404, `Session not found`);
     return;
   }
 
-  const session = await store.get(req.params.id);
-  if (!session) {
-    sendError(res, 404, `Session "${req.params.id}" not found`);
+  const resolved = await resolveSessionKey(store, req.params.agentId, req.params.key);
+  if (!resolved) {
+    sendError(res, 404, `Session not found`);
     return;
   }
 
-  const messages = await store.getMessages(req.params.id);
+  const messages = await store.getMessages(resolved.sessionId);
   sendJson(res, 200, {
-    id: session.id,
-    agentId: session.agentId,
+    sessionKey: resolved.sessionKey,
+    agentId: req.params.agentId,
     status: "active",
-    createdAt: session.lastActiveAt.toISOString(),
-    lastActivityAt: session.lastActiveAt.toISOString(),
-    metadata: session.metadata,
+    metadata: (await store.get(resolved.sessionId))?.metadata,
     history: messages,
   });
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/sessions/:agentId/:id/messages — get session messages
+// GET /api/sessions/:agentId/:key/messages — get session messages
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/sessions/:agentId/:id/messages", async (req, res, deps) => {
+addRoute("GET", "/api/sessions/:agentId/:key/messages", async (req, res, deps) => {
   if (!deps.sessionStoreManager) {
     sendError(res, 503, "Session store not available");
     return;
@@ -159,26 +173,39 @@ addRoute("GET", "/api/sessions/:agentId/:id/messages", async (req, res, deps) =>
 
   const store = deps.sessionStoreManager.peek(req.params.agentId);
   if (!store) {
-    sendError(res, 404, `Session "${req.params.id}" not found`);
+    sendError(res, 404, `Session not found`);
     return;
   }
 
-  const session = await store.get(req.params.id);
-  if (!session) {
-    sendError(res, 404, `Session "${req.params.id}" not found`);
+  const resolved = await resolveSessionKey(store, req.params.agentId, req.params.key);
+  if (!resolved) {
+    sendError(res, 404, `Session not found`);
     return;
   }
 
-  const messages = await store.getMessages(req.params.id);
+  const messages = await store.getMessages(resolved.sessionId);
   sendJson(res, 200, { items: messages });
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/sessions/:agentId/:id/usage — per-session usage stats
+// GET /api/sessions/:agentId/:key/usage — per-session usage stats
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/sessions/:agentId/:id/usage", (req, res, deps) => {
-  sendJson(res, 200, deps.usageTracker?.getSession(req.params.id) ?? { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
+addRoute("GET", "/api/sessions/:agentId/:key/usage", async (req, res, deps) => {
+  if (!deps.sessionStoreManager) {
+    sendJson(res, 200, { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
+    return;
+  }
+
+  const store = deps.sessionStoreManager.peek(req.params.agentId);
+  if (!store) {
+    sendJson(res, 200, { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
+    return;
+  }
+
+  const resolved = await resolveSessionKey(store, req.params.agentId, req.params.key);
+  const sessionId = resolved?.sessionId ?? "";
+  sendJson(res, 200, deps.usageTracker?.getSession(sessionId) ?? { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
 });
 
 // ---------------------------------------------------------------------------
@@ -200,23 +227,20 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
     return;
   }
 
-  const SESSION_KEY_RE = /^[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+$/;
   const SESSION_KEY_MAX_LEN = 128;
 
-  let sessionKey: string;
+  let urlKey: string;
   if (body?.sessionKey) {
     if (body.sessionKey.length > SESSION_KEY_MAX_LEN) {
       sendError(res, 400, `sessionKey exceeds max length of ${SESSION_KEY_MAX_LEN}`);
       return;
     }
-    if (!SESSION_KEY_RE.test(body.sessionKey)) {
-      sendError(res, 400, "Invalid sessionKey format — expected 'namespace:identifier'");
-      return;
-    }
-    sessionKey = `${agentId}:${body.sessionKey}`;
+    urlKey = body.sessionKey;
   } else {
-    sessionKey = `chat:${agentId}:${randomUUID()}`;
+    urlKey = randomUUID();
   }
+
+  const sessionKey = `${agentId}:${urlKey}`;
 
   let sessionId: string;
   let resumed = false;
@@ -235,24 +259,26 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
   }
 
   evictStaleSessions();
-  activeSessions.set(sessionId, { id: sessionId, agentId, lastActivity: Date.now() });
+  activeSessions.set(sessionKey, { sessionKey, sessionId, agentId, lastActivity: Date.now() });
 
-  log.info(`Session ${resumed ? "resumed" : "created"}: ${sessionId} (agent: ${agentId}, key: ${sessionKey})`);
-  sendJson(res, resumed ? 200 : 201, { sessionId, agentId, resumed });
+  log.info(`Session ${resumed ? "resumed" : "created"}: ${sessionKey} (agent: ${agentId})`);
+  sendJson(res, resumed ? 200 : 201, { sessionKey: urlKey, agentId, resumed });
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/sessions/:agentId/:id/message — send message, stream via SSE
+// POST /api/sessions/:agentId/:key/message — send message, stream via SSE
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/sessions/:agentId/:id/message", async (req, res, deps) => {
-  const { agentId, id: sessionId } = req.params;
-  const session = activeSessions.get(sessionId);
-  if (!session) {
-    sendError(res, 404, `Active session "${sessionId}" not found — create or resume it first`);
+addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) => {
+  const { agentId, key: urlKey } = req.params;
+  const sessionKey = `${agentId}:${urlKey}`;
+
+  const active = activeSessions.get(sessionKey);
+  if (!active) {
+    sendError(res, 404, `Active session not found — create or resume it first`);
     return;
   }
-  session.lastActivity = Date.now();
+  active.lastActivity = Date.now();
 
   const body = req.body as { message?: string } | undefined;
   if (!body?.message) {
@@ -277,6 +303,7 @@ addRoute("POST", "/api/sessions/:agentId/:id/message", async (req, res, deps) =>
   }
 
   const store = await deps.sessionStoreManager.getOrCreate(agentId);
+  const sessionId = active.sessionId;
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -332,13 +359,14 @@ addRoute("POST", "/api/sessions/:agentId/:id/message", async (req, res, deps) =>
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/sessions/:agentId/:id/abort — abort current response
+// POST /api/sessions/:agentId/:key/abort — abort current response
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/sessions/:agentId/:id/abort", (req, res) => {
-  const session = activeSessions.get(req.params.id);
+addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res) => {
+  const sessionKey = `${req.params.agentId}:${req.params.key}`;
+  const session = activeSessions.get(sessionKey);
   if (!session) {
-    sendError(res, 404, `Active session "${req.params.id}" not found`);
+    sendError(res, 404, `Active session not found`);
     return;
   }
 
@@ -347,24 +375,25 @@ addRoute("POST", "/api/sessions/:agentId/:id/abort", (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /api/sessions/:agentId/:id — delete session
+// DELETE /api/sessions/:agentId/:key — delete session
 // ---------------------------------------------------------------------------
 
-addRoute("DELETE", "/api/sessions/:agentId/:id", async (req, res, deps) => {
-  const { agentId, id: sessionId } = req.params;
+addRoute("DELETE", "/api/sessions/:agentId/:key", async (req, res, deps) => {
+  const { agentId, key: urlKey } = req.params;
+  const sessionKey = `${agentId}:${urlKey}`;
 
-  const active = activeSessions.get(sessionId);
+  const active = activeSessions.get(sessionKey);
   if (active) {
     active.abortController?.abort();
-    activeSessions.delete(sessionId);
+    activeSessions.delete(sessionKey);
   }
 
   if (deps.sessionStoreManager) {
     const store = deps.sessionStoreManager.peek(agentId);
     if (store) {
-      const session = await store.get(sessionId);
-      if (session) {
-        await store.delete(sessionId);
+      const resolved = await resolveSessionKey(store, agentId, urlKey);
+      if (resolved) {
+        await store.delete(resolved.sessionId);
         sendJson(res, 200, { ok: true });
         return;
       }
@@ -376,5 +405,5 @@ addRoute("DELETE", "/api/sessions/:agentId/:id", async (req, res, deps) => {
     return;
   }
 
-  sendError(res, 404, `Session "${sessionId}" not found`);
+  sendError(res, 404, `Session not found`);
 });

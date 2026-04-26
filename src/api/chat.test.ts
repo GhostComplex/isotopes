@@ -83,39 +83,31 @@ describe("POST /api/sessions/:agentId — sessionKey", () => {
   it("creates a new session without sessionKey (default path)", async () => {
     const { status, data } = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {});
     expect(status).toBe(201);
-    const body = data as { sessionId: string; agentId: string; resumed: boolean };
-    expect(body.sessionId).toBeTruthy();
+    const body = data as { sessionKey: string; agentId: string; resumed: boolean };
+    expect(body.sessionKey).toBeTruthy();
     expect(body.resumed).toBe(false);
   });
 
   it("resumes an existing session when same sessionKey is provided", async () => {
-    const key = `pet:test-${Date.now()}`;
+    const key = `test-${Date.now()}`;
     const first = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {
       sessionKey: key,
     });
     expect(first.status).toBe(201);
-    const firstBody = first.data as { sessionId: string; resumed: boolean };
+    const firstBody = first.data as { sessionKey: string; resumed: boolean };
     expect(firstBody.resumed).toBe(false);
 
     const second = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {
       sessionKey: key,
     });
     expect(second.status).toBe(200);
-    const secondBody = second.data as { sessionId: string; resumed: boolean };
+    const secondBody = second.data as { sessionKey: string; resumed: boolean };
     expect(secondBody.resumed).toBe(true);
-    expect(secondBody.sessionId).toBe(firstBody.sessionId);
-  });
-
-  it("returns 400 for invalid sessionKey format", async () => {
-    const { status, data } = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {
-      sessionKey: "no-colon-here",
-    });
-    expect(status).toBe(400);
-    expect((data as { error: string }).error).toContain("Invalid sessionKey format");
+    expect(secondBody.sessionKey).toBe(firstBody.sessionKey);
   });
 
   it("returns 400 for sessionKey exceeding max length", async () => {
-    const longKey = "a".repeat(100) + ":" + "b".repeat(100);
+    const longKey = "a".repeat(200);
     const { status, data } = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {
       sessionKey: longKey,
     });

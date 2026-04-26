@@ -77,7 +77,7 @@ describe("API routes", () => {
     });
   });
 
-  describe("GET /api/sessions/:agentId/:id", () => {
+  describe("GET /api/sessions/:agentId/:key", () => {
     it("returns 503 when session store is not available", async () => {
       const { status, data } = await request(getPort(), "GET", "/api/sessions/test-agent/nonexistent");
       expect(status).toBe(503);
