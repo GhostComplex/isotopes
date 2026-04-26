@@ -51,7 +51,7 @@ function request(
   });
 }
 
-describe("POST /api/agents/:agentId/sessions — sessionKey", () => {
+describe("POST /api/sessions/:agentId — sessionKey", () => {
   let server: ApiServer;
   let agentManager: ReturnType<typeof createMockAgentManager>;
   let sessionStoreManager: SessionStoreManager;
@@ -81,7 +81,7 @@ describe("POST /api/agents/:agentId/sessions — sessionKey", () => {
   }
 
   it("creates a new session without sessionKey (default path)", async () => {
-    const { status, data } = await request(getPort(), "POST", `/api/agents/${agentId()}/sessions`, {});
+    const { status, data } = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {});
     expect(status).toBe(201);
     const body = data as { sessionId: string; agentId: string; resumed: boolean };
     expect(body.sessionId).toBeTruthy();
@@ -90,14 +90,14 @@ describe("POST /api/agents/:agentId/sessions — sessionKey", () => {
 
   it("resumes an existing session when same sessionKey is provided", async () => {
     const key = `pet:test-${Date.now()}`;
-    const first = await request(getPort(), "POST", `/api/agents/${agentId()}/sessions`, {
+    const first = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {
       sessionKey: key,
     });
     expect(first.status).toBe(201);
     const firstBody = first.data as { sessionId: string; resumed: boolean };
     expect(firstBody.resumed).toBe(false);
 
-    const second = await request(getPort(), "POST", `/api/agents/${agentId()}/sessions`, {
+    const second = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {
       sessionKey: key,
     });
     expect(second.status).toBe(200);
@@ -107,7 +107,7 @@ describe("POST /api/agents/:agentId/sessions — sessionKey", () => {
   });
 
   it("returns 400 for invalid sessionKey format", async () => {
-    const { status, data } = await request(getPort(), "POST", `/api/agents/${agentId()}/sessions`, {
+    const { status, data } = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {
       sessionKey: "no-colon-here",
     });
     expect(status).toBe(400);
@@ -116,7 +116,7 @@ describe("POST /api/agents/:agentId/sessions — sessionKey", () => {
 
   it("returns 400 for sessionKey exceeding max length", async () => {
     const longKey = "a".repeat(100) + ":" + "b".repeat(100);
-    const { status, data } = await request(getPort(), "POST", `/api/agents/${agentId()}/sessions`, {
+    const { status, data } = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {
       sessionKey: longKey,
     });
     expect(status).toBe(400);

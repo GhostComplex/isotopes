@@ -1,7 +1,8 @@
 // src/api/sessions.ts — Unified session endpoints (read, create, stream, abort, delete)
 //
-// Sessions are scoped under agents: /api/agents/:agentId/sessions/:id
-// A global list endpoint at /api/sessions lists sessions across all agents.
+// /api/sessions              — list all sessions
+// /api/sessions/:agentId     — list sessions for one agent
+// /api/sessions/:agentId/:id — single session (detail, messages, usage, etc.)
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
@@ -84,10 +85,10 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/agents/:agentId/sessions — list sessions for a specific agent
+// GET /api/sessions/:agentId — list sessions for a specific agent
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/agents/:agentId/sessions", async (req, res, deps) => {
+addRoute("GET", "/api/sessions/:agentId", async (req, res, deps) => {
   if (!deps.sessionStoreManager) {
     sendJson(res, 200, { items: [] });
     return;
@@ -113,10 +114,10 @@ addRoute("GET", "/api/agents/:agentId/sessions", async (req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/agents/:agentId/sessions/:id — get session details
+// GET /api/sessions/:agentId/:id — get session details
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/agents/:agentId/sessions/:id", async (req, res, deps) => {
+addRoute("GET", "/api/sessions/:agentId/:id", async (req, res, deps) => {
   if (!deps.sessionStoreManager) {
     sendError(res, 503, "Session store not available");
     return;
@@ -147,10 +148,10 @@ addRoute("GET", "/api/agents/:agentId/sessions/:id", async (req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/agents/:agentId/sessions/:id/messages — get session messages
+// GET /api/sessions/:agentId/:id/messages — get session messages
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/agents/:agentId/sessions/:id/messages", async (req, res, deps) => {
+addRoute("GET", "/api/sessions/:agentId/:id/messages", async (req, res, deps) => {
   if (!deps.sessionStoreManager) {
     sendError(res, 503, "Session store not available");
     return;
@@ -173,18 +174,18 @@ addRoute("GET", "/api/agents/:agentId/sessions/:id/messages", async (req, res, d
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/agents/:agentId/sessions/:id/usage — per-session usage stats
+// GET /api/sessions/:agentId/:id/usage — per-session usage stats
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/agents/:agentId/sessions/:id/usage", (req, res, deps) => {
+addRoute("GET", "/api/sessions/:agentId/:id/usage", (req, res, deps) => {
   sendJson(res, 200, deps.usageTracker?.getSession(req.params.id) ?? { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/agents/:agentId/sessions — create or resume a session
+// POST /api/sessions/:agentId — create or resume a session
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/agents/:agentId/sessions", async (req, res, deps) => {
+addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
   const body = req.body as { sessionKey?: string } | undefined;
   const agentId = req.params.agentId;
 
@@ -241,10 +242,10 @@ addRoute("POST", "/api/agents/:agentId/sessions", async (req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/agents/:agentId/sessions/:id/message — send message, stream via SSE
+// POST /api/sessions/:agentId/:id/message — send message, stream via SSE
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/agents/:agentId/sessions/:id/message", async (req, res, deps) => {
+addRoute("POST", "/api/sessions/:agentId/:id/message", async (req, res, deps) => {
   const { agentId, id: sessionId } = req.params;
   const session = activeSessions.get(sessionId);
   if (!session) {
@@ -331,10 +332,10 @@ addRoute("POST", "/api/agents/:agentId/sessions/:id/message", async (req, res, d
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/agents/:agentId/sessions/:id/abort — abort current response
+// POST /api/sessions/:agentId/:id/abort — abort current response
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/agents/:agentId/sessions/:id/abort", (req, res) => {
+addRoute("POST", "/api/sessions/:agentId/:id/abort", (req, res) => {
   const session = activeSessions.get(req.params.id);
   if (!session) {
     sendError(res, 404, `Active session "${req.params.id}" not found`);
@@ -346,10 +347,10 @@ addRoute("POST", "/api/agents/:agentId/sessions/:id/abort", (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /api/agents/:agentId/sessions/:id — delete session
+// DELETE /api/sessions/:agentId/:id — delete session
 // ---------------------------------------------------------------------------
 
-addRoute("DELETE", "/api/agents/:agentId/sessions/:id", async (req, res, deps) => {
+addRoute("DELETE", "/api/sessions/:agentId/:id", async (req, res, deps) => {
   const { agentId, id: sessionId } = req.params;
 
   const active = activeSessions.get(sessionId);

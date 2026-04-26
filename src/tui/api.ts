@@ -32,7 +32,7 @@ async function deleteJson<T>(path: string): Promise<T> {
 }
 
 function agentSessionPath(agentId: string, sessionId?: string): string {
-  const base = `/api/agents/${encodeURIComponent(agentId)}/sessions`;
+  const base = `/api/sessions/${encodeURIComponent(agentId)}`;
   return sessionId ? `${base}/${encodeURIComponent(sessionId)}` : base;
 }
 
