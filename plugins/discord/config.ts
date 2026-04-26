@@ -1,0 +1,18 @@
+// plugins/discord/config.ts — Discord-specific config helpers
+// Moved from src/core/config.ts
+
+import type { DiscordAccountConfig } from "./types.js";
+
+export function getDiscordToken(account: DiscordAccountConfig): string {
+  if (account.token) {
+    return account.token;
+  }
+  if (account.tokenEnv) {
+    const token = process.env[account.tokenEnv];
+    if (!token) {
+      throw new Error(`Environment variable ${account.tokenEnv} is not set`);
+    }
+    return token;
+  }
+  throw new Error("Discord account config must have either 'token' or 'tokenEnv'");
+}

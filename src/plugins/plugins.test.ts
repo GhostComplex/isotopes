@@ -122,6 +122,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
+      transportSessionStores: new Map(),
     });
 
     const factory: TransportFactory = async () => ({ start: async () => {}, stop: async () => {} });
@@ -144,6 +145,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
+      transportSessionStores: new Map(),
     });
 
     const handler = vi.fn();
@@ -168,6 +170,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
+      transportSessionStores: new Map(),
       pluginConfig: { theme: "dark" },
     });
 
@@ -185,6 +188,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
+      transportSessionStores: new Map(),
     });
 
     expect(api.log).toBeDefined();
@@ -202,6 +206,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
+      transportSessionStores: new Map(),
     });
 
     const tool: Tool = { name: "my-tool", description: "test", parameters: {} };
@@ -225,6 +230,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
+      transportSessionStores: new Map(),
     });
 
     api.registerTool((ctx) => ({

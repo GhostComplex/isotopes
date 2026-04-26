@@ -64,9 +64,11 @@ export function resolveRequireMention(
   accountId: string | undefined,
   guildId: string,
 ): boolean {
-  if (!channels?.discord?.accounts || !accountId) return true;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const discord = (channels as any)?.discord;
+  if (!discord?.accounts || !accountId) return true;
 
-  const account = channels.discord.accounts[accountId];
+  const account = discord.accounts[accountId];
   if (!account?.guilds) return true;
 
   const guildConfig = account.guilds[guildId];

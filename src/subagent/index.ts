@@ -17,13 +17,7 @@ export type {
 export { SubagentBackend, collectResult, summarizeEvents, mapSdkMessage, MAX_CONCURRENT_AGENTS } from "./backend.js";
 export type { SubagentBackendOptions } from "./backend.js";
 
-export {
-  DiscordSink,
-  truncate,
-  formatEvent,
-  formatSummary,
-} from "../transports/discord-subagent-sink.js";
-export type { SendMessageFn, CreateThreadFn } from "../transports/discord-subagent-sink.js";
+export type { SubagentStreamSink, SubagentStreamContext } from "../core/subagent-context.js";
 
 export { TaskRegistry, taskRegistry } from "./task-registry.js";
 export type { TaskInfo } from "./task-registry.js";

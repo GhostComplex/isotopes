@@ -3,7 +3,6 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
 import type { SandboxConfig } from "../sandbox/config.js";
-import type { ReplyToMode } from "../transports/reply-directive.js";
 
 // ---------------------------------------------------------------------------
 // Re-exports from SDK
@@ -109,7 +108,7 @@ export interface SubagentSessionMetadata {
  */
 export interface SessionMetadata {
   key?: string;                        // Unique key for session lookup (e.g., discord:{botId}:channel:{id}:{agentId})
-  transport?: 'discord' | 'web';
+  transport?: string;
   channelId?: string;
   channelName?: string;
   guildName?: string;
@@ -182,93 +181,11 @@ export interface Binding {
 }
 
 // ---------------------------------------------------------------------------
-// Channel config — per-guild/group settings
+// Channel config — extensible per-transport
 // ---------------------------------------------------------------------------
 
-/** Per-guild (Discord) configuration */
-export interface GuildConfig {
-  /** Whether the bot must be @mentioned to respond. Default: true */
-  requireMention?: boolean;
-  /** Per-guild context configuration overrides */
-  context?: {
-    /** Max user turns to include in prompt context */
-    historyTurns?: number;
-    /** Enable channel history buffer */
-    channelHistory?: boolean;
-    /** Max entries in channel history buffer */
-    channelHistoryLimit?: number;
-  };
-}
-
-/** Per-account Discord context configuration */
-export interface DiscordAccountContextConfig {
-  historyTurns?: number;
-  channelHistory?: boolean;
-  channelHistoryLimit?: number;
-  dedupe?: boolean;
-  debounce?: boolean;
-  debounceWindowMs?: number;
-  pruning?: {
-    protectRecent?: number;
-    headChars?: number;
-    tailChars?: number;
-  };
-}
-
-/** Per-account Discord subagent streaming configuration */
-export interface DiscordAccountSubagentStreamingConfig {
-  enabled?: boolean;
-  showToolCalls?: boolean;
-}
-
-/** Discord account configuration within the channels section */
-export interface DiscordAccountConfig {
-  /** Bot token (literal). Prefer `tokenEnv` for secrets. */
-  token?: string;
-  /** Env var name to read the bot token from. */
-  tokenEnv?: string;
-  /** Default agent ID for messages on this account. */
-  defaultAgentId?: string;
-  /** Channel/guild ID -> agent ID overrides. */
-  agentBindings?: Record<string, string>;
-  /** DM access control. */
-  dmAccess?: {
-    /** "disabled" (default) = ignore all DMs, "allowlist" = only from listed user IDs. */
-    policy?: "disabled" | "allowlist";
-    /** Discord user IDs allowed to DM when policy is "allowlist". */
-    allowlist?: string[];
-  };
-  /** Group (guild) access control — parallel to `dmAccess`. */
-  groupAccess?: {
-    /** "allowlist" (default) = only listed channels/guilds, "disabled" = ignore all guild messages, "open" = accept all guild channels. */
-    policy?: "disabled" | "allowlist" | "open";
-    /** Channel IDs allowed when policy is "allowlist". */
-    channelAllowlist?: string[];
-    /** Guild (server) IDs allowed when policy is "allowlist". */
-    guildAllowlist?: string[];
-  };
-  /** Per-guild configuration keyed by guild ID */
-  guilds?: Record<string, GuildConfig>;
-  /** Thread binding configuration for auto-binding threads to agent sessions */
-  threadBindings?: ThreadBindingConfig;
-  /** Subagent streaming behavior for this account. */
-  subagentStreaming?: DiscordAccountSubagentStreamingConfig;
-  /** Whether to respond to messages from other bots. Default: false */
-  allowBots?: boolean;
-  /** Context management configuration for this account. */
-  context?: DiscordAccountContextConfig;
-  /** Discord user IDs allowed to execute slash commands on this account. */
-  adminUsers?: string[];
-  replyToMode?: ReplyToMode;
-}
-
-/** Channels section of the configuration */
-export interface ChannelsConfig {
-  discord?: {
-    enabled?: boolean;
-    accounts?: Record<string, DiscordAccountConfig>;
-  };
-}
+/** Channels section of the configuration — keyed by transport name */
+export type ChannelsConfig = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
 // Compaction — context window management
@@ -285,36 +202,6 @@ export interface CompactionConfig {
   preserveRecent?: number;
   /** Absolute token reserve before compaction triggers. Overrides threshold if set. */
   reserveTokens?: number;
-}
-
-// ---------------------------------------------------------------------------
-// Thread bindings — auto-bind Discord threads to agent sessions
-// ---------------------------------------------------------------------------
-
-/** Configuration for automatic thread-to-session binding */
-export interface ThreadBindingConfig {
-  /** Whether thread binding is enabled */
-  enabled: boolean;
-  /** Whether to automatically unbind thread when subagent completes (default: true) */
-  autoUnbindOnComplete?: boolean;
-  /** Whether to send a farewell message when unbinding (default: false) */
-  sendFarewell?: boolean;
-  /** Custom farewell message to send when unbinding */
-  farewellMessage?: string;
-}
-
-/** A binding between a Discord thread and an agent session */
-export interface ThreadBinding {
-  /** Discord thread ID */
-  threadId: string;
-  /** ID of the parent channel the thread was created in */
-  parentChannelId: string;
-  /** Opaque session/task ID associated with this thread (e.g. subagent task ID) */
-  sessionId?: string;
-  /** Agent ID this thread is bound to */
-  agentId: string;
-  /** When the binding was created */
-  createdAt: Date;
 }
 
 // ---------------------------------------------------------------------------
