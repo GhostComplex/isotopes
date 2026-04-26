@@ -263,7 +263,7 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
         if (discordContext) {
           result = await runSubagentWithStreaming(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin);
         } else {
-          // Run without Discord streaming (original behavior)
+          // Run without streaming
           result = await runSubagentPlain(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, maxTurns, parentAgentId, builtin);
         }
 
@@ -285,7 +285,7 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
   };
 }
 /**
- * Run subagent without Discord streaming (original behavior).
+ * Run subagent without transport streaming.
  */
 async function runSubagentPlain(
   task: string,
