@@ -54,10 +54,10 @@ describe("createSession", () => {
     const result = await createSession("bot", "tui:main");
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:2712/api/sessions",
+      "http://127.0.0.1:2712/api/agents/bot/sessions",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ agentId: "bot", sessionKey: "tui:main" }),
+        body: JSON.stringify({ sessionKey: "tui:main" }),
       }),
     );
   });
@@ -77,18 +77,18 @@ describe("getHistory", () => {
   it("returns messages for session", async () => {
     const data = { items: [{ role: "user", content: "hi" }] };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
-    const result = await getHistory("s1");
+    const result = await getHistory("bot", "s1");
     expect(result).toEqual(data);
-    expect(mockFetch).toHaveBeenCalledWith("http://127.0.0.1:2712/api/sessions/s1/messages");
+    expect(mockFetch).toHaveBeenCalledWith("http://127.0.0.1:2712/api/agents/bot/sessions/s1/messages");
   });
 });
 
 describe("abortMessage", () => {
   it("posts abort", async () => {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) });
-    await abortMessage("s1");
+    await abortMessage("bot", "s1");
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:2712/api/sessions/s1/abort",
+      "http://127.0.0.1:2712/api/agents/bot/sessions/s1/abort",
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -97,9 +97,9 @@ describe("abortMessage", () => {
 describe("deleteSession", () => {
   it("sends delete", async () => {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) });
-    await deleteSession("s1");
+    await deleteSession("bot", "s1");
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:2712/api/sessions/s1",
+      "http://127.0.0.1:2712/api/agents/bot/sessions/s1",
       expect.objectContaining({ method: "DELETE" }),
     );
   });

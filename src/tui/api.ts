@@ -31,6 +31,11 @@ async function deleteJson<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+function agentSessionPath(agentId: string, sessionId?: string): string {
+  const base = `/api/agents/${encodeURIComponent(agentId)}/sessions`;
+  return sessionId ? `${base}/${encodeURIComponent(sessionId)}` : base;
+}
+
 // -- Status / monitoring --
 
 export async function fetchStatus(): Promise<DaemonStatus> {
@@ -57,23 +62,22 @@ export async function isDaemonRunning(): Promise<boolean> {
 
 // -- Session management --
 
-export async function createSession(agentId?: string, sessionKey?: string): Promise<ChatSessionInfo> {
+export async function createSession(agentId: string, sessionKey?: string): Promise<ChatSessionInfo> {
   const body: Record<string, string> = {};
-  if (agentId !== undefined) body.agentId = agentId;
   if (sessionKey !== undefined) body.sessionKey = sessionKey;
-  return postJson<ChatSessionInfo>("/api/sessions", body);
+  return postJson<ChatSessionInfo>(agentSessionPath(agentId), body);
 }
 
-export async function getHistory(sessionId: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
-  return fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}/messages`);
+export async function getHistory(agentId: string, sessionId: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
+  return fetchJson(`${agentSessionPath(agentId, sessionId)}/messages`);
 }
 
-export async function abortMessage(sessionId: string): Promise<void> {
-  await postJson(`/api/sessions/${encodeURIComponent(sessionId)}/abort`);
+export async function abortMessage(agentId: string, sessionId: string): Promise<void> {
+  await postJson(`${agentSessionPath(agentId, sessionId)}/abort`);
 }
 
-export async function deleteSession(sessionId: string): Promise<void> {
-  await deleteJson(`/api/sessions/${encodeURIComponent(sessionId)}`);
+export async function deleteSession(agentId: string, sessionId: string): Promise<void> {
+  await deleteJson(agentSessionPath(agentId, sessionId));
 }
 
 // -- SSE streaming --
@@ -102,12 +106,13 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
 }
 
 export async function sendMessage(
+  agentId: string,
   sessionId: string,
   message: string,
   onEvent: (event: SSEEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${getBaseUrl()}/api/sessions/${encodeURIComponent(sessionId)}/message`, {
+  const res = await fetch(`${getBaseUrl()}${agentSessionPath(agentId, sessionId)}/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),

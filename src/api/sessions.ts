@@ -1,4 +1,7 @@
 // src/api/sessions.ts — Unified session endpoints (read, create, stream, abort, delete)
+//
+// Sessions are scoped under agents: /api/agents/:agentId/sessions/:id
+// A global list endpoint at /api/sessions lists sessions across all agents.
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
@@ -45,7 +48,7 @@ function evictStaleSessions() {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/sessions — list all sessions
+// GET /api/sessions — list all sessions across all agents
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/sessions", async (_req, res, deps) => {
@@ -81,74 +84,112 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/sessions/:id — get session details
+// GET /api/agents/:agentId/sessions — list sessions for a specific agent
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/sessions/:id", async (req, res, deps) => {
-  if (deps.sessionStoreManager) {
-    for (const store of deps.sessionStoreManager.all().values()) {
-      const session = await store.get(req.params.id);
-      if (session) {
-        const messages = await store.getMessages(req.params.id);
-        sendJson(res, 200, {
-          id: session.id,
-          agentId: session.agentId,
-          status: "active",
-          createdAt: session.lastActiveAt.toISOString(),
-          lastActivityAt: session.lastActiveAt.toISOString(),
-          metadata: session.metadata,
-          history: messages,
-        });
-        return;
-      }
-    }
+addRoute("GET", "/api/agents/:agentId/sessions", async (req, res, deps) => {
+  if (!deps.sessionStoreManager) {
+    sendJson(res, 200, { items: [] });
+    return;
   }
 
-  sendError(res, 404, `Session "${req.params.id}" not found`);
+  const store = deps.sessionStoreManager.peek(req.params.agentId);
+  if (!store) {
+    sendJson(res, 200, { items: [] });
+    return;
+  }
+
+  const sessions = await store.list();
+  const items = sessions.map((s) => ({
+    id: s.id,
+    key: s.metadata?.key,
+    agentId: s.agentId || req.params.agentId,
+    status: "active",
+    createdAt: s.lastActiveAt.toISOString(),
+    lastActivityAt: s.lastActiveAt.toISOString(),
+  }));
+
+  sendJson(res, 200, { items });
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/sessions/:id/messages — get session messages
+// GET /api/agents/:agentId/sessions/:id — get session details
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/sessions/:id/messages", async (req, res, deps) => {
-  if (deps.sessionStoreManager) {
-    for (const store of deps.sessionStoreManager.all().values()) {
-      const session = await store.get(req.params.id);
-      if (session) {
-        const messages = await store.getMessages(req.params.id);
-        sendJson(res, 200, { items: messages });
-        return;
-      }
-    }
+addRoute("GET", "/api/agents/:agentId/sessions/:id", async (req, res, deps) => {
+  if (!deps.sessionStoreManager) {
+    sendError(res, 503, "Session store not available");
+    return;
   }
 
-  sendError(res, 404, `Session "${req.params.id}" not found`);
+  const store = deps.sessionStoreManager.peek(req.params.agentId);
+  if (!store) {
+    sendError(res, 404, `Session "${req.params.id}" not found`);
+    return;
+  }
+
+  const session = await store.get(req.params.id);
+  if (!session) {
+    sendError(res, 404, `Session "${req.params.id}" not found`);
+    return;
+  }
+
+  const messages = await store.getMessages(req.params.id);
+  sendJson(res, 200, {
+    id: session.id,
+    agentId: session.agentId,
+    status: "active",
+    createdAt: session.lastActiveAt.toISOString(),
+    lastActivityAt: session.lastActiveAt.toISOString(),
+    metadata: session.metadata,
+    history: messages,
+  });
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/sessions/:id/usage — per-session usage stats
+// GET /api/agents/:agentId/sessions/:id/messages — get session messages
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/sessions/:id/usage", (req, res, deps) => {
+addRoute("GET", "/api/agents/:agentId/sessions/:id/messages", async (req, res, deps) => {
+  if (!deps.sessionStoreManager) {
+    sendError(res, 503, "Session store not available");
+    return;
+  }
+
+  const store = deps.sessionStoreManager.peek(req.params.agentId);
+  if (!store) {
+    sendError(res, 404, `Session "${req.params.id}" not found`);
+    return;
+  }
+
+  const session = await store.get(req.params.id);
+  if (!session) {
+    sendError(res, 404, `Session "${req.params.id}" not found`);
+    return;
+  }
+
+  const messages = await store.getMessages(req.params.id);
+  sendJson(res, 200, { items: messages });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/agents/:agentId/sessions/:id/usage — per-session usage stats
+// ---------------------------------------------------------------------------
+
+addRoute("GET", "/api/agents/:agentId/sessions/:id/usage", (req, res, deps) => {
   sendJson(res, 200, deps.usageTracker?.getSession(req.params.id) ?? { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/sessions — create or resume a session
+// POST /api/agents/:agentId/sessions — create or resume a session
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/sessions", async (req, res, deps) => {
-  const body = req.body as { agentId?: string; sessionKey?: string } | undefined;
+addRoute("POST", "/api/agents/:agentId/sessions", async (req, res, deps) => {
+  const body = req.body as { sessionKey?: string } | undefined;
+  const agentId = req.params.agentId;
+
   if (!deps.agentManager) {
     sendError(res, 503, "Agent manager not available");
-    return;
-  }
-
-  const agents = deps.agentManager.list();
-  const agentId = body?.agentId ?? agents[0]?.id;
-  if (!agentId) {
-    sendError(res, 400, "No agent available");
     return;
   }
 
@@ -200,11 +241,11 @@ addRoute("POST", "/api/sessions", async (req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/sessions/:id/message — send message, stream response via SSE
+// POST /api/agents/:agentId/sessions/:id/message — send message, stream via SSE
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/sessions/:id/message", async (req, res, deps) => {
-  const sessionId = req.params.id;
+addRoute("POST", "/api/agents/:agentId/sessions/:id/message", async (req, res, deps) => {
+  const { agentId, id: sessionId } = req.params;
   const session = activeSessions.get(sessionId);
   if (!session) {
     sendError(res, 404, `Active session "${sessionId}" not found — create or resume it first`);
@@ -223,9 +264,9 @@ addRoute("POST", "/api/sessions/:id/message", async (req, res, deps) => {
     return;
   }
 
-  const cache = deps.agentManager.get(session.agentId);
+  const cache = deps.agentManager.get(agentId);
   if (!cache) {
-    sendError(res, 404, `Agent "${session.agentId}" not found`);
+    sendError(res, 404, `Agent "${agentId}" not found`);
     return;
   }
 
@@ -234,7 +275,7 @@ addRoute("POST", "/api/sessions/:id/message", async (req, res, deps) => {
     return;
   }
 
-  const store = await deps.sessionStoreManager.getOrCreate(session.agentId);
+  const store = await deps.sessionStoreManager.getOrCreate(agentId);
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -261,8 +302,8 @@ addRoute("POST", "/api/sessions/:id/message", async (req, res, deps) => {
   });
 
   try {
-    const systemPrompt = deps.agentManager.getSystemPrompt?.(session.agentId) ?? "";
-    const cwd = deps.agentManager.getWorkspacePath?.(session.agentId);
+    const systemPrompt = deps.agentManager.getSystemPrompt?.(agentId) ?? "";
+    const cwd = deps.agentManager.getWorkspacePath?.(agentId);
 
     const result = await runAgentLoop({
       cache,
@@ -273,7 +314,7 @@ addRoute("POST", "/api/sessions/:id/message", async (req, res, deps) => {
       textInput: body.message,
       log,
       hooks: deps.hooks,
-      agentId: session.agentId,
+      agentId,
     });
 
     if (result.errorMessage) {
@@ -290,10 +331,10 @@ addRoute("POST", "/api/sessions/:id/message", async (req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/sessions/:id/abort — abort current response
+// POST /api/agents/:agentId/sessions/:id/abort — abort current response
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/sessions/:id/abort", (req, res) => {
+addRoute("POST", "/api/agents/:agentId/sessions/:id/abort", (req, res) => {
   const session = activeSessions.get(req.params.id);
   if (!session) {
     sendError(res, 404, `Active session "${req.params.id}" not found`);
@@ -305,11 +346,11 @@ addRoute("POST", "/api/sessions/:id/abort", (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /api/sessions/:id — delete session
+// DELETE /api/agents/:agentId/sessions/:id — delete session
 // ---------------------------------------------------------------------------
 
-addRoute("DELETE", "/api/sessions/:id", async (req, res, deps) => {
-  const sessionId = req.params.id;
+addRoute("DELETE", "/api/agents/:agentId/sessions/:id", async (req, res, deps) => {
+  const { agentId, id: sessionId } = req.params;
 
   const active = activeSessions.get(sessionId);
   if (active) {
@@ -318,7 +359,8 @@ addRoute("DELETE", "/api/sessions/:id", async (req, res, deps) => {
   }
 
   if (deps.sessionStoreManager) {
-    for (const store of deps.sessionStoreManager.all().values()) {
+    const store = deps.sessionStoreManager.peek(agentId);
+    if (store) {
       const session = await store.get(sessionId);
       if (session) {
         await store.delete(sessionId);

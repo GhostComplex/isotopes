@@ -51,12 +51,22 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         return;
       }
 
-      const session = await api.createSession(requestedAgent, "tui:main");
+      let resolvedAgentId = requestedAgent;
+      if (!resolvedAgentId) {
+        const sessions = await api.fetchSessions();
+        resolvedAgentId = sessions[0]?.agentId;
+        if (!resolvedAgentId) {
+          setError("No agents available");
+          return;
+        }
+      }
+
+      const session = await api.createSession(resolvedAgentId, "tui:main");
       sessionIdRef.current = session.sessionId;
       setAgentId(session.agentId);
 
       if (session.resumed) {
-        const { items: history } = await api.getHistory(session.sessionId);
+        const { items: history } = await api.getHistory(session.agentId, session.sessionId);
         const chatMessages = history
           .map(historyMessageToChatMessage)
           .filter((m): m is ChatMessage => m !== null)
@@ -134,7 +144,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     };
 
     try {
-      await api.sendMessage(sessionId, text, handleEvent, abort.signal);
+      await api.sendMessage(agentId, sessionId, text, handleEvent, abort.signal);
     } catch (err) {
       if (!abort.signal.aborted) {
         const msg = err instanceof Error ? err.message : String(err);

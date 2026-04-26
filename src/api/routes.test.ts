@@ -77,11 +77,11 @@ describe("API routes", () => {
     });
   });
 
-  describe("GET /api/sessions/:id", () => {
-    it("returns 404 for unknown session", async () => {
-      const { status, data } = await request(getPort(), "GET", "/api/sessions/nonexistent");
-      expect(status).toBe(404);
-      expect((data as { error: string }).error).toContain("not found");
+  describe("GET /api/agents/:agentId/sessions/:id", () => {
+    it("returns 503 when session store is not available", async () => {
+      const { status, data } = await request(getPort(), "GET", "/api/agents/test-agent/sessions/nonexistent");
+      expect(status).toBe(503);
+      expect((data as { error: string }).error).toContain("not available");
     });
   });
 
