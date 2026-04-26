@@ -11,7 +11,6 @@ import {
   getAgentSessionsDir,
   normalizeAgentId,
   getConfigPath,
-  getThreadBindingsPath,
   ensureDirectories,
   ensureWorkspaceDir,
   ensureExplicitWorkspaceDir,
@@ -111,18 +110,6 @@ describe("paths", () => {
     it("resolves relative paths from default home when ISOTOPES_HOME is unset", () => {
       const expected = path.resolve(path.join(os.homedir(), ".isotopes"), "my-workspace");
       expect(resolveExplicitWorkspacePath("my-workspace")).toBe(expected);
-    });
-  });
-
-  describe("getThreadBindingsPath", () => {
-    it("returns ~/.isotopes/thread-bindings.json", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "thread-bindings.json");
-      expect(getThreadBindingsPath()).toBe(expected);
-    });
-
-    it("respects ISOTOPES_HOME", () => {
-      vi.stubEnv("ISOTOPES_HOME", "/custom");
-      expect(getThreadBindingsPath()).toBe("/custom/thread-bindings.json");
     });
   });
 

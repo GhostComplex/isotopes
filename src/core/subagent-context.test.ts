@@ -1,17 +1,16 @@
-// src/core/subagent-context.test.ts — Tests for subagent Discord context
+// src/core/subagent-context.test.ts — Tests for subagent stream context
 import { describe, it, expect, vi } from "vitest";
 import {
   runWithSubagentContext,
   runWithSubagentContextAsync,
   getSubagentContext,
   hasSubagentContext,
-  type SubagentDiscordContext,
+  type SubagentStreamContext,
 } from "./subagent-context.js";
 
 describe("SubagentContext", () => {
-  const mockContext: SubagentDiscordContext = {
-    sendMessage: vi.fn().mockResolvedValue({ id: "msg-123" }),
-    createThread: vi.fn().mockResolvedValue({ id: "thread-456" }),
+  const mockContext: SubagentStreamContext = {
+    createSink: vi.fn(),
     channelId: "channel-789",
     showToolCalls: true,
   };
@@ -70,7 +69,7 @@ describe("SubagentContext", () => {
 
   describe("nested contexts", () => {
     it("inner context overrides outer context", () => {
-      const innerContext: SubagentDiscordContext = {
+      const innerContext: SubagentStreamContext = {
         ...mockContext,
         channelId: "inner-channel",
       };

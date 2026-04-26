@@ -1,18 +1,17 @@
-// src/transports/discord-manager.ts — Manages multiple DiscordTransport instances
+// src/plugins/discord/discord-manager.ts — Manages multiple DiscordTransport instances
 // Each Discord bot account gets its own transport (Client, token, identity).
 
 import type {
-  ChannelsConfig,
-  DiscordAccountConfig,
   SessionStore,
-} from "../core/types.js";
-import type { DefaultAgentManager } from "../core/agent-manager.js";
-import { getDiscordToken } from "../core/config.js";
+} from "../../core/types.js";
+import type { DiscordAccountConfig } from "./types.js";
+import type { DefaultAgentManager } from "../../core/agent-manager.js";
+import { getDiscordToken } from "./config.js";
 import { DiscordTransport } from "./discord.js";
-import { ThreadBindingManager } from "../core/thread-bindings.js";
+import { ThreadBindingManager } from "./thread-bindings.js";
 import type { ReplyToMode } from "./reply-directive.js";
-import type { UsageTracker } from "../core/usage-tracker.js";
-import { createLogger } from "../core/logger.js";
+import type { UsageTracker } from "../../core/usage-tracker.js";
+import { createLogger } from "../../core/logger.js";
 
 const log = createLogger("discord-manager");
 
@@ -23,8 +22,6 @@ export interface DiscordSharedConfig {
   agentManager: DefaultAgentManager;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
-  /** Full channels block — passed through for per-guild lookups (e.g. requireMention). */
-  channels?: ChannelsConfig;
   threadBindingManager?: ThreadBindingManager;
   usageTracker?: UsageTracker;
 }
@@ -72,8 +69,7 @@ export class DiscordTransportManager {
         agentBindings: account.agentBindings,
         dmAccess: account.dmAccess,
         groupAccess: account.groupAccess,
-        channels: shared.channels,
-        accountId,
+        guilds: account.guilds,
         threadBindings: account.threadBindings,
         threadBindingManager: shared.threadBindingManager,
         enableSubagentStreaming: account.subagentStreaming?.enabled,

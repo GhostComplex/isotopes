@@ -21,7 +21,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-plugin-assets.cjs",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "lint": "eslint src --ext .ts,.tsx",

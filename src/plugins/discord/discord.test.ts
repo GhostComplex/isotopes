@@ -2,11 +2,11 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
-import type { SessionStore, ChannelsConfig } from "../core/types.js";
-import type { AgentServiceCache } from "../core/pi-mono.js";
-import type { DefaultAgentManager } from "../core/agent-manager.js";
-import { ThreadBindingManager } from "../core/thread-bindings.js";
-import { createMockAgentCache, createMockAgentManager, createMockSessionStore } from "../core/test-helpers.js";
+import type { SessionStore } from "../../core/types.js";
+import type { AgentServiceCache } from "../../core/pi-mono.js";
+import type { DefaultAgentManager } from "../../core/agent-manager.js";
+import { ThreadBindingManager } from "./thread-bindings.js";
+import { createMockAgentCache, createMockAgentManager, createMockSessionStore } from "../../core/test-helpers.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -261,26 +261,13 @@ describe("DiscordTransport", () => {
     }
 
     it("responds without mention when requireMention=false for the guild", async () => {
-      const channels: ChannelsConfig = {
-        discord: {
-          accounts: {
-            testacct: {
-              guilds: {
-                "guild-1": { requireMention: false },
-              },
-            },
-          },
-        },
-      };
-
       const transportWithMention = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
         defaultAgentId: "default",
-        channels,
-        accountId: "testacct",
+        guilds: { "guild-1": { requireMention: false } },
       });
 
       const msg = makeMsg({
@@ -299,26 +286,13 @@ describe("DiscordTransport", () => {
     });
 
     it("ignores messages without mention when requireMention=true (default)", async () => {
-      const channels: ChannelsConfig = {
-        discord: {
-          accounts: {
-            testacct: {
-              guilds: {
-                "guild-1": { requireMention: true },
-              },
-            },
-          },
-        },
-      };
-
       const transportWithMention = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
         defaultAgentId: "default",
-        channels,
-        accountId: "testacct",
+        guilds: { "guild-1": { requireMention: true } },
       });
 
       const msg = makeMsg({
@@ -337,26 +311,13 @@ describe("DiscordTransport", () => {
     });
 
     it("responds to mention even when requireMention=true", async () => {
-      const channels: ChannelsConfig = {
-        discord: {
-          accounts: {
-            testacct: {
-              guilds: {
-                "guild-1": { requireMention: true },
-              },
-            },
-          },
-        },
-      };
-
       const transportWithMention = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
         defaultAgentId: "default",
-        channels,
-        accountId: "testacct",
+        guilds: { "guild-1": { requireMention: true } },
       });
 
       const msg = makeMsg({
@@ -374,8 +335,8 @@ describe("DiscordTransport", () => {
       expect(agent.createSession).toHaveBeenCalled();
     });
 
-    it("defaults to requireMention=true when no channels config provided", async () => {
-      // Transport without channels config (original behavior)
+    it("defaults to requireMention=true when no guilds config provided", async () => {
+      // Transport without guilds config (defaults to requireMention=true)
       const msg = makeMsg({
         mentions: { has: vi.fn(() => false) },
       });
@@ -804,24 +765,13 @@ describe("DiscordTransport", () => {
     }
 
     it("records channel history for non-mention messages", async () => {
-      const channels: ChannelsConfig = {
-        discord: {
-          accounts: {
-            testacct: {
-              guilds: { "guild-1": { requireMention: true } },
-            },
-          },
-        },
-      };
-
       const transportCtx = new DiscordTransport({
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
         sessionStore,
         defaultAgentId: "default",
-        channels,
-        accountId: "testacct",
+        guilds: { "guild-1": { requireMention: true } },
       });
 
       // Send a message without mentioning the bot — should be recorded to channel history
@@ -844,16 +794,7 @@ describe("DiscordTransport", () => {
         agentManager,
         sessionStore,
         defaultAgentId: "default",
-        channels: {
-          discord: {
-            accounts: {
-              testacct: {
-                guilds: { "guild-1": { requireMention: true } },
-              },
-            },
-          },
-        },
-        accountId: "testacct",
+        guilds: { "guild-1": { requireMention: true } },
       });
 
       const handleMsg2 = (m: MockIncomingMessage) =>
@@ -968,18 +909,7 @@ describe("DiscordTransport", () => {
         agentManager,
         sessionStore,
         defaultAgentId: "default",
-        channels: {
-          discord: {
-            accounts: {
-              testacct: {
-                guilds: {
-                  "guild-1": { requireMention: true },
-                },
-              },
-            },
-          },
-        },
-        accountId: "testacct",
+        guilds: { "guild-1": { requireMention: true } },
       });
 
       await (

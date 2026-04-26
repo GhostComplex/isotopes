@@ -7,7 +7,6 @@ import os from "node:os";
 import {
   loadConfig,
   toAgentConfig,
-  getDiscordToken,
   resolveToolSettings,
   resolveCompactionConfigFromFile,
   resolveSessionConfig,
@@ -137,8 +136,10 @@ channels:
 
       expect(config.provider?.type).toBe("anthropic");
       expect(config.agents[0].provider?.type).toBe("openai");
-      expect(config.channels?.discord?.accounts?.main?.defaultAgentId).toBe("assistant");
-      expect(config.channels?.discord?.accounts?.main?.agentBindings?.["123456"]).toBe("assistant");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const discord = config.channels?.discord as any;
+      expect(discord?.accounts?.main?.defaultAgentId).toBe("assistant");
+      expect(discord?.accounts?.main?.agentBindings?.["123456"]).toBe("assistant");
     });
 
     it("loads global and agent tool settings from the same config file", async () => {
@@ -526,34 +527,6 @@ agents:
     });
   });
 
-  describe("getDiscordToken", () => {
-    it("returns direct token", () => {
-      const token = getDiscordToken({ token: "my-token" });
-
-      expect(token).toBe("my-token");
-    });
-
-    it("returns token from env var", () => {
-      vi.stubEnv("MY_DISCORD_TOKEN", "env-token");
-
-      const token = getDiscordToken({ tokenEnv: "MY_DISCORD_TOKEN" });
-
-      expect(token).toBe("env-token");
-    });
-
-    it("throws when env var not set", () => {
-      expect(() => getDiscordToken({ tokenEnv: "NONEXISTENT_VAR" })).toThrow(
-        "Environment variable NONEXISTENT_VAR is not set",
-      );
-    });
-
-    it("throws when neither token nor tokenEnv", () => {
-      expect(() => getDiscordToken({})).toThrow(
-        "Discord account config must have either 'token' or 'tokenEnv'",
-      );
-    });
-  });
-
   describe("resolveSessionConfig", () => {
     it("returns undefined when no session config provided", () => {
       expect(resolveSessionConfig()).toBeUndefined();
@@ -756,7 +729,8 @@ channels:
 
       const config = await loadConfig(configPath);
 
-      const accounts = config.channels?.discord?.accounts ?? {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const accounts = ((config.channels?.discord as any)?.accounts ?? {}) as Record<string, any>;
       expect(Object.keys(accounts)).toEqual(["major", "tachikoma"]);
       expect(accounts.major.token).toBe("tok-major");
       expect(accounts.tachikoma.defaultAgentId).toBe("tachikoma");

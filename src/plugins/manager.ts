@@ -15,6 +15,7 @@ import type {
   PluginConfigEntry,
   TransportFactory,
 } from "./types.js";
+import type { SessionStore } from "../core/types.js";
 
 const log = createLogger("plugins");
 
@@ -30,6 +31,7 @@ export class PluginManager {
   private uiRegistry = new UIRegistry();
   private transportFactories = new Map<string, TransportFactory>();
   private toolPluginRegistry = new ToolPluginRegistry();
+  private transportSessionStores = new Map<string, Map<string, SessionStore>>();
 
   async discoverAndLoad(
     searchDirs: string[],
@@ -76,6 +78,7 @@ export class PluginManager {
       uiRegistry: this.uiRegistry,
       transportFactories: this.transportFactories,
       toolPluginRegistry: this.toolPluginRegistry,
+      transportSessionStores: this.transportSessionStores,
       pluginConfig,
     });
 
@@ -99,6 +102,10 @@ export class PluginManager {
 
   getToolPluginRegistry(): ToolPluginRegistry {
     return this.toolPluginRegistry;
+  }
+
+  getTransportSessionStores(): Map<string, Map<string, SessionStore>> {
+    return this.transportSessionStores;
   }
 
   getLoadedPlugins(): PluginManifest[] {

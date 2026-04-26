@@ -7,9 +7,8 @@ import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
 import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import type { SubagentAgent, SubagentEvent, DiscordSinkConfig } from "../subagent/types.js";
-import { DiscordSink } from "../transports/discord-subagent-sink.js";
-import { getSubagentContext } from "./subagent-context.js";
+import type { SubagentAgent, SubagentEvent } from "../subagent/types.js";
+import { getSubagentContext, type SubagentStreamContext } from "./subagent-context.js";
 import { failureTracker } from "../subagent/failure-tracker.js";
 import { createLogger } from "./logger.js";
 const log = createLogger("tools:subagent");
@@ -262,10 +261,9 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
           : undefined;
         let result: string;
         if (discordContext) {
-          // Run with Discord streaming
-          result = await runSubagentWithDiscord(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin);
+          result = await runSubagentWithStreaming(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin);
         } else {
-          // Run without Discord streaming (original behavior)
+          // Run without streaming
           result = await runSubagentPlain(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, maxTurns, parentAgentId, builtin);
         }
 
@@ -287,7 +285,7 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
   };
 }
 /**
- * Run subagent without Discord streaming (original behavior).
+ * Run subagent without transport streaming.
  */
 async function runSubagentPlain(
   task: string,
@@ -315,44 +313,31 @@ async function runSubagentPlain(
   }
 }
 /**
- * Run subagent with Discord streaming.
- * Creates a thread, streams events to it, and posts a summary to the main channel.
+ * Run subagent with transport streaming.
+ * Creates a sink via the stream context, streams events to it, and posts a summary.
  */
-async function runSubagentWithDiscord(
+async function runSubagentWithStreaming(
   task: string,
   agent: SubagentAgent,
   cwd: string,
   timeout: number | undefined,
   allowedWorkspaces: string[],
-  context: NonNullable<ReturnType<typeof getSubagentContext>>,
+  context: SubagentStreamContext,
   maxTurns?: number,
   parentAgentId?: string,
   builtin?: { provider: ProviderConfig; tools: ToolRegistry },
 ): Promise<string> {
-  const { sendMessage, createThread, channelId, showToolCalls = true, onComplete } = context;
-  // Create Discord sink with thread enabled
-  const sinkConfig: DiscordSinkConfig = {
-    showToolCalls,
-    showThinking: false,
-    useThread: true,
-  };
-  const sink = new DiscordSink(sendMessage, createThread, channelId, sinkConfig);
-  // Create a task label for the thread name
+  const { channelId, showToolCalls = true, onComplete } = context;
+  const sink = context.createSink(channelId, { showToolCalls, useThread: true });
   const taskLabel = `${agent}: ${task.slice(0, 50)}${task.length > 50 ? "..." : ""}`;
-  log.info("Starting sub-agent with Discord streaming", { agent, cwd, channelId });
-  // Start the sink (creates thread)
+  log.info("Starting sub-agent with streaming", { agent, cwd, channelId });
   await sink.start(taskLabel);
 
-  // Get threadId after thread is created
-  const threadId = sink.getThreadId();
-
-  // Track start time for duration calculation
+  const threadId = sink.getThreadId?.();
   const startTime = Date.now();
-
-  // Collect events for building result
   const events: SubagentEvent[] = [];
+
   try {
-    // Run subagent with event streaming
     const result = await spawnSubagent(task, {
       agent,
       cwd,
@@ -360,7 +345,7 @@ async function runSubagentWithDiscord(
       maxTurns,
       allowedWorkspaces,
       channelId,
-      threadId, // Pass threadId for /stop support in threads
+      threadId,
       parentAgentId,
       ...(builtin ? { builtin } : {}),
       onEvent: async (event) => {
@@ -369,12 +354,10 @@ async function runSubagentWithDiscord(
       },
     });
 
-    // Calculate duration and extract cost from events
     const durationMs = Date.now() - startTime;
     const costUsd = events.find(e => e.costUsd !== undefined)?.costUsd;
 
-    // Build SubagentResult for finish message
-    const subagentResult = {
+    await sink.finish({
       success: result.success,
       output: result.output,
       error: result.error,
@@ -382,10 +365,8 @@ async function runSubagentWithDiscord(
       exitCode: result.exitCode,
       durationMs,
       costUsd,
-    };
-    // Send summary to main channel
-    await sink.finish(subagentResult);
-    // Call onComplete callback for auto-unbind
+    });
+
     if (onComplete && threadId) {
       try {
         await onComplete(threadId);
@@ -393,7 +374,7 @@ async function runSubagentWithDiscord(
         log.warn("onComplete callback failed", { error: err instanceof Error ? err.message : String(err) });
       }
     }
-    log.info("Sub-agent with Discord streaming completed", {
+    log.info("Sub-agent with streaming completed", {
       success: result.success,
       threadId,
     });
@@ -405,12 +386,10 @@ async function runSubagentWithDiscord(
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    log.error("Sub-agent with Discord streaming failed", { error });
-    // Send error to Discord
+    log.error("Sub-agent with streaming failed", { error });
     const errorEvent: SubagentEvent = { type: "error", error };
     events.push(errorEvent);
     await sink.sendEvent(errorEvent);
-    // Send failure summary with duration
     const durationMs = Date.now() - startTime;
     await sink.finish({
       success: false,
@@ -419,7 +398,6 @@ async function runSubagentWithDiscord(
       exitCode: 1,
       durationMs,
     });
-    // Call onComplete callback even on failure (for cleanup)
     if (onComplete && threadId) {
       try {
         await onComplete(threadId);

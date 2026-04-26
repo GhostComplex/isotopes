@@ -1,8 +1,9 @@
-// src/subagent/discord-sink.ts — Stream sub-agent events to Discord
+// src/plugins/discord/discord-subagent-sink.ts — Stream sub-agent events to Discord
 // Formats SubagentEvents and sends them to a Discord channel or thread.
 
-import { createLogger } from "../core/logger.js";
-import type { SubagentEvent, SubagentResult, DiscordSinkConfig } from "../subagent/types.js";
+import { createLogger } from "../../core/logger.js";
+import type { SubagentEvent, SubagentResult, DiscordSinkConfig } from "../../subagent/types.js";
+import type { SubagentStreamSink } from "../../core/subagent-context.js";
 
 const log = createLogger("subagent:discord-sink");
 
@@ -154,7 +155,7 @@ export function formatSummary(result: SubagentResult, threadId?: string): string
  * - Sends individual events to the thread
  * - Sends the final summary to the **main channel** (not the thread)
  */
-export class DiscordSink {
+export class DiscordSink implements SubagentStreamSink {
   /** The channel where events are sent (thread if created, otherwise main channel) */
   private targetChannelId: string;
   /** The thread ID if one was created */
