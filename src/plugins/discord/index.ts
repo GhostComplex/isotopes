@@ -49,7 +49,6 @@ export default {
           sessionStore: defaultSessionStore,
           sessionStoreForAgent: (agentId) =>
             ctx.getSessionStoreForAgent(agentId) ?? sessionStores.get(agentId) ?? defaultSessionStore,
-          channels: ctx.config.channels,
           threadBindingManager,
           usageTracker: ctx.usageTracker,
         },

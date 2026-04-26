@@ -2,7 +2,6 @@
 // Each Discord bot account gets its own transport (Client, token, identity).
 
 import type {
-  ChannelsConfig,
   SessionStore,
 } from "../../core/types.js";
 import type { DiscordAccountConfig } from "./types.js";
@@ -23,8 +22,6 @@ export interface DiscordSharedConfig {
   agentManager: DefaultAgentManager;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
-  /** Full channels block — passed through for per-guild lookups (e.g. requireMention). */
-  channels?: ChannelsConfig;
   threadBindingManager?: ThreadBindingManager;
   usageTracker?: UsageTracker;
 }
@@ -72,8 +69,7 @@ export class DiscordTransportManager {
         agentBindings: account.agentBindings,
         dmAccess: account.dmAccess,
         groupAccess: account.groupAccess,
-        channels: shared.channels,
-        accountId,
+        guilds: account.guilds,
         threadBindings: account.threadBindings,
         threadBindingManager: shared.threadBindingManager,
         enableSubagentStreaming: account.subagentStreaming?.enabled,

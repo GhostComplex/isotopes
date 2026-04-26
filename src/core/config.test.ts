@@ -137,7 +137,7 @@ channels:
       expect(config.provider?.type).toBe("anthropic");
       expect(config.agents[0].provider?.type).toBe("openai");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const discord = (config.channels as any)?.discord;
+      const discord = config.channels?.discord as any;
       expect(discord?.accounts?.main?.defaultAgentId).toBe("assistant");
       expect(discord?.accounts?.main?.agentBindings?.["123456"]).toBe("assistant");
     });
@@ -730,7 +730,7 @@ channels:
       const config = await loadConfig(configPath);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const accounts = ((config.channels as any)?.discord?.accounts ?? {}) as Record<string, any>;
+      const accounts = ((config.channels?.discord as any)?.accounts ?? {}) as Record<string, any>;
       expect(Object.keys(accounts)).toEqual(["major", "tachikoma"]);
       expect(accounts.major.token).toBe("tok-major");
       expect(accounts.tachikoma.defaultAgentId).toBe("tachikoma");

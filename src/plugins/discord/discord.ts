@@ -13,7 +13,6 @@ import {
   type ThreadChannel,
 } from "discord.js";
 import {
-  type ChannelsConfig,
   type AgentMessage,
   type SessionStore,
   type Transport,
@@ -168,10 +167,8 @@ export interface DiscordTransportConfig {
     channelAllowlist?: string[];
     guildAllowlist?: string[];
   };
-  /** Channels config for per-guild/group settings (e.g. requireMention) */
-  channels?: ChannelsConfig;
-  /** The account ID this bot is running as (for guild config lookup) */
-  accountId?: string;
+  /** Per-guild settings (e.g. requireMention) */
+  guilds?: Record<string, import("./types.js").GuildConfig>;
   /** Configuration for automatic thread-to-session binding */
   threadBindings?: ThreadBindingConfig;
   /** Thread binding manager instance (created automatically if not provided) */
@@ -609,12 +606,12 @@ export class DiscordTransport implements Transport {
     const botId = this.client.user?.id;
     const isMentioned = botId ? msg.mentions.has(botId) : false;
 
-    const ok = shouldRespondToMessage(this.config.channels, {
-      botUserId: botId ?? "",
-      guildId: msg.guild.id,
-      accountId: this.config.accountId,
+    const requireMention = this.config.guilds?.[msg.guild.id]?.requireMention ?? true;
+
+    const ok = shouldRespondToMessage({
       isMentioned,
       isDM: false,
+      requireMention,
     });
     if (!ok) {
       log.info(
