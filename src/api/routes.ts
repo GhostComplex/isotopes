@@ -1,15 +1,14 @@
-// src/api/routes.ts — Route registry and status endpoint
+// src/api/routes.ts — Route registry (addRoute / matchRoute)
 
 import type { ServerResponse } from "node:http";
 
-import { VERSION } from "../version.js";
 import type { CronScheduler } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { HookRegistry } from "../plugins/hooks.js";
-import { sendJson, type ApiRequest } from "./middleware.js";
+import type { ApiRequest } from "./middleware.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -81,17 +80,3 @@ export function matchRoute(
   }
   return undefined;
 }
-
-// ---------------------------------------------------------------------------
-// GET /api/status — daemon status
-// ---------------------------------------------------------------------------
-
-addRoute("GET", "/api/status", (_req, res, deps) => {
-  const cronJobCount = deps.cronScheduler.listJobs().length;
-
-  sendJson(res, 200, {
-    version: VERSION,
-    uptime: process.uptime(),
-    cronJobs: cronJobCount,
-  });
-});
