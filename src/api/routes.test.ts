@@ -73,7 +73,7 @@ describe("API routes", () => {
     it("returns empty array when no sessions exist", async () => {
       const { status, data } = await request(getPort(), "GET", "/api/sessions");
       expect(status).toBe(200);
-      expect(data).toEqual([]);
+      expect(data).toEqual({ items: [] });
     });
   });
 
@@ -89,7 +89,7 @@ describe("API routes", () => {
     it("returns empty array when no jobs exist", async () => {
       const { status, data } = await request(getPort(), "GET", "/api/cron");
       expect(status).toBe(200);
-      expect(data).toEqual([]);
+      expect(data).toEqual({ items: [] });
     });
 
     it("returns registered cron jobs", async () => {
@@ -103,7 +103,7 @@ describe("API routes", () => {
 
       const { status, data } = await request(getPort(), "GET", "/api/cron");
       expect(status).toBe(200);
-      const jobs = data as Array<{ name: string; agentId: string }>;
+      const jobs = (data as { items: Array<{ name: string; agentId: string }> }).items;
       expect(jobs).toHaveLength(1);
       expect(jobs[0].name).toBe("standup");
       expect(jobs[0].agentId).toBe("claude");

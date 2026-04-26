@@ -122,7 +122,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
-      transportSessionStores: new Map(),
+
     });
 
     const factory: TransportFactory = async () => ({ start: async () => {}, stop: async () => {} });
@@ -145,7 +145,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
-      transportSessionStores: new Map(),
+
     });
 
     const handler = vi.fn();
@@ -170,7 +170,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
-      transportSessionStores: new Map(),
+
       pluginConfig: { theme: "dark" },
     });
 
@@ -188,7 +188,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
-      transportSessionStores: new Map(),
+
     });
 
     expect(api.log).toBeDefined();
@@ -206,7 +206,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
-      transportSessionStores: new Map(),
+
     });
 
     const tool: Tool = { name: "my-tool", description: "test", parameters: {} };
@@ -230,7 +230,7 @@ describe("createPluginApi", () => {
       uiRegistry,
       transportFactories,
       toolPluginRegistry,
-      transportSessionStores: new Map(),
+
     });
 
     api.registerTool((ctx) => ({
@@ -246,29 +246,6 @@ describe("createPluginApi", () => {
     expect(toolPluginRegistry.resolve({ agentId: "bot1", workspacePath: "/tmp" })).toHaveLength(0);
   });
 
-  it("registers session stores and tracks cleanup", () => {
-    const hooks = new HookRegistry();
-    const uiRegistry = new UIRegistry();
-    const transportFactories = new Map<string, TransportFactory>();
-    const toolPluginRegistry = new ToolPluginRegistry();
-    const transportSessionStores = new Map<string, Map<string, unknown>>();
-
-    const { api, cleanup } = createPluginApi(manifest, "/tmp/plugin", {
-      hooks,
-      uiRegistry,
-      transportFactories,
-      toolPluginRegistry,
-      transportSessionStores: transportSessionStores as never,
-    });
-
-    const stores = new Map([["agent1", { fake: true }]]);
-    api.registerSessionStores(stores as never);
-    expect(transportSessionStores.has("test-plugin")).toBe(true);
-    expect(transportSessionStores.get("test-plugin")!.size).toBe(1);
-
-    for (const fn of cleanup) fn();
-    expect(transportSessionStores.has("test-plugin")).toBe(false);
-  });
 });
 
 // ---------------------------------------------------------------------------

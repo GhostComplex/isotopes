@@ -54,7 +54,7 @@ describe("createSession", () => {
     const result = await createSession("bot", "tui:main");
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:2712/api/chat/sessions",
+      "http://127.0.0.1:2712/api/sessions",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ agentId: "bot", sessionKey: "tui:main" }),
@@ -65,21 +65,21 @@ describe("createSession", () => {
 
 describe("fetchSessions", () => {
   it("returns all sessions", async () => {
-    const data = [{ id: "s1", agentId: "bot", source: "discord", status: "active", lastActivityAt: "" }];
+    const data = { items: [{ id: "s1", agentId: "bot", status: "active", lastActivityAt: "" }] };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
     const result = await fetchSessions();
-    expect(result).toEqual(data);
+    expect(result).toEqual(data.items);
     expect(mockFetch).toHaveBeenCalledWith("http://127.0.0.1:2712/api/sessions");
   });
 });
 
 describe("getHistory", () => {
   it("returns messages for session", async () => {
-    const data = { messages: [{ role: "user", content: "hi" }] };
+    const data = { items: [{ role: "user", content: "hi" }] };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
     const result = await getHistory("s1");
     expect(result).toEqual(data);
-    expect(mockFetch).toHaveBeenCalledWith("http://127.0.0.1:2712/api/chat/sessions/s1/messages");
+    expect(mockFetch).toHaveBeenCalledWith("http://127.0.0.1:2712/api/sessions/s1/messages");
   });
 });
 
@@ -88,7 +88,7 @@ describe("abortMessage", () => {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) });
     await abortMessage("s1");
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:2712/api/chat/sessions/s1/abort",
+      "http://127.0.0.1:2712/api/sessions/s1/abort",
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -99,7 +99,7 @@ describe("deleteSession", () => {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) });
     await deleteSession("s1");
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:2712/api/chat/sessions/s1",
+      "http://127.0.0.1:2712/api/sessions/s1",
       expect.objectContaining({ method: "DELETE" }),
     );
   });

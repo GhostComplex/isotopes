@@ -7,7 +7,6 @@ import { createLogger } from "../core/logger.js";
 import type { CronScheduler } from "../automation/cron-job.js";
 import type { ConfigReloader } from "../workspace/config-reloader.js";
 import type { DefaultAgentManager } from '../core/agent-manager.js';
-import type { SessionStore } from '../core/types.js';
 import type { UsageTracker } from "../core/usage-tracker.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import {
@@ -23,10 +22,13 @@ import { serveStaticFile } from "./static.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import type { UIRegistry } from "../plugins/ui-registry.js";
 
-// Register subagent routes (side-effect import)
+// Register route modules (side-effect imports)
+import "./cron.js";
+import "./config.js";
+import "./logs.js";
+import "./usage.js";
+import "./sessions.js";
 import "./subagents.js";
-// Register chat API routes (side-effect import)
-import "./chat.js";
 
 const log = createLogger("api:server");
 
@@ -59,7 +61,6 @@ export interface ApiServerDeps {
   configReloader?: ConfigReloader;
   agentManager?: DefaultAgentManager;
   usageTracker?: UsageTracker;
-  transportSessionStores?: Map<string, Map<string, SessionStore>>;
   uiRegistry?: UIRegistry;
   sessionStoreManager?: SessionStoreManager;
   hooks?: HookRegistry;
@@ -80,7 +81,6 @@ export class ApiServer {
       configReloader: deps.configReloader,
       agentManager: deps.agentManager,
       usageTracker: deps.usageTracker,
-      transportSessionStores: deps.transportSessionStores,
       sessionStoreManager: deps.sessionStoreManager,
       hooks: deps.hooks,
     };

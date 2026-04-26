@@ -113,7 +113,6 @@ export interface IsotopesPluginApi {
   registerTool(
     tool: { tool: Tool; handler: ToolHandler } | PluginToolFactory,
   ): void;
-  registerSessionStores(stores: Map<string, SessionStore>): void;
   on<H extends HookName>(
     hook: H,
     handler: (payload: HookPayloads[H]) => void | Promise<void>,

@@ -319,7 +319,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       usageTracker,
       uiRegistry: pluginManager.getUIRegistry(),
       sessionStoreManager,
-      transportSessionStores: pluginManager.getTransportSessionStores(),
       hooks: pluginManager.getHooks(),
     },
   );

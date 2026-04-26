@@ -56,7 +56,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       setAgentId(session.agentId);
 
       if (session.resumed) {
-        const { messages: history } = await api.getHistory(session.sessionId);
+        const { items: history } = await api.getHistory(session.sessionId);
         const chatMessages = history
           .map(historyMessageToChatMessage)
           .filter((m): m is ChatMessage => m !== null)

@@ -51,7 +51,7 @@ function request(
   });
 }
 
-describe("POST /api/chat/sessions — sessionKey", () => {
+describe("POST /api/sessions — sessionKey", () => {
   let server: ApiServer;
   let agentManager: ReturnType<typeof createMockAgentManager>;
   let sessionStoreManager: SessionStoreManager;
@@ -81,7 +81,7 @@ describe("POST /api/chat/sessions — sessionKey", () => {
   }
 
   it("creates a new session without sessionKey (default path)", async () => {
-    const { status, data } = await request(getPort(), "POST", "/api/chat/sessions", {
+    const { status, data } = await request(getPort(), "POST", "/api/sessions", {
       agentId: agentId(),
     });
     expect(status).toBe(201);
@@ -92,7 +92,7 @@ describe("POST /api/chat/sessions — sessionKey", () => {
 
   it("resumes an existing session when same sessionKey is provided", async () => {
     const key = `pet:test-${Date.now()}`;
-    const first = await request(getPort(), "POST", "/api/chat/sessions", {
+    const first = await request(getPort(), "POST", "/api/sessions", {
       agentId: agentId(),
       sessionKey: key,
     });
@@ -100,7 +100,7 @@ describe("POST /api/chat/sessions — sessionKey", () => {
     const firstBody = first.data as { sessionId: string; resumed: boolean };
     expect(firstBody.resumed).toBe(false);
 
-    const second = await request(getPort(), "POST", "/api/chat/sessions", {
+    const second = await request(getPort(), "POST", "/api/sessions", {
       agentId: agentId(),
       sessionKey: key,
     });
@@ -111,7 +111,7 @@ describe("POST /api/chat/sessions — sessionKey", () => {
   });
 
   it("returns 400 for invalid sessionKey format", async () => {
-    const { status, data } = await request(getPort(), "POST", "/api/chat/sessions", {
+    const { status, data } = await request(getPort(), "POST", "/api/sessions", {
       agentId: agentId(),
       sessionKey: "no-colon-here",
     });
@@ -121,7 +121,7 @@ describe("POST /api/chat/sessions — sessionKey", () => {
 
   it("returns 400 for sessionKey exceeding max length", async () => {
     const longKey = "a".repeat(100) + ":" + "b".repeat(100);
-    const { status, data } = await request(getPort(), "POST", "/api/chat/sessions", {
+    const { status, data } = await request(getPort(), "POST", "/api/sessions", {
       agentId: agentId(),
       sessionKey: longKey,
     });
