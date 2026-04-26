@@ -21,7 +21,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc && find src/plugins -name 'isotopes.plugin.json' -exec sh -c 'cp \"$1\" \"dist/plugins/$(basename $(dirname \"$1\"))/\"' _ {} \\;",
+    "build": "tsc && node scripts/copy-plugin-assets.cjs",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "lint": "eslint src --ext .ts,.tsx",
