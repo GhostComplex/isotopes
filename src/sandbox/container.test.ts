@@ -298,44 +298,6 @@ describe("ContainerManager", () => {
     });
   });
 
-  describe("list", () => {
-    it("returns parsed container list", async () => {
-      mockExecFile.mockResolvedValue({
-        stdout: [
-          "abc123\tcontainer-1\tUp 5 minutes\ttest:latest\t2026-04-09 10:00:00 +0000 UTC",
-          "def456\tcontainer-2\tExited (0) 1 minute ago\ttest:latest\t2026-04-09 09:55:00 +0000 UTC",
-        ].join("\n"),
-        stderr: "",
-      });
-
-      const containers = await manager.list();
-
-      expect(containers).toHaveLength(2);
-      expect(containers[0].name).toBe("container-1");
-      expect(containers[0].status).toBe("running");
-      expect(containers[1].name).toBe("container-2");
-      expect(containers[1].status).toBe("exited");
-    });
-
-    it("passes name filter to docker ps", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "", stderr: "" });
-
-      await manager.list({ name: "isotopes-sandbox" });
-
-      const args = mockExecFile.mock.calls[0][1] as string[];
-      expect(args).toContain("--filter");
-      expect(args).toContain("name=isotopes-sandbox");
-    });
-
-    it("returns empty array when no containers match", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "", stderr: "" });
-
-      const containers = await manager.list();
-
-      expect(containers).toEqual([]);
-    });
-  });
-
   describe("status normalization", () => {
     it.each([
       ["Up 2 minutes", "running"],

@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
-import { spawn, execSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { DaemonProcess } from "./process.js";
 import type { DaemonOptions } from "./process.js";
 
@@ -22,7 +22,6 @@ vi.mock("node:fs/promises", () => ({
 
 vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
-  execSync: vi.fn(),
 }));
 
 const mockFs = fs as unknown as {
@@ -34,7 +33,6 @@ const mockFs = fs as unknown as {
 };
 
 const mockSpawn = spawn as unknown as ReturnType<typeof vi.fn>;
-const mockExecSync = execSync as unknown as ReturnType<typeof vi.fn>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,7 +94,7 @@ describe("DaemonProcess.isRunning", () => {
     expect(await d.isRunning()).toBe(false);
   });
 
-  it("returns false when pid exists but process is dead", async () => {
+  it("returns false when pid exists but process is dead (legacy format)", async () => {
     mockFs.readFile.mockResolvedValue("12345\n");
     mockProcessAlive(false);
 
@@ -104,8 +102,16 @@ describe("DaemonProcess.isRunning", () => {
     expect(await d.isRunning()).toBe(false);
   });
 
-  it("returns true when pid exists and process is alive", async () => {
+  it("returns true when pid exists and process is alive (legacy format)", async () => {
     mockFs.readFile.mockResolvedValue("12345\n");
+    mockProcessAlive(true);
+
+    const d = makeDaemon();
+    expect(await d.isRunning()).toBe(true);
+  });
+
+  it("returns true when pid exists and process is alive (JSON format)", async () => {
+    mockFs.readFile.mockResolvedValue(JSON.stringify({ pid: 12345, startedAt: new Date().toISOString() }));
     mockProcessAlive(true);
 
     const d = makeDaemon();
@@ -114,7 +120,7 @@ describe("DaemonProcess.isRunning", () => {
 });
 
 describe("DaemonProcess.start", () => {
-  it("spawns a detached child and writes pidfile", async () => {
+  it("spawns a detached child and writes pidfile as JSON", async () => {
     const fakeChild = {
       pid: 99999,
       unref: vi.fn(),
@@ -135,19 +141,14 @@ describe("DaemonProcess.start", () => {
     );
     expect(fakeChild.unref).toHaveBeenCalled();
 
-    // PID written
-    expect(mockFs.writeFile).toHaveBeenCalledWith(
-      defaultOpts.pidFile,
-      "99999",
-      "utf-8",
+    // PID + startedAt written as single JSON file
+    const writeCall = mockFs.writeFile.mock.calls.find(
+      (call: unknown[]) => call[0] === defaultOpts.pidFile,
     );
-
-    // Start timestamp written
-    expect(mockFs.writeFile).toHaveBeenCalledWith(
-      defaultOpts.pidFile + ".started",
-      expect.any(String),
-      "utf-8",
-    );
+    expect(writeCall).toBeDefined();
+    const parsed = JSON.parse(writeCall![1] as string);
+    expect(parsed.pid).toBe(99999);
+    expect(parsed.startedAt).toBeDefined();
 
     // File descriptors closed
     expect(fakeFd.close).toHaveBeenCalledTimes(2);
@@ -174,59 +175,31 @@ describe("DaemonProcess.start", () => {
 
 describe("DaemonProcess.stop", () => {
   it("sends SIGTERM and removes pidfile", async () => {
-    mockFs.readFile.mockImplementation(async (p: string) => {
-      if (p === defaultOpts.pidFile) return "12345\n";
-      if (p === defaultOpts.pidFile + ".started")
-        return new Date().toISOString();
-      throw new Error("ENOENT");
-    });
+    mockFs.readFile.mockResolvedValue(JSON.stringify({ pid: 12345, startedAt: new Date().toISOString() }));
 
-    if (process.platform === "win32") {
-      // On Windows, killProcess uses execSync("taskkill ...") then checks
-      // process.kill(pid, 0) which should throw after the kill.
-      let alive = true;
-      killSpy = vi.spyOn(process, "kill").mockImplementation(((_pid: unknown, signal: unknown) => {
-        if (signal === 0 || signal === undefined) {
-          if (!alive) throw new Error("ESRCH");
-          return true;
-        }
+    let alive = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    killSpy = vi.spyOn(process, "kill").mockImplementation(((_pid: any, signal: any) => {
+      if (signal === 0 || signal === undefined) {
+        if (!alive) throw new Error("ESRCH");
         return true;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }) as any);
-      mockExecSync.mockImplementation(() => { alive = false; });
-
-      const d = makeDaemon();
-      await d.stop();
-
-      expect(mockExecSync).toHaveBeenCalledWith("taskkill /T /PID 12345", { stdio: "ignore" });
-    } else {
-      // On Unix, killProcess uses process.kill(pid, "SIGTERM")
-      let alive = true;
+      }
+      if (signal === "SIGTERM") {
+        alive = false;
+        return true;
+      }
+      return true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      killSpy = vi.spyOn(process, "kill").mockImplementation(((_pid: any, signal: any) => {
-        if (signal === 0 || signal === undefined) {
-          if (!alive) throw new Error("ESRCH");
-          return true;
-        }
-        if (signal === "SIGTERM") {
-          alive = false;
-          return true;
-        }
-        return true;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }) as any);
+    }) as any);
 
-      const d = makeDaemon();
-      await d.stop();
+    const d = makeDaemon();
+    await d.stop();
 
-      expect(killSpy).toHaveBeenCalledWith(12345, "SIGTERM");
-    }
-    // pidfile removed
+    expect(killSpy).toHaveBeenCalledWith(12345, "SIGTERM");
     expect(mockFs.unlink).toHaveBeenCalledWith(defaultOpts.pidFile);
   });
 
   it("throws when daemon is not running", async () => {
-    // pidfile missing → ENOENT
     const d = makeDaemon();
     await expect(d.stop()).rejects.toThrow("not running");
   });
@@ -241,13 +214,10 @@ describe("DaemonProcess.status", () => {
   });
 
   it("returns full status when daemon is running", async () => {
-    const startTime = new Date(Date.now() - 120_000); // 2 min ago
-    mockFs.readFile.mockImplementation(async (p: string) => {
-      if (p === defaultOpts.pidFile) return "12345\n";
-      if (p === defaultOpts.pidFile + ".started")
-        return startTime.toISOString();
-      throw new Error("ENOENT");
-    });
+    const startTime = new Date(Date.now() - 120_000);
+    mockFs.readFile.mockResolvedValue(
+      JSON.stringify({ pid: 12345, startedAt: startTime.toISOString() }),
+    );
     mockProcessAlive(true);
 
     const d = makeDaemon();
@@ -255,16 +225,13 @@ describe("DaemonProcess.status", () => {
 
     expect(s.running).toBe(true);
     expect(s.pid).toBe(12345);
-    expect(s.uptime).toBeGreaterThanOrEqual(119); // ~120s
+    expect(s.uptime).toBeGreaterThanOrEqual(119);
     expect(s.startedAt).toEqual(startTime);
     expect(s.configPath).toBe(defaultOpts.configPath);
   });
 
   it("cleans up stale pidfile when process is dead", async () => {
-    mockFs.readFile.mockImplementation(async (p: string) => {
-      if (p === defaultOpts.pidFile) return "12345\n";
-      throw new Error("ENOENT");
-    });
+    mockFs.readFile.mockResolvedValue(JSON.stringify({ pid: 12345 }));
     mockProcessAlive(false);
 
     const d = makeDaemon();
@@ -282,7 +249,6 @@ describe("DaemonProcess.restart", () => {
     const fakeFd = { fd: 3, close: vi.fn().mockResolvedValue(undefined) };
     mockFs.open.mockResolvedValue(fakeFd);
 
-    // No existing process running (stop will throw, restart catches it)
     const d = makeDaemon();
     const result = await d.restart();
 

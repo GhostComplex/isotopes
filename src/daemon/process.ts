@@ -1,7 +1,7 @@
 // src/daemon/process.ts — Daemon process lifecycle management
 // Handles starting, stopping, and querying the Isotopes daemon process.
 
-import { spawn, execSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -34,25 +34,34 @@ export interface DaemonOptions {
 // PID file helpers
 // ---------------------------------------------------------------------------
 
-/** Read PID from pidfile; returns undefined if missing or invalid. */
-async function readPid(pidFile: string): Promise<number | undefined> {
+interface PidFileData {
+  pid: number;
+  startedAt?: string;
+}
+
+async function readPidFile(pidFile: string): Promise<PidFileData | undefined> {
   try {
     const raw = await fs.readFile(pidFile, "utf-8");
-    const pid = parseInt(raw.trim(), 10);
-    return Number.isFinite(pid) && pid > 0 ? pid : undefined;
+    // Support legacy plain-number format
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("{")) {
+      const data = JSON.parse(trimmed) as PidFileData;
+      return Number.isFinite(data.pid) && data.pid > 0 ? data : undefined;
+    }
+    const pid = parseInt(trimmed, 10);
+    return Number.isFinite(pid) && pid > 0 ? { pid } : undefined;
   } catch {
     return undefined;
   }
 }
 
-/** Write PID to pidfile, creating parent directories as needed. */
-async function writePid(pidFile: string, pid: number): Promise<void> {
+async function writePidFile(pidFile: string, data: PidFileData): Promise<void> {
   await fs.mkdir(path.dirname(pidFile), { recursive: true });
-  await fs.writeFile(pidFile, String(pid), "utf-8");
+  await fs.writeFile(pidFile, JSON.stringify(data), "utf-8");
 }
 
 /** Remove pidfile (best-effort). */
-async function removePid(pidFile: string): Promise<void> {
+async function removePidFile(pidFile: string): Promise<void> {
   try {
     await fs.unlink(pidFile);
   } catch {
@@ -60,20 +69,8 @@ async function removePid(pidFile: string): Promise<void> {
   }
 }
 
-/** Terminate a process by PID. On Windows uses taskkill (tree kill); without
- *  force it omits /F to allow graceful shutdown, with force it adds /F. */
 function killProcess(pid: number, force = false): void {
-  if (process.platform === "win32") {
-    try {
-      const flags = force ? "/F /T" : "/T";
-      execSync(`taskkill ${flags} /PID ${pid}`, { stdio: "ignore" });
-    } catch {
-      // Exit code 128 = process not found (already exited) — acceptable.
-      // Permission errors will surface via the isProcessAlive poll timeout.
-    }
-  } else {
-    process.kill(pid, force ? "SIGKILL" : "SIGTERM");
-  }
+  process.kill(pid, force ? "SIGKILL" : "SIGTERM");
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -82,31 +79,6 @@ function isProcessAlive(pid: number): boolean {
     return true;
   } catch {
     return false;
-  }
-}
-
-/** Read the start timestamp we stash next to the PID file. */
-async function readStartTime(pidFile: string): Promise<Date | undefined> {
-  try {
-    const raw = await fs.readFile(pidFile + ".started", "utf-8");
-    const d = new Date(raw.trim());
-    return isNaN(d.getTime()) ? undefined : d;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Persist the daemon start timestamp. */
-async function writeStartTime(pidFile: string, date: Date): Promise<void> {
-  await fs.writeFile(pidFile + ".started", date.toISOString(), "utf-8");
-}
-
-/** Remove start-time file (best-effort). */
-async function removeStartTime(pidFile: string): Promise<void> {
-  try {
-    await fs.unlink(pidFile + ".started");
-  } catch {
-    // ignore
   }
 }
 
@@ -131,8 +103,8 @@ export class DaemonProcess {
    */
   async start(): Promise<{ pid: number }> {
     if (await this.isRunning()) {
-      const existing = await readPid(this.options.pidFile);
-      throw new Error(`Daemon already running (pid ${existing})`);
+      const data = await readPidFile(this.options.pidFile);
+      throw new Error(`Daemon already running (pid ${data?.pid})`);
     }
 
     // Ensure log directory exists
@@ -178,8 +150,7 @@ export class DaemonProcess {
 
     // Persist PID and start timestamp
     const now = new Date();
-    await writePid(this.options.pidFile, pid);
-    await writeStartTime(this.options.pidFile, now);
+    await writePidFile(this.options.pidFile, { pid, startedAt: now.toISOString() });
 
     // Close log file descriptors in *this* process – the child inherited them
     await outFd.close();
@@ -194,23 +165,21 @@ export class DaemonProcess {
    * escalates to SIGKILL.
    */
   async stop(): Promise<void> {
-    const pid = await readPid(this.options.pidFile);
-    if (pid === undefined || !isProcessAlive(pid)) {
-      await removePid(this.options.pidFile);
-      await removeStartTime(this.options.pidFile);
+    const data = await readPidFile(this.options.pidFile);
+    if (data === undefined || !isProcessAlive(data.pid)) {
+      await removePidFile(this.options.pidFile);
       throw new Error("Daemon is not running");
     }
 
     // Graceful stop
-    killProcess(pid);
+    killProcess(data.pid);
 
     // Wait for exit (poll every 100 ms, max 5 s)
     const deadline = Date.now() + 5_000;
     while (Date.now() < deadline) {
-      if (!isProcessAlive(pid)) {
-        await removePid(this.options.pidFile);
-        await removeStartTime(this.options.pidFile);
-        log.info(`Daemon stopped (pid ${pid})`);
+      if (!isProcessAlive(data.pid)) {
+        await removePidFile(this.options.pidFile);
+        log.info(`Daemon stopped (pid ${data.pid})`);
         return;
       }
       await new Promise((r) => setTimeout(r, 100));
@@ -218,38 +187,35 @@ export class DaemonProcess {
 
     // Force kill
     try {
-      killProcess(pid, true);
+      killProcess(data.pid, true);
     } catch {
       // already gone
     }
-    await removePid(this.options.pidFile);
-    await removeStartTime(this.options.pidFile);
-    log.warn(`Daemon force-killed (pid ${pid})`);
+    await removePidFile(this.options.pidFile);
+    log.warn(`Daemon force-killed (pid ${data.pid})`);
   }
 
   /**
    * Return the current daemon status.
    */
   async status(): Promise<DaemonStatus> {
-    const pid = await readPid(this.options.pidFile);
-    if (pid === undefined || !isProcessAlive(pid)) {
-      // Clean up stale pidfile
-      if (pid !== undefined) {
-        await removePid(this.options.pidFile);
-        await removeStartTime(this.options.pidFile);
+    const data = await readPidFile(this.options.pidFile);
+    if (data === undefined || !isProcessAlive(data.pid)) {
+      if (data !== undefined) {
+        await removePidFile(this.options.pidFile);
       }
       return { running: false };
     }
 
-    const startedAt = await readStartTime(this.options.pidFile);
+    const startedAt = data.startedAt ? new Date(data.startedAt) : undefined;
     const uptime =
-      startedAt !== undefined
+      startedAt !== undefined && !isNaN(startedAt.getTime())
         ? Math.floor((Date.now() - startedAt.getTime()) / 1_000)
         : undefined;
 
     return {
       running: true,
-      pid,
+      pid: data.pid,
       uptime,
       startedAt,
       configPath: this.options.configPath,
@@ -272,7 +238,7 @@ export class DaemonProcess {
    * Quick check: is the daemon process alive?
    */
   async isRunning(): Promise<boolean> {
-    const pid = await readPid(this.options.pidFile);
-    return pid !== undefined && isProcessAlive(pid);
+    const data = await readPidFile(this.options.pidFile);
+    return data !== undefined && isProcessAlive(data.pid);
   }
 }

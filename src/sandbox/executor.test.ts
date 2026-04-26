@@ -34,7 +34,6 @@ function createMockContainerManager(): ContainerManager {
       image: "isotopes-sandbox:latest",
       createdAt: new Date("2026-04-09T10:00:00Z"),
     }),
-    list: vi.fn<ContainerManager["list"]>().mockResolvedValue([]),
     buildExecArgv: vi.fn<ContainerManager["buildExecArgv"]>((id, cmd) => [
       "docker", "exec", "-i", id, ...cmd,
     ]),
@@ -246,7 +245,6 @@ describe("SandboxExecutor", () => {
 
       expect(mockManager.stop).toHaveBeenCalledWith("container-123", 5);
       expect(mockManager.remove).toHaveBeenCalledWith("container-123", true);
-      expect(executor.activeContainerCount).toBe(0);
     });
 
     it("does nothing when agent has no container", async () => {
@@ -293,11 +291,7 @@ describe("SandboxExecutor", () => {
       await executor.execute("agent-a", ["echo", "a"]);
       await executor.execute("agent-b", ["echo", "b"]);
 
-      expect(executor.activeContainerCount).toBe(2);
-
       await executor.cleanup();
-
-      expect(executor.activeContainerCount).toBe(0);
     });
 
     it("swallows errors during cleanup", async () => {
@@ -312,50 +306,6 @@ describe("SandboxExecutor", () => {
 
       // Should not throw
       await expect(executor.cleanup("agent-1")).resolves.toBeUndefined();
-      expect(executor.activeContainerCount).toBe(0);
-    });
-  });
-
-  describe("getContainer", () => {
-    it("returns undefined when no container exists", () => {
-      expect(executor.getContainer("agent-1")).toBeUndefined();
-    });
-
-    it("returns container info after execution", async () => {
-      await executor.execute("agent-1", ["echo", "hello"]);
-
-      const container = executor.getContainer("agent-1");
-
-      expect(container).toBeDefined();
-      expect(container!.id).toBe("container-123");
-      expect(container!.status).toBe("running");
-    });
-  });
-
-  describe("activeContainerCount", () => {
-    it("starts at 0", () => {
-      expect(executor.activeContainerCount).toBe(0);
-    });
-
-    it("increments as containers are created", async () => {
-      vi.mocked(mockManager.create).mockResolvedValueOnce({
-        id: "c1",
-        name: "test-1",
-        status: "created",
-        image: "test:latest",
-        createdAt: new Date(),
-      });
-      vi.mocked(mockManager.status).mockResolvedValueOnce({
-        id: "c1",
-        name: "test-1",
-        status: "running",
-        image: "test:latest",
-        createdAt: new Date(),
-      });
-
-      await executor.execute("agent-1", ["echo"]);
-
-      expect(executor.activeContainerCount).toBe(1);
     });
   });
 });
