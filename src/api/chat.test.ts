@@ -83,8 +83,8 @@ describe("POST /api/sessions/:agentId — sessionKey", () => {
   it("creates a new session without sessionKey (default path)", async () => {
     const { status, data } = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {});
     expect(status).toBe(201);
-    const body = data as { sessionKey: string; agentId: string; resumed: boolean };
-    expect(body.sessionKey).toBeTruthy();
+    const body = data as { key: string; agentId: string; resumed: boolean };
+    expect(body.key).toBeTruthy();
     expect(body.resumed).toBe(false);
   });
 
@@ -94,16 +94,16 @@ describe("POST /api/sessions/:agentId — sessionKey", () => {
       sessionKey: key,
     });
     expect(first.status).toBe(201);
-    const firstBody = first.data as { sessionKey: string; resumed: boolean };
+    const firstBody = first.data as { key: string; resumed: boolean };
     expect(firstBody.resumed).toBe(false);
 
     const second = await request(getPort(), "POST", `/api/sessions/${agentId()}`, {
       sessionKey: key,
     });
     expect(second.status).toBe(200);
-    const secondBody = second.data as { sessionKey: string; resumed: boolean };
+    const secondBody = second.data as { key: string; resumed: boolean };
     expect(secondBody.resumed).toBe(true);
-    expect(secondBody.sessionKey).toBe(firstBody.sessionKey);
+    expect(secondBody.key).toBe(firstBody.key);
   });
 
   it("returns 400 for sessionKey exceeding max length", async () => {

@@ -112,9 +112,9 @@ export function StatusScreen({ onSwitchScreen }: Props) {
           <Text bold underline>Sessions ({sessions.length})</Text>
           {sessions.length === 0 && <Text color="gray">  No active sessions</Text>}
           {sessions.slice(0, 20).map((s) => (
-            <Text key={s.sessionKey}>
+            <Text key={s.key}>
               {"  "}<Text color="cyan">{s.agentId}</Text>
-              <Text color="gray"> {s.sessionKey} {s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleTimeString() : ""}</Text>
+              <Text color="gray"> {s.key} {s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleTimeString() : ""}</Text>
             </Text>
           ))}
           {sessions.length > 20 && <Text color="gray">  ... and {sessions.length - 20} more</Text>}

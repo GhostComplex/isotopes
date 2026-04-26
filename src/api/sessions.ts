@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { runAgentLoop } from "../core/agent-runner.js";
 import { agentEventBus } from "../core/agent-event-bus.js";
 import type { DefaultSessionStore } from "../core/session-store.js";
+import type { Session } from "../core/types.js";
 
 const log = createLogger("api:sessions");
 
@@ -57,11 +58,11 @@ async function resolveSessionKey(
   store: DefaultSessionStore,
   agentId: string,
   urlKey: string,
-): Promise<{ sessionKey: string; sessionId: string } | undefined> {
+): Promise<{ sessionKey: string; sessionId: string; session: Session } | undefined> {
   const sessionKey = `${agentId}:${urlKey}`;
   const session = await store.findByKey(sessionKey);
   if (!session) return undefined;
-  return { sessionKey, sessionId: session.id };
+  return { sessionKey, sessionId: session.id, session };
 }
 
 // ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
   }
 
   const items: Array<{
-    sessionKey: string;
+    key: string;
     agentId: string;
     status: string;
     createdAt: string;
@@ -87,7 +88,7 @@ addRoute("GET", "/api/sessions", async (_req, res, deps) => {
     for (const s of sessions) {
       if (!s.metadata?.key) continue;
       items.push({
-        sessionKey: s.metadata.key,
+        key: s.metadata.key,
         agentId: s.agentId || agentId,
         status: "active",
         createdAt: s.lastActiveAt.toISOString(),
@@ -119,7 +120,7 @@ addRoute("GET", "/api/sessions/:agentId", async (req, res, deps) => {
   const items = sessions
     .filter((s) => s.metadata?.key)
     .map((s) => ({
-      sessionKey: s.metadata!.key!,
+      key: s.metadata!.key!,
       agentId: s.agentId || req.params.agentId,
       status: "active",
       createdAt: s.lastActiveAt.toISOString(),
@@ -153,10 +154,10 @@ addRoute("GET", "/api/sessions/:agentId/:key", async (req, res, deps) => {
 
   const messages = await store.getMessages(resolved.sessionId);
   sendJson(res, 200, {
-    sessionKey: resolved.sessionKey,
+    key: resolved.sessionKey,
     agentId: req.params.agentId,
     status: "active",
-    metadata: (await store.get(resolved.sessionId))?.metadata,
+    metadata: resolved.session.metadata,
     history: messages,
   });
 });
@@ -262,7 +263,7 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
   activeSessions.set(sessionKey, { sessionKey, sessionId, agentId, lastActivity: Date.now() });
 
   log.info(`Session ${resumed ? "resumed" : "created"}: ${sessionKey} (agent: ${agentId})`);
-  sendJson(res, resumed ? 200 : 201, { sessionKey: urlKey, agentId, resumed });
+  sendJson(res, resumed ? 200 : 201, { key: urlKey, agentId, resumed });
 });
 
 // ---------------------------------------------------------------------------

@@ -62,11 +62,11 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       }
 
       const session = await api.createSession(resolvedAgentId, "tui:main");
-      sessionKeyRef.current = session.sessionKey;
+      sessionKeyRef.current = session.key;
       setAgentId(session.agentId);
 
       if (session.resumed) {
-        const { items: history } = await api.getHistory(session.agentId, session.sessionKey);
+        const { items: history } = await api.getHistory(session.agentId, session.key);
         const chatMessages = history
           .map(historyMessageToChatMessage)
           .filter((m): m is ChatMessage => m !== null)
@@ -169,7 +169,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
           (async () => {
             try {
               const session = await api.createSession(agentId);
-              sessionKeyRef.current = session.sessionKey;
+              sessionKeyRef.current = session.key;
               setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
             } catch (err) {
               setMessages([{ role: "system", content: `Error: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }]);

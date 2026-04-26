@@ -49,7 +49,7 @@ describe("isDaemonRunning", () => {
 
 describe("createSession", () => {
   it("posts to sessions endpoint", async () => {
-    const data = { sessionKey: "tui:main", agentId: "bot", resumed: false };
+    const data = { key: "tui:main", agentId: "bot", resumed: false };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
     const result = await createSession("bot", "tui:main");
     expect(result).toEqual(data);
@@ -65,7 +65,7 @@ describe("createSession", () => {
 
 describe("fetchSessions", () => {
   it("returns all sessions", async () => {
-    const data = { items: [{ sessionKey: "bot:main", agentId: "bot", status: "active", lastActivityAt: "" }] };
+    const data = { items: [{ key: "bot:main", agentId: "bot", status: "active", lastActivityAt: "" }] };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
     const result = await fetchSessions();
     expect(result).toEqual(data.items);
