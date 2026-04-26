@@ -206,14 +206,6 @@ function toWritePayload(data: unknown): Buffer {
   if (typeof data === "string") return Buffer.from(data, "utf8");
   if (Buffer.isBuffer(data)) return data;
   if (data instanceof Uint8Array) return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  if (data instanceof ArrayBuffer) return Buffer.from(data);
-  if (typeof SharedArrayBuffer !== "undefined" && data instanceof SharedArrayBuffer) {
-    return Buffer.from(data);
-  }
-  if (ArrayBuffer.isView(data)) {
-    const view = data as ArrayBufferView;
-    return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
-  }
   throw new FsError(
     "EUNKNOWN",
     `SandboxFs.writeFile: unsupported data type ${typeof data === "object" ? (data?.constructor?.name ?? "object") : typeof data}`,

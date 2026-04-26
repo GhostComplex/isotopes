@@ -56,62 +56,24 @@ const MEMORY_LIMIT_PATTERN = /^\d+[kmg]$/i;
  * Validate a SandboxConfig, throwing on invalid values.
  */
 function validateSandboxConfig(config: SandboxConfig, label: string): void {
-  if (!VALID_SANDBOX_MODES.has(config.mode)) {
-    throw new Error(
-      `${label}: invalid sandbox mode "${config.mode}" (must be off, non-main, or all)`,
-    );
-  }
+  const check = (cond: boolean, msg: string) => { if (!cond) throw new Error(`${label}: ${msg}`); };
 
-  if (config.workspaceAccess !== undefined && !VALID_WORKSPACE_ACCESS.has(config.workspaceAccess)) {
-    throw new Error(
-      `${label}: invalid workspaceAccess "${config.workspaceAccess}" (must be rw or ro)`,
-    );
+  check(VALID_SANDBOX_MODES.has(config.mode), `invalid sandbox mode "${config.mode}" (must be off, non-main, or all)`);
+
+  if (config.workspaceAccess !== undefined) {
+    check(VALID_WORKSPACE_ACCESS.has(config.workspaceAccess), `invalid workspaceAccess "${config.workspaceAccess}" (must be rw or ro)`);
   }
 
   if (config.docker) {
-    if (!config.docker.image || typeof config.docker.image !== "string") {
-      throw new Error(`${label}: docker.image is required and must be a non-empty string`);
-    }
-
-    if (config.docker.network !== undefined && !VALID_NETWORK_MODES.has(config.docker.network)) {
-      throw new Error(
-        `${label}: invalid docker.network "${config.docker.network}" (must be bridge, host, or none)`,
-      );
-    }
-
-    if (config.docker.cpuLimit !== undefined) {
-      if (typeof config.docker.cpuLimit !== "number" || config.docker.cpuLimit <= 0) {
-        throw new Error(
-          `${label}: docker.cpuLimit must be a positive number`,
-        );
-      }
-    }
-
-    if (config.docker.memoryLimit !== undefined) {
-      if (typeof config.docker.memoryLimit !== "string" || !MEMORY_LIMIT_PATTERN.test(config.docker.memoryLimit)) {
-        throw new Error(
-          `${label}: docker.memoryLimit must match pattern like "512m", "1g" (digits followed by k, m, or g)`,
-        );
-      }
-    }
-
-    if (config.docker.pidsLimit !== undefined) {
-      if (typeof config.docker.pidsLimit !== "number" || config.docker.pidsLimit < 0 || !Number.isInteger(config.docker.pidsLimit)) {
-        throw new Error(
-          `${label}: docker.pidsLimit must be a non-negative integer (0 disables the limit)`,
-        );
-      }
-    }
-
-    if (config.docker.capDrop !== undefined && !Array.isArray(config.docker.capDrop)) {
-      throw new Error(`${label}: docker.capDrop must be an array of strings`);
-    }
-    if (config.docker.capAdd !== undefined && !Array.isArray(config.docker.capAdd)) {
-      throw new Error(`${label}: docker.capAdd must be an array of strings`);
-    }
-    if (config.docker.noNewPrivileges !== undefined && typeof config.docker.noNewPrivileges !== "boolean") {
-      throw new Error(`${label}: docker.noNewPrivileges must be a boolean`);
-    }
+    const d = config.docker;
+    check(!!d.image && typeof d.image === "string", "docker.image is required and must be a non-empty string");
+    if (d.network !== undefined) check(VALID_NETWORK_MODES.has(d.network), `invalid docker.network "${d.network}" (must be bridge, host, or none)`);
+    if (d.cpuLimit !== undefined) check(typeof d.cpuLimit === "number" && d.cpuLimit > 0, "docker.cpuLimit must be a positive number");
+    if (d.memoryLimit !== undefined) check(typeof d.memoryLimit === "string" && MEMORY_LIMIT_PATTERN.test(d.memoryLimit), `docker.memoryLimit must match pattern like "512m", "1g"`);
+    if (d.pidsLimit !== undefined) check(typeof d.pidsLimit === "number" && d.pidsLimit >= 0 && Number.isInteger(d.pidsLimit), "docker.pidsLimit must be a non-negative integer");
+    if (d.capDrop !== undefined) check(Array.isArray(d.capDrop), "docker.capDrop must be an array of strings");
+    if (d.capAdd !== undefined) check(Array.isArray(d.capAdd), "docker.capAdd must be an array of strings");
+    if (d.noNewPrivileges !== undefined) check(typeof d.noNewPrivileges === "boolean", "docker.noNewPrivileges must be a boolean");
   }
 }
 

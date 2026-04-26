@@ -115,20 +115,6 @@ export class SandboxExecutor {
     }
   }
 
-  /**
-   * Get the container info for an agent, if one exists.
-   */
-  getContainer(agentId: string): ContainerInfo | undefined {
-    return this.containers.get(agentId);
-  }
-
-  /**
-   * Get the count of active containers.
-   */
-  get activeContainerCount(): number {
-    return this.containers.size;
-  }
-
   // -----------------------------------------------------------------------
   // Private helpers
   // -----------------------------------------------------------------------
@@ -192,22 +178,15 @@ export class SandboxExecutor {
     command: string[],
     timeoutMs: number,
   ): Promise<ExecResult> {
-    return new Promise<ExecResult>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error(`Sandbox execution timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-
-      this.containerManager
-        .exec(containerId, command)
-        .then((result) => {
-          clearTimeout(timer);
-          resolve(result);
-        })
-        .catch((error) => {
-          clearTimeout(timer);
-          reject(error as Error);
-        });
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Sandbox execution timed out after ${timeoutMs}ms`)), timeoutMs);
     });
+    try {
+      return await Promise.race([this.containerManager.exec(containerId, command), timeout]);
+    } finally {
+      clearTimeout(timer!);
+    }
   }
 
   /**

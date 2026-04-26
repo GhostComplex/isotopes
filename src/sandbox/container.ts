@@ -171,28 +171,6 @@ export class ContainerManager {
     }
   }
 
-  /**
-   * List containers, optionally filtered by name prefix.
-   */
-  async list(filter?: { name?: string }): Promise<ContainerInfo[]> {
-    const args = [
-      "ps",
-      "-a",
-      "--no-trunc",
-      "--format",
-      '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}\t{{.CreatedAt}}',
-    ];
-
-    if (filter?.name) {
-      args.push("--filter", `name=${filter.name}`);
-    }
-
-    const { stdout } = await execFileAsync("docker", args);
-    const lines = stdout.trim().split("\n").filter(Boolean);
-
-    return lines.map(parseListLine);
-  }
-
   // -----------------------------------------------------------------------
   // Private helpers
   // -----------------------------------------------------------------------
@@ -292,22 +270,6 @@ function parseInspectLine(line: string): ContainerInfo {
   const [id, rawName, rawStatus, image, createdStr] = line.split("\t");
   // docker inspect prefixes names with /
   const name = rawName.startsWith("/") ? rawName.slice(1) : rawName;
-
-  return {
-    id,
-    name,
-    status: normalizeStatus(rawStatus),
-    image,
-    createdAt: new Date(createdStr),
-  };
-}
-
-/**
- * Parse a line from `docker ps --format`.
- * Format: ID\tNames\tStatus\tImage\tCreatedAt
- */
-function parseListLine(line: string): ContainerInfo {
-  const [id, name, rawStatus, image, createdStr] = line.split("\t");
 
   return {
     id,
