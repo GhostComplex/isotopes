@@ -22,6 +22,7 @@ vi.mock("node:fs/promises", () => ({
 
 vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
+  execSync: vi.fn(),
 }));
 
 const mockFs = fs as unknown as {

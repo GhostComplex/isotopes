@@ -1,7 +1,7 @@
 // src/daemon/process.ts — Daemon process lifecycle management
 // Handles starting, stopping, and querying the Isotopes daemon process.
 
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -70,7 +70,16 @@ async function removePidFile(pidFile: string): Promise<void> {
 }
 
 function killProcess(pid: number, force = false): void {
-  process.kill(pid, force ? "SIGKILL" : "SIGTERM");
+  if (process.platform === "win32") {
+    try {
+      const flags = force ? "/F /T" : "/T";
+      execSync(`taskkill ${flags} /PID ${pid}`, { stdio: "ignore" });
+    } catch {
+      // Exit code 128 = process not found (already exited) — acceptable.
+    }
+  } else {
+    process.kill(pid, force ? "SIGKILL" : "SIGTERM");
+  }
 }
 
 function isProcessAlive(pid: number): boolean {
