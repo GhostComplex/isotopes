@@ -178,10 +178,15 @@ export class SandboxExecutor {
     command: string[],
     timeoutMs: number,
   ): Promise<ExecResult> {
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Sandbox execution timed out after ${timeoutMs}ms`)), timeoutMs),
-    );
-    return Promise.race([this.containerManager.exec(containerId, command), timeout]);
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Sandbox execution timed out after ${timeoutMs}ms`)), timeoutMs);
+    });
+    try {
+      return await Promise.race([this.containerManager.exec(containerId, command), timeout]);
+    } finally {
+      clearTimeout(timer!);
+    }
   }
 
   /**
