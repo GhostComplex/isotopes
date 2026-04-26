@@ -4,7 +4,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { ThreadBinding } from "./types.js";
-import { logger } from "../../src/core/logger.js";
+import { logger } from "../../core/logger.js";
 
 /** Callback invoked when a new thread binding is created */
 export type ThreadBindingCallback = (binding: ThreadBinding) => void;

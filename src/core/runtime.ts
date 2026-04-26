@@ -144,7 +144,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   // Discover and load plugins (PluginManager created earlier for hooks)
   const pluginDirs = [
-    path.join(import.meta.dirname, "../../plugins"),
+    path.join(import.meta.dirname, "../plugins"),
     path.join(getIsotopesHome(), "plugins"),
     ...[...agentWorkspaces.values()].map((w) => path.join(w, "plugins")),
   ];

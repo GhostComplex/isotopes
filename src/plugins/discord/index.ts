@@ -1,13 +1,13 @@
 // plugins/discord/index.ts — Discord transport plugin for Isotopes
 // Registers the Discord transport via the plugin system.
 
-import type { IsotopesPluginApi, TransportFactoryContext } from "../../src/plugins/types.js";
-import type { Transport } from "../../src/core/types.js";
-import { DefaultSessionStore } from "../../src/core/session-store.js";
+import type { IsotopesPluginApi, TransportFactoryContext } from "../types.js";
+import type { Transport } from "../../core/types.js";
+import { DefaultSessionStore } from "../../core/session-store.js";
 import { DiscordTransportManager } from "./discord-manager.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import type { DiscordChannelsConfig } from "./types.js";
-import { createLogger } from "../../src/core/logger.js";
+import { createLogger } from "../../core/logger.js";
 import path from "node:path";
 
 const log = createLogger("plugin:discord");
@@ -28,7 +28,7 @@ export default {
         sessionStores.set(agentFile.id, await ctx.sessionStoreManager.getOrCreate(agentFile.id));
       }
 
-      api.registerSessionStores(sessionStores as unknown as Map<string, import("../../src/core/types.js").SessionStore>);
+      api.registerSessionStores(sessionStores as unknown as Map<string, import("../../core/types.js").SessionStore>);
 
       const firstAccount = Object.values(accounts)[0];
       const defaultAgentId = firstAccount?.defaultAgentId || ctx.config.agents[0]?.id;

@@ -4,15 +4,15 @@
 import type {
   ChannelsConfig,
   SessionStore,
-} from "../../src/core/types.js";
+} from "../../core/types.js";
 import type { DiscordAccountConfig } from "./types.js";
-import type { DefaultAgentManager } from "../../src/core/agent-manager.js";
+import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import { getDiscordToken } from "./config.js";
 import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import type { ReplyToMode } from "./reply-directive.js";
-import type { UsageTracker } from "../../src/core/usage-tracker.js";
-import { createLogger } from "../../src/core/logger.js";
+import type { UsageTracker } from "../../core/usage-tracker.js";
+import { createLogger } from "../../core/logger.js";
 
 const log = createLogger("discord-manager");
 

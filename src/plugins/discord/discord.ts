@@ -17,34 +17,34 @@ import {
   type AgentMessage,
   type SessionStore,
   type Transport,
-} from "../../src/core/types.js";
+} from "../../core/types.js";
 import type { ThreadBindingConfig } from "./types.js";
-import type { AgentServiceCache } from "../../src/core/pi-mono.js";
-import type { DefaultAgentManager } from "../../src/core/agent-manager.js";
-import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../src/core/messages.js";
-import type { ContextConfigFile } from "../../src/core/config.js";
-import { shouldRespondToMessage } from "../../src/core/mention.js";
-import { loggers } from "../../src/core/logger.js";
+import type { AgentServiceCache } from "../../core/pi-mono.js";
+import type { DefaultAgentManager } from "../../core/agent-manager.js";
+import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../core/messages.js";
+import type { ContextConfigFile } from "../../core/config.js";
+import { shouldRespondToMessage } from "../../core/mention.js";
+import { loggers } from "../../core/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { runAgentLoop, abortAgentSession, isAgentSessionActive } from "../../src/core/agent-runner.js";
-import { agentEventBus } from "../../src/core/agent-event-bus.js";
-import { isSilentReply } from "../../src/core/silent-reply.js";
+import { runAgentLoop, abortAgentSession, isAgentSessionActive } from "../../core/agent-runner.js";
+import { agentEventBus } from "../../core/agent-event-bus.js";
+import { isSilentReply } from "../../core/silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
-import type { UsageTracker } from "../../src/core/usage-tracker.js";
-import { buildSessionKey } from "../../src/core/session-keys.js";
+import type { UsageTracker } from "../../core/usage-tracker.js";
+import { buildSessionKey } from "../../core/session-keys.js";
 import {
   runWithSubagentContextAsync,
   type SubagentStreamContext,
-} from "../../src/core/subagent-context.js";
+} from "../../core/subagent-context.js";
 import { DiscordSink } from "./discord-subagent-sink.js";
-import { ChannelHistoryBuffer, buildHistoryContext } from "../../src/core/channel-history.js";
-import { DedupeCache } from "../../src/core/dedupe.js";
-import { InboundDebouncer } from "../../src/core/debounce.js";
-import { SlashCommandHandler } from "../../src/commands/slash-commands.js";
-import { taskRegistry } from "../../src/subagent/task-registry.js";
-import { failureTracker } from "../../src/subagent/failure-tracker.js";
-import { cancelSubagent } from "../../src/tools/subagent.js";
+import { ChannelHistoryBuffer, buildHistoryContext } from "../../core/channel-history.js";
+import { DedupeCache } from "../../core/dedupe.js";
+import { InboundDebouncer } from "../../core/debounce.js";
+import { SlashCommandHandler } from "../../commands/slash-commands.js";
+import { taskRegistry } from "../../subagent/task-registry.js";
+import { failureTracker } from "../../subagent/failure-tracker.js";
+import { cancelSubagent } from "../../tools/subagent.js";
 
 const log = loggers.discord;
 

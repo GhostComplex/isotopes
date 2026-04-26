@@ -36,9 +36,8 @@ isotopes.yml
 # Local Claude Code working dirs (plans, scratch, etc.)
 .claude/
 
-# plugins (user-installed; bundled plugins are exceptions below)
-plugins/*
-!plugins/discord/
+# plugins (user-installed, not tracked in git)
+/plugins/
 
 # teamwork
 .teamwork

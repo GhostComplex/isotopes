@@ -2,11 +2,11 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
-import type { SessionStore, ChannelsConfig } from "../core/types.js";
-import type { AgentServiceCache } from "../core/pi-mono.js";
-import type { DefaultAgentManager } from "../core/agent-manager.js";
-import { ThreadBindingManager } from "../core/thread-bindings.js";
-import { createMockAgentCache, createMockAgentManager, createMockSessionStore } from "../core/test-helpers.js";
+import type { SessionStore, ChannelsConfig } from "../../core/types.js";
+import type { AgentServiceCache } from "../../core/pi-mono.js";
+import type { DefaultAgentManager } from "../../core/agent-manager.js";
+import { ThreadBindingManager } from "./thread-bindings.js";
+import { createMockAgentCache, createMockAgentManager, createMockSessionStore } from "../../core/test-helpers.js";
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 

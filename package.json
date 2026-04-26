@@ -21,7 +21,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/plugins/discord/isotopes.plugin.json dist/plugins/discord/",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "lint": "eslint src --ext .ts,.tsx",
