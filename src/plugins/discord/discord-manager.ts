@@ -1,4 +1,4 @@
-// src/transports/discord-manager.ts — Manages multiple DiscordTransport instances
+// src/plugins/discord/discord-manager.ts — Manages multiple DiscordTransport instances
 // Each Discord bot account gets its own transport (Client, token, identity).
 
 import type {

@@ -1,5 +1,4 @@
-// plugins/discord/config.ts — Discord-specific config helpers
-// Moved from src/core/config.ts
+// src/plugins/discord/config.ts — Discord-specific config helpers
 
 import type { DiscordAccountConfig } from "./types.js";
 

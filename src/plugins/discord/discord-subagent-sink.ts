@@ -1,4 +1,4 @@
-// src/subagent/discord-sink.ts — Stream sub-agent events to Discord
+// src/plugins/discord/discord-subagent-sink.ts — Stream sub-agent events to Discord
 // Formats SubagentEvents and sends them to a Discord channel or thread.
 
 import { createLogger } from "../../core/logger.js";

@@ -1,4 +1,4 @@
-// src/transports/discord.ts — Discord transport for Isotopes
+// src/plugins/discord/discord.ts — Discord transport for Isotopes
 // Handles Discord bot connection, message routing, and response streaming.
 
 import {
