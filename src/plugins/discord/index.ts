@@ -2,8 +2,7 @@
 // Registers the Discord transport via the plugin system.
 
 import type { IsotopesPluginApi, TransportFactoryContext } from "../types.js";
-import type { Transport } from "../../core/types.js";
-import { DefaultSessionStore } from "../../core/session-store.js";
+import type { Transport, SessionStore } from "../../core/types.js";
 import { DiscordTransportManager } from "./discord-manager.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import type { DiscordChannelsConfig } from "./types.js";
@@ -23,12 +22,12 @@ export default {
         return { start: async () => {}, stop: async () => {} };
       }
 
-      const sessionStores = new Map<string, DefaultSessionStore>();
+      const sessionStores = new Map<string, SessionStore>();
       for (const agentFile of ctx.config.agents) {
         sessionStores.set(agentFile.id, await ctx.sessionStoreManager.getOrCreate(agentFile.id));
       }
 
-      api.registerSessionStores(sessionStores as unknown as Map<string, import("../../core/types.js").SessionStore>);
+      api.registerSessionStores(sessionStores);
 
       const firstAccount = Object.values(accounts)[0];
       const defaultAgentId = firstAccount?.defaultAgentId || ctx.config.agents[0]?.id;
