@@ -31,14 +31,20 @@ async function deleteJson<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// -- Status / monitoring (existing) --
+function sessionPath(agentId: string, sessionKey?: string): string {
+  const base = `/api/sessions/${encodeURIComponent(agentId)}`;
+  return sessionKey ? `${base}/${encodeURIComponent(sessionKey)}` : base;
+}
+
+// -- Status / monitoring --
 
 export async function fetchStatus(): Promise<DaemonStatus> {
   return fetchJson<DaemonStatus>("/api/status");
 }
 
 export async function fetchSessions(): Promise<SessionSummary[]> {
-  return fetchJson<SessionSummary[]>("/api/sessions");
+  const data = await fetchJson<{ items: SessionSummary[] }>("/api/sessions");
+  return data.items;
 }
 
 export async function fetchUsage(): Promise<UsageStats> {
@@ -54,25 +60,24 @@ export async function isDaemonRunning(): Promise<boolean> {
   }
 }
 
-// -- Chat session management --
+// -- Session management --
 
-export async function createSession(agentId?: string, sessionKey?: string): Promise<ChatSessionInfo> {
+export async function createSession(agentId: string, sessionKey?: string): Promise<ChatSessionInfo> {
   const body: Record<string, string> = {};
-  if (agentId !== undefined) body.agentId = agentId;
   if (sessionKey !== undefined) body.sessionKey = sessionKey;
-  return postJson<ChatSessionInfo>("/api/chat/sessions", body);
+  return postJson<ChatSessionInfo>(sessionPath(agentId), body);
 }
 
-export async function getHistory(sessionId: string): Promise<{ messages: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
-  return fetchJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`);
+export async function getHistory(agentId: string, sessionKey: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
+  return fetchJson(`${sessionPath(agentId, sessionKey)}/messages`);
 }
 
-export async function abortMessage(sessionId: string): Promise<void> {
-  await postJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}/abort`);
+export async function abortMessage(agentId: string, sessionKey: string): Promise<void> {
+  await postJson(`${sessionPath(agentId, sessionKey)}/abort`);
 }
 
-export async function deleteSession(sessionId: string): Promise<void> {
-  await deleteJson(`/api/chat/sessions/${encodeURIComponent(sessionId)}`);
+export async function deleteSession(agentId: string, sessionKey: string): Promise<void> {
+  await deleteJson(sessionPath(agentId, sessionKey));
 }
 
 // -- SSE streaming --
@@ -101,12 +106,13 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
 }
 
 export async function sendMessage(
-  sessionId: string,
+  agentId: string,
+  sessionKey: string,
   message: string,
   onEvent: (event: SSEEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${getBaseUrl()}/api/chat/sessions/${encodeURIComponent(sessionId)}/message`, {
+  const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
@@ -140,7 +146,6 @@ export async function sendMessage(
       } else if (line.startsWith("data: ")) {
         dataLines.push(line.slice(6));
       } else if (line === "") {
-        // Empty line = end of SSE event
         if (currentEvent && dataLines.length > 0) {
           const event = parseSSELine(currentEvent, dataLines.join("\n"));
           if (event) onEvent(event);

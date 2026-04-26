@@ -5,7 +5,7 @@ import { createLogger } from "../core/logger.js";
 import type { HookRegistry } from "./hooks.js";
 import type { UIRegistry } from "./ui-registry.js";
 import type { ToolPluginRegistry } from "./tool-registry.js";
-import type { SessionStore, Tool } from "../core/types.js";
+import type { Tool } from "../core/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type {
   IsotopesPluginApi,
@@ -20,7 +20,6 @@ export interface CreatePluginApiDeps {
   uiRegistry: UIRegistry;
   transportFactories: Map<string, TransportFactory>;
   toolPluginRegistry: ToolPluginRegistry;
-  transportSessionStores: Map<string, Map<string, SessionStore>>;
   pluginConfig?: Record<string, unknown>;
 }
 
@@ -61,12 +60,6 @@ export function createPluginApi(
       deps.toolPluginRegistry.register(manifest.id, factory);
       cleanup.push(() => deps.toolPluginRegistry.remove(manifest.id));
       log.info(`Registered tool from plugin "${manifest.id}"`);
-    },
-
-    registerSessionStores(stores: Map<string, SessionStore>): void {
-      deps.transportSessionStores.set(manifest.id, stores);
-      cleanup.push(() => deps.transportSessionStores.delete(manifest.id));
-      log.info(`Registered ${stores.size} session store(s) from plugin "${manifest.id}"`);
     },
 
     on(hook, handler) {

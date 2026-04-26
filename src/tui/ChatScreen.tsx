@@ -37,7 +37,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const [agentReady, setAgentReady] = useState(false);
   const [agentId, setAgentId] = useState(options.agent ?? "");
   const [error, setError] = useState<string | null>(null);
-  const sessionIdRef = useRef<string | null>(null);
+  const sessionKeyRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const autoMessageSent = useRef(false);
 
@@ -51,12 +51,22 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         return;
       }
 
-      const session = await api.createSession(requestedAgent, "tui:main");
-      sessionIdRef.current = session.sessionId;
+      let resolvedAgentId = requestedAgent;
+      if (!resolvedAgentId) {
+        const sessions = await api.fetchSessions();
+        resolvedAgentId = sessions[0]?.agentId;
+        if (!resolvedAgentId) {
+          setError("No agents available");
+          return;
+        }
+      }
+
+      const session = await api.createSession(resolvedAgentId, "tui:main");
+      sessionKeyRef.current = session.key;
       setAgentId(session.agentId);
 
       if (session.resumed) {
-        const { messages: history } = await api.getHistory(session.sessionId);
+        const { items: history } = await api.getHistory(session.agentId, session.key);
         const chatMessages = history
           .map(historyMessageToChatMessage)
           .filter((m): m is ChatMessage => m !== null)
@@ -91,12 +101,12 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   }, [agentReady]);
 
   const sendMessage = async (text: string) => {
-    if (!sessionIdRef.current || isStreaming) return;
+    if (!sessionKeyRef.current || isStreaming) return;
     const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
     setIsStreaming(true);
 
-    const sessionId = sessionIdRef.current;
+    const sessionKey = sessionKeyRef.current;
     let responseText = "";
     const toolCalls: ToolCallEntry[] = [];
     const abort = new AbortController();
@@ -134,7 +144,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     };
 
     try {
-      await api.sendMessage(sessionId, text, handleEvent, abort.signal);
+      await api.sendMessage(agentId, sessionKey, text, handleEvent, abort.signal);
     } catch (err) {
       if (!abort.signal.aborted) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -159,7 +169,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
           (async () => {
             try {
               const session = await api.createSession(agentId);
-              sessionIdRef.current = session.sessionId;
+              sessionKeyRef.current = session.key;
               setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
             } catch (err) {
               setMessages([{ role: "system", content: `Error: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }]);

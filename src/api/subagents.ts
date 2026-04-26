@@ -1,6 +1,6 @@
 // src/api/subagents.ts — Subagent management API routes
-// GET    /api/subagents          — list running subagent tasks
-// DELETE /api/subagents/:taskId  — cancel a running subagent
+// GET    /api/subagents      — list running subagent tasks
+// DELETE /api/subagents/:id  — cancel a running subagent
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
@@ -12,24 +12,24 @@ import { cancelSubagent } from "../tools/subagent.js";
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/subagents", (_req, res) => {
-  sendJson(res, 200, { tasks: taskRegistry.list() });
+  sendJson(res, 200, { items: taskRegistry.list() });
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /api/subagents/:taskId — cancel a running subagent
+// DELETE /api/subagents/:id — cancel a running subagent
 // ---------------------------------------------------------------------------
 
-addRoute("DELETE", "/api/subagents/:taskId", (req, res) => {
-  const { taskId } = req.params;
+addRoute("DELETE", "/api/subagents/:id", (req, res) => {
+  const { id } = req.params;
 
-  const task = taskRegistry.get(taskId);
+  const task = taskRegistry.get(id);
   if (!task) {
-    sendError(res, 404, `Task "${taskId}" not found`);
+    sendError(res, 404, `Task "${id}" not found`);
     return;
   }
 
-  cancelSubagent(taskId);
-  taskRegistry.unregister(taskId);
+  cancelSubagent(id);
+  taskRegistry.unregister(id);
 
-  sendJson(res, 200, { cancelled: true, taskId });
+  sendJson(res, 200, { ok: true });
 });

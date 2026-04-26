@@ -27,8 +27,6 @@ export default {
         sessionStores.set(agentFile.id, await ctx.sessionStoreManager.getOrCreate(agentFile.id));
       }
 
-      api.registerSessionStores(sessionStores);
-
       const firstAccount = Object.values(accounts)[0];
       const defaultAgentId = firstAccount?.defaultAgentId || ctx.config.agents[0]?.id;
       const defaultSessionStore =

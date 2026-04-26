@@ -20,9 +20,8 @@ export interface DaemonStatus {
 }
 
 export interface SessionSummary {
-  id: string;
+  key: string;
   agentId: string;
-  source: string;
   status: string;
   lastActivityAt: string;
 }
@@ -38,7 +37,7 @@ export interface UsageStats {
 }
 
 export interface ChatSessionInfo {
-  sessionId: string;
+  key: string;
   agentId: string;
   resumed: boolean;
 }

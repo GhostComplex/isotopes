@@ -73,15 +73,15 @@ describe("API routes", () => {
     it("returns empty array when no sessions exist", async () => {
       const { status, data } = await request(getPort(), "GET", "/api/sessions");
       expect(status).toBe(200);
-      expect(data).toEqual([]);
+      expect(data).toEqual({ items: [] });
     });
   });
 
-  describe("GET /api/sessions/:id", () => {
-    it("returns 404 for unknown session", async () => {
-      const { status, data } = await request(getPort(), "GET", "/api/sessions/nonexistent");
-      expect(status).toBe(404);
-      expect((data as { error: string }).error).toContain("not found");
+  describe("GET /api/sessions/:agentId/:key", () => {
+    it("returns 503 when session store is not available", async () => {
+      const { status, data } = await request(getPort(), "GET", "/api/sessions/test-agent/nonexistent");
+      expect(status).toBe(503);
+      expect((data as { error: string }).error).toContain("not available");
     });
   });
 
@@ -89,7 +89,7 @@ describe("API routes", () => {
     it("returns empty array when no jobs exist", async () => {
       const { status, data } = await request(getPort(), "GET", "/api/cron");
       expect(status).toBe(200);
-      expect(data).toEqual([]);
+      expect(data).toEqual({ items: [] });
     });
 
     it("returns registered cron jobs", async () => {
@@ -103,7 +103,7 @@ describe("API routes", () => {
 
       const { status, data } = await request(getPort(), "GET", "/api/cron");
       expect(status).toBe(200);
-      const jobs = data as Array<{ name: string; agentId: string }>;
+      const jobs = (data as { items: Array<{ name: string; agentId: string }> }).items;
       expect(jobs).toHaveLength(1);
       expect(jobs[0].name).toBe("standup");
       expect(jobs[0].agentId).toBe("claude");
