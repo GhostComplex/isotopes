@@ -2,7 +2,7 @@
 // Provides a way to pass transport-specific streaming context to subagent tool handlers.
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { SubagentEvent, SubagentResult } from "../subagent/types.js";
+import type { RunEvent, RunResult } from "../agents/types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -15,8 +15,8 @@ import type { SubagentEvent, SubagentResult } from "../subagent/types.js";
  */
 export interface SubagentStreamSink {
   start(taskLabel: string): Promise<void>;
-  sendEvent(event: SubagentEvent): Promise<void>;
-  finish(result: SubagentResult): Promise<void>;
+  sendEvent(event: RunEvent): Promise<void>;
+  finish(result: RunResult): Promise<void>;
   getThreadId?(): string | undefined;
 }
 

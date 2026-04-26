@@ -1,18 +1,18 @@
 // src/tools/subagent.test.ts — Tests for spawnSubagent tool and backend singleton
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { SubagentEvent } from "../subagent/types.js";
+import type { RunEvent } from "../agents/types.js";
 
 const spawnMock = vi.fn();
 const cancelMock = vi.fn();
 const cancelAllMock = vi.fn();
 
-vi.mock("../subagent/index.js", async () => {
-  const actual = await vi.importActual<typeof import("../subagent/index.js")>(
-    "../subagent/index.js",
+vi.mock("../agents/index.js", async () => {
+  const actual = await vi.importActual<typeof import("../agents/index.js")>(
+    "../agents/index.js",
   );
   return {
     ...actual,
-    SubagentBackend: vi.fn().mockImplementation(() => ({
+    AgentRuntime: vi.fn().mockImplementation(() => ({
       spawn: spawnMock,
       cancel: cancelMock,
       cancelAll: cancelAllMock,
@@ -23,7 +23,7 @@ vi.mock("../subagent/index.js", async () => {
   };
 });
 
-async function* eventGen(...events: SubagentEvent[]): AsyncGenerator<SubagentEvent> {
+async function* eventGen(...events: RunEvent[]): AsyncGenerator<RunEvent> {
   for (const e of events) yield e;
 }
 
@@ -66,13 +66,13 @@ describe("spawnSubagent", () => {
     initSubagentBackend({ config: { allowedTypes: new Set(["claude"]), claude: { permissionMode: "allowlist", allowedTools: [] }, useThread: true, showToolCalls: true } });
     spawnMock.mockReturnValue(
       eventGen(
-        { type: "start" },
-        { type: "message", content: "hello" },
-        { type: "done", exitCode: 0 },
+        { type: "run:start" },
+        { type: "run:message", content: "hello" },
+        { type: "run:done", exitCode: 0 },
       ),
     );
 
-    const result = await spawnSubagent("task", { agent: "claude", cwd: process.cwd() });
+    const result = await spawnSubagent("task", { agent: "external", cwd: process.cwd() });
     expect(result.success).toBe(true);
     expect(result.output).toContain("hello");
     expect(result.exitCode).toBe(0);
@@ -86,7 +86,7 @@ describe("spawnSubagent", () => {
     spawnMock.mockImplementation(() => {
       throw new Error("boom");
     });
-    const result = await spawnSubagent("task", { agent: "claude", cwd: process.cwd() });
+    const result = await spawnSubagent("task", { agent: "external", cwd: process.cwd() });
     expect(result.success).toBe(false);
     expect(result.error).toContain("boom");
   });
@@ -97,21 +97,21 @@ describe("spawnSubagent", () => {
     initSubagentBackend({ config: { allowedTypes: new Set(["claude"]), claude: { permissionMode: "allowlist", allowedTools: [] }, useThread: true, showToolCalls: true } });
     spawnMock.mockReturnValue(
       eventGen(
-        { type: "start" },
-        { type: "tool_use", toolName: "Read" },
-        { type: "done", exitCode: 0 },
+        { type: "run:start" },
+        { type: "run:tool_use", toolName: "Read" },
+        { type: "run:done", exitCode: 0 },
       ),
     );
-    const events: SubagentEvent[] = [];
+    const events: RunEvent[] = [];
     await spawnSubagent("t", {
-      agent: "claude",
+      agent: "external",
       cwd: process.cwd(),
       onEvent: (e) => {
         events.push(e);
       },
     });
     expect(events).toHaveLength(3);
-    expect(events[1]).toEqual({ type: "tool_use", toolName: "Read" });
+    expect(events[1]).toEqual({ type: "run:tool_use", toolName: "Read" });
   });
 });
 

@@ -4,7 +4,7 @@
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
-import { taskRegistry } from "../subagent/task-registry.js";
+import { taskRegistry } from "../agents/task-registry.js";
 import { cancelSubagent } from "../tools/subagent.js";
 
 // ---------------------------------------------------------------------------

@@ -3,15 +3,15 @@
 
 import { createLogger } from "../core/logger.js";
 import {
-  SubagentBackend,
+  AgentRuntime,
   summarizeEvents,
-  type SubagentAgent,
-  type SubagentEvent,
-} from "../subagent/index.js";
-import type { BuiltinSubagentOptions } from "../subagent/types.js";
+  type RunnerKind,
+  type RunEvent,
+} from "../agents/index.js";
+import type { InProcessOptions } from "../agents/types.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
-import { taskRegistry } from "../subagent/task-registry.js";
-import { createSubagentRecorder } from "../subagent/persistence.js";
+import { taskRegistry } from "../agents/task-registry.js";
+import { createRunRecorder } from "../agents/persistence.js";
 import type { SessionStore } from "../core/types.js";
 import type { ResolvedSubagentConfig } from "../core/config.js";
 
@@ -32,7 +32,7 @@ export interface SubagentBackendConfig {
 /** Options for spawning a sub-agent */
 export interface SpawnSubagentOptions {
   /** Which agent to use (default: claude) */
-  agent?: SubagentAgent;
+  agent?: RunnerKind;
   /** Working directory for the agent (required) */
   cwd: string;
   /** Model override */
@@ -44,7 +44,7 @@ export interface SpawnSubagentOptions {
   /** Allowed workspace roots for validation */
   allowedWorkspaces?: string[];
   /** Callback for streaming events */
-  onEvent?: (event: SubagentEvent) => void;
+  onEvent?: (event: RunEvent) => void;
   /** Session ID for task registry tracking */
   sessionId?: string;
   /** Channel ID for task registry tracking */
@@ -61,7 +61,7 @@ export interface SpawnSubagentOptions {
    */
   targetAgentId?: string;
   /** Builtin-backend-specific options. Required when agent === "builtin". */
-  builtin?: BuiltinSubagentOptions;
+  builtin?: InProcessOptions;
 }
 
 /** Result from spawning a sub-agent */
@@ -78,7 +78,7 @@ export interface SpawnSubagentResult {
 // ---------------------------------------------------------------------------
 
 /** Shared backend instance (lazy initialized) */
-let sharedBackend: SubagentBackend | undefined;
+let sharedBackend: AgentRuntime | undefined;
 
 /** Cache key for the shared backend (workspace roots joined by `:`) */
 let sharedBackendKey: string | undefined;
@@ -118,10 +118,10 @@ export function initSubagentBackend(config: SubagentBackendConfig): void {
   });
 }
 
-function getBackend(allowedWorkspaces?: string[]): SubagentBackend {
+function getBackend(allowedWorkspaces?: string[]): AgentRuntime {
   const key = allowedWorkspaces?.sort().join(":") ?? "";
   if (!sharedBackend || sharedBackendKey !== key) {
-    sharedBackend = new SubagentBackend({
+    sharedBackend = new AgentRuntime({
       allowedWorkspaceRoots: allowedWorkspaces,
       config: backendConfig.config,
       core: backendConfig.core,
@@ -138,7 +138,7 @@ let taskCounter = 0;
  * Get the shared SubagentBackend instance for use by other modules.
  * Returns undefined if the backend hasn't been initialized.
  */
-export function getSubagentBackend(allowedWorkspaces?: string[]): SubagentBackend | undefined {
+export function getSubagentBackend(allowedWorkspaces?: string[]): AgentRuntime | undefined {
   if (!backendConfig.config) {
     return undefined;
   }
@@ -170,7 +170,8 @@ export async function spawnSubagent(
   prompt: string,
   options: SpawnSubagentOptions,
 ): Promise<SpawnSubagentResult> {
-  const agent = options.agent ?? "claude";
+  const agent = options.agent ?? "external";
+  const runner: RunnerKind = agent === "in-process" ? "in-process" : "external";
   const taskId = `subagent-${++taskCounter}-${Date.now()}`;
 
   log.info("Spawning sub-agent", { taskId, agent, cwd: options.cwd });
@@ -190,13 +191,13 @@ export async function spawnSubagent(
   const targetAgentId = options.targetAgentId ?? parentAgentId;
   const store = subagentStoreFactory ? await subagentStoreFactory(targetAgentId) : undefined;
 
-  const recorder = await createSubagentRecorder({
+  const recorder = await createRunRecorder({
     store,
     targetAgentId,
     parentAgentId,
     parentSessionId: options.sessionId,
     taskId,
-    backend: agent,
+    backend: runner,
     cwd: options.cwd,
     prompt,
     channelId: options.channelId,
@@ -207,17 +208,17 @@ export async function spawnSubagent(
 
   try {
     const events = backend.spawn(taskId, {
-      agent,
+      runner,
       prompt,
       cwd: options.cwd,
       model: options.model,
       timeout: options.timeout,
       maxTurns: options.maxTurns ?? 50,
-      ...(options.builtin ? { builtin: options.builtin } : {}),
+      ...(options.builtin ? { inProcess: options.builtin } : {}),
     });
 
     // Collect events, optionally streaming via callback
-    const collected: SubagentEvent[] = [];
+    const collected: RunEvent[] = [];
     for await (const event of events) {
       collected.push(event);
       options.onEvent?.(event);
@@ -235,7 +236,7 @@ export async function spawnSubagent(
 
     await recorder.patchMetadata({
       exitCode: result.exitCode,
-      costUsd: collected.find((e) => e.costUsd !== undefined)?.costUsd,
+      costUsd: collected.find((e): e is Extract<RunEvent, { type: "run:done" }> => e.type === "run:done" && "costUsd" in e)?.costUsd,
       durationMs: Date.now() - startedAt,
       ...(result.error ? { error: result.error } : {}),
     });

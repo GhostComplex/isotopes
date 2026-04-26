@@ -1,7 +1,3 @@
-// src/subagent/runners/claude.ts — Runner for the Claude Agent SDK backend
-// Extracted from the previous monolithic SubagentBackend.spawn so the
-// dispatcher can route agents by type.
-
 import { query, type Options, type PermissionMode, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createLogger } from "../../core/logger.js";
 import {
@@ -9,37 +5,22 @@ import {
   type SettingSource,
   type SubagentPermissionMode,
 } from "../../core/config.js";
-import type { SubagentAgent, SubagentEvent, SubagentSpawnOptions } from "../types.js";
-import type { RunnerSignals, SubagentRunner } from "../runner.js";
+import type { RunnerKind, RunEvent, RunOptions } from "../types.js";
+import type { RunnerSignals, Runner } from "../runner.js";
 
-const log = createLogger("subagent:runner:claude");
+const log = createLogger("agents:runner:external");
 
-/** Configuration for {@link ClaudeRunner}. */
-export interface ClaudeRunnerOptions {
-  /** Default permission mode if a spawn doesn't override. */
+export interface ExternalRunnerOptions {
   permissionMode?: SubagentPermissionMode;
-  /** Default allowlist used when permissionMode is "allowlist". */
   allowedTools?: string[];
-  /** Settings sources passed to the Claude Agent SDK. Default: ["user"]. */
   settingSources?: SettingSource[];
 }
 
-// ---------------------------------------------------------------------------
-// SDK message → SubagentEvent mapping
-// ---------------------------------------------------------------------------
-
-/**
- * Map a single SDK message into zero or more SubagentEvents.
- *
- * Pass a persistent `toolNameById` map across calls to resolve `tool_result`
- * blocks back to the real tool name (Read/Edit/...): tool_use blocks carry
- * both id and name; tool_result blocks only carry the id.
- */
-export function mapSdkMessage(
+export function mapSdkToRunEvent(
   msg: SDKMessage,
   toolNameById?: Map<string, string>,
-): SubagentEvent[] {
-  const events: SubagentEvent[] = [];
+): RunEvent[] {
+  const events: RunEvent[] = [];
 
   switch (msg.type) {
     case "assistant": {
@@ -47,15 +28,11 @@ export function mapSdkMessage(
       if (Array.isArray(content)) {
         for (const block of content) {
           if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
-            events.push({ type: "message", content: block.text });
+            events.push({ type: "run:message", content: block.text });
           } else if (block.type === "tool_use") {
             const name = String(block.name ?? "");
             if (toolNameById && typeof block.id === "string") toolNameById.set(block.id, name);
-            events.push({
-              type: "tool_use",
-              toolName: name,
-              toolInput: block.input,
-            });
+            events.push({ type: "run:tool_use", toolName: name, toolInput: block.input });
           }
         }
       }
@@ -76,7 +53,7 @@ export function mapSdkMessage(
             const b = block as { tool_use_id?: string; content?: unknown };
             const id = String(b.tool_use_id ?? "");
             events.push({
-              type: "tool_result",
+              type: "run:tool_result",
               toolName: toolNameById?.get(id) ?? id,
               toolResult: typeof b.content === "string" ? b.content : JSON.stringify(b.content),
             });
@@ -88,11 +65,11 @@ export function mapSdkMessage(
 
     case "result": {
       if (msg.subtype === "success") {
-        events.push({ type: "done", exitCode: 0, costUsd: msg.total_cost_usd });
+        events.push({ type: "run:done", exitCode: 0, costUsd: msg.total_cost_usd });
       } else {
         const errMsg = msg.errors?.join("; ") ?? msg.subtype;
-        events.push({ type: "error", error: errMsg });
-        events.push({ type: "done", exitCode: 1, costUsd: msg.total_cost_usd });
+        events.push({ type: "run:error", error: errMsg });
+        events.push({ type: "run:done", exitCode: 1, costUsd: msg.total_cost_usd });
       }
       return events;
     }
@@ -101,10 +78,6 @@ export function mapSdkMessage(
       return events;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Permission mode translation
-// ---------------------------------------------------------------------------
 
 function translatePermissionMode(
   mode: SubagentPermissionMode,
@@ -120,26 +93,20 @@ function translatePermissionMode(
   }
 }
 
-// ---------------------------------------------------------------------------
-// ClaudeRunner
-// ---------------------------------------------------------------------------
-
-/** Runner backed by `@anthropic-ai/claude-agent-sdk`. */
-export class ClaudeRunner implements SubagentRunner {
-  readonly agent: SubagentAgent = "claude";
+export class ExternalRunner implements Runner {
+  readonly kind: RunnerKind = "external";
 
   private permissionMode: SubagentPermissionMode;
   private allowedTools: string[];
   private settingSources: SettingSource[];
 
-  constructor(options?: ClaudeRunnerOptions) {
+  constructor(options?: ExternalRunnerOptions) {
     this.permissionMode = options?.permissionMode ?? "allowlist";
     this.allowedTools = options?.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
     this.settingSources = options?.settingSources ?? ["user"];
   }
 
-  /** Build the SDK Options object for one spawn. */
-  buildSdkOptions(options: SubagentSpawnOptions, abort: AbortController): Options {
+  buildSdkOptions(options: RunOptions, abort: AbortController): Options {
     const permissionMode = options.permissionMode ?? this.permissionMode;
     const allowedTools = options.allowedTools ?? this.allowedTools;
     const translated = translatePermissionMode(permissionMode, allowedTools);
@@ -158,13 +125,12 @@ export class ClaudeRunner implements SubagentRunner {
   }
 
   async *run(
-    taskId: string,
-    options: SubagentSpawnOptions,
+    runId: string,
+    options: RunOptions,
     signals: RunnerSignals,
-  ): AsyncGenerator<SubagentEvent> {
-    log.info("ClaudeRunner.run", { taskId, cwd: options.cwd });
+  ): AsyncGenerator<RunEvent> {
+    log.info("ExternalRunner.run", { runId, cwd: options.cwd });
 
-    // Bridge external AbortSignal into the SDK's AbortController.
     const sdkAbort = new AbortController();
     const onAbort = () => sdkAbort.abort();
     signals.abort.addEventListener("abort", onAbort, { once: true });
@@ -180,16 +146,16 @@ export class ClaudeRunner implements SubagentRunner {
       });
 
       for await (const msg of iterator) {
-        for (const ev of mapSdkMessage(msg, toolNameById)) {
-          if (ev.type === "done") sawDone = true;
+        for (const ev of mapSdkToRunEvent(msg, toolNameById)) {
+          if (ev.type === "run:done") sawDone = true;
           yield ev;
         }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      yield { type: "error", error: msg };
+      yield { type: "run:error", error: msg };
       if (!sawDone) {
-        yield { type: "done", exitCode: 1 };
+        yield { type: "run:done", exitCode: 1 };
       }
     } finally {
       signals.abort.removeEventListener("abort", onAbort);

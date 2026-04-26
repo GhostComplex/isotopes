@@ -1,8 +1,8 @@
 // src/plugins/discord/discord-subagent-sink.ts — Stream sub-agent events to Discord
-// Formats SubagentEvents and sends them to a Discord channel or thread.
+// Formats RunEvents and sends them to a Discord channel or thread.
 
 import { createLogger } from "../../core/logger.js";
-import type { SubagentEvent, SubagentResult } from "../../subagent/types.js";
+import type { RunEvent, RunResult } from "../../agents/types.js";
 import type { SubagentStreamSink } from "../../core/subagent-context.js";
 
 const log = createLogger("subagent:discord-sink");
@@ -52,34 +52,34 @@ export function truncate(content: string, maxLen: number = MAX_MESSAGE_LENGTH): 
 }
 
 /**
- * Format an SubagentEvent for display in Discord.
+ * Format an RunEvent for display in Discord.
  *
  * Returns undefined if the event should not be displayed (e.g.,
  * tool calls when showToolCalls is false).
  */
-export function formatEvent(event: SubagentEvent, config: DiscordSinkConfig): string | undefined {
+export function formatEvent(event: RunEvent, config: DiscordSinkConfig): string | undefined {
   switch (event.type) {
-    case "start":
+    case "run:start":
       return undefined; // handled separately by DiscordSink.start()
 
-    case "message":
-      if (!event.content) return undefined;
+    case "run:message":
+      
       return truncate(event.content);
 
-    case "tool_use":
+    case "run:tool_use":
       if (!config.showToolCalls) return undefined;
-      return truncate(`🔧 **${event.toolName ?? "tool"}**`);
+      return truncate(`🔧 **${event.toolName}**`);
 
-    case "tool_result":
+    case "run:tool_result":
       if (!config.showToolCalls) return undefined;
       return truncate(
-        `📋 **${event.toolName ?? "tool"}** → \`\`\`\n${event.toolResult ?? "(no output)"}\n\`\`\``,
+        `📋 **${event.toolName}** → \`\`\`\n${event.toolResult}\n\`\`\``,
       );
 
-    case "error":
-      return truncate(`❌ ${event.error ?? "Unknown error"}`);
+    case "run:error":
+      return truncate(`❌ ${event.error}`);
 
-    case "done":
+    case "run:done":
       return undefined; // handled separately by DiscordSink.finish()
 
     default:
@@ -109,15 +109,15 @@ function getExitCodeExplanation(exitCode: number | undefined): string {
 }
 
 /**
- * Format a SubagentResult summary for the completion message.
+ * Format a RunResult summary for the completion message.
  *
  * @param result - The result to format
  * @param threadId - Optional thread ID to include as a link
  */
-export function formatSummary(result: SubagentResult, threadId?: string): string {
+export function formatSummary(result: RunResult, threadId?: string): string {
   const status = result.success ? "✅ Completed" : "❌ Failed";
-  const messageCount = result.events.filter((e) => e.type === "message").length;
-  const toolCount = result.events.filter((e) => e.type === "tool_use").length;
+  const messageCount = result.events.filter((e) => e.type === "run:message").length;
+  const toolCount = result.events.filter((e) => e.type === "run:tool_use").length;
 
   const exitCodeExplanation = getExitCodeExplanation(result.exitCode);
   const exitCodeStr = exitCodeExplanation
@@ -213,7 +213,7 @@ export class DiscordSink implements SubagentStreamSink {
    *
    * Events that produce no display content (per config) are skipped.
    */
-  async sendEvent(event: SubagentEvent): Promise<void> {
+  async sendEvent(event: RunEvent): Promise<void> {
     const content = formatEvent(event, this.config);
     if (!content) return;
 
@@ -233,7 +233,7 @@ export class DiscordSink implements SubagentStreamSink {
    *
    * The summary includes a link to the thread if one was created.
    */
-  async finish(result: SubagentResult): Promise<void> {
+  async finish(result: RunResult): Promise<void> {
     // Include thread link in summary when a thread was created
     const content = formatSummary(result, this.threadId);
 
@@ -251,7 +251,7 @@ export class DiscordSink implements SubagentStreamSink {
    * Use this when you want to send the summary to the thread instead of
    * the main channel. If no thread was created, this is a no-op.
    */
-  async finishInThread(result: SubagentResult): Promise<void> {
+  async finishInThread(result: RunResult): Promise<void> {
     if (!this.threadId) return;
 
     const content = formatSummary(result);

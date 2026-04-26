@@ -41,8 +41,8 @@ import { ChannelHistoryBuffer, buildHistoryContext } from "../../core/channel-hi
 import { DedupeCache } from "../../core/dedupe.js";
 import { InboundDebouncer } from "../../core/debounce.js";
 import { SlashCommandHandler } from "../../commands/slash-commands.js";
-import { taskRegistry } from "../../subagent/task-registry.js";
-import { failureTracker } from "../../subagent/failure-tracker.js";
+import { taskRegistry } from "../../agents/task-registry.js";
+import { failureTracker } from "../../agents/failure-tracker.js";
 import { cancelSubagent } from "../../tools/subagent.js";
 
 const log = loggers.discord;

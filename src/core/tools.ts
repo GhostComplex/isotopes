@@ -7,9 +7,9 @@ import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
 import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import type { SubagentAgent, SubagentEvent } from "../subagent/types.js";
+import type { RunnerKind, RunEvent } from "../agents/types.js";
 import { getSubagentContext, type SubagentStreamContext } from "./subagent-context.js";
-import { failureTracker } from "../subagent/failure-tracker.js";
+import { failureTracker } from "../agents/failure-tracker.js";
 import { createLogger } from "./logger.js";
 const log = createLogger("tools:subagent");
 /** Function that executes a tool call and returns a string result. */
@@ -261,10 +261,10 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
           : undefined;
         let result: string;
         if (discordContext) {
-          result = await runSubagentWithStreaming(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin);
+          result = await runSubagentWithStreaming(task, agent as RunnerKind, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin);
         } else {
           // Run without streaming
-          result = await runSubagentPlain(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, maxTurns, parentAgentId, builtin);
+          result = await runSubagentPlain(task, agent as RunnerKind, cwd, timeout, allAllowedWorkspaces, maxTurns, parentAgentId, builtin);
         }
 
         // Record failure if result indicates failure
@@ -289,7 +289,7 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
  */
 async function runSubagentPlain(
   task: string,
-  agent: SubagentAgent,
+  agent: RunnerKind,
   cwd: string,
   timeout: number | undefined,
   allowedWorkspaces: string[],
@@ -318,7 +318,7 @@ async function runSubagentPlain(
  */
 async function runSubagentWithStreaming(
   task: string,
-  agent: SubagentAgent,
+  agent: RunnerKind,
   cwd: string,
   timeout: number | undefined,
   allowedWorkspaces: string[],
@@ -335,7 +335,7 @@ async function runSubagentWithStreaming(
 
   const threadId = sink.getThreadId?.();
   const startTime = Date.now();
-  const events: SubagentEvent[] = [];
+  const events: RunEvent[] = [];
 
   try {
     const result = await spawnSubagent(task, {
@@ -355,7 +355,7 @@ async function runSubagentWithStreaming(
     });
 
     const durationMs = Date.now() - startTime;
-    const costUsd = events.find(e => e.costUsd !== undefined)?.costUsd;
+    const costUsd = events.find((e): e is Extract<RunEvent, { type: "run:done" }> => e.type === "run:done" && "costUsd" in e)?.costUsd;
 
     await sink.finish({
       success: result.success,
@@ -387,7 +387,7 @@ async function runSubagentWithStreaming(
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     log.error("Sub-agent with streaming failed", { error });
-    const errorEvent: SubagentEvent = { type: "error", error };
+    const errorEvent: RunEvent = { type: "run:error", error };
     events.push(errorEvent);
     await sink.sendEvent(errorEvent);
     const durationMs = Date.now() - startTime;
