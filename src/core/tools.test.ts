@@ -13,9 +13,7 @@ import {
   createWriteFileTool,
   createEditFileTool,
   createListDirTool,
-  createWorkspaceTools,
   createWorkspaceToolsWithGuards,
-  resolveToolGuards,
   applyToolPolicy,
   type ToolHandler,
 } from "./tools.js";
@@ -216,54 +214,29 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "test.txt");
       await fs.writeFile(testFile, "hello world");
 
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.txt" });
 
       expect(result).toBe("hello world");
     });
 
     it("returns error for missing file", async () => {
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "nonexistent.txt" });
 
       expect(result).toContain("[error]");
       expect(result).toContain("not found");
     });
 
-    it("rejects paths that escape the workspace", async () => {
+    it("reads absolute paths outside workspace", async () => {
       const outsideFile = path.join(os.tmpdir(), `outside-${Date.now()}.txt`);
-      await fs.writeFile(outsideFile, "secret");
+      await fs.writeFile(outsideFile, "outside content");
 
       try {
-        const { handler } = createReadFileTool({ basePath: tempDir });
+        const { handler } = createReadFileTool({ workspacePath: tempDir });
         const result = await handler({ path: outsideFile });
 
-        expect(result).toContain("[error]");
-        expect(result).toContain("Path escapes workspace");
-      } finally {
-        await fs.rm(outsideFile, { force: true });
-      }
-    });
-
-    it("resolves relative paths against basePath even when constrainToWorkspace is false", async () => {
-      const testFile = path.join(tempDir, "identity.md");
-      await fs.writeFile(testFile, "workspace content");
-
-      const { handler } = createReadFileTool({ basePath: tempDir, constrainToWorkspace: false });
-      const result = await handler({ path: "identity.md" });
-
-      expect(result).toBe("workspace content");
-    });
-
-    it("allows absolute paths outside workspace when constrainToWorkspace is false", async () => {
-      const outsideFile = path.join(os.tmpdir(), `outside-allowed-${Date.now()}.txt`);
-      await fs.writeFile(outsideFile, "allowed content");
-
-      try {
-        const { handler } = createReadFileTool({ basePath: tempDir, constrainToWorkspace: false });
-        const result = await handler({ path: outsideFile });
-
-        expect(result).toBe("allowed content");
+        expect(result).toBe("outside content");
       } finally {
         await fs.rm(outsideFile, { force: true });
       }
@@ -273,7 +246,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "lines.txt");
       await fs.writeFile(testFile, "line0\nline1\nline2\nline3\nline4");
 
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "lines.txt", offset: 2 });
 
       expect(result).toContain("line2");
@@ -287,7 +260,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "lines.txt");
       await fs.writeFile(testFile, "line0\nline1\nline2\nline3\nline4");
 
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "lines.txt", limit: 2 });
 
       expect(result).toContain("line0");
@@ -300,7 +273,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "lines.txt");
       await fs.writeFile(testFile, "line0\nline1\nline2\nline3\nline4");
 
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "lines.txt", offset: 1, limit: 2 });
 
       expect(result).toContain("[lines 2-3 of 5]");
@@ -314,7 +287,7 @@ describe("Built-in tools", () => {
       const lines = Array.from({ length: 3000 }, (_, i) => `line ${i}`);
       await fs.writeFile(testFile, lines.join("\n"));
 
-      const { handler } = createReadFileTool({ basePath: tempDir, maxReadSize: 1024 * 1024 });
+      const { handler } = createReadFileTool({ workspacePath: tempDir, maxReadSize: 1024 * 1024 });
       const result = await handler({ path: "big.txt" });
 
       expect(result).toContain("[lines 1-2000 of 3000]");
@@ -329,7 +302,7 @@ describe("Built-in tools", () => {
       // Write more than default 50KB
       await fs.writeFile(testFile, "x".repeat(60 * 1024));
 
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "huge.txt" });
 
       expect(result).toContain("[error]");
@@ -342,7 +315,7 @@ describe("Built-in tools", () => {
       const fakeImageData = Buffer.from([0x89, 0x50, 0x4e, 0x47]); // PNG magic bytes
       await fs.writeFile(testFile, fakeImageData);
 
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.png" });
       const parsed = JSON.parse(result);
 
@@ -356,7 +329,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "photo.jpg");
       await fs.writeFile(testFile, Buffer.from([0xff, 0xd8, 0xff]));
 
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "photo.jpg" });
       const parsed = JSON.parse(result);
 
@@ -367,7 +340,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "icon.svg");
       await fs.writeFile(testFile, "<svg></svg>");
 
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "icon.svg" });
       const parsed = JSON.parse(result);
 
@@ -378,7 +351,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "huge-with-offset.txt");
       await fs.writeFile(testFile, "x".repeat(60 * 1024));
 
-      const { handler } = createReadFileTool({ basePath: tempDir });
+      const { handler } = createReadFileTool({ workspacePath: tempDir });
       // Should not error — offset/limit bypasses the size check
       const result = await handler({ path: "huge-with-offset.txt", offset: 0, limit: 10 });
 
@@ -399,7 +372,7 @@ describe("Built-in tools", () => {
     });
 
     it("writes file content", async () => {
-      const { handler } = createWriteFileTool({ basePath: tempDir });
+      const { handler } = createWriteFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.txt", content: "new content" });
 
       expect(result).toContain("Successfully wrote");
@@ -408,26 +381,13 @@ describe("Built-in tools", () => {
     });
 
     it("creates parent directories", async () => {
-      const { handler } = createWriteFileTool({ basePath: tempDir });
+      const { handler } = createWriteFileTool({ workspacePath: tempDir });
       await handler({ path: "nested/dir/test.txt", content: "nested" });
 
       const content = await fs.readFile(path.join(tempDir, "nested/dir/test.txt"), "utf-8");
       expect(content).toBe("nested");
     });
 
-    it("rejects writes that escape the workspace", async () => {
-      const outsideFile = path.join(os.tmpdir(), `outside-write-${Date.now()}.txt`);
-
-      try {
-        const { handler } = createWriteFileTool({ basePath: tempDir });
-        const result = await handler({ path: outsideFile, content: "blocked" });
-
-        expect(result).toContain("[error]");
-        expect(result).toContain("Path escapes workspace");
-      } finally {
-        await fs.rm(outsideFile, { force: true });
-      }
-    });
   });
 
   describe("createEditFileTool", () => {
@@ -445,7 +405,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "test.txt");
       await fs.writeFile(testFile, "hello world");
 
-      const { handler } = createEditFileTool({ basePath: tempDir });
+      const { handler } = createEditFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.txt", old_text: "hello", new_text: "goodbye" });
 
       const parsed = JSON.parse(result);
@@ -455,7 +415,7 @@ describe("Built-in tools", () => {
     });
 
     it("returns error for missing file", async () => {
-      const { handler } = createEditFileTool({ basePath: tempDir });
+      const { handler } = createEditFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "nonexistent.txt", old_text: "hello", new_text: "goodbye" });
 
       expect(result).toContain("[error]");
@@ -466,7 +426,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "test.txt");
       await fs.writeFile(testFile, "hello world");
 
-      const { handler } = createEditFileTool({ basePath: tempDir });
+      const { handler } = createEditFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.txt", old_text: "missing", new_text: "replaced" });
 
       expect(result).toContain("[error]");
@@ -477,7 +437,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "test.txt");
       await fs.writeFile(testFile, "aaa bbb aaa");
 
-      const { handler } = createEditFileTool({ basePath: tempDir });
+      const { handler } = createEditFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.txt", old_text: "aaa", new_text: "ccc" });
 
       expect(result).toContain("[error]");
@@ -488,7 +448,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "test.txt");
       await fs.writeFile(testFile, "aaa bbb aaa");
 
-      const { handler } = createEditFileTool({ basePath: tempDir });
+      const { handler } = createEditFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.txt", old_text: "aaa", new_text: "ccc", expected_count: 2 });
 
       const parsed = JSON.parse(result);
@@ -501,7 +461,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "test.txt");
       await fs.writeFile(testFile, "aaa bbb aaa");
 
-      const { handler } = createEditFileTool({ basePath: tempDir });
+      const { handler } = createEditFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.txt", old_text: "aaa", new_text: "ccc", expected_count: 3 });
 
       expect(result).toContain("[error]");
@@ -512,7 +472,7 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "test.txt");
       await fs.writeFile(testFile, "hello world");
 
-      const { handler } = createEditFileTool({ basePath: tempDir });
+      const { handler } = createEditFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.txt", old_text: "", new_text: "replaced" });
 
       expect(result).toContain("[error]");
@@ -523,28 +483,13 @@ describe("Built-in tools", () => {
       const testFile = path.join(tempDir, "test.txt");
       await fs.writeFile(testFile, "hello world");
 
-      const { handler } = createEditFileTool({ basePath: tempDir });
+      const { handler } = createEditFileTool({ workspacePath: tempDir });
       const result = await handler({ path: "test.txt", old_text: "hello", new_text: "hello" });
 
       const parsed = JSON.parse(result);
       expect(parsed).toEqual({ success: true, matches: 1 });
       const content = await fs.readFile(testFile, "utf-8");
       expect(content).toBe("hello world");
-    });
-
-    it("rejects edits that escape the workspace", async () => {
-      const outsideFile = path.join(os.tmpdir(), `outside-edit-${Date.now()}.txt`);
-      await fs.writeFile(outsideFile, "secret data");
-
-      try {
-        const { handler } = createEditFileTool({ basePath: tempDir });
-        const result = await handler({ path: outsideFile, old_text: "secret", new_text: "public" });
-
-        expect(result).toContain("[error]");
-        expect(result).toContain("Path escapes workspace");
-      } finally {
-        await fs.rm(outsideFile, { force: true });
-      }
     });
   });
 
@@ -563,7 +508,7 @@ describe("Built-in tools", () => {
       await fs.writeFile(path.join(tempDir, "file1.txt"), "");
       await fs.mkdir(path.join(tempDir, "subdir"));
 
-      const { handler } = createListDirTool({ basePath: tempDir });
+      const { handler } = createListDirTool({ workspacePath: tempDir });
       const result = await handler({ path: "." });
 
       expect(result).toContain("file1.txt");
@@ -572,27 +517,19 @@ describe("Built-in tools", () => {
     });
 
     it("returns error for missing directory", async () => {
-      const { handler } = createListDirTool({ basePath: tempDir });
+      const { handler } = createListDirTool({ workspacePath: tempDir });
       const result = await handler({ path: "nonexistent" });
 
       expect(result).toContain("[error]");
       expect(result).toContain("not found");
     });
-
-    it("rejects directories that escape the workspace", async () => {
-      const { handler } = createListDirTool({ basePath: tempDir });
-      const result = await handler({ path: os.tmpdir() });
-
-      expect(result).toContain("[error]");
-      expect(result).toContain("Path escapes workspace");
-    });
   });
 
-  describe("createWorkspaceTools", () => {
+  describe("createWorkspaceToolsWithGuards", () => {
     it("creates all standard workspace tools", () => {
-      const tools = createWorkspaceTools("/tmp/workspace");
+      const tools = createWorkspaceToolsWithGuards("/tmp/workspace");
 
-      const names = tools.map((t) => t.tool.name);
+      const names = tools.map((t: { tool: Tool }) => t.tool.name);
       expect(names).toContain("read_file");
       expect(names).toContain("write_file");
       expect(names).toContain("edit");
@@ -603,7 +540,7 @@ describe("Built-in tools", () => {
     });
 
     it("does not include shell or exec (exec is registered in cli.ts)", () => {
-      const tools = createWorkspaceToolsWithGuards("/tmp/workspace", { cli: true });
+      const tools = createWorkspaceToolsWithGuards("/tmp/workspace");
       const names = tools.map((entry) => entry.tool.name);
       expect(names).not.toContain("shell");
       expect(names).toContain("read_file");
@@ -634,8 +571,6 @@ describe("Built-in tools", () => {
       const writeTool = tools.find((t) => t.tool.name === "write_file");
       expect(writeTool).toBeDefined();
 
-      // Disable workspace constraint by passing absolute path under basePath
-      // (the resolver will still call fakeFs.mkdir for the parent dir).
       await writeTool!.handler({ path: "/tmp/workspace/x.txt", content: "hello" });
 
       expect(fakeFs.writeFile).toHaveBeenCalled();
@@ -646,7 +581,7 @@ describe("Built-in tools", () => {
     it("excludes file writing tools when codingMode is 'subagent'", () => {
       const tools = createWorkspaceToolsWithGuards(
         "/tmp/workspace",
-        { cli: true },
+        undefined,
         true, // subagentEnabled
         [], // allowedWorkspaces
         "subagent",
@@ -665,14 +600,14 @@ describe("Built-in tools", () => {
     it("includes file writing tools when codingMode is 'direct' or 'auto'", () => {
       const directTools = createWorkspaceToolsWithGuards(
         "/tmp/workspace",
-        { cli: true },
+        undefined,
         false,
         [],
         "direct",
       );
       const autoTools = createWorkspaceToolsWithGuards(
         "/tmp/workspace",
-        { cli: true },
+        undefined,
         false,
         [],
         "auto",
@@ -685,33 +620,15 @@ describe("Built-in tools", () => {
     });
   });
 
-  describe("resolveToolGuards", () => {
-    it("defaults cli off and workspaceOnly on", () => {
-      expect(resolveToolGuards()).toEqual({
-        cli: false,
-        fs: { workspaceOnly: true },
-      });
-    });
-
-    it("supports explicit cli on and workspaceOnly off", () => {
-      expect(resolveToolGuards({ cli: true, fs: { workspaceOnly: false } })).toEqual({
-        cli: true,
-        fs: { workspaceOnly: false },
-      });
-    });
-  });
-
   describe("buildToolGuardPrompt", () => {
-    it("describes the active tools and guardrails", () => {
+    it("lists available tools and workspace path", () => {
       const prompt = buildToolGuardPrompt(
-        createWorkspaceToolsWithGuards("/tmp/workspace", { cli: true }).map((entry) => entry.tool),
-        { cli: true, fs: { workspaceOnly: true } },
+        createWorkspaceToolsWithGuards("/tmp/workspace").map((entry) => entry.tool),
         "/tmp/workspace",
       );
 
       expect(prompt).toContain("Only the following tools are available");
-      expect(prompt).toContain("restricted to the workspace: /tmp/workspace");
-      expect(prompt).toContain("exec command execution is enabled");
+      expect(prompt).toContain("Workspace path: /tmp/workspace");
     });
   });
 });

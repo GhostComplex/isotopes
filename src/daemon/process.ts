@@ -140,9 +140,8 @@ export class DaemonProcess {
       detached: true,
       stdio: ["ignore", outFd.fd, errFd.fd],
       // Set cwd to user home to avoid inheriting caller's cwd.
-      // Without this, file tools with workspaceOnly=false resolve relative
-      // paths against the caller's cwd, which may be another agent's workspace,
-      // causing identity contamination (#92).
+      // Without this, file tools resolve relative paths against the
+      // caller's cwd, which may be another agent's workspace (#92).
       cwd: os.homedir(),
       env: {
         ...process.env,

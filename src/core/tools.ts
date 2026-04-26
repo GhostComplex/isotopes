@@ -412,22 +412,10 @@ async function runSubagentWithStreaming(
 // File tools
 // ---------------------------------------------------------------------------
 export interface FileToolOptions {
-  /** Base directory for file operations (paths are resolved relative to this) */
-  basePath?: string;
+  /** Workspace directory — relative paths resolve against this */
+  workspacePath?: string;
   /** Maximum file size to read in bytes (default: 1MB) */
   maxReadSize?: number;
-  /**
-   * Whether to constrain file access to the workspace directory.
-   * When true (default), paths that escape basePath are rejected.
-   * When false, absolute paths outside the workspace are allowed,
-   * but relative paths still resolve against basePath.
-   */
-  constrainToWorkspace?: boolean;
-  /**
-   * Additional directories (beyond basePath) that file operations may access
-   * when constrainToWorkspace is true.
-   */
-  allowedWorkspaces?: string[];
   /**
    * Filesystem implementation. Defaults to node:fs/promises (host fs).
    * cli.ts injects a SandboxFs instance instead when the agent runs sandboxed,
@@ -435,67 +423,12 @@ export interface FileToolOptions {
    */
   fsImpl?: FsLike;
 }
-export interface ResolvedToolGuards {
-  cli: boolean;
-  fs: {
-    workspaceOnly: boolean;
-  };
+
+function resolveFilePath(targetPath: string, workspacePath?: string): string {
+  if (path.isAbsolute(targetPath)) return path.resolve(targetPath);
+  return workspacePath ? path.resolve(workspacePath, targetPath) : path.resolve(targetPath);
 }
-export function resolveToolGuards(settings?: AgentToolSettings): ResolvedToolGuards {
-  return {
-    cli: settings?.cli === true,
-    fs: {
-      workspaceOnly: settings?.fs?.workspaceOnly !== false,
-    },
-  };
-}
-function isPathInside(parentPath: string, childPath: string): boolean {
-  const relative = path.relative(parentPath, childPath);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-async function isPathAllowed(
-  targetPath: string,
-  workspaceRoot: string,
-  allowedWorkspaces: string[],
-): Promise<boolean> {
-  if (isPathInside(workspaceRoot, targetPath)) return true;
-  for (const ws of allowedWorkspaces) {
-    const realWs = await fs.realpath(ws).catch(() => path.resolve(ws));
-    if (isPathInside(realWs, targetPath)) return true;
-  }
-  return false;
-}
-async function resolveWorkspaceConstrainedPath(
-  targetPath: string,
-  basePath: string | undefined,
-  mode: "read" | "write" | "list",
-  constrainToWorkspace = true,
-  allowedWorkspaces: string[] = [],
-  fsImpl: FsLike = fs,
-): Promise<string> {
-  if (!basePath) {
-    return path.resolve(targetPath);
-  }
-  const workspaceRoot = await fs.realpath(basePath).catch(() => path.resolve(basePath));
-  const resolvedPath = path.isAbsolute(targetPath)
-    ? path.resolve(targetPath)
-    : path.resolve(workspaceRoot, targetPath);
-  if (mode === "write") {
-    const parentDir = path.dirname(resolvedPath);
-    await fsImpl.mkdir(parentDir, { recursive: true });
-    const realParentDir = await fs.realpath(parentDir).catch(() => path.resolve(parentDir));
-    const finalPath = path.join(realParentDir, path.basename(resolvedPath));
-    if (constrainToWorkspace && !(await isPathAllowed(finalPath, workspaceRoot, allowedWorkspaces))) {
-      throw new Error(`Path escapes workspace: ${targetPath}`);
-    }
-    return finalPath;
-  }
-  const realTargetPath = await fs.realpath(resolvedPath).catch(() => path.resolve(resolvedPath));
-  if (constrainToWorkspace && !(await isPathAllowed(realTargetPath, workspaceRoot, allowedWorkspaces))) {
-    throw new Error(`Path escapes workspace: ${targetPath}`);
-  }
-  return realTargetPath;
-}
+
 const IMAGE_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".ico", ".tiff", ".tif",
 ]);
@@ -512,10 +445,8 @@ const DEFAULT_MAX_READ_SIZE = 50 * 1024; // 50 KB for text files
  */
 export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
   const {
-    basePath,
+    workspacePath,
     maxReadSize = DEFAULT_MAX_READ_SIZE,
-    constrainToWorkspace = true,
-    allowedWorkspaces = [],
     fsImpl = fs,
   } = options;
   return {
@@ -549,14 +480,7 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
         limit?: number;
       };
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(
-          filePath,
-          basePath,
-          "read",
-          constrainToWorkspace,
-          allowedWorkspaces,
-          fsImpl,
-        );
+        const resolvedPath = resolveFilePath(filePath, workspacePath);
         const stats = await fsImpl.stat(resolvedPath);
 
         // Image files — return base64
@@ -606,7 +530,7 @@ export function createReadFileTool(options: FileToolOptions = {}): { tool: Tool;
  * Create a file write tool.
  */
 export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [], fsImpl = fs } = options;
+  const { workspacePath, fsImpl = fs } = options;
   return {
     tool: {
       name: "write_file",
@@ -629,7 +553,9 @@ export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool
     handler: async (args) => {
       const { path: filePath, content } = args as { path: string; content: string };
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace, allowedWorkspaces, fsImpl);
+        const resolvedPath = resolveFilePath(filePath, workspacePath);
+        const parentDir = path.dirname(resolvedPath);
+        await fsImpl.mkdir(parentDir, { recursive: true });
         await fsImpl.writeFile(resolvedPath, content, "utf-8");
         return `Successfully wrote ${content.length} bytes to ${filePath}`;
       } catch (error) {
@@ -643,7 +569,7 @@ export function createWriteFileTool(options: FileToolOptions = {}): { tool: Tool
  * Create a directory listing tool.
  */
 export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [], fsImpl = fs } = options;
+  const { workspacePath, fsImpl = fs } = options;
   return {
     tool: {
       name: "list_dir",
@@ -661,7 +587,7 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
     handler: async (args) => {
       const { path: dirPath = "." } = args as { path?: string };
       try {
-        const resolvedPath = await resolveWorkspaceConstrainedPath(dirPath, basePath, "list", constrainToWorkspace, allowedWorkspaces, fsImpl);
+        const resolvedPath = resolveFilePath(dirPath, workspacePath);
         const entries = await fsImpl.readdir(resolvedPath, { withFileTypes: true });
         const lines = entries.map((entry) => {
           const prefix = entry.isDirectory() ? "[dir] " : "      ";
@@ -682,7 +608,7 @@ export function createListDirTool(options: FileToolOptions = {}): { tool: Tool; 
  * Create a file edit tool (search & replace).
  */
 export function createEditFileTool(options: FileToolOptions = {}): { tool: Tool; handler: ToolHandler } {
-  const { basePath, constrainToWorkspace = true, allowedWorkspaces = [], fsImpl = fs } = options;
+  const { workspacePath, fsImpl = fs } = options;
   return {
     tool: {
       name: "edit",
@@ -722,7 +648,7 @@ export function createEditFileTool(options: FileToolOptions = {}): { tool: Tool;
         if (!old_text) {
           return "[error] old_text must not be empty";
         }
-        const resolvedPath = await resolveWorkspaceConstrainedPath(filePath, basePath, "write", constrainToWorkspace, allowedWorkspaces, fsImpl);
+        const resolvedPath = resolveFilePath(filePath, workspacePath);
         const content = await fsImpl.readFile(resolvedPath, "utf-8");
         // Count occurrences
         let matches = 0;
@@ -761,33 +687,15 @@ export function createEditFileTool(options: FileToolOptions = {}): { tool: Tool;
 }
 export function buildToolGuardPrompt(
   tools: Tool[],
-  guards: ResolvedToolGuards,
   workspacePath: string,
-  allowedWorkspaces: string[] = [],
 ): string {
   const lines = [
     "# Tooling",
     "Only the following tools are available in this runtime:",
     ...tools.map((tool) => `- ${tool.name}: ${tool.description}`),
     "",
-    "# Tool Guards",
+    `Workspace path: ${workspacePath}`,
   ];
-  if (guards.fs.workspaceOnly) {
-    lines.push(`- File operations are restricted to the workspace: ${workspacePath}`);
-    if (allowedWorkspaces.length > 0) {
-      lines.push(`- Additional allowed directories: ${allowedWorkspaces.join(", ")}`);
-    } else {
-      lines.push("- Do not attempt to access files outside the workspace.");
-    }
-  } else {
-    lines.push("- File operations may access host paths outside the workspace.");
-  }
-  if (guards.cli) {
-    lines.push(`- Shell/exec command execution is enabled and runs with cwd=${workspacePath}.`);
-    lines.push("- Use exec only when file tools are insufficient for the task.");
-  } else {
-    lines.push("- Shell/exec command execution is disabled in this runtime.");
-  }
   return lines.join("\n");
 }
 // ---------------------------------------------------------------------------
@@ -827,9 +735,6 @@ export function applyToolPolicy(
 /**
  * Create a standard set of tools for an agent workspace.
  */
-export function createWorkspaceTools(workspacePath: string, fsImpl?: FsLike): { tool: Tool; handler: ToolHandler }[] {
-  return createWorkspaceToolsWithGuards(workspacePath, undefined, false, [], "auto", undefined, fsImpl);
-}
 /** Tools that modify files - excluded when codingMode is 'subagent' */
 export const FILE_WRITING_TOOLS = ["write_file", "edit"];
 
@@ -845,31 +750,22 @@ export function createWorkspaceToolsWithGuards(
   parentProvider?: ProviderConfig,
   parentTools?: ToolRegistry,
 ): { tool: Tool; handler: ToolHandler }[] {
-  const guards = resolveToolGuards(settings);
-  // Always use workspacePath as base for relative path resolution.
-  // workspaceOnly controls whether paths are *constrained* to the workspace,
-  // not where relative paths resolve from. Without this, relative paths
-  // resolve against process.cwd() which may be a completely different directory
-  // (e.g., another agent's workspace), causing identity contamination (#92).
-  const fileBasePath = workspacePath;
-  const constrainToWorkspace = guards.fs.workspaceOnly;
+  const fileOpts: FileToolOptions = { workspacePath, fsImpl };
   let tools = [
-    createReadFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces, fsImpl }),
-    createWriteFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces, fsImpl }),
-    createEditFileTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces, fsImpl }),
-    createListDirTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces, fsImpl }),
+    createReadFileTool(fileOpts),
+    createWriteFileTool(fileOpts),
+    createEditFileTool(fileOpts),
+    createListDirTool(fileOpts),
     createTimeTool(),
   ];
   if (subagentEnabled) {
     tools.push(createSubagentTool({ workspacePath, allowedWorkspaces, maxTurns: subagentMaxTurns, parentAgentId, parentProvider, parentTools }));
   }
-  // Web fetch tool
   if (settings?.web) {
     tools.push(createWebFetchTool());
     tools.push(createWebSearchTool());
   }
 
-  // Filter out file writing tools when codingMode is 'subagent'
   if (codingMode === "subagent") {
     tools = tools.filter((t) => !FILE_WRITING_TOOLS.includes(t.tool.name));
   }

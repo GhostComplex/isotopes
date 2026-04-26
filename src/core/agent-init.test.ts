@@ -63,26 +63,15 @@ describe("initializeAgent", () => {
     expect(core.setToolRegistry).toHaveBeenCalledWith("test-agent", expect.anything());
   });
 
-  it("registers exec tools when CLI guard is enabled", async () => {
+  it("always registers exec tools", async () => {
     const result = await initializeAgent({
-      agentFile: makeMinimalAgentFile({ tools: { cli: true } }),
+      agentFile: makeMinimalAgentFile(),
       core,
       agentManager,
     });
 
     const toolNames = result.toolRegistry.list().map((t) => t.name);
     expect(toolNames).toContain("exec");
-  });
-
-  it("skips exec tools when CLI guard is disabled", async () => {
-    const result = await initializeAgent({
-      agentFile: makeMinimalAgentFile({ tools: { cli: false } }),
-      core,
-      agentManager,
-    });
-
-    const toolNames = result.toolRegistry.list().map((t) => t.name);
-    expect(toolNames).not.toContain("exec");
   });
 
   it("skips react tools when no transportContext provided", async () => {

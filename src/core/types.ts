@@ -21,14 +21,8 @@ export interface Tool {
   parameters: Record<string, unknown>;
 }
 
-export interface FileToolPolicy {
-  workspaceOnly?: boolean;
-}
-
 export interface AgentToolSettings {
   web?: boolean;
-  cli?: boolean;
-  fs?: FileToolPolicy;
   allow?: string[];
   deny?: string[];
 }
