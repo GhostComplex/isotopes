@@ -10,6 +10,7 @@ import {
   type AgentSession,
   AuthStorage,
   createAgentSession,
+  DefaultResourceLoader,
   ModelRegistry,
   type SessionManager,
   SettingsManager,
@@ -195,8 +196,23 @@ export class AgentServiceCache {
       compaction: compactionSettings,
     });
 
+    // Pass the system prompt via DefaultResourceLoader so it becomes
+    // `_baseSystemPrompt` inside the SDK. Mutating
+    // `session.agent.state.systemPrompt` after creation is unreliable —
+    // the SDK's prompt() handler resets state.systemPrompt back to
+    // _baseSystemPrompt on every call when an extensionRunner exists
+    // (which it always does when customTools are passed). See
+    // pi-coding-agent agent-session.js:768-772.
+    const cwd = opts.cwd ?? process.cwd();
+    const resourceLoader = new DefaultResourceLoader({
+      cwd,
+      agentDir: this.agentDir,
+      systemPrompt: opts.systemPrompt,
+      settingsManager,
+    });
+
     const { session } = await createAgentSession({
-      cwd: opts.cwd ?? process.cwd(),
+      cwd,
       agentDir: this.agentDir,
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
@@ -205,9 +221,8 @@ export class AgentServiceCache {
       customTools: this.customTools,
       sessionManager: opts.sessionManager,
       settingsManager,
+      resourceLoader,
     });
-
-    session.agent.state.systemPrompt = opts.systemPrompt;
 
     return session;
   }
