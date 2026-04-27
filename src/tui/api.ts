@@ -76,6 +76,10 @@ export async function abortMessage(agentId: string, sessionKey: string): Promise
   await postJson(`${sessionPath(agentId, sessionKey)}/abort`);
 }
 
+export async function steerMessage(agentId: string, sessionKey: string, message: string): Promise<void> {
+  await postJson(`${sessionPath(agentId, sessionKey)}/steer`, { message });
+}
+
 export async function deleteSession(agentId: string, sessionKey: string): Promise<void> {
   await deleteJson(sessionPath(agentId, sessionKey));
 }

@@ -214,6 +214,16 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     const text = input.trim();
     if (!text) return;
     setInput("");
+
+    if (isStreaming) {
+      const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
+      setMessages((prev) => [...prev, userMsg]);
+      void api.steerMessage(agentId, sessionKeyRef.current!, text).catch((err) => {
+        setMessages((prev) => [...prev, { role: "system", content: `Steer failed: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }]);
+      });
+      return;
+    }
+
     const slash = parseSlashCommand(text);
     if (slash) {
       const handled = dispatch(slash.command, slash.args, {
@@ -250,13 +260,20 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   };
 
   useInput((ch, key) => {
-    if (isStreaming) return;
     if (key.return) {
       handleSubmit();
+    } else if (key.escape && isStreaming) {
+      abortRef.current?.abort();
+      void api.abortMessage(agentId, sessionKeyRef.current!).catch(() => {});
     } else if (key.backspace || key.delete) {
       setInput((prev) => prev.slice(0, -1));
     } else if (key.ctrl && ch === "c") {
-      exit();
+      if (isStreaming) {
+        abortRef.current?.abort();
+        void api.abortMessage(agentId, sessionKeyRef.current!).catch(() => {});
+      } else {
+        exit();
+      }
     } else if (ch && !key.ctrl && !key.meta) {
       setInput((prev) => prev + ch);
     }
@@ -339,8 +356,11 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
       <Box borderStyle="single" paddingX={1} height={3}>
         <Text color="green">&gt; </Text>
-        <Text wrap="truncate">{input}</Text>
+        <Text wrap="truncate">{input || (isStreaming ? "" : "")}</Text>
         <Text color="gray">█</Text>
+        {isStreaming && !input && (
+          <Text color="gray" dimColor> type to steer · esc to stop</Text>
+        )}
       </Box>
     </Box>
   );

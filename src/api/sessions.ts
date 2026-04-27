@@ -11,7 +11,8 @@ import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
 import { createLogger } from "../core/logger.js";
 import { randomUUID } from "node:crypto";
-import { runAgentLoop } from "../core/agent-runner.js";
+import { runAgentLoop, abortAgentSession } from "../core/agent-runner.js";
+import { userMessage as mkUserMsg } from "../core/messages.js";
 import { agentEventBus } from "../core/agent-event-bus.js";
 import type { DefaultSessionStore } from "../core/session-store.js";
 import type { Session } from "../core/types.js";
@@ -28,6 +29,7 @@ interface ActiveSession {
   agentId: string;
   lastActivity: number;
   abortController?: AbortController;
+  pendingMessages: Array<{ content: string; timestamp: number }>;
 }
 
 const activeSessions = new Map<string, ActiveSession>();
@@ -260,7 +262,7 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
   }
 
   evictStaleSessions();
-  activeSessions.set(sessionKey, { sessionKey, sessionId, agentId, lastActivity: Date.now() });
+  activeSessions.set(sessionKey, { sessionKey, sessionId, agentId, lastActivity: Date.now(), pendingMessages: [] });
 
   log.info(`Session ${resumed ? "resumed" : "created"}: ${sessionKey} (agent: ${agentId})`);
   sendJson(res, resumed ? 200 : 201, { key: urlKey, agentId, resumed });
@@ -344,6 +346,16 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
       log,
       hooks: deps.hooks,
       agentId,
+      onToolComplete: async () => {
+        const pending = active.pendingMessages;
+        if (pending.length === 0) return null;
+        const drained = pending.splice(0);
+        for (const m of drained) {
+          await store.addMessage(sessionId, mkUserMsg(m.content, m.timestamp));
+        }
+        const formatted = drained.map((m) => m.content).join("\n");
+        return `[Messages arrived while you were working]\n${formatted}`;
+      },
     });
 
     if (result.errorMessage) {
@@ -360,6 +372,30 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/sessions/:agentId/:key/steer — inject a message mid-run
+// ---------------------------------------------------------------------------
+
+addRoute("POST", "/api/sessions/:agentId/:key/steer", async (req, res, _deps) => {
+  const sessionKey = `${req.params.agentId}:${req.params.key}`;
+  const active = activeSessions.get(sessionKey);
+  if (!active) {
+    sendError(res, 404, `Active session not found`);
+    return;
+  }
+
+  const body = req.body as { message?: string } | undefined;
+  if (!body?.message) {
+    sendError(res, 400, "Request body must include 'message'");
+    return;
+  }
+
+  active.pendingMessages.push({ content: body.message, timestamp: Date.now() });
+  active.lastActivity = Date.now();
+  log.debug(`Steer message queued for session ${sessionKey}`);
+  sendJson(res, 200, { ok: true, queued: active.pendingMessages.length });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/sessions/:agentId/:key/abort — abort current response
 // ---------------------------------------------------------------------------
 
@@ -371,7 +407,8 @@ addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res) => {
     return;
   }
 
-  session.abortController?.abort();
+  abortAgentSession(session.sessionId);
+  session.pendingMessages.length = 0;
   sendJson(res, 200, { ok: true });
 });
 
