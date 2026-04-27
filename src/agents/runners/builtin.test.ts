@@ -272,15 +272,23 @@ describe("BuiltinRunner", () => {
       { type: "turn_end", message: {} as never, toolResults: [] } as AgentEvent,
       { type: "agent_end", messages: [] } as AgentEvent,
     ];
+    interface FakeNamedSession {
+      _cb: ((event: { type: string }) => void) | null;
+      subscribe: ReturnType<typeof vi.fn>;
+      prompt: ReturnType<typeof vi.fn>;
+      abort: ReturnType<typeof vi.fn>;
+      dispose: ReturnType<typeof vi.fn>;
+      agent: { state: { systemPrompt: string } };
+    }
     let capturedSystemPrompt: string | undefined;
-    const namedSession = {
+    const namedSession: FakeNamedSession = {
+      _cb: null,
       subscribe: vi.fn((cb: (event: { type: string }) => void) => {
-        (namedSession as unknown as Record<string, unknown>)._cb = cb;
+        namedSession._cb = cb;
         return () => {};
       }),
       prompt: vi.fn(async () => {
-        const cb = (namedSession as unknown as Record<string, (event: { type: string }) => void>)._cb;
-        if (cb) for (const e of events) cb(e);
+        if (namedSession._cb) for (const e of events) namedSession._cb(e);
       }),
       abort: vi.fn(),
       dispose: vi.fn(),

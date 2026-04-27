@@ -102,6 +102,14 @@ export class BuiltinRunner implements Runner {
   ): AsyncGenerator<RunEvent> {
     log.info("BuiltinRunner.run (named)", { runId, agentId: options.agentId });
 
+    // Reuses the named agent's existing AgentServiceCache. The cache is
+    // immutable after construction (model/authStorage/modelRegistry/
+    // compactionConfig/customTools are set once), and `createSession`
+    // builds a fresh settingsManager per call — so concurrent spawns of
+    // the same named agent (or a spawn racing with direct user chat) are
+    // session-isolated. Compaction and provider settings deliberately
+    // inherit from the target agent's config (named = full identity);
+    // do NOT force `compaction: { mode: "off" }` here as ephemeral does.
     const sessionManager = SessionManager.inMemory();
     const session = await builtin.cache.createSession({
       sessionManager,

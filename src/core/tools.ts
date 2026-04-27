@@ -292,10 +292,15 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
           builtin = { mode: "named", cache: namedCache, systemPrompt: namedSystemPrompt };
           targetAgentId = agent;
           if (namedWorkspace) {
+            // Named agents run in their OWN workspace, not the parent's.
+            // The parent cannot scope a named-agent spawn to the parent's
+            // filesystem — by design, the named agent retains its full
+            // identity including cwd. We append the target's workspace
+            // to allowedWorkspaces so AgentRuntime.validateCwd accepts it.
             effectiveCwd = namedWorkspace;
             effectiveAllowedWorkspaces = [...allAllowedWorkspaces, namedWorkspace];
           }
-          log.info("Spawning named agent", { agent, cwd: effectiveCwd });
+          log.info("Spawning named agent", { agent, parentAgentId, cwd: effectiveCwd });
         } else if (parentProvider && parentTools) {
           builtin = { mode: "ephemeral", provider: parentProvider, tools: parentTools };
         }
