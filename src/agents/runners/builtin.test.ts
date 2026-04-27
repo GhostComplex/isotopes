@@ -117,7 +117,7 @@ describe("BuiltinRunner", () => {
           agentId: "test-agent",
           prompt: "do thing",
           cwd: "/tmp",
-          inProcess: { provider: fakeProvider(), tools },
+          inProcess: { mode: "ephemeral", provider: fakeProvider(), tools },
         },
         { abort: new AbortController().signal },
       ),
@@ -152,7 +152,7 @@ describe("BuiltinRunner", () => {
           agentId: "test-agent",
           prompt: "p",
           cwd: "/tmp",
-          inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
+          inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
         },
         { abort: ac.signal },
       ),
@@ -172,7 +172,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-skip", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
+        inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out).toEqual([{ type: "run:done", exitCode: 0 }]);
@@ -187,7 +187,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-tool", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
+        inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out[0]).toEqual({ type: "run:tool_use", toolName: "shell", toolInput: { cmd: "ls" } });
@@ -203,7 +203,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-tresult", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
+        inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out[0]).toEqual({ type: "run:tool_result", toolName: "test", toolResult: "ok" });
@@ -218,7 +218,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-err", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
+        inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out).toEqual([
@@ -254,7 +254,7 @@ describe("BuiltinRunner", () => {
           agentId: "test-agent",
           prompt: "p",
           cwd: "/tmp",
-          inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
+          inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
         },
         { abort: new AbortController().signal },
       ),
@@ -263,5 +263,70 @@ describe("BuiltinRunner", () => {
     expect(out.some((e) => e.type === "run:error")).toBe(true);
     expect(out.at(-1)).toEqual({ type: "run:done", exitCode: 1 });
     expect(clearedIds).toEqual(setIds);
+  });
+
+  it("named mode: uses the provided cache+systemPrompt and skips setToolRegistry", async () => {
+    const events: AgentEvent[] = [
+      { type: "turn_start" } as AgentEvent,
+      { type: "message_update", message: {} as never, assistantMessageEvent: { type: "text_delta", delta: "named-ok" } as never } as AgentEvent,
+      { type: "turn_end", message: {} as never, toolResults: [] } as AgentEvent,
+      { type: "agent_end", messages: [] } as AgentEvent,
+    ];
+    let capturedSystemPrompt: string | undefined;
+    const namedSession = {
+      subscribe: vi.fn((cb: (event: { type: string }) => void) => {
+        (namedSession as unknown as Record<string, unknown>)._cb = cb;
+        return () => {};
+      }),
+      prompt: vi.fn(async () => {
+        const cb = (namedSession as unknown as Record<string, (event: { type: string }) => void>)._cb;
+        if (cb) for (const e of events) cb(e);
+      }),
+      abort: vi.fn(),
+      dispose: vi.fn(),
+      agent: { state: { systemPrompt: "" } },
+    };
+    const namedCache = {
+      createSession: vi.fn().mockImplementation(async (opts: { systemPrompt: string }) => {
+        capturedSystemPrompt = opts.systemPrompt;
+        return namedSession;
+      }),
+    } as unknown as AgentServiceCache;
+
+    const setIds: string[] = [];
+    const clearedIds: string[] = [];
+    let createdServiceCache = false;
+    const core = {
+      setToolRegistry: (id: string) => setIds.push(id),
+      clearToolRegistry: (id: string) => clearedIds.push(id),
+      createServiceCache: () => {
+        createdServiceCache = true;
+        return {} as unknown as AgentServiceCache;
+      },
+    } as unknown as PiMonoCore;
+    const runner = new BuiltinRunner(core);
+
+    const out = await collect(
+      runner.run(
+        "task-named",
+        {
+          agentId: "eous",
+          prompt: "who are you?",
+          cwd: "/eous-workspace",
+          inProcess: { mode: "named", cache: namedCache, systemPrompt: "I am eous." },
+        },
+        { abort: new AbortController().signal },
+      ),
+    );
+
+    expect(capturedSystemPrompt).toBe("I am eous.");
+    expect(setIds).toEqual([]);
+    expect(clearedIds).toEqual([]);
+    expect(createdServiceCache).toBe(false);
+    expect(namedSession.dispose).toHaveBeenCalled();
+    expect(out).toEqual([
+      { type: "run:message", content: "named-ok" },
+      { type: "run:done", exitCode: 0 },
+    ]);
   });
 });

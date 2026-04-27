@@ -7,10 +7,11 @@ import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
 import { spawnAgent, getSupportedAgents } from "../tools/spawn-agent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import type { RunEvent } from "../agents/types.js";
+import type { RunEvent, InProcessOptions } from "../agents/types.js";
 import { getSpawnAgentContext, type SpawnAgentStreamContext } from "./spawn-agent-context.js";
 import { failureTracker } from "../agents/failure-tracker.js";
 import { createLogger } from "./logger.js";
+import type { AgentServiceCache } from "./pi-mono.js";
 const log = createLogger("tools:spawn-agent");
 /** Function that executes a tool call and returns a string result. */
 export type ToolHandler = (args: unknown) => Promise<string>;
@@ -168,8 +169,16 @@ export interface SpawnAgentToolOptions {
   allowedWorkspaces?: string[];
   /** Allowed agents (defaults to all available) */
   allowedAgents?: string[];
-  /** Agent manager — used to discover available in-process agents */
-  agentManager?: { list(): { id: string; spawnable?: boolean }[] };
+  /** Agent manager — used to discover available in-process agents and to
+   * resolve named-agent identity (cache, system prompt, workspace path) for
+   * named-mode spawn. `get`/`getSystemPrompt`/`getWorkspacePath` are optional
+   * so test fixtures can pass a minimal `{ list }` shim. */
+  agentManager?: {
+    list(): { id: string; spawnable?: boolean }[];
+    get?(id: string): AgentServiceCache | undefined;
+    getSystemPrompt?(id: string): string | undefined;
+    getWorkspacePath?(id: string): string | undefined;
+  };
   /** Pre-computed list of spawnable agent IDs (avoids init order issues) */
   spawnableAgentIds?: string[];
   /** Default timeout in seconds (default: 300) */
@@ -198,7 +207,7 @@ export interface SpawnAgentToolOptions {
  * posted to the main channel when complete.
  */
 export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: Tool; handler: ToolHandler } {
-  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds } = options;
+  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds, agentManager } = options;
   const availableAgents: string[] = [...getSupportedAgents()];
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
@@ -264,14 +273,38 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
       }
 
       try {
-        const builtin = parentProvider && parentTools
-          ? { provider: parentProvider, tools: parentTools }
-          : undefined;
+        // Resolve spawn mode: if `agent` matches a registered named agent
+        // (with full identity in agentManager), use named mode — load its
+        // own system prompt, AgentServiceCache (provider+tools wired at
+        // init), and workspace as cwd. Otherwise fall back to ephemeral
+        // mode using the parent agent's provider/tools.
+        const namedCache = agentManager?.get?.(agent);
+        const namedSystemPrompt = agentManager?.getSystemPrompt?.(agent);
+        const namedWorkspace = agentManager?.getWorkspacePath?.(agent);
+        const isNamed = namedCache !== undefined && namedSystemPrompt !== undefined && namedSystemPrompt.length > 0;
+
+        let builtin: InProcessOptions | undefined;
+        let targetAgentId: string | undefined;
+        let effectiveCwd = cwd;
+        let effectiveAllowedWorkspaces = allAllowedWorkspaces;
+
+        if (isNamed) {
+          builtin = { mode: "named", cache: namedCache, systemPrompt: namedSystemPrompt };
+          targetAgentId = agent;
+          if (namedWorkspace) {
+            effectiveCwd = namedWorkspace;
+            effectiveAllowedWorkspaces = [...allAllowedWorkspaces, namedWorkspace];
+          }
+          log.info("Spawning named agent", { agent, cwd: effectiveCwd });
+        } else if (parentProvider && parentTools) {
+          builtin = { mode: "ephemeral", provider: parentProvider, tools: parentTools };
+        }
+
         let result: string;
         if (discordContext) {
-          result = await runSpawnAgentWithStreaming(task, agent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin);
+          result = await runSpawnAgentWithStreaming(task, agent, effectiveCwd, timeout, effectiveAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin, targetAgentId);
         } else {
-          result = await runSpawnAgentPlain(task, agent, cwd, timeout, allAllowedWorkspaces, maxTurns, parentAgentId, builtin);
+          result = await runSpawnAgentPlain(task, agent, effectiveCwd, timeout, effectiveAllowedWorkspaces, maxTurns, parentAgentId, builtin, targetAgentId);
         }
 
         // Record failure if result indicates failure
@@ -302,7 +335,8 @@ async function runSpawnAgentPlain(
   allowedWorkspaces: string[],
   maxTurns?: number,
   parentAgentId?: string,
-  builtin?: { provider: ProviderConfig; tools: ToolRegistry },
+  builtin?: InProcessOptions,
+  targetAgentId?: string,
 ): Promise<string> {
   const result = await spawnAgent(task, {
     agent,
@@ -311,6 +345,7 @@ async function runSpawnAgentPlain(
     allowedWorkspaces,
     maxTurns,
     parentAgentId,
+    ...(targetAgentId ? { targetAgentId } : {}),
     ...(builtin ? { builtin } : {}),
   });
   if (result.success) {
@@ -332,7 +367,8 @@ async function runSpawnAgentWithStreaming(
   context: SpawnAgentStreamContext,
   maxTurns?: number,
   parentAgentId?: string,
-  builtin?: { provider: ProviderConfig; tools: ToolRegistry },
+  builtin?: InProcessOptions,
+  targetAgentId?: string,
 ): Promise<string> {
   const { channelId, showToolCalls = true, onComplete } = context;
   const sink = context.createSink(channelId, { showToolCalls, useThread: true });
@@ -354,6 +390,7 @@ async function runSpawnAgentWithStreaming(
       channelId,
       threadId,
       parentAgentId,
+      ...(targetAgentId ? { targetAgentId } : {}),
       ...(builtin ? { builtin } : {}),
       onEvent: async (event) => {
         events.push(event);
@@ -756,7 +793,12 @@ export function createWorkspaceToolsWithGuards(
   parentAgentId?: string,
   parentProvider?: ProviderConfig,
   parentTools?: ToolRegistry,
-  agentManager?: { list(): { id: string; spawnable?: boolean }[] },
+  agentManager?: {
+    list(): { id: string; spawnable?: boolean }[];
+    get?(id: string): AgentServiceCache | undefined;
+    getSystemPrompt?(id: string): string | undefined;
+    getWorkspacePath?(id: string): string | undefined;
+  },
   spawnableAgentIds?: string[],
 ): { tool: Tool; handler: ToolHandler }[] {
   const fileOpts: FileToolOptions = { workspacePath, fsImpl };
@@ -768,7 +810,7 @@ export function createWorkspaceToolsWithGuards(
     createTimeTool(),
   ];
   if (spawnAgentEnabled) {
-    tools.push(createSpawnAgentTool({ workspacePath, allowedWorkspaces, maxTurns: spawnAgentMaxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds }));
+    tools.push(createSpawnAgentTool({ workspacePath, allowedWorkspaces, maxTurns: spawnAgentMaxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds, agentManager }));
   }
   if (settings?.web) {
     tools.push(createWebFetchTool());

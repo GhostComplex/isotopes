@@ -1,6 +1,7 @@
 import type { ProviderConfig } from "../core/types.js";
 import type { ToolRegistry } from "../core/tools.js";
 import type { SpawnPermissionMode } from "../core/config.js";
+import type { AgentServiceCache } from "../core/pi-mono.js";
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
 
@@ -22,11 +23,31 @@ export interface RunResult {
   durationMs?: number;
 }
 
-export interface InProcessOptions {
-  provider: ProviderConfig;
-  tools: ToolRegistry;
-  extraSystemPrompt?: string;
-}
+/**
+ * Builtin runner payload. Two modes:
+ *
+ * - "ephemeral": fire-and-forget agent with no identity. Uses the parent's
+ *   provider and a filtered subset of the parent's tools. The session is
+ *   in-memory and discarded; the system prompt is the generic
+ *   `buildSpawnAgentSystemPrompt()` preamble + task.
+ *
+ * - "named": spawn into an existing named agent's full identity. Uses the
+ *   target agent's `AgentServiceCache` (which already owns its provider
+ *   and tool registry) and the target's already-assembled system prompt
+ *   (SOUL.md/MEMORY.md/TOOLS.md/tool guards merged at init time).
+ */
+export type InProcessOptions =
+  | {
+      mode: "ephemeral";
+      provider: ProviderConfig;
+      tools: ToolRegistry;
+      extraSystemPrompt?: string;
+    }
+  | {
+      mode: "named";
+      cache: AgentServiceCache;
+      systemPrompt: string;
+    };
 
 export type OnCompleteCallback = (result: RunResult) => void | Promise<void>;
 

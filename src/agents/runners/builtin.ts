@@ -44,20 +44,34 @@ export class BuiltinRunner implements Runner {
       return;
     }
 
+    if (options.inProcess.mode === "named") {
+      yield* this.runNamed(runId, options, signals, options.inProcess);
+      return;
+    }
+
+    yield* this.runEphemeral(runId, options, signals, options.inProcess);
+  }
+
+  private async *runEphemeral(
+    runId: string,
+    options: RunOptions,
+    signals: RunnerSignals,
+    inProcess: Extract<NonNullable<RunOptions["inProcess"]>, { mode: "ephemeral" }>,
+  ): AsyncGenerator<RunEvent> {
     const agentId = `agent-inproc-${runId}-${randomUUID().slice(0, 8)}`;
-    const tools = filterTools(options.inProcess.tools, agentId);
+    const tools = filterTools(inProcess.tools, agentId);
     const systemPrompt = buildSpawnAgentSystemPrompt({
       task: options.prompt,
-      extraSystemPrompt: options.inProcess.extraSystemPrompt,
+      extraSystemPrompt: inProcess.extraSystemPrompt,
     });
 
-    log.info("BuiltinRunner.run", { runId, agentId, toolCount: tools.list().length });
+    log.info("BuiltinRunner.run (ephemeral)", { runId, agentId, toolCount: tools.list().length });
 
     this.core.setToolRegistry(agentId, tools);
 
     const cache = this.core.createServiceCache({
       id: agentId,
-      provider: options.inProcess.provider,
+      provider: inProcess.provider,
       compaction: { mode: "off" },
     });
 
@@ -77,6 +91,32 @@ export class BuiltinRunner implements Runner {
       signals.abort.removeEventListener("abort", onAbort);
       session.dispose();
       this.core.clearToolRegistry(agentId);
+    }
+  }
+
+  private async *runNamed(
+    runId: string,
+    options: RunOptions,
+    signals: RunnerSignals,
+    inProcess: Extract<NonNullable<RunOptions["inProcess"]>, { mode: "named" }>,
+  ): AsyncGenerator<RunEvent> {
+    log.info("BuiltinRunner.run (named)", { runId, agentId: options.agentId });
+
+    const sessionManager = SessionManager.inMemory();
+    const session = await inProcess.cache.createSession({
+      sessionManager,
+      systemPrompt: inProcess.systemPrompt,
+    });
+
+    const onAbort = () => session.abort();
+    signals.abort.addEventListener("abort", onAbort, { once: true });
+    if (signals.abort.aborted) session.abort();
+
+    try {
+      yield* bridgeSessionToRunEvents(session, options.prompt);
+    } finally {
+      signals.abort.removeEventListener("abort", onAbort);
+      session.dispose();
     }
   }
 }
