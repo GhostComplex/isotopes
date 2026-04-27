@@ -88,7 +88,7 @@ export interface AgentConfigFile {
   heartbeat?: HeartbeatConfigFile;
   /** Cron scheduled tasks (#193) */
   cron?: { tasks: CronTaskConfigFile[] };
-  /** Additional workspace paths allowed for subagent cwd */
+  /** Additional workspace paths allowed for spawned agent cwd */
   allowedWorkspaces?: string[];
   /** Heartbeat interval in milliseconds (0 = disabled). */
   heartbeatInterval?: number;
@@ -189,62 +189,62 @@ export interface ContextConfigFile {
   };
 }
 
-/** Permission mode for subagent tool execution (M8) */
-export type SubagentPermissionMode = "skip" | "allowlist" | "default";
+/** Permission mode for spawned agent tool execution */
+export type SpawnPermissionMode = "skip" | "allowlist" | "default";
 
-/** Default allowed tools for subagent execution (M8) */
-export const DEFAULT_SUBAGENT_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "LS"];
+/** Default allowed tools for spawned agent execution */
+export const DEFAULT_SPAWN_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "LS"];
 
 /** Claude Agent SDK settings source — controls which `settings.json` files the spawned `claude` CLI loads. */
 export type SettingSource = "user" | "project" | "local";
 
-/** Valid subagent runner types */
-export type SubagentType = "claude" | "builtin";
+/** Valid spawned runner types */
+export type SpawnRunnerType = "claude" | "builtin";
 
-/** Claude-specific sub-agent configuration */
-export interface ClaudeSubagentConfigFile {
-  permissionMode?: SubagentPermissionMode;
+/** Claude-specific spawning configuration */
+export interface ClaudeSpawningConfigFile {
+  permissionMode?: SpawnPermissionMode;
   allowedTools?: string[];
   enableShell?: boolean;
   settingSources?: SettingSource[];
 }
 
 /** Sub-agent execution configuration in config file */
-export interface SubagentConfigFile {
-  /** Whether subagent backend is enabled. Default: false */
+export interface SpawningConfigFile {
+  /** Whether spawning is enabled. Default: false */
   enabled?: boolean;
   /** Runner types allowed to be spawned. Default: ["claude", "builtin"] */
-  allowedTypes?: SubagentType[];
+  allowedTypes?: SpawnRunnerType[];
   /** Default timeout in seconds for sub-agent runs */
   timeout?: number;
   /** Default maximum turns per sub-agent run */
   maxTurns?: number;
-  /** Maximum agent nesting depth. Default: 1 (subagents cannot spawn further agents) */
+  /** Maximum agent nesting depth. Default: 1 (spawned agents cannot spawn further) */
   maxDepth?: number;
   /** Whether to create Discord threads for sub-agent output. Default: true */
   useThread?: boolean;
   /** Whether to show tool call details in Discord. Default: true */
   showToolCalls?: boolean;
   /** Claude Agent SDK runner configuration */
-  claude?: ClaudeSubagentConfigFile;
+  claude?: ClaudeSpawningConfigFile;
 }
 
-/** Resolved claude-specific subagent config with defaults applied */
-export interface ResolvedClaudeSubagentConfig {
-  permissionMode: SubagentPermissionMode;
+/** Resolved claude-specific spawning config with defaults applied */
+export interface ResolvedClaudeSpawningConfig {
+  permissionMode: SpawnPermissionMode;
   allowedTools: string[];
   settingSources?: SettingSource[];
 }
 
-/** Resolved subagent configuration with defaults applied */
-export interface ResolvedSubagentConfig {
-  allowedTypes: Set<SubagentType>;
+/** Resolved spawning configuration with defaults applied */
+export interface ResolvedSpawningConfig {
+  allowedTypes: Set<SpawnRunnerType>;
   timeout?: number;
   maxTurns?: number;
   maxDepth?: number;
   useThread: boolean;
   showToolCalls: boolean;
-  claude: ResolvedClaudeSubagentConfig;
+  claude: ResolvedClaudeSpawningConfig;
 }
 
 /** Cron job configuration in config file */
@@ -276,24 +276,23 @@ export interface IsotopesConfigFileRaw {
   sandbox?: SandboxConfigFile;
   /** Session management (TTL, cleanup) */
   session?: SessionConfig;
-  /** Agent definitions — array form or object with defaults + list */
-  agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[] };
+  /** Agent definitions — array form or object with defaults + list + spawning */
+  agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[]; spawning?: SpawningConfigFile };
   /** Agent ↔ Channel bindings */
   bindings?: BindingConfigFile[];
   /** Channel configurations (Discord accounts, per-guild settings) */
   channels?: ChannelsConfig;
-  /** Sub-agent (Claude Agent SDK) configuration */
-  subagent?: SubagentConfigFile;
   /** Channel-level cron job definitions */
   cron?: CronJobConfigFile[];
   /** Plugin configurations */
   plugins?: Record<string, PluginConfigEntry>;
 }
 
-/** Normalized config — agents is always an array, agentDefaults extracted */
+/** Normalized config — agents is always an array, agentDefaults/spawning extracted */
 export interface IsotopesConfigFile extends Omit<IsotopesConfigFileRaw, "agents"> {
   agents: AgentConfigFile[];
   agentDefaults?: AgentDefaultsConfigFile;
+  spawning?: SpawningConfigFile;
 }
 
 export function resolveToolSettings(
@@ -361,34 +360,34 @@ export function resolveSessionConfig(
   };
 }
 
-const VALID_PERMISSION_MODES = new Set<SubagentPermissionMode>(["skip", "allowlist", "default"]);
-const VALID_SUBAGENT_TYPES = new Set<SubagentType>(["claude", "builtin"]);
-const DEFAULT_ALLOWED_TYPES: SubagentType[] = ["claude", "builtin"];
+const VALID_PERMISSION_MODES = new Set<SpawnPermissionMode>(["skip", "allowlist", "default"]);
+const VALID_RUNNER_TYPES = new Set<SpawnRunnerType>(["claude", "builtin"]);
+const DEFAULT_ALLOWED_TYPES: SpawnRunnerType[] = ["claude", "builtin"];
 
 /**
- * Resolve subagent config with defaults applied.
+ * Resolve spawning config with defaults applied.
  * Validates permission mode, allowed types, and logs security warnings.
  */
-export function resolveSubagentConfig(
-  subagentConfig?: SubagentConfigFile,
-): ResolvedSubagentConfig {
-  const claude = subagentConfig?.claude;
+export function resolveSpawningConfig(
+  spawningConfig?: SpawningConfigFile,
+): ResolvedSpawningConfig {
+  const claude = spawningConfig?.claude;
   const permissionMode = claude?.permissionMode ?? "allowlist";
 
   if (!VALID_PERMISSION_MODES.has(permissionMode)) {
     throw new Error(
-      `Invalid subagent.claude.permissionMode "${permissionMode}" (must be skip, allowlist, or default)`,
+      `Invalid agents.spawning.claude.permissionMode "${permissionMode}" (must be skip, allowlist, or default)`,
     );
   }
 
-  let allowedTools = claude?.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
+  let allowedTools = claude?.allowedTools ?? [...DEFAULT_SPAWN_ALLOWED_TOOLS];
   if (claude?.enableShell && !allowedTools.includes("Bash")) {
     allowedTools = [...allowedTools, "Bash"];
   }
 
   if (permissionMode === "skip") {
     log.warn(
-      "⚠️  SECURITY WARNING: subagent.claude.permissionMode is set to 'skip'. " +
+      "⚠️  SECURITY WARNING: agents.spawning.claude.permissionMode is set to 'skip'. " +
       "Sub-agents will have unrestricted tool access without any permission prompts.",
     );
     if (claude?.enableShell) {
@@ -398,20 +397,20 @@ export function resolveSubagentConfig(
     }
   }
 
-  const allowedTypes = (subagentConfig?.allowedTypes ?? DEFAULT_ALLOWED_TYPES);
+  const allowedTypes = (spawningConfig?.allowedTypes ?? DEFAULT_ALLOWED_TYPES);
   for (const t of allowedTypes) {
-    if (!VALID_SUBAGENT_TYPES.has(t)) {
-      throw new Error(`Invalid subagent.allowedTypes entry "${t}" (must be claude or builtin)`);
+    if (!VALID_RUNNER_TYPES.has(t)) {
+      throw new Error(`Invalid agents.spawning.allowedTypes entry "${t}" (must be claude or builtin)`);
     }
   }
 
   return {
     allowedTypes: new Set(allowedTypes),
-    timeout: subagentConfig?.timeout,
-    maxTurns: subagentConfig?.maxTurns,
-    maxDepth: subagentConfig?.maxDepth,
-    useThread: subagentConfig?.useThread ?? true,
-    showToolCalls: subagentConfig?.showToolCalls ?? true,
+    timeout: spawningConfig?.timeout,
+    maxTurns: spawningConfig?.maxTurns,
+    maxDepth: spawningConfig?.maxDepth,
+    useThread: spawningConfig?.useThread ?? true,
+    showToolCalls: spawningConfig?.showToolCalls ?? true,
     claude: {
       permissionMode,
       allowedTools,
@@ -514,21 +513,21 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
   // Normalize agents: support both array form and object form { defaults, list }
   let agentList: AgentConfigFile[];
   let agentDefaults: AgentDefaultsConfigFile | undefined;
+  let spawning: SpawningConfigFile | undefined;
 
   if (Array.isArray(raw.agents)) {
-    // Legacy array form — no defaults
     agentList = raw.agents;
   } else if (
     raw.agents &&
     typeof raw.agents === "object" &&
     "list" in raw.agents
   ) {
-    // Object form — extract defaults and normalize to array
     if (!Array.isArray(raw.agents.list)) {
       throw new Error("Config agents.list must be an array");
     }
     agentList = raw.agents.list;
     agentDefaults = raw.agents.defaults;
+    spawning = raw.agents.spawning;
   } else {
     throw new Error("Config must have an 'agents' array or an 'agents' object with a 'list' field");
   }
@@ -542,6 +541,7 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
     ...raw,
     agents: agentList,
     agentDefaults,
+    spawning,
   };
 
   // Process environment variables

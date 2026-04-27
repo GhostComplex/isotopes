@@ -3,7 +3,7 @@ import { resolve, normalize } from "node:path";
 import { createLogger } from "../core/logger.js";
 import type { RunnerKind, RunEvent, RunOptions } from "./types.js";
 import { summarizeEvents } from "./helpers.js";
-import type { ResolvedSubagentConfig, SubagentType } from "../core/config.js";
+import type { ResolvedSpawningConfig, SpawnRunnerType } from "../core/config.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
 import type { Runner } from "./runner.js";
 import { ExternalRunner } from "./runners/external.js";
@@ -20,7 +20,7 @@ interface RunHandle {
 
 export interface AgentRuntimeOptions {
   allowedWorkspaceRoots?: string[];
-  config?: ResolvedSubagentConfig;
+  config?: ResolvedSpawningConfig;
   core?: PiMonoCore;
   runners?: Partial<Record<RunnerKind, Runner>>;
 }
@@ -28,7 +28,7 @@ export interface AgentRuntimeOptions {
 export class AgentRuntime {
   private allowedRoots: string[];
   private runners: Partial<Record<RunnerKind, Runner>>;
-  private allowedTypes: Set<SubagentType>;
+  private allowedTypes: Set<SpawnRunnerType>;
   private runs = new Map<string, RunHandle>();
   public workspacesKey: string;
 
@@ -91,7 +91,7 @@ export class AgentRuntime {
 
   validateRunner(runner: RunnerKind): void {
     const agentType = runner === "external" ? "claude" : "builtin";
-    if (!this.allowedTypes.has(agentType as SubagentType)) {
+    if (!this.allowedTypes.has(agentType as SpawnRunnerType)) {
       throw new Error(`Runner "${runner}" not allowed. Allowed types: ${[...this.allowedTypes].join(", ")}`);
     }
   }

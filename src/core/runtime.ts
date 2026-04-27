@@ -4,7 +4,7 @@
 
 import {
   toAgentConfig,
-  resolveSubagentConfig,
+  resolveSpawningConfig,
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
@@ -71,14 +71,14 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const core = new PiMonoCore();
   const agentManager = new DefaultAgentManager(core);
 
-  // Initialize subagent backend
-  if (config.subagent?.enabled) {
-    const subagentConfig = resolveSubagentConfig(config.subagent);
+  // Initialize agent spawning backend
+  if (config.spawning?.enabled) {
+    const spawningConfig = resolveSpawningConfig(config.spawning);
     initSubagentBackend({
-      config: subagentConfig,
+      config: spawningConfig,
       core,
     });
-    log.info(`Subagent backend initialized (allowedTypes: ${[...subagentConfig.allowedTypes].join(",")}, claude.permissionMode: ${subagentConfig.claude.permissionMode})`);
+    log.info(`Spawning backend initialized (allowedTypes: ${[...spawningConfig.allowedTypes].join(",")}, claude.permissionMode: ${spawningConfig.claude.permissionMode})`);
 
     setSubagentSessionStoreFactory((agentId) => sessionStoreManager.getOrCreate(agentId));
     log.info("Subagent session store factory → shared SessionStoreManager");
@@ -125,7 +125,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       globalTools: config.tools,
       compaction: config.compaction,
       sandbox: config.sandbox,
-      subagent: config.subagent,
+      spawning: config.spawning,
       core,
       agentManager,
       sandboxExecutor,

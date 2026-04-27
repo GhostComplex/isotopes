@@ -13,7 +13,7 @@ import type { PiMonoCore } from "../core/pi-mono.js";
 import { taskRegistry } from "../agents/task-registry.js";
 import { createRunRecorder } from "../agents/persistence.js";
 import type { SessionStore } from "../core/types.js";
-import type { ResolvedSubagentConfig } from "../core/config.js";
+import type { ResolvedSpawningConfig } from "../core/config.js";
 
 const log = createLogger("tools:subagent");
 
@@ -24,7 +24,7 @@ const log = createLogger("tools:subagent");
 /** Configuration for the subagent backend */
 export interface SubagentBackendConfig {
   /** Resolved subagent config from config.ts */
-  config?: ResolvedSubagentConfig;
+  config?: ResolvedSpawningConfig;
   /** AgentCore used to host in-process builtin subagents. */
   core?: PiMonoCore;
 }

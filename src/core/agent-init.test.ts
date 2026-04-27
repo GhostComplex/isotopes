@@ -117,7 +117,7 @@ describe("initializeAgent", () => {
   it("registers spawn_subagent when subagent enabled and no sandbox", async () => {
     const result = await initializeAgent({
       agentFile: makeMinimalAgentFile(),
-      subagent: { enabled: true },
+      spawning: { enabled: true },
       core,
       agentManager,
     });
@@ -132,7 +132,7 @@ describe("initializeAgent", () => {
     const result = await initializeAgent({
       agentFile: makeMinimalAgentFile({ sandbox: { mode: "all" } }),
       sandbox: { mode: "all", docker: { image: "isotopes-sandbox:latest" } },
-      subagent: { enabled: true },
+      spawning: { enabled: true },
       sandboxExecutor: makeMockSandboxExecutor(),
       core,
       agentManager,

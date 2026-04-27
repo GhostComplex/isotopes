@@ -1,6 +1,6 @@
 import type { ProviderConfig } from "../core/types.js";
 import type { ToolRegistry } from "../core/tools.js";
-import type { SubagentPermissionMode } from "../core/config.js";
+import type { SpawnPermissionMode } from "../core/config.js";
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
 
@@ -37,7 +37,7 @@ export interface RunOptions {
   prompt: string;
   cwd: string;
   model?: string;
-  permissionMode?: SubagentPermissionMode;
+  permissionMode?: SpawnPermissionMode;
   allowedTools?: string[];
   timeout?: number;
   maxTurns?: number;

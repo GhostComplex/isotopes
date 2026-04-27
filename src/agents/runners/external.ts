@@ -1,9 +1,9 @@
 import { query, type Options, type PermissionMode, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createLogger } from "../../core/logger.js";
 import {
-  DEFAULT_SUBAGENT_ALLOWED_TOOLS,
+  DEFAULT_SPAWN_ALLOWED_TOOLS,
   type SettingSource,
-  type SubagentPermissionMode,
+  type SpawnPermissionMode,
 } from "../../core/config.js";
 import type { RunnerKind, RunEvent, RunOptions } from "../types.js";
 import type { RunnerSignals, Runner } from "../runner.js";
@@ -11,7 +11,7 @@ import type { RunnerSignals, Runner } from "../runner.js";
 const log = createLogger("agents:runner:external");
 
 export interface ExternalRunnerOptions {
-  permissionMode?: SubagentPermissionMode;
+  permissionMode?: SpawnPermissionMode;
   allowedTools?: string[];
   settingSources?: SettingSource[];
 }
@@ -80,7 +80,7 @@ export function mapSdkToRunEvent(
 }
 
 function translatePermissionMode(
-  mode: SubagentPermissionMode,
+  mode: SpawnPermissionMode,
   allowedTools: string[],
 ): { permissionMode: PermissionMode; allowedTools?: string[] } {
   switch (mode) {
@@ -96,13 +96,13 @@ function translatePermissionMode(
 export class ExternalRunner implements Runner {
   readonly kind: RunnerKind = "external";
 
-  private permissionMode: SubagentPermissionMode;
+  private permissionMode: SpawnPermissionMode;
   private allowedTools: string[];
   private settingSources: SettingSource[];
 
   constructor(options?: ExternalRunnerOptions) {
     this.permissionMode = options?.permissionMode ?? "allowlist";
-    this.allowedTools = options?.allowedTools ?? [...DEFAULT_SUBAGENT_ALLOWED_TOOLS];
+    this.allowedTools = options?.allowedTools ?? [...DEFAULT_SPAWN_ALLOWED_TOOLS];
     this.settingSources = options?.settingSources ?? ["user"];
   }
 
