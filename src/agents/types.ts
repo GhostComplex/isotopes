@@ -41,6 +41,10 @@ export interface RunOptions {
   allowedTools?: string[];
   timeout?: number;
   maxTurns?: number;
+  /** Current nesting depth (0 = top-level). Runtime increments on spawn. */
+  depth?: number;
+  /** Maximum allowed nesting depth. Spawn is rejected when depth >= maxDepth. */
+  maxDepth?: number;
   inProcess?: InProcessOptions;
   onComplete?: OnCompleteCallback;
 }

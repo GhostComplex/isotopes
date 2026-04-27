@@ -12,6 +12,7 @@ import { InProcessRunner } from "./runners/in-process.js";
 const log = createLogger("agents:runtime");
 
 export const MAX_CONCURRENT_RUNS = 5;
+export const DEFAULT_MAX_DEPTH = 1;
 
 interface RunHandle {
   abort: AbortController;
@@ -99,6 +100,15 @@ export class AgentRuntime {
     runId: string,
     options: RunOptions,
   ): AsyncGenerator<RunEvent> {
+    const depth = options.depth ?? 0;
+    const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
+    if (depth >= maxDepth) {
+      throw new Error(
+        `Max agent nesting depth reached (depth=${depth}, maxDepth=${maxDepth}). ` +
+          "Spawning further sub-agents is not allowed at this depth.",
+      );
+    }
+
     this.validateRunner(options.runner);
     this.validateCwd(options.cwd);
 

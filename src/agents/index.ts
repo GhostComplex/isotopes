@@ -14,6 +14,7 @@ export type { Runner, RunnerSignals } from "./runner.js";
 export {
   AgentRuntime,
   MAX_CONCURRENT_RUNS,
+  DEFAULT_MAX_DEPTH,
 } from "./runtime.js";
 export type { AgentRuntimeOptions } from "./runtime.js";
 

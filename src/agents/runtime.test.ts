@@ -9,7 +9,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: (...args: unknown[]) => mockQuery(...args),
 }));
 
-import { AgentRuntime, MAX_CONCURRENT_RUNS } from "./runtime.js";
+import { AgentRuntime, MAX_CONCURRENT_RUNS, DEFAULT_MAX_DEPTH } from "./runtime.js";
 import { ExternalRunner, mapSdkToRunEvent } from "./runners/external.js";
 import type { RunEvent, RunResult } from "./types.js";
 import { collectResult } from "./helpers.js";
@@ -216,6 +216,76 @@ describe("AgentRuntime", () => {
       events.push(ev);
     }
     expect(events.some(e => e.type === "run:done")).toBe(true);
+  });
+});
+
+describe("AgentRuntime depth limiting", () => {
+  let runtime: AgentRuntime;
+
+  beforeEach(() => {
+    runtime = new AgentRuntime();
+  });
+
+  it("defaults maxDepth to DEFAULT_MAX_DEPTH (1)", () => {
+    expect(DEFAULT_MAX_DEPTH).toBe(1);
+  });
+
+  it("allows spawn at depth 0 with default maxDepth", async () => {
+    async function* sdkStream(): AsyncGenerator<SDKMessage> {
+      yield { type: "result", subtype: "success", total_cost_usd: 0 } as unknown as SDKMessage;
+    }
+    mockQuery.mockReturnValue(sdkStream());
+
+    const events: RunEvent[] = [];
+    for await (const ev of runtime.spawn("t-d0", {
+      runner: "external",
+      prompt: "hi",
+      cwd: process.cwd(),
+      depth: 0,
+    })) {
+      events.push(ev);
+    }
+    expect(events.some(e => e.type === "run:start")).toBe(true);
+  });
+
+  it("rejects spawn when depth >= maxDepth", async () => {
+    const gen = runtime.spawn("t-deep", {
+      runner: "external",
+      prompt: "hi",
+      cwd: process.cwd(),
+      depth: 1,
+      maxDepth: 1,
+    });
+    await expect(gen.next()).rejects.toThrow(/Max agent nesting depth/);
+  });
+
+  it("rejects spawn when depth exceeds default maxDepth", async () => {
+    const gen = runtime.spawn("t-deep2", {
+      runner: "external",
+      prompt: "hi",
+      cwd: process.cwd(),
+      depth: 1,
+    });
+    await expect(gen.next()).rejects.toThrow(/Max agent nesting depth/);
+  });
+
+  it("allows deeper nesting when maxDepth is raised", async () => {
+    async function* sdkStream(): AsyncGenerator<SDKMessage> {
+      yield { type: "result", subtype: "success", total_cost_usd: 0 } as unknown as SDKMessage;
+    }
+    mockQuery.mockReturnValue(sdkStream());
+
+    const events: RunEvent[] = [];
+    for await (const ev of runtime.spawn("t-deep3", {
+      runner: "external",
+      prompt: "hi",
+      cwd: process.cwd(),
+      depth: 2,
+      maxDepth: 5,
+    })) {
+      events.push(ev);
+    }
+    expect(events.some(e => e.type === "run:start")).toBe(true);
   });
 });
 
