@@ -182,20 +182,18 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   }
 
   // 11. Register exec/process tools
-  {
-    const execTools = createExecTools({
-      cwd: workspacePath,
-      registry: processRegistry,
-      sandboxExecutor,
-      agentId: agentConfig.id,
-      isMainAgent: false,
-      agentSandboxConfig: agentConfig.sandbox,
-      allowedWorkspaces: agentAllowedWorkspaces,
-    });
-    const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
-    for (const { tool, handler } of filteredExecTools) {
-      toolRegistry.register(tool, handler);
-    }
+  const execTools = createExecTools({
+    cwd: workspacePath,
+    registry: processRegistry,
+    sandboxExecutor,
+    agentId: agentConfig.id,
+    isMainAgent: false,
+    agentSandboxConfig: agentConfig.sandbox,
+    allowedWorkspaces: agentAllowedWorkspaces,
+  });
+  const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
+  for (const { tool, handler } of filteredExecTools) {
+    toolRegistry.register(tool, handler);
   }
 
   // 12. Build tool guard prompt and append to system prompt
