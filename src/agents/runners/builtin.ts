@@ -69,6 +69,13 @@ export class BuiltinRunner implements Runner {
 
     this.core.setToolRegistry(agentId, tools);
 
+    // Compaction is intentionally OFF for ephemeral spawns: the system
+    // prompt steers the agent toward terse single-shot tasks, there's no
+    // SOUL/MEMORY identity worth preserving across compactions, and
+    // compaction would add LLM-call overhead that defeats the
+    // fire-and-forget premise. Long ephemeral runs that overflow context
+    // will fail loudly — that's a signal the task should use a named
+    // agent or Claude CLI instead. See issue #585 for making this opt-in.
     const cache = this.core.createServiceCache({
       id: agentId,
       provider: builtin.provider,
