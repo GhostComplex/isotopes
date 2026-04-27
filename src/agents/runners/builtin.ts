@@ -117,6 +117,13 @@ export class BuiltinRunner implements Runner {
     // session-isolated. Compaction and provider settings deliberately
     // inherit from the target agent's config (named = full identity);
     // do NOT force `compaction: { mode: "off" }` here as subagent does.
+    //
+    // Note: a long spawn run that exceeds the target's context window
+    // will trigger that target's compaction policy (extra LLM call,
+    // adds cost+latency mid-spawn, leaves a summary message in the
+    // persisted session). Behavior matches a long chat session for the
+    // same target — low risk in practice (most spawns end in a few
+    // turns) but worth knowing if cost / latency spikes are observed.
     const sessionManager = builtin.sessionManager ?? SessionManager.inMemory();
     const session = await builtin.cache.createSession({
       sessionManager,
