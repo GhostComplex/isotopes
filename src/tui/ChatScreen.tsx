@@ -274,6 +274,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   });
 
   const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
+  const contentWidth = (process.stdout.columns || 80) - 2;
 
   return (
     <Box flexDirection="column" height={process.stdout.rows}>
@@ -284,7 +285,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
-      <Box flexDirection="column" flexGrow={1} paddingX={1} width={process.stdout.columns} overflow="hidden">
+      <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
         {error && <Text color="red">{error}</Text>}
         {!agentReady && !error && <Text color="gray">Loading agent...</Text>}
         {visible.map((msg, i) => {
@@ -293,7 +294,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
           if (!msg.blocks) {
             return (
-              <Box key={i} flexDirection="column">
+              <Box key={i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
                 <Text wrap="wrap">
                   <Text color={roleColor} bold>{roleLabel}</Text>
                   <Text>: {msg.content}</Text>
@@ -303,10 +304,12 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
           }
 
           const elements: React.ReactNode[] = [];
+          let labelRendered = false;
           for (let j = 0; j < msg.blocks.length; j++) {
             const block = msg.blocks[j];
             if (block.type === "text") {
-              if (j === 0) {
+              if (!labelRendered) {
+                labelRendered = true;
                 elements.push(
                   <Text key={j} wrap="wrap">
                     <Text color={roleColor} bold>{roleLabel}</Text>
@@ -317,9 +320,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
                 elements.push(<Text key={j} wrap="wrap">{block.text}</Text>);
               }
             } else {
-              if (j === 0) {
+              if (!labelRendered) {
+                labelRendered = true;
                 elements.push(
-                  <Text key={`label-${j}`} wrap="wrap">
+                  <Text key={`label`}>
                     <Text color={roleColor} bold>{roleLabel}</Text>
                     <Text>:</Text>
                   </Text>
@@ -333,7 +337,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
             }
           }
 
-          return <Box key={i} flexDirection="column">{elements}</Box>;
+          return <Box key={i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
         })}
       </Box>
 
