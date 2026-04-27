@@ -194,6 +194,8 @@ export async function spawnAgent(
     }
   }
 
+  const startedAt = Date.now();
+
   try {
     const events = backend.spawn(taskId, {
       agentId,
@@ -214,11 +216,16 @@ export async function spawnAgent(
     }
 
     const result = summarizeEvents(collected);
+    const doneEvent = collected.find(
+      (e): e is Extract<RunEvent, { type: "run:done" }> => e.type === "run:done",
+    );
 
     log.info("Agent completed", {
       taskId,
       success: result.success,
       exitCode: result.exitCode,
+      durationMs: Date.now() - startedAt,
+      ...(doneEvent?.costUsd !== undefined ? { costUsd: doneEvent.costUsd } : {}),
     });
 
     taskRegistry.unregister(taskId);
@@ -232,7 +239,7 @@ export async function spawnAgent(
     };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    log.error("Agent spawn failed", { taskId, error });
+    log.error("Agent spawn failed", { taskId, error, durationMs: Date.now() - startedAt });
 
     taskRegistry.unregister(taskId);
 
