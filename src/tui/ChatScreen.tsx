@@ -104,6 +104,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const [error, setError] = useState<string | null>(null);
   const sessionKeyRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const pendingSteerRef = useRef<ChatMessage[]>([]);
   const autoMessageSent = useRef(false);
 
   const initAgent = useCallback(async (requestedAgent?: string) => {
@@ -173,6 +174,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     const abort = new AbortController();
     abortRef.current = abort;
     let streamMsgId = `stream-${Date.now()}`;
+    pendingSteerRef.current = [];
 
     const updateAssistant = () => {
       const fullText = blocks.filter((b) => b.type === "text").map((b) => b.text).join("");
@@ -209,6 +211,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         }
         updateAssistant();
       } else if (e.type === "turn_end") {
+        if (pendingSteerRef.current.length > 0) {
+          const flushed = pendingSteerRef.current.splice(0);
+          setMessages((prev) => [...prev, ...flushed]);
+        }
         blocks = [];
         streamMsgId = `stream-${Date.now()}`;
       } else if (e.type === "error") {
@@ -224,6 +230,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
       }
     } finally {
+      if (pendingSteerRef.current.length > 0) {
+        const flushed = pendingSteerRef.current.splice(0);
+        setMessages((prev) => [...prev, ...flushed]);
+      }
       abortRef.current = null;
       setIsStreaming(false);
     }
@@ -236,7 +246,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
     if (isStreaming) {
       const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
-      setMessages((prev) => [...prev, userMsg]);
+      pendingSteerRef.current.push(userMsg);
       void api.steerMessage(agentId, sessionKeyRef.current!, text).catch((err) => {
         setMessages((prev) => [...prev, { role: "system", content: `Steer failed: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }]);
       });
