@@ -57,6 +57,91 @@ function makeServiceConfig(): ServiceConfig {
 }
 
 // ---------------------------------------------------------------------------
+// API helpers
+// ---------------------------------------------------------------------------
+
+class ApiError extends Error {
+  constructor(public status: number) {
+    super(`API error: ${status}`);
+  }
+}
+
+async function apiCall<T = unknown>(
+  method: string,
+  apiPath: string,
+  body?: unknown,
+): Promise<T> {
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const res = await fetch(`http://127.0.0.1:${getApiPort()}${apiPath}`, init);
+  if (!res.ok) throw new ApiError(res.status);
+  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+}
+
+async function apiCallSafe<T = unknown>(
+  method: string,
+  apiPath: string,
+): Promise<T | undefined> {
+  try {
+    return await apiCall<T>(method, apiPath);
+  } catch {
+    return undefined;
+  }
+}
+
+function requireArg(value: string | undefined, usage: string): string {
+  if (!value) {
+    console.error(`Usage: ${usage}`);
+    process.exit(1);
+  }
+  return value;
+}
+
+async function withDaemonErrors(fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    if (err instanceof TypeError && String(err).includes("fetch")) {
+      console.error("Cannot connect to daemon. Is it running? Try: isotopes start");
+    } else {
+      console.error("Error:", err instanceof Error ? err.message : err);
+    }
+    process.exit(1);
+  }
+}
+
+async function apiAction(opts: {
+  method: string;
+  path: string;
+  body?: unknown;
+  notFoundLabel: string;
+  notFoundId: string;
+  success: string;
+}): Promise<void> {
+  try {
+    await apiCall(opts.method, opts.path, opts.body);
+    console.log(opts.success);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      console.error(`${opts.notFoundLabel} not found: ${opts.notFoundId}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+}
+
+function printJsonOr(data: unknown, fallback: () => void): void {
+  if (values.json) {
+    console.log(JSON.stringify(data, null, 2));
+  } else {
+    fallback();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CLI argument parsing – positional subcommands
 // ---------------------------------------------------------------------------
 
@@ -95,7 +180,6 @@ Usage:
   isotopes stop                      Stop the running daemon
   isotopes status                    Show daemon status
   isotopes restart [--config path]   Restart the daemon
-  isotopes reload [agentId]          Reload workspace (hot-reload)
 
   isotopes tui [--agent id] [--message "text"]
                                      Interactive TUI chat with an agent
@@ -182,37 +266,16 @@ async function handleDaemonCommand(): Promise<void> {
         break;
       }
 
-      // Fetch extended status from REST API
-      let apiStatus: {
+      const apiStatus = (await apiCallSafe<{
         version?: string;
         uptime?: number;
         sessions?: number;
         cronJobs?: number;
         agents?: string[];
-      } = {};
+      }>("GET", "/api/status")) ?? {};
 
-      try {
-        const port = getApiPort();
-        const res = await fetch(`http://127.0.0.1:${port}/api/status`);
-        if (res.ok) {
-          apiStatus = (await res.json()) as typeof apiStatus;
-        }
-      } catch {
-        // API not reachable — continue with daemon-only info
-      }
-
-      // Try to get agent list from config
-      let agents: string[] = [];
-      try {
-        const port = getApiPort();
-        const res = await fetch(`http://127.0.0.1:${port}/api/config`);
-        if (res.ok) {
-          const cfg = (await res.json()) as { agents?: { id: string }[] };
-          agents = cfg.agents?.map((a) => a.id) ?? [];
-        }
-      } catch {
-        // ignore
-      }
+      const cfg = await apiCallSafe<{ agents?: { id: string }[] }>("GET", "/api/config");
+      const agents = cfg?.agents?.map((a) => a.id) ?? [];
 
       if (useJson) {
         console.log(
@@ -266,8 +329,7 @@ async function handleServiceCommand(): Promise<void> {
         console.error(`Service installation is not supported on this platform`);
         process.exit(1);
       }
-      const config = makeServiceConfig();
-      await svc.install(config);
+      await svc.install(makeServiceConfig());
       console.log(`Service "${SERVICE_NAME}" installed (${platform})`);
       break;
     }
@@ -320,97 +382,74 @@ function formatUptime(seconds: number): string {
 // Sessions command
 // ---------------------------------------------------------------------------
 
+type SessionInfo = { id: string; agentId: string; messageCount?: number; createdAt?: string };
+
+function printSessionFields(s: SessionInfo, indent: string): void {
+  console.log(`${indent}Agent: ${s.agentId}`);
+  console.log(`${indent}Messages: ${s.messageCount ?? "?"}`);
+  console.log(`${indent}Created: ${s.createdAt ?? "?"}`);
+}
+
 async function handleSessionsCommand(): Promise<void> {
   const subCmd = positionals[0];
   const sessionId = positionals[1];
-  const port = getApiPort();
 
-  try {
+  await withDaemonErrors(async () => {
     switch (subCmd) {
       case "list":
       case undefined: {
-        const res = await fetch(`http://127.0.0.1:${port}/api/sessions`);
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const sessions = await res.json() as Array<{ id: string; agentId: string; messageCount?: number; createdAt?: string }>;
-        if (values.json) {
-          console.log(JSON.stringify(sessions, null, 2));
-        } else {
+        const sessions = await apiCall<SessionInfo[]>("GET", "/api/sessions");
+        printJsonOr(sessions, () => {
           if (sessions.length === 0) {
             console.log("No active sessions");
-          } else {
-            console.log(`Sessions (${sessions.length}):\n`);
-            for (const s of sessions) {
-              console.log(`  ${s.id}`);
-              console.log(`    Agent: ${s.agentId}`);
-              console.log(`    Messages: ${s.messageCount ?? "?"}`);
-              console.log(`    Created: ${s.createdAt ?? "?"}`);
-              console.log();
-            }
+            return;
           }
-        }
+          console.log(`Sessions (${sessions.length}):\n`);
+          for (const s of sessions) {
+            console.log(`  ${s.id}`);
+            printSessionFields(s, "    ");
+            console.log();
+          }
+        });
         break;
       }
       case "show": {
-        if (!sessionId) {
-          console.error("Usage: isotopes sessions show <id>");
-          process.exit(1);
-        }
-        const res = await fetch(`http://127.0.0.1:${port}/api/sessions/${sessionId}`);
-        if (!res.ok) {
-          if (res.status === 404) {
-            console.error(`Session not found: ${sessionId}`);
-          } else {
-            throw new Error(`API error: ${res.status}`);
+        const id = requireArg(sessionId, "isotopes sessions show <id>");
+        try {
+          const session = await apiCall<SessionInfo>("GET", `/api/sessions/${id}`);
+          printJsonOr(session, () => {
+            console.log(`Session: ${session.id}`);
+            printSessionFields(session, "  ");
+          });
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) {
+            console.error(`Session not found: ${id}`);
+            process.exit(1);
           }
-          process.exit(1);
-        }
-        const session = await res.json() as { id: string; agentId: string; messageCount?: number; createdAt?: string };
-        if (values.json) {
-          console.log(JSON.stringify(session, null, 2));
-        } else {
-          console.log(`Session: ${session.id}`);
-          console.log(`  Agent: ${session.agentId}`);
-          console.log(`  Messages: ${session.messageCount ?? "?"}`);
-          console.log(`  Created: ${session.createdAt ?? "?"}`);
+          throw err;
         }
         break;
       }
       case "delete": {
-        if (!sessionId) {
-          console.error("Usage: isotopes sessions delete <id>");
-          process.exit(1);
-        }
-        const res = await fetch(`http://127.0.0.1:${port}/api/sessions/${sessionId}`, {
+        const id = requireArg(sessionId, "isotopes sessions delete <id>");
+        await apiAction({
           method: "DELETE",
+          path: `/api/sessions/${id}`,
+          notFoundLabel: "Session",
+          notFoundId: id,
+          success: `Session deleted: ${id}`,
         });
-        if (!res.ok) {
-          if (res.status === 404) {
-            console.error(`Session not found: ${sessionId}`);
-          } else {
-            throw new Error(`API error: ${res.status}`);
-          }
-          process.exit(1);
-        }
-        console.log(`Session deleted: ${sessionId}`);
         break;
       }
       case "reset": {
-        if (!sessionId) {
-          console.error("Usage: isotopes sessions reset <id>");
-          process.exit(1);
-        }
-        const res = await fetch(`http://127.0.0.1:${port}/api/sessions/${sessionId}/reset`, {
+        const id = requireArg(sessionId, "isotopes sessions reset <id>");
+        await apiAction({
           method: "POST",
+          path: `/api/sessions/${id}/reset`,
+          notFoundLabel: "Session",
+          notFoundId: id,
+          success: `Session reset: ${id}`,
         });
-        if (!res.ok) {
-          if (res.status === 404) {
-            console.error(`Session not found: ${sessionId}`);
-          } else {
-            throw new Error(`API error: ${res.status}`);
-          }
-          process.exit(1);
-        }
-        console.log(`Session reset: ${sessionId}`);
         break;
       }
       default:
@@ -418,49 +457,58 @@ async function handleSessionsCommand(): Promise<void> {
         console.error("Usage: isotopes sessions [list|show|delete|reset] [id]");
         process.exit(1);
     }
-  } catch (err) {
-    if (err instanceof TypeError && String(err).includes("fetch")) {
-      console.error("Cannot connect to daemon. Is it running? Try: isotopes start");
-    } else {
-      console.error("Error:", err instanceof Error ? err.message : err);
-    }
-    process.exit(1);
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Cron command
 // ---------------------------------------------------------------------------
 
+type CronJob = {
+  id: string;
+  schedule: string;
+  agentId: string;
+  enabled: boolean;
+  lastRun?: string;
+  nextRun?: string;
+};
+
+async function cronJobAction(
+  verb: "remove" | "enable" | "disable" | "run",
+): Promise<void> {
+  const id = requireArg(positionals[1], `isotopes cron ${verb} <id>`);
+  const spec = {
+    remove: { method: "DELETE", path: `/api/cron/${id}`, success: `Cron job removed: ${id}` },
+    enable: { method: "POST", path: `/api/cron/${id}/enable`, success: `Cron job enabled: ${id}` },
+    disable: { method: "POST", path: `/api/cron/${id}/disable`, success: `Cron job disabled: ${id}` },
+    run: { method: "POST", path: `/api/cron/${id}/run`, success: `Cron job triggered: ${id}` },
+  }[verb];
+  await apiAction({ ...spec, notFoundLabel: "Job", notFoundId: id });
+}
+
 async function handleCronCommand(): Promise<void> {
   const subCmd = positionals[0];
-  const port = getApiPort();
 
-  try {
+  await withDaemonErrors(async () => {
     switch (subCmd) {
       case "list":
       case undefined: {
-        const res = await fetch(`http://127.0.0.1:${port}/api/cron`);
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const jobs = await res.json() as Array<{ id: string; schedule: string; agentId: string; enabled: boolean; lastRun?: string; nextRun?: string }>;
-        if (values.json) {
-          console.log(JSON.stringify(jobs, null, 2));
-        } else {
+        const jobs = await apiCall<CronJob[]>("GET", "/api/cron");
+        printJsonOr(jobs, () => {
           if (jobs.length === 0) {
             console.log("No cron jobs configured");
-          } else {
-            console.log(`Cron Jobs (${jobs.length}):\n`);
-            for (const j of jobs) {
-              const status = j.enabled ? "enabled" : "disabled";
-              console.log(`  ${j.id} [${status}]`);
-              console.log(`    Schedule: ${j.schedule}`);
-              console.log(`    Agent: ${j.agentId}`);
-              if (j.lastRun) console.log(`    Last run: ${j.lastRun}`);
-              if (j.nextRun) console.log(`    Next run: ${j.nextRun}`);
-              console.log();
-            }
+            return;
           }
-        }
+          console.log(`Cron Jobs (${jobs.length}):\n`);
+          for (const j of jobs) {
+            console.log(`  ${j.id} [${j.enabled ? "enabled" : "disabled"}]`);
+            console.log(`    Schedule: ${j.schedule}`);
+            console.log(`    Agent: ${j.agentId}`);
+            if (j.lastRun) console.log(`    Last run: ${j.lastRun}`);
+            if (j.nextRun) console.log(`    Next run: ${j.nextRun}`);
+            console.log();
+          }
+        });
         break;
       }
       case "add": {
@@ -471,109 +519,22 @@ async function handleCronCommand(): Promise<void> {
           console.error('Example: isotopes cron add "0 9 * * *" "Send daily summary"');
           process.exit(1);
         }
-        const res = await fetch(`http://127.0.0.1:${port}/api/cron`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ schedule, task }),
-        });
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const job = await res.json() as { id: string };
+        const job = await apiCall<{ id: string }>("POST", "/api/cron", { schedule, task });
         console.log(`Cron job created: ${job.id}`);
         break;
       }
-      case "remove": {
-        const jobId = positionals[1];
-        if (!jobId) {
-          console.error("Usage: isotopes cron remove <id>");
-          process.exit(1);
-        }
-        const res = await fetch(`http://127.0.0.1:${port}/api/cron/${jobId}`, {
-          method: "DELETE",
-        });
-        if (!res.ok) {
-          if (res.status === 404) {
-            console.error(`Job not found: ${jobId}`);
-          } else {
-            throw new Error(`API error: ${res.status}`);
-          }
-          process.exit(1);
-        }
-        console.log(`Cron job removed: ${jobId}`);
+      case "remove":
+      case "enable":
+      case "disable":
+      case "run":
+        await cronJobAction(subCmd);
         break;
-      }
-      case "enable": {
-        const jobId = positionals[1];
-        if (!jobId) {
-          console.error("Usage: isotopes cron enable <id>");
-          process.exit(1);
-        }
-        const res = await fetch(`http://127.0.0.1:${port}/api/cron/${jobId}/enable`, {
-          method: "POST",
-        });
-        if (!res.ok) {
-          if (res.status === 404) {
-            console.error(`Job not found: ${jobId}`);
-          } else {
-            throw new Error(`API error: ${res.status}`);
-          }
-          process.exit(1);
-        }
-        console.log(`Cron job enabled: ${jobId}`);
-        break;
-      }
-      case "disable": {
-        const jobId = positionals[1];
-        if (!jobId) {
-          console.error("Usage: isotopes cron disable <id>");
-          process.exit(1);
-        }
-        const res = await fetch(`http://127.0.0.1:${port}/api/cron/${jobId}/disable`, {
-          method: "POST",
-        });
-        if (!res.ok) {
-          if (res.status === 404) {
-            console.error(`Job not found: ${jobId}`);
-          } else {
-            throw new Error(`API error: ${res.status}`);
-          }
-          process.exit(1);
-        }
-        console.log(`Cron job disabled: ${jobId}`);
-        break;
-      }
-      case "run": {
-        const jobId = positionals[1];
-        if (!jobId) {
-          console.error("Usage: isotopes cron run <id>");
-          process.exit(1);
-        }
-        const res = await fetch(`http://127.0.0.1:${port}/api/cron/${jobId}/run`, {
-          method: "POST",
-        });
-        if (!res.ok) {
-          if (res.status === 404) {
-            console.error(`Job not found: ${jobId}`);
-          } else {
-            throw new Error(`API error: ${res.status}`);
-          }
-          process.exit(1);
-        }
-        console.log(`Cron job triggered: ${jobId}`);
-        break;
-      }
       default:
         console.error(`Unknown cron subcommand: ${subCmd}`);
         console.error("Usage: isotopes cron [list|add|remove|enable|disable|run] [args]");
         process.exit(1);
     }
-  } catch (err) {
-    if (err instanceof TypeError && String(err).includes("fetch")) {
-      console.error("Cannot connect to daemon. Is it running? Try: isotopes start");
-    } else {
-      console.error("Error:", err instanceof Error ? err.message : err);
-    }
-    process.exit(1);
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
