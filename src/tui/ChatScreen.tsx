@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Box, Text, useInput, useApp } from "ink";
+import { Box, Text, Static, useInput, useApp } from "ink";
+import { randomUUID } from "node:crypto";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, ContentBlock, TuiOptions, Screen, SSEEvent } from "./types.js";
 import * as api from "./api.js";
@@ -7,7 +8,7 @@ import * as api from "./api.js";
 const MAX_VISIBLE_MESSAGES = 50;
 const MAX_HISTORY_MESSAGES = 20;
 
-function extractResultText(result: unknown): string {
+export function extractResultText(result: unknown): string {
   if (typeof result === "string") return result;
   if (Array.isArray(result)) {
     const texts: string[] = [];
@@ -22,7 +23,7 @@ function extractResultText(result: unknown): string {
   return JSON.stringify(result);
 }
 
-function historyToChatMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number }>): ChatMessage[] {
+export function historyToChatMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number; toolCallId?: string }>): ChatMessage[] {
   const result: ChatMessage[] = [];
   let current: { text: string; blocks: ContentBlock[]; timestamp: Date } | null = null;
 
@@ -42,7 +43,6 @@ function historyToChatMessages(items: Array<{ role: string; type?: string; conte
     const ts = typeof m.timestamp === "number" ? new Date(m.timestamp) : new Date();
 
     if (role === "user") {
-      flushAssistant();
       let text = "";
       if (typeof m.content === "string") {
         text = m.content;
@@ -51,9 +51,23 @@ function historyToChatMessages(items: Array<{ role: string; type?: string; conte
           if (b.type === "text" && typeof b.text === "string") text += b.text;
         }
       }
+      if (!text) continue;
+      const steerPrefix = "[Messages arrived while you were working]\n";
+      if (text.startsWith(steerPrefix)) text = text.slice(steerPrefix.length);
+      flushAssistant();
       result.push({ role: "user", content: text, timestamp: ts });
+    } else if (role === "toolResult") {
+      if (current && m.toolCallId) {
+        const tc = current.blocks.find((b) => b.type === "tool" && b.id === m.toolCallId);
+        if (tc && tc.type === "tool" && !tc.result) tc.result = "✓";
+      } else if (current) {
+        for (const b of current.blocks) {
+          if (b.type === "tool" && !b.result) { b.result = "✓"; break; }
+        }
+      }
     } else if (role === "assistant") {
-      if (!current) current = { text: "", blocks: [], timestamp: ts };
+      flushAssistant();
+      current = { text: "", blocks: [], timestamp: ts };
       if (Array.isArray(m.content)) {
         for (const b of m.content as Array<Record<string, unknown>>) {
           if (b.type === "text" && typeof b.text === "string") {
@@ -93,6 +107,8 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const [error, setError] = useState<string | null>(null);
   const sessionKeyRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const pendingSteerRef = useRef<ChatMessage[]>([]);
+  const settledRef = useRef<ChatMessage[]>([]);
   const autoMessageSent = useRef(false);
 
   const initAgent = useCallback(async (requestedAgent?: string) => {
@@ -158,18 +174,24 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     setIsStreaming(true);
 
     const sessionKey = sessionKeyRef.current;
-    const blocks: ContentBlock[] = [];
+    let blocks: ContentBlock[] = [];
     const abort = new AbortController();
     abortRef.current = abort;
+    let streamMsgId = randomUUID();
+    pendingSteerRef.current = [];
 
     const updateAssistant = () => {
       const fullText = blocks.filter((b) => b.type === "text").map((b) => b.text).join("");
+      const msgId = streamMsgId;
+      const assistantMsg: ChatMessage = { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date(), id: msgId };
       setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === "assistant") {
-          return [...prev.slice(0, -1), { ...last, content: fullText, blocks: [...blocks] }];
+        const idx = prev.findIndex((m) => m.id === msgId);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = assistantMsg;
+          return updated;
         }
-        return [...prev, { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date() }];
+        return [...prev, assistantMsg];
       });
     };
 
@@ -192,6 +214,13 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
           tc.isError = e.isError;
         }
         updateAssistant();
+      } else if (e.type === "turn_end") {
+        if (pendingSteerRef.current.length > 0) {
+          const flushed = pendingSteerRef.current.splice(0);
+          setMessages((prev) => [...prev, ...flushed]);
+        }
+        blocks = [];
+        streamMsgId = randomUUID();
       } else if (e.type === "error") {
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.message}`, timestamp: new Date() }]);
       }
@@ -205,6 +234,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
       }
     } finally {
+      if (pendingSteerRef.current.length > 0) {
+        const flushed = pendingSteerRef.current.splice(0);
+        setMessages((prev) => [...prev, ...flushed]);
+      }
       abortRef.current = null;
       setIsStreaming(false);
     }
@@ -214,11 +247,22 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     const text = input.trim();
     if (!text) return;
     setInput("");
+
+    if (isStreaming) {
+      const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
+      pendingSteerRef.current.push(userMsg);
+      void api.steerMessage(agentId, sessionKeyRef.current!, text).catch((err) => {
+        setMessages((prev) => [...prev, { role: "system", content: `Steer failed: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }]);
+      });
+      return;
+    }
+
     const slash = parseSlashCommand(text);
     if (slash) {
       const handled = dispatch(slash.command, slash.args, {
         onNewChat: () => {
           setMessages([]);
+          settledRef.current = [];
           setIsStreaming(true);
           (async () => {
             try {
@@ -250,97 +294,117 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   };
 
   useInput((ch, key) => {
-    if (isStreaming) return;
     if (key.return) {
       handleSubmit();
+    } else if (key.escape && isStreaming) {
+      abortRef.current?.abort();
+      void api.abortMessage(agentId, sessionKeyRef.current!).catch(() => {});
     } else if (key.backspace || key.delete) {
       setInput((prev) => prev.slice(0, -1));
     } else if (key.ctrl && ch === "c") {
-      exit();
+      if (isStreaming) {
+        abortRef.current?.abort();
+        void api.abortMessage(agentId, sessionKeyRef.current!).catch(() => {});
+      } else {
+        exit();
+      }
     } else if (ch && !key.ctrl && !key.meta) {
       setInput((prev) => prev + ch);
     }
   });
 
-  const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
   const contentWidth = (process.stdout.columns || 80) - 2;
-  const headerHeight = 3;
-  const inputHeight = 3;
-  const messageHeight = (process.stdout.rows || 24) - headerHeight - inputHeight;
+
+  const renderMessage = (msg: ChatMessage, i: number) => {
+    const roleLabel = msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System";
+    const roleColor = msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray";
+
+    if (!msg.blocks) {
+      return (
+        <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
+          <Text wrap="wrap">
+            <Text color={roleColor} bold>{roleLabel}</Text>
+            <Text>: {msg.content}</Text>
+          </Text>
+        </Box>
+      );
+    }
+
+    const elements: React.ReactNode[] = [];
+    let labelRendered = false;
+    for (let j = 0; j < msg.blocks.length; j++) {
+      const block = msg.blocks[j];
+      if (block.type === "text") {
+        if (!labelRendered) {
+          labelRendered = true;
+          elements.push(
+            <Box key={j}>
+              <Text wrap="wrap">
+                <Text color={roleColor} bold>{roleLabel}</Text>
+                <Text>: {block.text}</Text>
+              </Text>
+            </Box>
+          );
+        } else {
+          elements.push(<Box key={j}><Text wrap="wrap">{block.text}</Text></Box>);
+        }
+      } else {
+        if (!labelRendered) {
+          labelRendered = true;
+          elements.push(
+            <Box key={`label`}>
+              <Text color={roleColor} bold>{roleLabel}</Text>
+              <Text>:</Text>
+            </Box>
+          );
+        }
+        elements.push(
+          <Box key={j}>
+            <Text color="gray" dimColor wrap="truncate-end">
+              {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
+            </Text>
+          </Box>
+        );
+      }
+    }
+
+    return <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
+  };
+
+  // Split: settled messages go to Static (terminal scrollback), active message stays dynamic.
+  // settledRef is append-only so Static gets a stable reference and doesn't re-render old items.
+  const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
+  const settledCount = isStreaming ? Math.max(visible.length - 1, 0) : visible.length;
+  if (settledCount > settledRef.current.length) {
+    const newSettled = visible.slice(settledRef.current.length, settledCount);
+    settledRef.current = [...settledRef.current, ...newSettled];
+  }
+  const activeMessage = isStreaming && visible.length > 0 ? visible[visible.length - 1] : null;
 
   return (
-    <Box flexDirection="column" height={process.stdout.rows}>
-      <Box borderStyle="single" paddingX={1} height={headerHeight}>
+    <Box flexDirection="column">
+      <Box borderStyle="single" paddingX={1} flexShrink={0} flexGrow={0}>
         <Text bold>isotopes</Text>
         <Text> — agent: </Text>
         <Text color="cyan">{agentId || "loading..."}</Text>
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
-      <Box flexDirection="column" paddingX={1} height={messageHeight} overflow="hidden">
-        {error && <Text color="red">{error}</Text>}
-        {!agentReady && !error && <Text color="gray">Loading agent...</Text>}
-        {visible.map((msg, i) => {
-          const roleLabel = msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System";
-          const roleColor = msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray";
+      <Static items={settledRef.current.map((msg, i) => ({ ...msg, _idx: i }))}>
+        {(item) => renderMessage(item, item._idx)}
+      </Static>
 
-          if (!msg.blocks) {
-            return (
-              <Box key={i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
-                <Text wrap="wrap">
-                  <Text color={roleColor} bold>{roleLabel}</Text>
-                  <Text>: {msg.content}</Text>
-                </Text>
-              </Box>
-            );
-          }
+      {error && <Box paddingX={1}><Text color="red">{error}</Text></Box>}
+      {!agentReady && !error && <Box paddingX={1}><Text color="gray">Loading agent...</Text></Box>}
+      {activeMessage && <Box paddingX={1} flexDirection="column">{renderMessage(activeMessage, settledRef.current.length)}</Box>}
 
-          const elements: React.ReactNode[] = [];
-          let labelRendered = false;
-          for (let j = 0; j < msg.blocks.length; j++) {
-            const block = msg.blocks[j];
-            if (block.type === "text") {
-              if (!labelRendered) {
-                labelRendered = true;
-                elements.push(
-                  <Box key={j}>
-                    <Text wrap="wrap">
-                      <Text color={roleColor} bold>{roleLabel}</Text>
-                      <Text>: {block.text}</Text>
-                    </Text>
-                  </Box>
-                );
-              } else {
-                elements.push(<Box key={j}><Text wrap="wrap">{block.text}</Text></Box>);
-              }
-            } else {
-              if (!labelRendered) {
-                labelRendered = true;
-                elements.push(
-                  <Box key={`label`}>
-                    <Text color={roleColor} bold>{roleLabel}</Text>
-                    <Text>:</Text>
-                  </Box>
-                );
-              }
-              elements.push(
-                <Box key={j}>
-                  <Text color="gray" dimColor wrap="truncate-end">
-                    {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
-                  </Text>
-                </Box>
-              );
-            }
-          }
-
-          return <Box key={i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
-        })}
-      </Box>
-
-      <Box borderStyle="single" paddingX={1} height={3}>
+      <Box borderStyle="single" paddingX={1} flexShrink={0} flexGrow={0}>
         <Text color="green">&gt; </Text>
         <Text wrap="truncate">{input}</Text>
         <Text color="gray">█</Text>
+        {isStreaming && !input && (
+          <Text color="gray" dimColor> type to steer · esc to stop</Text>
+        )}
       </Box>
     </Box>
   );

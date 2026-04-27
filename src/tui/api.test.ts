@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchStatus, fetchSessions, fetchUsage, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, parseSSELine } from "./api.js";
+import { fetchStatus, fetchSessions, fetchUsage, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, steerMessage, parseSSELine } from "./api.js";
 
 const mockFetch = vi.fn();
 
@@ -105,6 +105,20 @@ describe("deleteSession", () => {
   });
 });
 
+describe("steerMessage", () => {
+  it("posts steer message", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, queued: 1 }) });
+    await steerMessage("bot", "s1", "hello");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:2712/api/sessions/bot/s1/steer",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ message: "hello" }),
+      }),
+    );
+  });
+});
+
 describe("parseSSELine", () => {
   it("parses text_delta", () => {
     const event = parseSSELine("text_delta", '{"text":"hello"}');
@@ -119,6 +133,11 @@ describe("parseSSELine", () => {
   it("parses tool_result", () => {
     const event = parseSSELine("tool_result", '{"toolCallId":"t1","toolName":"echo","result":"hi","isError":false}');
     expect(event).toEqual({ type: "tool_result", toolCallId: "t1", toolName: "echo", result: "hi", isError: false });
+  });
+
+  it("parses turn_end", () => {
+    const event = parseSSELine("turn_end", '{}');
+    expect(event).toEqual({ type: "turn_end" });
   });
 
   it("parses error", () => {

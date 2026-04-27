@@ -1,0 +1,111 @@
+import { describe, it, expect } from "vitest";
+import { historyToChatMessages, extractResultText } from "./ChatScreen.js";
+
+describe("extractResultText", () => {
+  it("returns string as-is", () => {
+    expect(extractResultText("hello")).toBe("hello");
+  });
+
+  it("joins text blocks from array", () => {
+    const blocks = [
+      { type: "text", text: "line1" },
+      { type: "text", text: "line2" },
+    ];
+    expect(extractResultText(blocks)).toBe("line1\nline2");
+  });
+
+  it("unwraps content property", () => {
+    expect(extractResultText({ content: "nested" })).toBe("nested");
+  });
+
+  it("JSON stringifies unknown shapes", () => {
+    expect(extractResultText(42)).toBe("42");
+  });
+});
+
+describe("historyToChatMessages", () => {
+  it("converts user and assistant messages", () => {
+    const items = [
+      { role: "user", content: "hi", timestamp: 1000 },
+      { role: "assistant", content: [{ type: "text", text: "hello" }], timestamp: 2000 },
+    ];
+    const result = historyToChatMessages(items);
+    expect(result).toHaveLength(2);
+    expect(result[0].role).toBe("user");
+    expect(result[0].content).toBe("hi");
+    expect(result[1].role).toBe("assistant");
+    expect(result[1].content).toBe("hello");
+  });
+
+  it("skips empty user messages", () => {
+    const items = [
+      { role: "user", content: [] },
+      { role: "assistant", content: [{ type: "text", text: "response" }] },
+    ];
+    const result = historyToChatMessages(items);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("assistant");
+  });
+
+  it("strips steer prefix from user messages", () => {
+    const items = [
+      { role: "user", content: "[Messages arrived while you were working]\nactual message" },
+    ];
+    const result = historyToChatMessages(items);
+    expect(result[0].content).toBe("actual message");
+  });
+
+  it("marks toolResult by toolCallId before flush", () => {
+    const items = [
+      {
+        role: "assistant",
+        content: [
+          { type: "toolCall", id: "t1", name: "echo", arguments: "{}" },
+          { type: "toolCall", id: "t2", name: "time", arguments: "{}" },
+        ],
+      },
+      { role: "toolResult", toolCallId: "t2" },
+      { role: "toolResult", toolCallId: "t1" },
+    ];
+    const result = historyToChatMessages(items);
+    expect(result).toHaveLength(1);
+    const blocks = result[0].blocks!;
+    // Both are marked ✓ (flush marks remaining, but t2 was marked first by toolCallId)
+    expect(blocks[0].type === "tool" && blocks[0].result).toBe("✓");
+    expect(blocks[1].type === "tool" && blocks[1].result).toBe("✓");
+  });
+
+  it("falls back to first-unresolved when no toolCallId", () => {
+    const items = [
+      {
+        role: "assistant",
+        content: [
+          { type: "toolCall", id: "t1", name: "echo", arguments: "{}" },
+        ],
+      },
+      { role: "toolResult" },
+    ];
+    const result = historyToChatMessages(items);
+    const blocks = result[0].blocks!;
+    expect(blocks[0].type === "tool" && blocks[0].result).toBe("✓");
+  });
+
+  it("splits consecutive assistant messages into separate entries", () => {
+    const items = [
+      { role: "assistant", content: [{ type: "text", text: "first" }] },
+      { role: "assistant", content: [{ type: "text", text: "second" }] },
+    ];
+    const result = historyToChatMessages(items);
+    expect(result).toHaveLength(2);
+    expect(result[0].content).toBe("first");
+    expect(result[1].content).toBe("second");
+  });
+
+  it("handles user content as array of text blocks", () => {
+    const items = [
+      { role: "user", content: [{ type: "text", text: "hello " }, { type: "text", text: "world" }] },
+    ];
+    const result = historyToChatMessages(items);
+    expect(result[0].content).toBe("hello world");
+  });
+});
