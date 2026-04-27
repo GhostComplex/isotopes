@@ -26,7 +26,8 @@ vi.mock("@mariozechner/pi-ai", () => ({
 }));
 
 import { getModel } from "@mariozechner/pi-ai";
-import { PiMonoCore, resolveModel } from "./pi-mono.js";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import { applySystemPromptOverrideToSession, PiMonoCore, resolveModel } from "./pi-mono.js";
 import { ToolRegistry } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -173,5 +174,41 @@ describe("PiMonoCore", () => {
 
     const cache = core.createServiceCache(makeConfig({ id: "agent-a" }));
     expect(cache.customTools).toHaveLength(0);
+  });
+});
+
+describe("applySystemPromptOverrideToSession", () => {
+  type MutableSession = {
+    _baseSystemPrompt?: string;
+    _rebuildSystemPrompt?: (toolNames: string[]) => string;
+    agent: { state: { systemPrompt?: string } };
+  };
+
+  function makeMockSession(): MutableSession {
+    return { agent: { state: {} } };
+  }
+
+  it("sets state.systemPrompt and _baseSystemPrompt to the override", () => {
+    const session = makeMockSession();
+    applySystemPromptOverrideToSession(session as unknown as AgentSession, "you are a helpful agent");
+
+    expect(session.agent.state.systemPrompt).toBe("you are a helpful agent");
+    expect(session._baseSystemPrompt).toBe("you are a helpful agent");
+  });
+
+  it("trims surrounding whitespace from the override", () => {
+    const session = makeMockSession();
+    applySystemPromptOverrideToSession(session as unknown as AgentSession, "  padded  ");
+
+    expect(session.agent.state.systemPrompt).toBe("padded");
+    expect(session._baseSystemPrompt).toBe("padded");
+  });
+
+  it("installs a _rebuildSystemPrompt that ignores tool list and returns the override", () => {
+    const session = makeMockSession();
+    applySystemPromptOverrideToSession(session as unknown as AgentSession, "stable identity");
+
+    expect(session._rebuildSystemPrompt?.(["t1", "t2"])).toBe("stable identity");
+    expect(session._rebuildSystemPrompt?.([])).toBe("stable identity");
   });
 });
