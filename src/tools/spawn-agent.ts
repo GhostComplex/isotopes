@@ -65,6 +65,9 @@ export interface SpawnAgentResult {
   error?: string;
   exitCode: number;
   eventCount: number;
+  /** Session id of the recorded run under the target agent's session store.
+   * Undefined when persistence is unavailable (no store / NOOP recorder). */
+  sessionId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +224,7 @@ export async function spawnAgent(
       error: result.error,
       exitCode: result.exitCode,
       eventCount: collected.length,
+      ...(recorder.sessionId ? { sessionId: recorder.sessionId } : {}),
     };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
@@ -239,6 +243,7 @@ export async function spawnAgent(
       error,
       exitCode: 1,
       eventCount: 0,
+      ...(recorder.sessionId ? { sessionId: recorder.sessionId } : {}),
     };
   }
 }
