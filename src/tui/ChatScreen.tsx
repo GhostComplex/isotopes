@@ -23,35 +23,71 @@ function extractResultText(result: unknown): string {
   return JSON.stringify(result);
 }
 
-function historyMessageToChatMessage(m: { role: string; content?: unknown; timestamp?: number }): ChatMessage | null {
-  if (m.role !== "user" && m.role !== "assistant") return null;
-  const role = m.role as "user" | "assistant";
+function historyToChatMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number }>): ChatMessage[] {
+  const result: ChatMessage[] = [];
+  let current: { text: string; blocks: ContentBlock[]; timestamp: Date } | null = null;
 
-  let text = "";
-  const blocks: ContentBlock[] = [];
+  const flushAssistant = () => {
+    if (current) {
+      result.push({ role: "assistant", content: current.text, blocks: current.blocks.length > 0 ? current.blocks : undefined, timestamp: current.timestamp });
+      current = null;
+    }
+  };
 
-  if (typeof m.content === "string") {
-    text = m.content;
-    blocks.push({ type: "text", text });
-  } else if (Array.isArray(m.content)) {
-    for (const block of m.content as Array<Record<string, unknown>>) {
-      if (block.type === "text" && typeof block.text === "string") {
-        text += block.text;
-        blocks.push({ type: "text", text: block.text });
-      } else if (block.type === "toolCall" && typeof block.name === "string") {
-        blocks.push({
-          type: "tool",
-          id: String(block.id ?? ""),
-          name: block.name,
-          args: typeof block.arguments === "string" ? block.arguments : JSON.stringify(block.arguments ?? {}),
-          result: "✓",
-        });
+  for (const m of items) {
+    const role = m.role ?? m.type;
+    const ts = typeof m.timestamp === "number" ? new Date(m.timestamp) : new Date();
+
+    if (role === "user") {
+      flushAssistant();
+      let text = "";
+      if (typeof m.content === "string") {
+        text = m.content;
+      } else if (Array.isArray(m.content)) {
+        for (const b of m.content as Array<Record<string, unknown>>) {
+          if (b.type === "text" && typeof b.text === "string") text += b.text;
+        }
+      }
+      result.push({ role: "user", content: text, timestamp: ts });
+    } else if (role === "assistant") {
+      if (!current) current = { text: "", blocks: [], timestamp: ts };
+      if (Array.isArray(m.content)) {
+        for (const b of m.content as Array<Record<string, unknown>>) {
+          if (b.type === "text" && typeof b.text === "string") {
+            current.text += b.text;
+            current.blocks.push({ type: "text", text: b.text });
+          } else if (b.type === "toolCall" && typeof b.name === "string") {
+            current.blocks.push({
+              type: "tool",
+              id: String(b.id ?? ""),
+              name: b.name,
+              args: typeof b.arguments === "string" ? b.arguments : JSON.stringify(b.arguments ?? {}),
+            });
+          }
+        }
+      } else if (typeof m.content === "string") {
+        current.text += m.content;
+        current.blocks.push({ type: "text", text: m.content });
+      }
+    } else if (role === "toolResult") {
+      if (current) {
+        const resultContent = m.content;
+        const tc = [...current.blocks].reverse().find((b): b is ContentBlock & { type: "tool" } => b.type === "tool" && !b.result);
+        if (tc) {
+          let isError = false;
+          if (Array.isArray(resultContent)) {
+            for (const b of resultContent as Array<Record<string, unknown>>) {
+              if (b.type === "text" && typeof b.text === "string" && (b.text as string).startsWith("[error]")) isError = true;
+            }
+          }
+          tc.result = "✓";
+          tc.isError = isError;
+        }
       }
     }
   }
-
-  const ts = typeof m.timestamp === "number" ? new Date(m.timestamp) : new Date();
-  return { role, content: text, blocks: blocks.length > 0 ? blocks : undefined, timestamp: ts };
+  flushAssistant();
+  return result;
 }
 
 interface Props {
@@ -97,10 +133,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
       if (session.resumed) {
         const { items: history } = await api.getHistory(session.agentId, session.key);
-        const chatMessages = history
-          .map(historyMessageToChatMessage)
-          .filter((m): m is ChatMessage => m !== null)
-          .slice(-MAX_HISTORY_MESSAGES);
+        const chatMessages = historyToChatMessages(history).slice(-MAX_HISTORY_MESSAGES);
         if (chatMessages.length > 0) {
           const skipped = history.length - chatMessages.length;
           const prefix: ChatMessage[] = skipped > 0
@@ -294,7 +327,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
                 );
               }
               elements.push(
-                <Text key={j} color="gray" dimColor>
+                <Text key={j} color="gray" dimColor wrap="truncate-end">
                   {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
                 </Text>
               );
@@ -305,7 +338,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         })}
       </Box>
 
-      <Box borderStyle="single" paddingX={1}>
+      <Box borderStyle="single" paddingX={1} height={3}>
         <Text color="green">&gt; </Text>
         <Text>{(() => {
           const maxWidth = (process.stdout.columns || 80) - 6;
