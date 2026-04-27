@@ -157,6 +157,74 @@ describe("spawnAgent", () => {
     setSpawnSessionStoreFactory(undefined);
   });
 
+  it("deletes the orphan session if SessionManager is unavailable", async () => {
+    vi.resetModules();
+    const { initSpawnBackend, spawnAgent, setSpawnSessionStoreFactory } = await import("./spawn-agent.js");
+    initSpawnBackend({ config: { claude: { permissionMode: "allowlist", allowedTools: [] }, useThread: true, showToolCalls: true } });
+
+    const fakeStore = {
+      create: vi.fn(async () => ({ id: "sess-orphan" })),
+      getSessionManager: vi.fn(async () => undefined),
+      delete: vi.fn(async () => {}),
+    };
+    setSpawnSessionStoreFactory(() => fakeStore as never);
+
+    spawnMock.mockReturnValue(
+      eventGen({ type: "run:start" }, { type: "run:done", exitCode: 0 }),
+    );
+
+    await spawnAgent("t", {
+      agent: "subagent",
+      cwd: process.cwd(),
+      parentAgentId: "main",
+      targetAgentId: "subagent",
+      builtin: {
+        mode: "subagent",
+        provider: { type: "anthropic", model: "claude-sonnet-4-5" } as never,
+        tools: { list: () => [] } as never,
+      },
+    });
+
+    expect(fakeStore.delete).toHaveBeenCalledWith("sess-orphan");
+    const builtinArg = spawnMock.mock.calls[0][1].builtin;
+    expect(builtinArg.sessionManager).toBeUndefined();
+
+    setSpawnSessionStoreFactory(undefined);
+  });
+
+  it("deletes the orphan session if getSessionManager throws", async () => {
+    vi.resetModules();
+    const { initSpawnBackend, spawnAgent, setSpawnSessionStoreFactory } = await import("./spawn-agent.js");
+    initSpawnBackend({ config: { claude: { permissionMode: "allowlist", allowedTools: [] }, useThread: true, showToolCalls: true } });
+
+    const fakeStore = {
+      create: vi.fn(async () => ({ id: "sess-throw" })),
+      getSessionManager: vi.fn(async () => { throw new Error("nope"); }),
+      delete: vi.fn(async () => {}),
+    };
+    setSpawnSessionStoreFactory(() => fakeStore as never);
+
+    spawnMock.mockReturnValue(
+      eventGen({ type: "run:start" }, { type: "run:done", exitCode: 0 }),
+    );
+
+    await spawnAgent("t", {
+      agent: "subagent",
+      cwd: process.cwd(),
+      parentAgentId: "main",
+      targetAgentId: "subagent",
+      builtin: {
+        mode: "subagent",
+        provider: { type: "anthropic", model: "claude-sonnet-4-5" } as never,
+        tools: { list: () => [] } as never,
+      },
+    });
+
+    expect(fakeStore.delete).toHaveBeenCalledWith("sess-throw");
+
+    setSpawnSessionStoreFactory(undefined);
+  });
+
   it("does not touch the store for claude (non-builtin) spawns", async () => {
     vi.resetModules();
     const { initSpawnBackend, spawnAgent, setSpawnSessionStoreFactory } = await import("./spawn-agent.js");

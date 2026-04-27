@@ -1,9 +1,11 @@
 // src/core/session-store-manager.ts — Per-agentId SessionStore registry
 //
 // One DefaultSessionStore per agentId, rooted at
-// ~/.isotopes/agents/<normalizedAgentId>/sessions/. Used by both the main
-// agent write path (via DiscordTransport / sessionStoreForAgent) and the
-// spawn agent write path (which injects SessionManager into the SDK).
+// ~/.isotopes/agents/<normalizedAgentId>/sessions/. Two write paths:
+//   - chat sessions (DiscordTransport / sessionStoreForAgent)
+//   - spawn agent runs — sole entry is SessionManager injection into the
+//     SDK from src/tools/spawn-agent.ts; there is no separate per-event
+//     recorder fallback.
 
 import { DefaultSessionStore } from "./session-store.js";
 import {

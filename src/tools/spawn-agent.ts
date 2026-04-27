@@ -171,9 +171,18 @@ export async function spawnAgent(
       const store = await spawnStoreFactory(targetAgentId);
       if (store) {
         const session = await store.create(targetAgentId);
-        const sessionManager = await store.getSessionManager(session.id);
-        if (sessionManager) {
-          builtin = { ...builtin, sessionManager };
+        try {
+          const sessionManager = await store.getSessionManager(session.id);
+          if (sessionManager) {
+            builtin = { ...builtin, sessionManager };
+          } else {
+            // SDK won't write to it — drop the empty session row to avoid
+            // leaving an orphan in sessions.json.
+            await store.delete(session.id);
+          }
+        } catch (innerErr) {
+          await store.delete(session.id).catch(() => {});
+          throw innerErr;
         }
       }
     } catch (err) {
