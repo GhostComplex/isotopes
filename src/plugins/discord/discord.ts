@@ -18,6 +18,7 @@ import {
   type Transport,
 } from "../../core/types.js";
 import type { ThreadBindingConfig } from "./types.js";
+import { resizeIfTooLarge } from "./resize-image.js";
 import type { AgentServiceCache } from "../../core/pi-mono.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../core/messages.js";
@@ -1003,7 +1004,8 @@ export class DiscordTransport implements Transport {
           continue;
         }
         const buffer = Buffer.from(await res.arrayBuffer());
-        images.push({ type: "image", data: buffer.toString("base64"), mimeType: ct });
+        const resized = await resizeIfTooLarge(buffer, ct);
+        images.push({ type: "image", data: resized.buffer.toString("base64"), mimeType: resized.mimeType });
       } catch (err) {
         log.warn(`Error downloading attachment: ${err instanceof Error ? err.message : String(err)}`);
       }
