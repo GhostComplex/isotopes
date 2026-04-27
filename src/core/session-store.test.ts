@@ -578,34 +578,27 @@ describe("DefaultSessionStore", () => {
   describe("setMetadata", () => {
     it("merges patch into existing metadata and persists to index", async () => {
       const session = await store.create("dev", {
-        spawnAgent: {
-          parentAgentId: "dev",
-          taskId: "task-1",
-          backend: "claude",
-        },
+        transport: "discord",
+        channelId: "c-1",
       });
 
       await store.setMetadata(session.id, {
-        spawnAgent: {
-          parentAgentId: "dev",
-          taskId: "task-1",
-          backend: "claude",
-          exitCode: 0,
-          costUsd: 0.42,
-          durationMs: 1234,
-        },
+        transport: "discord",
+        channelId: "c-1",
+        channelName: "general",
+        threadId: "t-7",
       });
 
       const got = await store.get(session.id);
-      expect(got?.metadata?.spawnAgent?.exitCode).toBe(0);
-      expect(got?.metadata?.spawnAgent?.costUsd).toBe(0.42);
+      expect(got?.metadata?.channelName).toBe("general");
+      expect(got?.metadata?.threadId).toBe("t-7");
 
       // Reopen the store to confirm the patch survived persistence.
       const reopened = new DefaultSessionStore({ dataDir: tempDir });
       await reopened.init();
       const reloaded = await reopened.get(session.id);
-      expect(reloaded?.metadata?.spawnAgent?.exitCode).toBe(0);
-      expect(reloaded?.metadata?.spawnAgent?.durationMs).toBe(1234);
+      expect(reloaded?.metadata?.channelName).toBe("general");
+      expect(reloaded?.metadata?.threadId).toBe("t-7");
       reopened.destroy();
     });
 

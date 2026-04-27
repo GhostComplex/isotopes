@@ -9,7 +9,6 @@ import {
 import type { BuiltinOptions } from "../agents/types.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
 import { taskRegistry } from "../agents/task-registry.js";
-import { createRunRecorder } from "../agents/persistence.js";
 import type { SessionStore } from "../core/types.js";
 import type { ResolvedSpawningConfig } from "../core/config.js";
 
@@ -65,9 +64,6 @@ export interface SpawnAgentResult {
   error?: string;
   exitCode: number;
   eventCount: number;
-  /** Session id of the recorded run under the target agent's session store.
-   * Undefined when persistence is unavailable (no store / NOOP recorder). */
-  sessionId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,45 +160,39 @@ export async function spawnAgent(
 
   const parentAgentId = options.parentAgentId ?? "unknown";
   const targetAgentId = options.targetAgentId ?? parentAgentId;
-  const store = spawnStoreFactory ? await spawnStoreFactory(targetAgentId) : undefined;
 
-  const recorder = await createRunRecorder({
-    store,
-    targetAgentId,
-    parentAgentId,
-    parentSessionId: options.sessionId,
-    taskId,
-    backend: agentId,
-    cwd: options.cwd,
-    prompt,
-    channelId: options.channelId,
-    threadId: options.threadId,
-  });
-
-  // For builtin runs (named + subagent) the SDK can persist the real
-  // structured conversation directly into the run's session. Hand the
-  // SessionManager backing this session into the BuiltinOptions so the
-  // SDK writes there. We then skip per-event recorder.record() to avoid
-  // double-writing the same session — recorder.patchMetadata() still
-  // runs at the end to capture exitCode/costUsd/durationMs.
+  // For builtin runs (named + subagent) wire the SDK to write the real
+  // structured conversation directly into a fresh session under the target
+  // agent's store. Claude spawn manages its own session in ~/.claude/, so
+  // we don't create anything on the isotopes side.
   let builtin = options.builtin;
-  if (builtin && store && recorder.sessionId) {
+  if (builtin && spawnStoreFactory) {
     try {
-      const sessionManager = await store.getSessionManager(recorder.sessionId);
-      if (sessionManager) {
-        builtin = { ...builtin, sessionManager };
+      const store = await spawnStoreFactory(targetAgentId);
+      if (store) {
+        const session = await store.create(targetAgentId);
+        try {
+          const sessionManager = await store.getSessionManager(session.id);
+          if (sessionManager) {
+            builtin = { ...builtin, sessionManager };
+          } else {
+            // SDK won't write to it — drop the empty session row to avoid
+            // leaving an orphan in sessions.json.
+            await store.delete(session.id);
+          }
+        } catch (innerErr) {
+          await store.delete(session.id).catch(() => {});
+          throw innerErr;
+        }
       }
     } catch (err) {
-      log.warn("Failed to obtain SessionManager for builtin spawn; falling back to per-event recorder", {
+      log.warn("Failed to attach SessionManager for builtin spawn; run will not persist", {
         taskId,
-        sessionId: recorder.sessionId,
+        targetAgentId,
         error: err instanceof Error ? err.message : String(err),
       });
     }
   }
-  const sdkPersists = builtin?.sessionManager !== undefined;
-
-  const startedAt = Date.now();
 
   try {
     const events = backend.spawn(taskId, {
@@ -221,9 +211,6 @@ export async function spawnAgent(
     for await (const event of events) {
       collected.push(event);
       options.onEvent?.(event);
-      if (!sdkPersists) {
-        await recorder.record(event);
-      }
     }
 
     const result = summarizeEvents(collected);
@@ -234,13 +221,6 @@ export async function spawnAgent(
       exitCode: result.exitCode,
     });
 
-    await recorder.patchMetadata({
-      exitCode: result.exitCode,
-      costUsd: collected.find((e): e is Extract<RunEvent, { type: "run:done" }> => e.type === "run:done" && "costUsd" in e)?.costUsd,
-      durationMs: Date.now() - startedAt,
-      ...(result.error ? { error: result.error } : {}),
-    });
-
     taskRegistry.unregister(taskId);
 
     return {
@@ -249,17 +229,10 @@ export async function spawnAgent(
       error: result.error,
       exitCode: result.exitCode,
       eventCount: collected.length,
-      ...(recorder.sessionId ? { sessionId: recorder.sessionId } : {}),
     };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     log.error("Agent spawn failed", { taskId, error });
-
-    await recorder.patchMetadata({
-      exitCode: 1,
-      error,
-      durationMs: Date.now() - startedAt,
-    });
 
     taskRegistry.unregister(taskId);
 
@@ -268,7 +241,6 @@ export async function spawnAgent(
       error,
       exitCode: 1,
       eventCount: 0,
-      ...(recorder.sessionId ? { sessionId: recorder.sessionId } : {}),
     };
   }
 }

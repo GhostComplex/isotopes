@@ -25,12 +25,4 @@ export type { TaskInfo } from "./task-registry.js";
 export { FailureTracker, failureTracker } from "./failure-tracker.js";
 export type { BlockCheck } from "./failure-tracker.js";
 
-export {
-  createRunRecorder,
-  buildRunSessionKey,
-  runEventToMessage,
-  terminalEventPatch,
-} from "./persistence.js";
-export type { RunRecorder, CreateRecorderOptions } from "./persistence.js";
-
 export { mapSdkToRunEvent } from "./runners/claude.js";
