@@ -12,10 +12,11 @@ vi.mock("../agents/index.js", async () => {
   );
   return {
     ...actual,
-    AgentRuntime: vi.fn().mockImplementation(() => ({
+    AgentRuntime: vi.fn().mockImplementation((opts?: { allowedWorkspaceRoots?: string[] }) => ({
       spawn: spawnMock,
       cancel: cancelMock,
       cancelAll: cancelAllMock,
+      workspacesKey: (opts?.allowedWorkspaceRoots ?? []).slice().sort().join(":"),
       get activeCount() {
         return 0;
       },

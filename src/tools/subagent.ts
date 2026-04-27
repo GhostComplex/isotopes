@@ -80,9 +80,6 @@ export interface SpawnSubagentResult {
 /** Shared backend instance (lazy initialized) */
 let sharedBackend: AgentRuntime | undefined;
 
-/** Cache key for the shared backend (workspace roots joined by `:`) */
-let sharedBackendKey: string | undefined;
-
 /** Cached backend config */
 let backendConfig: SubagentBackendConfig = {};
 
@@ -111,7 +108,6 @@ export function setSubagentSessionStoreFactory(
 export function initSubagentBackend(config: SubagentBackendConfig): void {
   backendConfig = config;
   sharedBackend = undefined;
-  sharedBackendKey = undefined;
   log.info("Subagent backend initialized", {
     allowedTypes: config.config?.allowedTypes ? [...config.config.allowedTypes] : undefined,
     claudePermissionMode: config.config?.claude.permissionMode,
@@ -120,14 +116,22 @@ export function initSubagentBackend(config: SubagentBackendConfig): void {
 
 function getBackend(allowedWorkspaces?: string[]): AgentRuntime {
   const key = allowedWorkspaces?.sort().join(":") ?? "";
-  if (!sharedBackend || sharedBackendKey !== key) {
-    sharedBackend = new AgentRuntime({
-      allowedWorkspaceRoots: allowedWorkspaces,
-      config: backendConfig.config,
-      core: backendConfig.core,
-    });
-    sharedBackendKey = key;
+  if (sharedBackend && sharedBackend.workspacesKey === key) {
+    return sharedBackend;
   }
+  if (sharedBackend && sharedBackend.activeCount > 0) {
+    log.warn("Replacing AgentRuntime with in-flight runs; cancelling them", {
+      activeCount: sharedBackend.activeCount,
+      oldKey: sharedBackend.workspacesKey,
+      newKey: key,
+    });
+    sharedBackend.cancelAll();
+  }
+  sharedBackend = new AgentRuntime({
+    allowedWorkspaceRoots: allowedWorkspaces,
+    config: backendConfig.config,
+    core: backendConfig.core,
+  });
   return sharedBackend;
 }
 
@@ -170,11 +174,10 @@ export async function spawnSubagent(
   prompt: string,
   options: SpawnSubagentOptions,
 ): Promise<SpawnSubagentResult> {
-  const agent = options.agent ?? "external";
-  const runner: RunnerKind = agent === "in-process" ? "in-process" : "external";
+  const runner: RunnerKind = options.agent ?? "external";
   const taskId = `subagent-${++taskCounter}-${Date.now()}`;
 
-  log.info("Spawning sub-agent", { taskId, agent, cwd: options.cwd });
+  log.info("Spawning sub-agent", { taskId, runner, cwd: options.cwd });
 
   const backend = getBackend(options.allowedWorkspaces);
 

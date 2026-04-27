@@ -16,8 +16,6 @@ interface RunHandle {
   abort: AbortController;
 }
 
-const runs = new Map<string, RunHandle>();
-
 export interface AgentRuntimeOptions {
   allowedWorkspaceRoots?: string[];
   config?: ResolvedSubagentConfig;
@@ -29,6 +27,7 @@ export class AgentRuntime {
   private allowedRoots: string[];
   private runners: Partial<Record<RunnerKind, Runner>>;
   private allowedTypes: Set<SubagentType>;
+  private runs = new Map<string, RunHandle>();
   public workspacesKey: string;
 
   constructor(options?: AgentRuntimeOptions) {
@@ -112,14 +111,14 @@ export class AgentRuntime {
       );
     }
 
-    if (runs.size >= MAX_CONCURRENT_RUNS) {
+    if (this.runs.size >= MAX_CONCURRENT_RUNS) {
       throw new Error(
         `Max concurrent runs reached (${MAX_CONCURRENT_RUNS}). Cancel existing runs first.`,
       );
     }
 
     const abortController = new AbortController();
-    runs.set(runId, { abort: abortController });
+    this.runs.set(runId, { abort: abortController });
 
     log.info(`Spawning ${options.runner} run`, { runId, cwd: options.cwd });
 
@@ -144,7 +143,7 @@ export class AgentRuntime {
       }
     } finally {
       clearTimeout(timeoutHandle);
-      runs.delete(runId);
+      this.runs.delete(runId);
     }
 
     if (!sawDone) {
@@ -155,7 +154,7 @@ export class AgentRuntime {
   }
 
   cancel(runId: string): boolean {
-    const handle = runs.get(runId);
+    const handle = this.runs.get(runId);
     if (!handle) return false;
     log.info("Cancelling run", { runId });
     handle.abort.abort();
@@ -163,15 +162,15 @@ export class AgentRuntime {
   }
 
   isRunning(runId: string): boolean {
-    return runs.has(runId);
+    return this.runs.has(runId);
   }
 
   get activeCount(): number {
-    return runs.size;
+    return this.runs.size;
   }
 
   cancelAll(): void {
-    for (const runId of [...runs.keys()]) {
+    for (const runId of [...this.runs.keys()]) {
       this.cancel(runId);
     }
   }
