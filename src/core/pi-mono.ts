@@ -203,6 +203,12 @@ export class AgentServiceCache {
     // _baseSystemPrompt on every call when an extensionRunner exists
     // (which it always does when customTools are passed). See
     // pi-coding-agent agent-session.js:768-772.
+    //
+    // IMPORTANT: when we provide our own resourceLoader, the SDK does
+    // NOT call reload() for us (sdk.js only auto-reloads its own
+    // default-constructed loader). Without reload(), `systemPrompt`
+    // stays undefined and the LLM falls back to the SDK's default
+    // identity ("I'm pi...").
     const cwd = opts.cwd ?? process.cwd();
     const resourceLoader = new DefaultResourceLoader({
       cwd,
@@ -210,6 +216,7 @@ export class AgentServiceCache {
       systemPrompt: opts.systemPrompt,
       settingsManager,
     });
+    await resourceLoader.reload();
 
     const { session } = await createAgentSession({
       cwd,
