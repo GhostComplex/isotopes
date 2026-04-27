@@ -6,7 +6,7 @@ import {
   summarizeEvents,
   type RunEvent,
 } from "../agents/index.js";
-import type { InProcessOptions } from "../agents/types.js";
+import type { BuiltinOptions } from "../agents/types.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
 import { taskRegistry } from "../agents/task-registry.js";
 import { createRunRecorder } from "../agents/persistence.js";
@@ -55,8 +55,8 @@ export interface SpawnAgentOptions {
    * unset and the recorder falls back to `parentAgentId`.
    */
   targetAgentId?: string;
-  /** In-process backend options. Required when agent is not an external runner. */
-  builtin?: InProcessOptions;
+  /** Builtin runner payload. Required when agent is not an external runner. */
+  builtin?: BuiltinOptions;
 }
 
 export interface SpawnAgentResult {
@@ -65,6 +65,9 @@ export interface SpawnAgentResult {
   error?: string;
   exitCode: number;
   eventCount: number;
+  /** Session id of the recorded run under the target agent's session store.
+   * Undefined when persistence is unavailable (no store / NOOP recorder). */
+  sessionId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +179,29 @@ export async function spawnAgent(
     threadId: options.threadId,
   });
 
+  // For builtin runs (named + subagent) the SDK can persist the real
+  // structured conversation directly into the run's session. Hand the
+  // SessionManager backing this session into the BuiltinOptions so the
+  // SDK writes there. We then skip per-event recorder.record() to avoid
+  // double-writing the same session — recorder.patchMetadata() still
+  // runs at the end to capture exitCode/costUsd/durationMs.
+  let builtin = options.builtin;
+  if (builtin && store && recorder.sessionId) {
+    try {
+      const sessionManager = await store.getSessionManager(recorder.sessionId);
+      if (sessionManager) {
+        builtin = { ...builtin, sessionManager };
+      }
+    } catch (err) {
+      log.warn("Failed to obtain SessionManager for builtin spawn; falling back to per-event recorder", {
+        taskId,
+        sessionId: recorder.sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  const sdkPersists = builtin?.sessionManager !== undefined;
+
   const startedAt = Date.now();
 
   try {
@@ -188,14 +214,16 @@ export async function spawnAgent(
       maxTurns: options.maxTurns ?? 50,
       depth: options.depth,
       maxDepth: backendConfig.config?.maxDepth,
-      ...(options.builtin ? { inProcess: options.builtin } : {}),
+      ...(builtin ? { builtin } : {}),
     });
 
     const collected: RunEvent[] = [];
     for await (const event of events) {
       collected.push(event);
       options.onEvent?.(event);
-      await recorder.record(event);
+      if (!sdkPersists) {
+        await recorder.record(event);
+      }
     }
 
     const result = summarizeEvents(collected);
@@ -221,6 +249,7 @@ export async function spawnAgent(
       error: result.error,
       exitCode: result.exitCode,
       eventCount: collected.length,
+      ...(recorder.sessionId ? { sessionId: recorder.sessionId } : {}),
     };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
@@ -239,6 +268,7 @@ export async function spawnAgent(
       error,
       exitCode: 1,
       eventCount: 0,
+      ...(recorder.sessionId ? { sessionId: recorder.sessionId } : {}),
     };
   }
 }

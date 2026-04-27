@@ -10,6 +10,7 @@ import {
   type AgentSession,
   AuthStorage,
   createAgentSession,
+  DefaultResourceLoader,
   ModelRegistry,
   type SessionManager,
   SettingsManager,
@@ -195,8 +196,30 @@ export class AgentServiceCache {
       compaction: compactionSettings,
     });
 
+    // Pass the system prompt via DefaultResourceLoader so it becomes
+    // `_baseSystemPrompt` inside the SDK. Mutating
+    // `session.agent.state.systemPrompt` after creation is unreliable —
+    // the SDK's prompt() handler resets state.systemPrompt back to
+    // _baseSystemPrompt on every call when an extensionRunner exists
+    // (which it always does when customTools are passed). See
+    // pi-coding-agent agent-session.js:768-772.
+    //
+    // IMPORTANT: when we provide our own resourceLoader, the SDK does
+    // NOT call reload() for us (sdk.js only auto-reloads its own
+    // default-constructed loader). Without reload(), `systemPrompt`
+    // stays undefined and the LLM falls back to the SDK's default
+    // identity ("I'm pi...").
+    const cwd = opts.cwd ?? process.cwd();
+    const resourceLoader = new DefaultResourceLoader({
+      cwd,
+      agentDir: this.agentDir,
+      systemPrompt: opts.systemPrompt,
+      settingsManager,
+    });
+    await resourceLoader.reload();
+
     const { session } = await createAgentSession({
-      cwd: opts.cwd ?? process.cwd(),
+      cwd,
       agentDir: this.agentDir,
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
@@ -205,9 +228,8 @@ export class AgentServiceCache {
       customTools: this.customTools,
       sessionManager: opts.sessionManager,
       settingsManager,
+      resourceLoader,
     });
-
-    session.agent.state.systemPrompt = opts.systemPrompt;
 
     return session;
   }

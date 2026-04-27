@@ -38,30 +38,51 @@ export class BuiltinRunner implements Runner {
     options: RunOptions,
     signals: RunnerSignals,
   ): AsyncGenerator<RunEvent> {
-    if (!options.inProcess) {
-      yield { type: "run:error", error: "builtin runner requires options.inProcess" };
+    if (!options.builtin) {
+      yield { type: "run:error", error: "builtin runner requires options.builtin" };
       yield { type: "run:done", exitCode: 1 };
       return;
     }
 
-    const agentId = `agent-inproc-${runId}-${randomUUID().slice(0, 8)}`;
-    const tools = filterTools(options.inProcess.tools, agentId);
+    if (options.builtin.mode === "named") {
+      yield* this.runNamed(runId, options, signals, options.builtin);
+      return;
+    }
+
+    yield* this.runSubagent(runId, options, signals, options.builtin);
+  }
+
+  private async *runSubagent(
+    runId: string,
+    options: RunOptions,
+    signals: RunnerSignals,
+    builtin: Extract<NonNullable<RunOptions["builtin"]>, { mode: "subagent" }>,
+  ): AsyncGenerator<RunEvent> {
+    const agentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;
+    const tools = filterTools(builtin.tools, agentId);
     const systemPrompt = buildSpawnAgentSystemPrompt({
       task: options.prompt,
-      extraSystemPrompt: options.inProcess.extraSystemPrompt,
+      extraSystemPrompt: builtin.extraSystemPrompt,
     });
 
-    log.info("BuiltinRunner.run", { runId, agentId, toolCount: tools.list().length });
+    log.info("BuiltinRunner.run (subagent)", { runId, agentId, toolCount: tools.list().length });
 
     this.core.setToolRegistry(agentId, tools);
 
+    // Compaction is intentionally OFF for subagent spawns: the system
+    // prompt steers the agent toward terse single-shot tasks, there's no
+    // SOUL/MEMORY identity worth preserving across compactions, and
+    // compaction would add LLM-call overhead that defeats the
+    // fire-and-forget premise. Long subagent runs that overflow context
+    // will fail loudly — that's a signal the task should use a named
+    // agent or Claude CLI instead. See issue #585 for making this opt-in.
     const cache = this.core.createServiceCache({
       id: agentId,
-      provider: options.inProcess.provider,
+      provider: builtin.provider,
       compaction: { mode: "off" },
     });
 
-    const sessionManager = SessionManager.inMemory();
+    const sessionManager = builtin.sessionManager ?? SessionManager.inMemory();
     const session = await cache.createSession({
       sessionManager,
       systemPrompt,
@@ -77,6 +98,47 @@ export class BuiltinRunner implements Runner {
       signals.abort.removeEventListener("abort", onAbort);
       session.dispose();
       this.core.clearToolRegistry(agentId);
+    }
+  }
+
+  private async *runNamed(
+    runId: string,
+    options: RunOptions,
+    signals: RunnerSignals,
+    builtin: Extract<NonNullable<RunOptions["builtin"]>, { mode: "named" }>,
+  ): AsyncGenerator<RunEvent> {
+    log.info("BuiltinRunner.run (named)", { runId, agentId: options.agentId });
+
+    // Reuses the named agent's existing AgentServiceCache. The cache is
+    // immutable after construction (model/authStorage/modelRegistry/
+    // compactionConfig/customTools are set once), and `createSession`
+    // builds a fresh settingsManager per call — so concurrent spawns of
+    // the same named agent (or a spawn racing with direct user chat) are
+    // session-isolated. Compaction and provider settings deliberately
+    // inherit from the target agent's config (named = full identity);
+    // do NOT force `compaction: { mode: "off" }` here as subagent does.
+    //
+    // Note: a long spawn run that exceeds the target's context window
+    // will trigger that target's compaction policy (extra LLM call,
+    // adds cost+latency mid-spawn, leaves a summary message in the
+    // persisted session). Behavior matches a long chat session for the
+    // same target — low risk in practice (most spawns end in a few
+    // turns) but worth knowing if cost / latency spikes are observed.
+    const sessionManager = builtin.sessionManager ?? SessionManager.inMemory();
+    const session = await builtin.cache.createSession({
+      sessionManager,
+      systemPrompt: builtin.systemPrompt,
+    });
+
+    const onAbort = () => session.abort();
+    signals.abort.addEventListener("abort", onAbort, { once: true });
+    if (signals.abort.aborted) session.abort();
+
+    try {
+      yield* bridgeSessionToRunEvents(session, options.prompt);
+    } finally {
+      signals.abort.removeEventListener("abort", onAbort);
+      session.dispose();
     }
   }
 }

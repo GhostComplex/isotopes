@@ -7,10 +7,11 @@ import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
 import { spawnAgent, getSupportedAgents } from "../tools/spawn-agent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import type { RunEvent } from "../agents/types.js";
+import type { RunEvent, BuiltinOptions } from "../agents/types.js";
 import { getSpawnAgentContext, type SpawnAgentStreamContext } from "./spawn-agent-context.js";
 import { failureTracker } from "../agents/failure-tracker.js";
 import { createLogger } from "./logger.js";
+import type { AgentServiceCache } from "./pi-mono.js";
 const log = createLogger("tools:spawn-agent");
 /** Function that executes a tool call and returns a string result. */
 export type ToolHandler = (args: unknown) => Promise<string>;
@@ -168,8 +169,16 @@ export interface SpawnAgentToolOptions {
   allowedWorkspaces?: string[];
   /** Allowed agents (defaults to all available) */
   allowedAgents?: string[];
-  /** Agent manager — used to discover available in-process agents */
-  agentManager?: { list(): { id: string; spawnable?: boolean }[] };
+  /** Agent manager — used to discover available in-process agents and to
+   * resolve named-agent identity (cache, system prompt, workspace path) for
+   * named-mode spawn. `get`/`getSystemPrompt`/`getWorkspacePath` are optional
+   * so test fixtures can pass a minimal `{ list }` shim. */
+  agentManager?: {
+    list(): { id: string; spawnable?: boolean }[];
+    get?(id: string): AgentServiceCache | undefined;
+    getSystemPrompt?(id: string): string | undefined;
+    getWorkspacePath?(id: string): string | undefined;
+  };
   /** Pre-computed list of spawnable agent IDs (avoids init order issues) */
   spawnableAgentIds?: string[];
   /** Default timeout in seconds (default: 300) */
@@ -197,9 +206,23 @@ export interface SpawnAgentToolOptions {
  * spawn agent output will be streamed to a Discord thread and a summary will be
  * posted to the main channel when complete.
  */
+/**
+ * Magic agent id that triggers subagent builtin spawn (parent's
+ * provider + filtered tools + generic system prompt + task). Run
+ * sessions land in `~/.isotopes/agents/subagent/sessions/` regardless
+ * of which agent triggered the spawn — keeps real agents' session
+ * directories clean while preserving structured run history.
+ */
+export const SUBAGENT_AGENT_ID = "subagent";
+
 export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: Tool; handler: ToolHandler } {
-  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds } = options;
+  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds, agentManager } = options;
   const availableAgents: string[] = [...getSupportedAgents()];
+  // Always expose the subagent magic id, gated by parent having
+  // provider+tools to lend (always true for real agents).
+  if (parentProvider && parentTools && !availableAgents.includes(SUBAGENT_AGENT_ID)) {
+    availableAgents.push(SUBAGENT_AGENT_ID);
+  }
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
       if (!availableAgents.includes(id)) {
@@ -264,14 +287,56 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
       }
 
       try {
-        const builtin = parentProvider && parentTools
-          ? { provider: parentProvider, tools: parentTools }
-          : undefined;
+        // Resolve spawn mode:
+        //  - magic id "subagent" → subagent builtin (parent's provider+tools,
+        //    generic preamble, run session lands in subagent/ store)
+        //  - registered named agent (in agentManager) → named builtin (full
+        //    identity, run session lands in target's own sessions/)
+        //  - otherwise → external runner ("claude") via ClaudeRunner
+        const isSubagent = agent === SUBAGENT_AGENT_ID;
+        const namedCache = !isSubagent ? agentManager?.get?.(agent) : undefined;
+        const namedSystemPrompt = !isSubagent ? agentManager?.getSystemPrompt?.(agent) : undefined;
+        const namedWorkspace = !isSubagent ? agentManager?.getWorkspacePath?.(agent) : undefined;
+        const isNamed = namedCache !== undefined && namedSystemPrompt !== undefined && namedSystemPrompt.length > 0;
+
+        let builtin: BuiltinOptions | undefined;
+        let targetAgentId: string | undefined;
+        let effectiveCwd = cwd;
+        let effectiveAllowedWorkspaces = allAllowedWorkspaces;
+
+        if (isSubagent && parentProvider && parentTools) {
+          builtin = { mode: "subagent", provider: parentProvider, tools: parentTools };
+          targetAgentId = SUBAGENT_AGENT_ID;
+          log.info("Spawning subagent", { parentAgentId, cwd: effectiveCwd });
+        } else if (isNamed) {
+          builtin = { mode: "named", cache: namedCache, systemPrompt: namedSystemPrompt };
+          targetAgentId = agent;
+          if (namedWorkspace) {
+            // Named agents run in their OWN workspace, not the parent's.
+            // The parent cannot scope a named-agent spawn to the parent's
+            // filesystem — by design, the named agent retains its full
+            // identity including cwd. We append the target's workspace
+            // to allowedWorkspaces so AgentRuntime.validateCwd accepts it.
+            effectiveCwd = namedWorkspace;
+            effectiveAllowedWorkspaces = [...allAllowedWorkspaces, namedWorkspace];
+          }
+          log.info("Spawning named agent", { agent, parentAgentId, cwd: effectiveCwd });
+        } else if (!isSubagent && namedCache !== undefined && (namedSystemPrompt === undefined || namedSystemPrompt.length === 0)) {
+          // The agent is registered in agentManager but its assembled
+          // systemPrompt is empty (init race / hot-reload mid-flight).
+          // Don't silently fall through to the external-runner path —
+          // surface it so the user sees a misroute instead of a
+          // confusing "agent not found" from ClaudeRunner.
+          log.warn("Named agent has empty systemPrompt; spawn will route to external runner and likely fail", { agent });
+        }
+        // Other agent ids (e.g. "claude") don't get a builtin payload —
+        // they go to the external runner registered for that id.
+
         let result: string;
         if (discordContext) {
-          result = await runSpawnAgentWithStreaming(task, agent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin);
+          result = await runSpawnAgentWithStreaming(task, agent, effectiveCwd, timeout, effectiveAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin, targetAgentId);
         } else {
-          result = await runSpawnAgentPlain(task, agent, cwd, timeout, allAllowedWorkspaces, maxTurns, parentAgentId, builtin);
+          result = await runSpawnAgentPlain(task, agent, effectiveCwd, timeout, effectiveAllowedWorkspaces, maxTurns, parentAgentId, builtin, targetAgentId);
         }
 
         // Record failure if result indicates failure
@@ -302,7 +367,8 @@ async function runSpawnAgentPlain(
   allowedWorkspaces: string[],
   maxTurns?: number,
   parentAgentId?: string,
-  builtin?: { provider: ProviderConfig; tools: ToolRegistry },
+  builtin?: BuiltinOptions,
+  targetAgentId?: string,
 ): Promise<string> {
   const result = await spawnAgent(task, {
     agent,
@@ -311,6 +377,7 @@ async function runSpawnAgentPlain(
     allowedWorkspaces,
     maxTurns,
     parentAgentId,
+    ...(targetAgentId ? { targetAgentId } : {}),
     ...(builtin ? { builtin } : {}),
   });
   if (result.success) {
@@ -332,7 +399,8 @@ async function runSpawnAgentWithStreaming(
   context: SpawnAgentStreamContext,
   maxTurns?: number,
   parentAgentId?: string,
-  builtin?: { provider: ProviderConfig; tools: ToolRegistry },
+  builtin?: BuiltinOptions,
+  targetAgentId?: string,
 ): Promise<string> {
   const { channelId, showToolCalls = true, onComplete } = context;
   const sink = context.createSink(channelId, { showToolCalls, useThread: true });
@@ -354,6 +422,7 @@ async function runSpawnAgentWithStreaming(
       channelId,
       threadId,
       parentAgentId,
+      ...(targetAgentId ? { targetAgentId } : {}),
       ...(builtin ? { builtin } : {}),
       onEvent: async (event) => {
         events.push(event);
@@ -756,7 +825,12 @@ export function createWorkspaceToolsWithGuards(
   parentAgentId?: string,
   parentProvider?: ProviderConfig,
   parentTools?: ToolRegistry,
-  agentManager?: { list(): { id: string; spawnable?: boolean }[] },
+  agentManager?: {
+    list(): { id: string; spawnable?: boolean }[];
+    get?(id: string): AgentServiceCache | undefined;
+    getSystemPrompt?(id: string): string | undefined;
+    getWorkspacePath?(id: string): string | undefined;
+  },
   spawnableAgentIds?: string[],
 ): { tool: Tool; handler: ToolHandler }[] {
   const fileOpts: FileToolOptions = { workspacePath, fsImpl };
@@ -768,7 +842,7 @@ export function createWorkspaceToolsWithGuards(
     createTimeTool(),
   ];
   if (spawnAgentEnabled) {
-    tools.push(createSpawnAgentTool({ workspacePath, allowedWorkspaces, maxTurns: spawnAgentMaxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds }));
+    tools.push(createSpawnAgentTool({ workspacePath, allowedWorkspaces, maxTurns: spawnAgentMaxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds, agentManager }));
   }
   if (settings?.web) {
     tools.push(createWebFetchTool());

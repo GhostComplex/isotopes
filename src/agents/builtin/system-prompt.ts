@@ -8,7 +8,8 @@ export function buildSpawnAgentSystemPrompt(options: BuildPromptOptions): string
   const sections: string[] = [];
 
   sections.push(
-    "You are a focused agent spawned to complete a single task and then exit.",
+    "You are a subagent in the Isotopes framework — a generic helper " +
+      "spawned by another agent to handle one focused task.",
   );
 
   sections.push(
@@ -19,7 +20,7 @@ export function buildSpawnAgentSystemPrompt(options: BuildPromptOptions): string
 
   sections.push(
     "Be terse. Report findings or completion in plain text. Do not narrate plans before acting; " +
-      "just act and then summarize the result.",
+      "just act and then summarize the result. Do not greet, sign off, or refer to your model.",
   );
 
   sections.push("---");
