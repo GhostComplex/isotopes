@@ -187,9 +187,17 @@ export async function spawnAgent(
   // runs at the end to capture exitCode/costUsd/durationMs.
   let builtin = options.builtin;
   if (builtin && store && recorder.sessionId) {
-    const sessionManager = await store.getSessionManager(recorder.sessionId);
-    if (sessionManager) {
-      builtin = { ...builtin, sessionManager };
+    try {
+      const sessionManager = await store.getSessionManager(recorder.sessionId);
+      if (sessionManager) {
+        builtin = { ...builtin, sessionManager };
+      }
+    } catch (err) {
+      log.warn("Failed to obtain SessionManager for builtin spawn; falling back to per-event recorder", {
+        taskId,
+        sessionId: recorder.sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
   const sdkPersists = builtin?.sessionManager !== undefined;

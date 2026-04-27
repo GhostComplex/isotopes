@@ -337,4 +337,57 @@ describe("BuiltinRunner", () => {
       { type: "run:done", exitCode: 0 },
     ]);
   });
+
+  it("named mode: forwards abort signal to the underlying session", async () => {
+    interface FakeNamedSession {
+      _cb: ((event: { type: string }) => void) | null;
+      subscribe: ReturnType<typeof vi.fn>;
+      prompt: ReturnType<typeof vi.fn>;
+      abort: ReturnType<typeof vi.fn>;
+      dispose: ReturnType<typeof vi.fn>;
+      agent: { state: { systemPrompt: string } };
+    }
+    const namedSession: FakeNamedSession = {
+      _cb: null,
+      subscribe: vi.fn((cb: (event: { type: string }) => void) => {
+        namedSession._cb = cb;
+        return () => {};
+      }),
+      prompt: vi.fn(async () => {
+        // Emit agent_end so bridgeSessionToRunEvents terminates
+        if (namedSession._cb) namedSession._cb({ type: "agent_end", messages: [] } as never);
+      }),
+      abort: vi.fn(),
+      dispose: vi.fn(),
+      agent: { state: { systemPrompt: "" } },
+    };
+    const namedCache = {
+      createSession: vi.fn().mockResolvedValue(namedSession),
+    } as unknown as AgentServiceCache;
+    const core = {
+      setToolRegistry: vi.fn(),
+      clearToolRegistry: vi.fn(),
+      createServiceCache: vi.fn(),
+    } as unknown as PiMonoCore;
+    const runner = new BuiltinRunner(core);
+
+    const ac = new AbortController();
+    ac.abort();
+
+    await collect(
+      runner.run(
+        "task-named-abort",
+        {
+          agentId: "eous",
+          prompt: "p",
+          cwd: "/eous-workspace",
+          builtin: { mode: "named", cache: namedCache, systemPrompt: "I am eous." },
+        },
+        { abort: ac.signal },
+      ),
+    );
+
+    expect(namedSession.abort).toHaveBeenCalled();
+    expect(namedSession.dispose).toHaveBeenCalled();
+  });
 });

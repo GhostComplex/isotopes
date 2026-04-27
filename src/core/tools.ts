@@ -321,9 +321,16 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
             effectiveAllowedWorkspaces = [...allAllowedWorkspaces, namedWorkspace];
           }
           log.info("Spawning named agent", { agent, parentAgentId, cwd: effectiveCwd });
-        } else if (parentProvider && parentTools) {
-          builtin = { mode: "subagent", provider: parentProvider, tools: parentTools };
+        } else if (!isSubagent && namedCache !== undefined && (namedSystemPrompt === undefined || namedSystemPrompt.length === 0)) {
+          // The agent is registered in agentManager but its assembled
+          // systemPrompt is empty (init race / hot-reload mid-flight).
+          // Don't silently fall through to the external-runner path —
+          // surface it so the user sees a misroute instead of a
+          // confusing "agent not found" from ClaudeRunner.
+          log.warn("Named agent has empty systemPrompt; spawn will route to external runner and likely fail", { agent });
         }
+        // Other agent ids (e.g. "claude") don't get a builtin payload —
+        // they go to the external runner registered for that id.
 
         let result: string;
         if (discordContext) {

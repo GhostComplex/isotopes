@@ -116,6 +116,54 @@ describe("spawnAgent", () => {
     expect(events).toHaveLength(3);
     expect(events[1]).toEqual({ type: "run:tool_use", toolName: "Read" });
   });
+
+  it("skips per-event recorder when builtin SDK persists via injected SessionManager", async () => {
+    vi.resetModules();
+    const { initSpawnBackend, spawnAgent, setSpawnSessionStoreFactory } = await import("./spawn-agent.js");
+    initSpawnBackend({ config: { claude: { permissionMode: "allowlist", allowedTools: [] }, useThread: true, showToolCalls: true } });
+
+    const addMessage = vi.fn();
+    const setMetadata = vi.fn();
+    const fakeStore = {
+      create: vi.fn(async () => ({ id: "sess-1" })),
+      addMessage,
+      setMetadata,
+      get: vi.fn(async () => ({ id: "sess-1", metadata: {} })),
+      getSessionManager: vi.fn(async () => ({ /* fake SessionManager */ })),
+    };
+    setSpawnSessionStoreFactory(() => fakeStore as never);
+
+    spawnMock.mockReturnValue(
+      eventGen(
+        { type: "run:start" },
+        { type: "run:message", content: "hello" },
+        { type: "run:tool_use", toolName: "Read" },
+        { type: "run:tool_result", toolName: "Read", toolResult: "ok" },
+        { type: "run:done", exitCode: 0 },
+      ),
+    );
+
+    await spawnAgent("t", {
+      agent: "subagent",
+      cwd: process.cwd(),
+      parentAgentId: "main",
+      targetAgentId: "subagent",
+      builtin: {
+        mode: "subagent",
+        provider: { type: "anthropic", model: "claude-sonnet-4-5" } as never,
+        tools: { list: () => [] } as never,
+      },
+    });
+
+    // SDK persisted path → per-event recorder should NOT have written messages
+    expect(addMessage).not.toHaveBeenCalled();
+    // patchMetadata still runs at completion
+    expect(setMetadata).toHaveBeenCalled();
+    // Verify SessionManager was requested
+    expect(fakeStore.getSessionManager).toHaveBeenCalledWith("sess-1");
+
+    setSpawnSessionStoreFactory(undefined);
+  });
 });
 
 describe("getSupportedAgents", () => {
