@@ -169,15 +169,19 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     const blocks: ContentBlock[] = [];
     const abort = new AbortController();
     abortRef.current = abort;
+    const streamMsgId = `stream-${Date.now()}`;
 
     const updateAssistant = () => {
       const fullText = blocks.filter((b) => b.type === "text").map((b) => b.text).join("");
+      const assistantMsg: ChatMessage = { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date(), id: streamMsgId };
       setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === "assistant") {
-          return [...prev.slice(0, -1), { ...last, content: fullText, blocks: [...blocks] }];
+        const idx = prev.findIndex((m) => m.id === streamMsgId);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = assistantMsg;
+          return updated;
         }
-        return [...prev, { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date() }];
+        return [...prev, assistantMsg];
       });
     };
 

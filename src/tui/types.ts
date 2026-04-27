@@ -7,6 +7,7 @@ export interface ChatMessage {
   content: string;
   blocks?: ContentBlock[];
   timestamp: Date;
+  id?: string;
 }
 
 export interface ToolCallEntry {
