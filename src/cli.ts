@@ -180,7 +180,6 @@ Usage:
   isotopes stop                      Stop the running daemon
   isotopes status                    Show daemon status
   isotopes restart [--config path]   Restart the daemon
-  isotopes reload [agentId]          Reload workspace (hot-reload)
 
   isotopes tui [--agent id] [--message "text"]
                                      Interactive TUI chat with an agent
