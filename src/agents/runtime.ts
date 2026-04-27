@@ -2,6 +2,7 @@ import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { createLogger } from "../core/logger.js";
 import type { RunnerKind, RunEvent, RunOptions } from "./types.js";
+import { summarizeEvents } from "./helpers.js";
 import type { ResolvedSubagentConfig, SubagentType } from "../core/config.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
 import type { Runner } from "./runner.js";
@@ -128,17 +129,23 @@ export class AgentRuntime {
     const timeoutHandle = setTimeout(() => abortController.abort(), timeoutSec * 1000);
     timeoutHandle.unref();
 
+    const collected: RunEvent[] = [{ type: "run:start" }];
     let sawDone = false;
     try {
       for await (const ev of runner.run(runId, options, { abort: abortController.signal })) {
         if (ev.type === "run:done") sawDone = true;
+        collected.push(ev);
         yield ev;
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      yield { type: "run:error", error: msg };
+      const errEv: RunEvent = { type: "run:error", error: msg };
+      collected.push(errEv);
+      yield errEv;
       if (!sawDone) {
-        yield { type: "run:done", exitCode: 1 };
+        const doneEv: RunEvent = { type: "run:done", exitCode: 1 };
+        collected.push(doneEv);
+        yield doneEv;
         sawDone = true;
       }
     } finally {
@@ -147,10 +154,20 @@ export class AgentRuntime {
     }
 
     if (!sawDone) {
-      yield { type: "run:done", exitCode: 0 };
+      const doneEv: RunEvent = { type: "run:done", exitCode: 0 };
+      collected.push(doneEv);
+      yield doneEv;
     }
 
     log.info(`${options.runner} run completed`, { runId });
+
+    if (options.onComplete) {
+      try {
+        await options.onComplete(summarizeEvents(collected));
+      } catch (err) {
+        log.warn("onComplete callback failed", { runId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
   }
 
   cancel(runId: string): boolean {

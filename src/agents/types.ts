@@ -30,6 +30,8 @@ export interface InProcessOptions {
   extraSystemPrompt?: string;
 }
 
+export type OnCompleteCallback = (result: RunResult) => void | Promise<void>;
+
 export interface RunOptions {
   runner: RunnerKind;
   prompt: string;
@@ -40,6 +42,7 @@ export interface RunOptions {
   timeout?: number;
   maxTurns?: number;
   inProcess?: InProcessOptions;
+  onComplete?: OnCompleteCallback;
 }
 
 export interface RunTask extends Pick<RunOptions, "runner" | "prompt" | "cwd" | "model" | "permissionMode" | "allowedTools" | "timeout" | "maxTurns"> {

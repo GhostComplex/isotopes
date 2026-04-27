@@ -11,7 +11,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 
 import { AgentRuntime, MAX_CONCURRENT_RUNS } from "./runtime.js";
 import { ExternalRunner, mapSdkToRunEvent } from "./runners/external.js";
-import type { RunEvent } from "./types.js";
+import type { RunEvent, RunResult } from "./types.js";
 import { collectResult } from "./helpers.js";
 
 describe("mapSdkToRunEvent", () => {
@@ -174,6 +174,48 @@ describe("AgentRuntime", () => {
 
   it("exposes MAX_CONCURRENT_RUNS", () => {
     expect(MAX_CONCURRENT_RUNS).toBe(5);
+  });
+
+  it("calls onComplete with RunResult after all events are yielded", async () => {
+    async function* sdkStream(): AsyncGenerator<SDKMessage> {
+      yield { type: "assistant", message: { content: [{ type: "text", text: "done" }] } } as unknown as SDKMessage;
+      yield { type: "result", subtype: "success", total_cost_usd: 0.05 } as unknown as SDKMessage;
+    }
+    mockQuery.mockReturnValue(sdkStream());
+
+    let capturedResult: RunResult | undefined;
+    const events: RunEvent[] = [];
+    for await (const ev of runtime.spawn("t-cb", {
+      runner: "external",
+      prompt: "hi",
+      cwd: process.cwd(),
+      onComplete: (result) => { capturedResult = result; },
+    })) {
+      events.push(ev);
+    }
+    expect(capturedResult).toBeDefined();
+    expect(capturedResult!.success).toBe(true);
+    expect(capturedResult!.exitCode).toBe(0);
+    expect(capturedResult!.output).toBe("done");
+    expect(capturedResult!.costUsd).toBe(0.05);
+  });
+
+  it("swallows onComplete errors without breaking the run", async () => {
+    async function* sdkStream(): AsyncGenerator<SDKMessage> {
+      yield { type: "result", subtype: "success", total_cost_usd: 0 } as unknown as SDKMessage;
+    }
+    mockQuery.mockReturnValue(sdkStream());
+
+    const events: RunEvent[] = [];
+    for await (const ev of runtime.spawn("t-cb-err", {
+      runner: "external",
+      prompt: "hi",
+      cwd: process.cwd(),
+      onComplete: () => { throw new Error("callback boom"); },
+    })) {
+      events.push(ev);
+    }
+    expect(events.some(e => e.type === "run:done")).toBe(true);
   });
 });
 

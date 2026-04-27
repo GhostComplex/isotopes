@@ -6,6 +6,7 @@ export type {
   RunOptions,
   InProcessOptions,
   RunTask,
+  OnCompleteCallback,
 } from "./types.js";
 
 export type { Runner, RunnerSignals } from "./runner.js";
