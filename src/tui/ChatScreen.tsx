@@ -264,17 +264,20 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
   const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
   const contentWidth = (process.stdout.columns || 80) - 2;
+  const headerHeight = 3;
+  const inputHeight = 3;
+  const messageHeight = (process.stdout.rows || 24) - headerHeight - inputHeight;
 
   return (
     <Box flexDirection="column" height={process.stdout.rows}>
-      <Box borderStyle="single" paddingX={1}>
+      <Box borderStyle="single" paddingX={1} height={headerHeight}>
         <Text bold>isotopes</Text>
         <Text> — agent: </Text>
         <Text color="cyan">{agentId || "loading..."}</Text>
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
-      <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
+      <Box flexDirection="column" paddingX={1} height={messageHeight} overflow="hidden">
         {error && <Text color="red">{error}</Text>}
         {!agentReady && !error && <Text color="gray">Loading agent...</Text>}
         {visible.map((msg, i) => {
