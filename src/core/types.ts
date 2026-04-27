@@ -79,26 +79,9 @@ export interface Session {
   lastActiveAt: Date;
 }
 
-/** Per-run metadata for a spawn agent session (presence flags this as a spawn agent run). */
-export interface SpawnAgentSessionMetadata {
-  parentAgentId: string;
-  parentSessionId?: string;
-  taskId: string;
-  backend: string;
-  cwd?: string;
-  prompt?: string;
-  /** Populated on terminal event (done/error). */
-  exitCode?: number;
-  costUsd?: number;
-  durationMs?: number;
-  error?: string;
-}
-
 /**
  * Session metadata. `transport` is set for sessions originating from a chat
- * transport (discord/web). Spawn agent runs have `spawnAgent` populated
- * and no `transport` — use `metadata.spawnAgent !== undefined` as the
- * discriminator.
+ * transport (discord/web).
  */
 export interface SessionMetadata {
   key?: string;                        // Unique key for session lookup (e.g., discord:{botId}:channel:{id}:{agentId})
@@ -109,8 +92,6 @@ export interface SessionMetadata {
   threadId?: string;
   /** If true, session is exempt from TTL-based cleanup */
   persistent?: boolean;
-  /** Spawn agent run metadata; presence indicates the session backs a spawn agent run. */
-  spawnAgent?: SpawnAgentSessionMetadata;
 }
 
 /** Session TTL and cleanup configuration */

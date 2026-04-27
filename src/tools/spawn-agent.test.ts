@@ -117,19 +117,15 @@ describe("spawnAgent", () => {
     expect(events[1]).toEqual({ type: "run:tool_use", toolName: "Read" });
   });
 
-  it("skips per-event recorder when builtin SDK persists via injected SessionManager", async () => {
+  it("creates a session and injects SessionManager for builtin spawns", async () => {
     vi.resetModules();
     const { initSpawnBackend, spawnAgent, setSpawnSessionStoreFactory } = await import("./spawn-agent.js");
     initSpawnBackend({ config: { claude: { permissionMode: "allowlist", allowedTools: [] }, useThread: true, showToolCalls: true } });
 
-    const addMessage = vi.fn();
-    const setMetadata = vi.fn();
+    const fakeSessionManager = { fake: true };
     const fakeStore = {
       create: vi.fn(async () => ({ id: "sess-1" })),
-      addMessage,
-      setMetadata,
-      get: vi.fn(async () => ({ id: "sess-1", metadata: {} })),
-      getSessionManager: vi.fn(async () => ({ /* fake SessionManager */ })),
+      getSessionManager: vi.fn(async () => fakeSessionManager),
     };
     setSpawnSessionStoreFactory(() => fakeStore as never);
 
@@ -137,8 +133,6 @@ describe("spawnAgent", () => {
       eventGen(
         { type: "run:start" },
         { type: "run:message", content: "hello" },
-        { type: "run:tool_use", toolName: "Read" },
-        { type: "run:tool_result", toolName: "Read", toolResult: "ok" },
         { type: "run:done", exitCode: 0 },
       ),
     );
@@ -155,12 +149,33 @@ describe("spawnAgent", () => {
       },
     });
 
-    // SDK persisted path → per-event recorder should NOT have written messages
-    expect(addMessage).not.toHaveBeenCalled();
-    // patchMetadata still runs at completion
-    expect(setMetadata).toHaveBeenCalled();
-    // Verify SessionManager was requested
+    expect(fakeStore.create).toHaveBeenCalledWith("subagent");
     expect(fakeStore.getSessionManager).toHaveBeenCalledWith("sess-1");
+    const builtinArg = spawnMock.mock.calls[0][1].builtin;
+    expect(builtinArg.sessionManager).toBe(fakeSessionManager);
+
+    setSpawnSessionStoreFactory(undefined);
+  });
+
+  it("does not touch the store for claude (non-builtin) spawns", async () => {
+    vi.resetModules();
+    const { initSpawnBackend, spawnAgent, setSpawnSessionStoreFactory } = await import("./spawn-agent.js");
+    initSpawnBackend({ config: { claude: { permissionMode: "allowlist", allowedTools: [] }, useThread: true, showToolCalls: true } });
+
+    const fakeStore = {
+      create: vi.fn(),
+      getSessionManager: vi.fn(),
+    };
+    setSpawnSessionStoreFactory(() => fakeStore as never);
+
+    spawnMock.mockReturnValue(
+      eventGen({ type: "run:start" }, { type: "run:done", exitCode: 0 }),
+    );
+
+    await spawnAgent("t", { agent: "claude", cwd: process.cwd() });
+
+    expect(fakeStore.create).not.toHaveBeenCalled();
+    expect(fakeStore.getSessionManager).not.toHaveBeenCalled();
 
     setSpawnSessionStoreFactory(undefined);
   });
