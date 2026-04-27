@@ -8,9 +8,9 @@ import {
 import type { RunEvent, RunOptions } from "../types.js";
 import type { RunnerSignals, Runner } from "../runner.js";
 
-const log = createLogger("agents:runner:external");
+const log = createLogger("agents:runner:claude");
 
-export interface ExternalRunnerOptions {
+export interface ClaudeRunnerOptions {
   permissionMode?: SpawnPermissionMode;
   allowedTools?: string[];
   settingSources?: SettingSource[];
@@ -93,12 +93,12 @@ function translatePermissionMode(
   }
 }
 
-export class ExternalRunner implements Runner {
+export class ClaudeRunner implements Runner {
   private permissionMode: SpawnPermissionMode;
   private allowedTools: string[];
   private settingSources: SettingSource[];
 
-  constructor(options?: ExternalRunnerOptions) {
+  constructor(options?: ClaudeRunnerOptions) {
     this.permissionMode = options?.permissionMode ?? "allowlist";
     this.allowedTools = options?.allowedTools ?? [...DEFAULT_SPAWN_ALLOWED_TOOLS];
     this.settingSources = options?.settingSources ?? ["user"];
@@ -127,7 +127,7 @@ export class ExternalRunner implements Runner {
     options: RunOptions,
     signals: RunnerSignals,
   ): AsyncGenerator<RunEvent> {
-    log.info("ExternalRunner.run", { runId, cwd: options.cwd });
+    log.info("ClaudeRunner.run", { runId, cwd: options.cwd });
 
     const sdkAbort = new AbortController();
     const onAbort = () => sdkAbort.abort();

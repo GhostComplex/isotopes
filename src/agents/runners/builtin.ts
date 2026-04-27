@@ -17,7 +17,7 @@ const DENIED_TOOLS: ReadonlySet<string> = new Set([
   "spawn_agent",
 ]);
 
-const log = createLogger("agents:runner:in-process");
+const log = createLogger("agents:runner:builtin");
 
 const AGENT_EVENT_TYPES = new Set([
   "agent_start", "agent_end",
@@ -30,7 +30,7 @@ function isAgentEvent(e: { type: string }): e is AgentEvent {
   return AGENT_EVENT_TYPES.has(e.type);
 }
 
-export class InProcessRunner implements Runner {
+export class BuiltinRunner implements Runner {
   constructor(private readonly core: PiMonoCore) {}
 
   async *run(
@@ -39,7 +39,7 @@ export class InProcessRunner implements Runner {
     signals: RunnerSignals,
   ): AsyncGenerator<RunEvent> {
     if (!options.inProcess) {
-      yield { type: "run:error", error: "in-process runner requires options.inProcess" };
+      yield { type: "run:error", error: "builtin runner requires options.inProcess" };
       yield { type: "run:done", exitCode: 1 };
       return;
     }
@@ -51,7 +51,7 @@ export class InProcessRunner implements Runner {
       extraSystemPrompt: options.inProcess.extraSystemPrompt,
     });
 
-    log.info("InProcessRunner.run", { runId, agentId, toolCount: tools.list().length });
+    log.info("BuiltinRunner.run", { runId, agentId, toolCount: tools.list().length });
 
     this.core.setToolRegistry(agentId, tools);
 

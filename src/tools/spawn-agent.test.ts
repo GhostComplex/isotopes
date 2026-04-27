@@ -21,7 +21,7 @@ vi.mock("../agents/index.js", async () => {
         return 0;
       },
       getExternalRunnerIds: () => ["claude"],
-      hasInProcessRunner: () => false,
+      hasBuiltinRunner: () => false,
     })),
   };
 });

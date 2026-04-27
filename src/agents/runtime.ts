@@ -6,8 +6,8 @@ import { summarizeEvents } from "./helpers.js";
 import type { ResolvedSpawningConfig } from "../core/config.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
 import type { Runner } from "./runner.js";
-import { ExternalRunner } from "./runners/external.js";
-import { InProcessRunner } from "./runners/in-process.js";
+import { ClaudeRunner } from "./runners/claude.js";
+import { BuiltinRunner } from "./runners/builtin.js";
 
 const log = createLogger("agents:runtime");
 
@@ -28,7 +28,7 @@ export interface AgentRuntimeOptions {
 export class AgentRuntime {
   private allowedRoots: string[];
   private externalRunners: Map<string, Runner>;
-  private inProcessRunner?: InProcessRunner;
+  private builtinRunner?: BuiltinRunner;
   private runs = new Map<string, RunHandle>();
   public workspacesKey: string;
 
@@ -43,7 +43,7 @@ export class AgentRuntime {
     } else {
       this.externalRunners = new Map();
       const claude = opts.config?.claude;
-      this.externalRunners.set("claude", new ExternalRunner({
+      this.externalRunners.set("claude", new ClaudeRunner({
         permissionMode: claude?.permissionMode,
         allowedTools: claude?.allowedTools,
         settingSources: claude?.settingSources,
@@ -51,7 +51,7 @@ export class AgentRuntime {
     }
 
     if (opts.core) {
-      this.inProcessRunner = new InProcessRunner(opts.core);
+      this.builtinRunner = new BuiltinRunner(opts.core);
     }
   }
 
@@ -59,8 +59,8 @@ export class AgentRuntime {
     return [...this.externalRunners.keys()];
   }
 
-  hasInProcessRunner(): boolean {
-    return this.inProcessRunner !== undefined;
+  hasBuiltinRunner(): boolean {
+    return this.builtinRunner !== undefined;
   }
 
   validateCwd(cwd: string): void {
@@ -99,11 +99,11 @@ export class AgentRuntime {
     const external = this.externalRunners.get(agentId);
     if (external) return external;
 
-    if (this.inProcessRunner) return this.inProcessRunner;
+    if (this.builtinRunner) return this.builtinRunner;
 
     throw new Error(
       `No runner available for agent "${agentId}". ` +
-      "Pass `core` when constructing AgentRuntime to enable in-process runners.",
+      "Pass `core` when constructing AgentRuntime to enable builtin runners.",
     );
   }
 

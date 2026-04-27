@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { AgentConfig, ProviderConfig } from "../../core/types.js";
 import { ToolRegistry } from "../../core/tools.js";
 import type { RunEvent } from "../types.js";
-import { InProcessRunner } from "./in-process.js";
+import { BuiltinRunner } from "./builtin.js";
 import type { AgentServiceCache, PiMonoCore } from "../../core/pi-mono.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
@@ -85,10 +85,10 @@ async function collect(gen: AsyncGenerator<RunEvent>): Promise<RunEvent[]> {
   return out;
 }
 
-describe("InProcessRunner", () => {
+describe("BuiltinRunner", () => {
   it("yields error+done(1) when options.inProcess is missing", async () => {
     const harness = makeCore([]);
-    const runner = new InProcessRunner(harness.core);
+    const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run(
         "task-1",
@@ -107,7 +107,7 @@ describe("InProcessRunner", () => {
       { type: "turn_end", message: {} as never, toolResults: [] } as AgentEvent,
       { type: "agent_end", messages: [] } as AgentEvent,
     ]);
-    const runner = new InProcessRunner(harness.core);
+    const runner = new BuiltinRunner(harness.core);
     const tools = makeRegistry(["read_file", "write_file", "shell"]);
 
     const out = await collect(
@@ -141,7 +141,7 @@ describe("InProcessRunner", () => {
       { type: "turn_start" } as AgentEvent,
       { type: "agent_end", messages: [] } as AgentEvent,
     ]);
-    const runner = new InProcessRunner(harness.core);
+    const runner = new BuiltinRunner(harness.core);
     const ac = new AbortController();
     ac.abort();
 
@@ -168,7 +168,7 @@ describe("InProcessRunner", () => {
       { type: "turn_end", message: {} as never, toolResults: [] } as AgentEvent,
       { type: "agent_end", messages: [] } as AgentEvent,
     ]);
-    const runner = new InProcessRunner(harness.core);
+    const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run("task-skip", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
@@ -183,7 +183,7 @@ describe("InProcessRunner", () => {
       { type: "tool_execution_start", toolCallId: "1", toolName: "shell", args: { cmd: "ls" } } as AgentEvent,
       { type: "agent_end", messages: [] } as AgentEvent,
     ]);
-    const runner = new InProcessRunner(harness.core);
+    const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run("task-tool", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
@@ -199,7 +199,7 @@ describe("InProcessRunner", () => {
       { type: "tool_execution_end", toolCallId: "2", toolName: "test", result: "boom", isError: true } as AgentEvent,
       { type: "agent_end", messages: [] } as AgentEvent,
     ]);
-    const runner = new InProcessRunner(harness.core);
+    const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run("task-tresult", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
@@ -214,7 +214,7 @@ describe("InProcessRunner", () => {
     const harness = makeCore([
       { type: "agent_end", messages: [{ role: "assistant", errorMessage: "kaboom", content: [], timestamp: 0 }] } as unknown as AgentEvent,
     ]);
-    const runner = new InProcessRunner(harness.core);
+    const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run("task-err", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
@@ -245,7 +245,7 @@ describe("InProcessRunner", () => {
       clearToolRegistry: (id: string) => clearedIds.push(id),
       createServiceCache: () => errCache,
     } as unknown as PiMonoCore;
-    const runner = new InProcessRunner(core);
+    const runner = new BuiltinRunner(core);
 
     const out = await collect(
       runner.run(

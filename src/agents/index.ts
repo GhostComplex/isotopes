@@ -33,4 +33,4 @@ export {
 } from "./persistence.js";
 export type { RunRecorder, CreateRecorderOptions } from "./persistence.js";
 
-export { mapSdkToRunEvent } from "./runners/external.js";
+export { mapSdkToRunEvent } from "./runners/claude.js";

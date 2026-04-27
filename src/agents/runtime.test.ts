@@ -10,7 +10,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 import { AgentRuntime, MAX_CONCURRENT_RUNS, DEFAULT_MAX_DEPTH } from "./runtime.js";
-import { ExternalRunner, mapSdkToRunEvent } from "./runners/external.js";
+import { ClaudeRunner, mapSdkToRunEvent } from "./runners/claude.js";
 import type { RunEvent, RunResult } from "./types.js";
 import { collectResult } from "./helpers.js";
 
@@ -289,9 +289,9 @@ describe("AgentRuntime depth limiting", () => {
   });
 });
 
-describe("ExternalRunner.buildSdkOptions settingSources", () => {
+describe("ClaudeRunner.buildSdkOptions settingSources", () => {
   it("defaults settingSources to ['user']", () => {
-    const runner = new ExternalRunner({});
+    const runner = new ClaudeRunner({});
     const opts = runner.buildSdkOptions(
       { agentId: "claude", cwd: "/tmp", prompt: "hi" },
       new AbortController(),
@@ -301,7 +301,7 @@ describe("ExternalRunner.buildSdkOptions settingSources", () => {
   });
 
   it("forwards explicit settingSources, including empty array (opt-out)", () => {
-    const runner = new ExternalRunner({ settingSources: [] });
+    const runner = new ClaudeRunner({ settingSources: [] });
     const opts = runner.buildSdkOptions(
       { agentId: "claude", cwd: "/tmp", prompt: "hi" },
       new AbortController(),
