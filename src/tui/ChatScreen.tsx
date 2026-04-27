@@ -27,10 +27,14 @@ function historyToChatMessages(items: Array<{ role: string; type?: string; conte
   let current: { text: string; blocks: ContentBlock[]; timestamp: Date } | null = null;
 
   const flushAssistant = () => {
-    if (current) {
+    if (current && (current.text || current.blocks.length > 0)) {
+      // Mark all tool calls as completed in history
+      for (const b of current.blocks) {
+        if (b.type === "tool" && !b.result) b.result = "✓";
+      }
       result.push({ role: "assistant", content: current.text, blocks: current.blocks.length > 0 ? current.blocks : undefined, timestamp: current.timestamp });
-      current = null;
     }
+    current = null;
   };
 
   for (const m of items) {
@@ -67,21 +71,6 @@ function historyToChatMessages(items: Array<{ role: string; type?: string; conte
       } else if (typeof m.content === "string") {
         current.text += m.content;
         current.blocks.push({ type: "text", text: m.content });
-      }
-    } else if (role === "toolResult") {
-      if (current) {
-        const resultContent = m.content;
-        const tc = [...current.blocks].reverse().find((b): b is ContentBlock & { type: "tool" } => b.type === "tool" && !b.result);
-        if (tc) {
-          let isError = false;
-          if (Array.isArray(resultContent)) {
-            for (const b of resultContent as Array<Record<string, unknown>>) {
-              if (b.type === "text" && typeof b.text === "string" && (b.text as string).startsWith("[error]")) isError = true;
-            }
-          }
-          tc.result = "✓";
-          tc.isError = isError;
-        }
       }
     }
   }
