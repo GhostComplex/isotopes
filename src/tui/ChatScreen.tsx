@@ -255,27 +255,54 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       <Box flexDirection="column" flexGrow={1} paddingX={1} width={process.stdout.columns} overflow="hidden">
         {error && <Text color="red">{error}</Text>}
         {!agentReady && !error && <Text color="gray">Loading agent...</Text>}
-        {visible.map((msg, i) => (
-          <Box key={i} flexDirection="column">
-            <Text wrap="wrap">
-              <Text color={msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray"} bold>
-                {msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System"}
-              </Text>
-              <Text>: </Text>
-            </Text>
-            {msg.blocks ? msg.blocks.map((block, j) => (
-              block.type === "text" ? (
-                <Text key={j} wrap="wrap">{block.text}</Text>
-              ) : (
+        {visible.map((msg, i) => {
+          const roleLabel = msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System";
+          const roleColor = msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray";
+
+          if (!msg.blocks) {
+            return (
+              <Box key={i} flexDirection="column">
+                <Text wrap="wrap">
+                  <Text color={roleColor} bold>{roleLabel}</Text>
+                  <Text>: {msg.content}</Text>
+                </Text>
+              </Box>
+            );
+          }
+
+          const elements: React.ReactNode[] = [];
+          for (let j = 0; j < msg.blocks.length; j++) {
+            const block = msg.blocks[j];
+            if (block.type === "text") {
+              if (j === 0) {
+                elements.push(
+                  <Text key={j} wrap="wrap">
+                    <Text color={roleColor} bold>{roleLabel}</Text>
+                    <Text>: {block.text}</Text>
+                  </Text>
+                );
+              } else {
+                elements.push(<Text key={j} wrap="wrap">{block.text}</Text>);
+              }
+            } else {
+              if (j === 0) {
+                elements.push(
+                  <Text key={`label-${j}`} wrap="wrap">
+                    <Text color={roleColor} bold>{roleLabel}</Text>
+                    <Text>:</Text>
+                  </Text>
+                );
+              }
+              elements.push(
                 <Text key={j} color="gray" dimColor>
                   {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
                 </Text>
-              )
-            )) : (
-              <Text wrap="wrap">{msg.content}</Text>
-            )}
-          </Box>
-        ))}
+              );
+            }
+          }
+
+          return <Box key={i} flexDirection="column">{elements}</Box>;
+        })}
       </Box>
 
       <Box borderStyle="single" paddingX={1}>
