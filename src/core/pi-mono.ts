@@ -10,7 +10,6 @@ import {
   type AgentSession,
   AuthStorage,
   createAgentSession,
-  DefaultResourceLoader,
   ModelRegistry,
   type SessionManager,
   SettingsManager,
@@ -122,6 +121,41 @@ function toToolDefinition(tool: Tool, handler: (args: unknown) => Promise<string
 }
 
 // ---------------------------------------------------------------------------
+// System prompt override
+// ---------------------------------------------------------------------------
+
+/**
+ * Force a system prompt onto an existing AgentSession by patching the SDK's
+ * private fields.
+ *
+ * Three fields must be set together:
+ *  - `state.systemPrompt`: what the LLM sees on the next turn
+ *  - `_baseSystemPrompt`: SDK's prompt() handler resets state.systemPrompt
+ *    to this value on every call when an extensionRunner exists
+ *  - `_rebuildSystemPrompt`: SDK calls this when the tool list changes; we
+ *    return the override so a rebuild does not overwrite our prompt
+ *
+ * The `as unknown as { ... }` cast is required because `_baseSystemPrompt`
+ * and `_rebuildSystemPrompt` are private to the SDK's AgentSession class.
+ * If the SDK renames these fields, this will fail loudly at the access site
+ * (TypeScript will not catch it because of the cast — but the LLM will
+ * immediately revert to its default identity, which is a visible regression).
+ */
+export function overrideSessionSystemPrompt(
+  session: AgentSession,
+  override: string,
+): void {
+  const prompt = override.trim();
+  session.agent.state.systemPrompt = prompt;
+  const mutableSession = session as unknown as {
+    _baseSystemPrompt?: string;
+    _rebuildSystemPrompt?: (toolNames: string[]) => string;
+  };
+  mutableSession._baseSystemPrompt = prompt;
+  mutableSession._rebuildSystemPrompt = () => prompt;
+}
+
+// ---------------------------------------------------------------------------
 // AgentServiceCache — cached per-agent SDK dependencies
 // ---------------------------------------------------------------------------
 
@@ -196,30 +230,19 @@ export class AgentServiceCache {
       compaction: compactionSettings,
     });
 
-    // Pass the system prompt via DefaultResourceLoader so it becomes
-    // `_baseSystemPrompt` inside the SDK. Mutating
-    // `session.agent.state.systemPrompt` after creation is unreliable —
-    // the SDK's prompt() handler resets state.systemPrompt back to
-    // _baseSystemPrompt on every call when an extensionRunner exists
-    // (which it always does when customTools are passed). See
-    // pi-coding-agent agent-session.js:768-772.
+    // The SDK's prompt() handler resets `state.systemPrompt` back to
+    // `_baseSystemPrompt` on every call when an extensionRunner exists
+    // (always true with customTools). It may also call `_rebuildSystemPrompt`
+    // when the tool list changes. To make the override stick, we patch all
+    // three fields directly on the session after creation.
     //
-    // IMPORTANT: when we provide our own resourceLoader, the SDK does
-    // NOT call reload() for us (sdk.js only auto-reloads its own
-    // default-constructed loader). Without reload(), `systemPrompt`
-    // stays undefined and the LLM falls back to the SDK's default
-    // identity ("I'm pi...").
-    const cwd = opts.cwd ?? process.cwd();
-    const resourceLoader = new DefaultResourceLoader({
-      cwd,
-      agentDir: this.agentDir,
-      systemPrompt: opts.systemPrompt,
-      settingsManager,
-    });
-    await resourceLoader.reload();
-
+    // We do NOT pass an explicit DefaultResourceLoader: the SDK's built-in
+    // default loader handles tool/extension wiring fine, and routing the
+    // prompt through the loader couples us to the loader's auto-discovery
+    // side effects (e.g. AGENTS.md/CLAUDE.md leak — issue #590). Patching
+    // the session directly keeps prompt injection isolated from loader behavior.
     const { session } = await createAgentSession({
-      cwd,
+      cwd: opts.cwd ?? process.cwd(),
       agentDir: this.agentDir,
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
@@ -228,8 +251,9 @@ export class AgentServiceCache {
       customTools: this.customTools,
       sessionManager: opts.sessionManager,
       settingsManager,
-      resourceLoader,
     });
+
+    overrideSessionSystemPrompt(session, opts.systemPrompt);
 
     return session;
   }
