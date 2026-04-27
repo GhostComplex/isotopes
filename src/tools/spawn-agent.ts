@@ -132,16 +132,11 @@ export function getSpawnBackend(allowedWorkspaces?: string[]): AgentRuntime | un
 }
 
 /**
- * Get the list of available agent IDs that can be spawned.
- * Includes external runner IDs (e.g. "claude") and signals whether
- * in-process agents are available.
+ * Get the list of agent IDs that can be spawned.
  */
-export function getSupportedAgents(): { externalIds: string[]; inProcessAvailable: boolean } {
+export function getSupportedAgents(): string[] {
   const backend = getBackend();
-  return {
-    externalIds: backend.getExternalRunnerIds(),
-    inProcessAvailable: backend.hasInProcessRunner(),
-  };
+  return backend.getExternalRunnerIds();
 }
 
 /**

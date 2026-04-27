@@ -119,19 +119,16 @@ describe("spawnAgent", () => {
 });
 
 describe("getSupportedAgents", () => {
-  it("returns claude external runner by default", async () => {
+  it("returns claude by default", async () => {
     vi.resetModules();
     const { getSupportedAgents } = await import("./spawn-agent.js");
-    const result = getSupportedAgents();
-    expect(result.externalIds).toContain("claude");
-    expect(result.inProcessAvailable).toBe(false);
+    expect(getSupportedAgents()).toContain("claude");
   });
 
   it("returns configured agents after init", async () => {
     vi.resetModules();
     const { initSpawnBackend, getSupportedAgents } = await import("./spawn-agent.js");
     initSpawnBackend({ config: { claude: { permissionMode: "allowlist", allowedTools: [] }, useThread: true, showToolCalls: true } });
-    const result = getSupportedAgents();
-    expect(result.externalIds).toContain("claude");
+    expect(getSupportedAgents()).toContain("claude");
   });
 });

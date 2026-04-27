@@ -199,9 +199,8 @@ export interface SpawnAgentToolOptions {
  */
 export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: Tool; handler: ToolHandler } {
   const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds } = options;
-  const supported = getSupportedAgents();
-  const availableAgents: string[] = [...supported.externalIds];
-  if (supported.inProcessAvailable && parentProvider && parentTools && spawnableAgentIds) {
+  const availableAgents: string[] = [...getSupportedAgents()];
+  if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
       if (!availableAgents.includes(id)) {
         availableAgents.push(id);
