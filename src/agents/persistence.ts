@@ -39,6 +39,7 @@ export function runEventToMessage(event: RunEvent): AgentMessage | undefined {
       return undefined;
 
     case "run:message":
+      if (!event.content) return undefined;
       return {
         role: "assistant",
         content: [{ type: "text", text: event.content }],

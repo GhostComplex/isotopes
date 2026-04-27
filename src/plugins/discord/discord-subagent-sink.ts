@@ -63,7 +63,7 @@ export function formatEvent(event: RunEvent, config: DiscordSinkConfig): string 
       return undefined; // handled separately by DiscordSink.start()
 
     case "run:message":
-      
+      if (!event.content) return undefined;
       return truncate(event.content);
 
     case "run:tool_use":

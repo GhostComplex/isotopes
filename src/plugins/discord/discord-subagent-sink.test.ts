@@ -27,7 +27,7 @@ describe("formatEvent", () => {
   });
 
   it("drops empty message", () => {
-    expect(formatEvent({ type: "run:message", content: "" }, showAll)).toBe("");
+    expect(formatEvent({ type: "run:message", content: "" }, showAll)).toBeUndefined();
   });
 
   it("formats tool_use when enabled, hides when disabled", () => {

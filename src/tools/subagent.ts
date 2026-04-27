@@ -139,7 +139,7 @@ function getBackend(allowedWorkspaces?: string[]): AgentRuntime {
 let taskCounter = 0;
 
 /**
- * Get the shared SubagentBackend instance for use by other modules.
+ * Get the shared AgentRuntime instance for use by other modules.
  * Returns undefined if the backend hasn't been initialized.
  */
 export function getSubagentBackend(allowedWorkspaces?: string[]): AgentRuntime | undefined {
