@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Box, Text, useInput, useApp } from "ink";
+import { Box, Text, Static, useInput, useApp } from "ink";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, ContentBlock, TuiOptions, Screen, SSEEvent } from "./types.js";
 import * as api from "./api.js";
@@ -310,82 +310,85 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
   const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
   const contentWidth = (process.stdout.columns || 80) - 2;
-  const headerHeight = 3;
-  const inputHeight = 3;
-  const messageHeight = (process.stdout.rows || 24) - headerHeight - inputHeight;
+
+  const renderMessage = (msg: ChatMessage, i: number) => {
+    const roleLabel = msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System";
+    const roleColor = msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray";
+
+    if (!msg.blocks) {
+      return (
+        <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
+          <Text wrap="wrap">
+            <Text color={roleColor} bold>{roleLabel}</Text>
+            <Text>: {msg.content}</Text>
+          </Text>
+        </Box>
+      );
+    }
+
+    const elements: React.ReactNode[] = [];
+    let labelRendered = false;
+    for (let j = 0; j < msg.blocks.length; j++) {
+      const block = msg.blocks[j];
+      if (block.type === "text") {
+        if (!labelRendered) {
+          labelRendered = true;
+          elements.push(
+            <Box key={j}>
+              <Text wrap="wrap">
+                <Text color={roleColor} bold>{roleLabel}</Text>
+                <Text>: {block.text}</Text>
+              </Text>
+            </Box>
+          );
+        } else {
+          elements.push(<Box key={j}><Text wrap="wrap">{block.text}</Text></Box>);
+        }
+      } else {
+        if (!labelRendered) {
+          labelRendered = true;
+          elements.push(
+            <Box key={`label`}>
+              <Text color={roleColor} bold>{roleLabel}</Text>
+              <Text>:</Text>
+            </Box>
+          );
+        }
+        elements.push(
+          <Box key={j}>
+            <Text color="gray" dimColor wrap="truncate-end">
+              {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
+            </Text>
+          </Box>
+        );
+      }
+    }
+
+    return <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
+  };
+
+  // Split: settled messages go to Static (terminal scrollback), active message stays dynamic
+  const settledMessages = isStreaming ? visible.slice(0, -1) : visible;
+  const activeMessage = isStreaming ? visible[visible.length - 1] : null;
 
   return (
-    <Box flexDirection="column" height={process.stdout.rows}>
-      <Box borderStyle="single" paddingX={1} height={headerHeight}>
+    <Box flexDirection="column">
+      <Box borderStyle="single" paddingX={1} flexShrink={0} flexGrow={0}>
         <Text bold>isotopes</Text>
         <Text> — agent: </Text>
         <Text color="cyan">{agentId || "loading..."}</Text>
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
-      <Box flexDirection="column-reverse" paddingX={1} height={messageHeight} overflow="hidden">
-        <Box flexDirection="column">
-        {error && <Text color="red">{error}</Text>}
-        {!agentReady && !error && <Text color="gray">Loading agent...</Text>}
-        {visible.map((msg, i) => {
-          const roleLabel = msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System";
-          const roleColor = msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray";
+      <Static items={settledMessages.map((msg, i) => ({ ...msg, _idx: i }))}>
+        {(item) => renderMessage(item, item._idx)}
+      </Static>
 
-          if (!msg.blocks) {
-            return (
-              <Box key={i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
-                <Text wrap="wrap">
-                  <Text color={roleColor} bold>{roleLabel}</Text>
-                  <Text>: {msg.content}</Text>
-                </Text>
-              </Box>
-            );
-          }
+      {error && <Box paddingX={1}><Text color="red">{error}</Text></Box>}
+      {!agentReady && !error && <Box paddingX={1}><Text color="gray">Loading agent...</Text></Box>}
+      {activeMessage && <Box paddingX={1} flexDirection="column">{renderMessage(activeMessage, settledMessages.length)}</Box>}
 
-          const elements: React.ReactNode[] = [];
-          let labelRendered = false;
-          for (let j = 0; j < msg.blocks.length; j++) {
-            const block = msg.blocks[j];
-            if (block.type === "text") {
-              if (!labelRendered) {
-                labelRendered = true;
-                elements.push(
-                  <Box key={j}>
-                    <Text wrap="wrap">
-                      <Text color={roleColor} bold>{roleLabel}</Text>
-                      <Text>: {block.text}</Text>
-                    </Text>
-                  </Box>
-                );
-              } else {
-                elements.push(<Box key={j}><Text wrap="wrap">{block.text}</Text></Box>);
-              }
-            } else {
-              if (!labelRendered) {
-                labelRendered = true;
-                elements.push(
-                  <Box key={`label`}>
-                    <Text color={roleColor} bold>{roleLabel}</Text>
-                    <Text>:</Text>
-                  </Box>
-                );
-              }
-              elements.push(
-                <Box key={j}>
-                  <Text color="gray" dimColor wrap="truncate-end">
-                    {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
-                  </Text>
-                </Box>
-              );
-            }
-          }
-
-          return <Box key={i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
-        })}
-        </Box>
-      </Box>
-
-      <Box borderStyle="single" paddingX={1} height={3}>
+      <Box borderStyle="single" paddingX={1} flexShrink={0} flexGrow={0}>
         <Text color="green">&gt; </Text>
         <Text wrap="truncate">{input || (isStreaming ? "" : "")}</Text>
         <Text color="gray">█</Text>
