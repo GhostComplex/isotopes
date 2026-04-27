@@ -1,27 +1,57 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, useInput, useApp } from "ink";
+import stringWidth from "string-width";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
-import type { ChatMessage, ToolCallEntry, TuiOptions, Screen, SSEEvent } from "./types.js";
+import type { ChatMessage, ContentBlock, TuiOptions, Screen, SSEEvent } from "./types.js";
 import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
 const MAX_HISTORY_MESSAGES = 20;
+
+function extractResultText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (Array.isArray(result)) {
+    const texts: string[] = [];
+    for (const block of result as Array<Record<string, unknown>>) {
+      if (block.type === "text" && typeof block.text === "string") texts.push(block.text);
+    }
+    if (texts.length > 0) return texts.join("\n");
+  }
+  if (result && typeof result === "object" && "content" in (result as Record<string, unknown>)) {
+    return extractResultText((result as Record<string, unknown>).content);
+  }
+  return JSON.stringify(result);
+}
 
 function historyMessageToChatMessage(m: { role: string; content?: unknown; timestamp?: number }): ChatMessage | null {
   if (m.role !== "user" && m.role !== "assistant") return null;
   const role = m.role as "user" | "assistant";
 
   let text = "";
+  const blocks: ContentBlock[] = [];
+
   if (typeof m.content === "string") {
     text = m.content;
+    blocks.push({ type: "text", text });
   } else if (Array.isArray(m.content)) {
     for (const block of m.content as Array<Record<string, unknown>>) {
-      if (block.type === "text" && typeof block.text === "string") text += block.text;
+      if (block.type === "text" && typeof block.text === "string") {
+        text += block.text;
+        blocks.push({ type: "text", text: block.text });
+      } else if (block.type === "toolCall" && typeof block.name === "string") {
+        blocks.push({
+          type: "tool",
+          id: String(block.id ?? ""),
+          name: block.name,
+          args: typeof block.arguments === "string" ? block.arguments : JSON.stringify(block.arguments ?? {}),
+          result: "✓",
+        });
+      }
     }
   }
 
   const ts = typeof m.timestamp === "number" ? new Date(m.timestamp) : new Date();
-  return { role, content: text, timestamp: ts };
+  return { role, content: text, blocks: blocks.length > 0 ? blocks : undefined, timestamp: ts };
 }
 
 interface Props {
@@ -107,37 +137,40 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     setIsStreaming(true);
 
     const sessionKey = sessionKeyRef.current;
-    let responseText = "";
-    const toolCalls: ToolCallEntry[] = [];
+    const blocks: ContentBlock[] = [];
     const abort = new AbortController();
     abortRef.current = abort;
 
+    const updateAssistant = () => {
+      const fullText = blocks.filter((b) => b.type === "text").map((b) => b.text).join("");
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant") {
+          return [...prev.slice(0, -1), { ...last, content: fullText, blocks: [...blocks] }];
+        }
+        return [...prev, { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date() }];
+      });
+    };
+
     const handleEvent = (e: SSEEvent) => {
       if (e.type === "text_delta") {
-        responseText += e.text;
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
-            return [...prev.slice(0, -1), { ...last, content: responseText, toolCalls: [...toolCalls] }];
-          }
-          return [...prev, { role: "assistant", content: responseText, toolCalls: [...toolCalls], timestamp: new Date() }];
-        });
+        const lastBlock = blocks[blocks.length - 1];
+        if (lastBlock?.type === "text") {
+          lastBlock.text += e.text;
+        } else {
+          blocks.push({ type: "text", text: e.text });
+        }
+        updateAssistant();
       } else if (e.type === "tool_call") {
-        toolCalls.push({ id: e.toolCallId, name: e.toolName, args: typeof e.args === "string" ? e.args : JSON.stringify(e.args) });
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
-            return [...prev.slice(0, -1), { ...last, toolCalls: [...toolCalls] }];
-          }
-          return prev;
-        });
+        blocks.push({ type: "tool", id: e.toolCallId, name: e.toolName, args: typeof e.args === "string" ? e.args : JSON.stringify(e.args) });
+        updateAssistant();
       } else if (e.type === "tool_result") {
-        const output = typeof e.result === "string" ? e.result : JSON.stringify(e.result);
-        const tc = toolCalls.find((t) => t.id === e.toolCallId);
+        const tc = blocks.find((b): b is ContentBlock & { type: "tool" } => b.type === "tool" && b.id === e.toolCallId);
         if (tc) {
-          tc.result = output;
+          tc.result = extractResultText(e.result);
           tc.isError = e.isError;
         }
+        updateAssistant();
       } else if (e.type === "error") {
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.message}`, timestamp: new Date() }]);
       }
@@ -168,7 +201,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
           setIsStreaming(true);
           (async () => {
             try {
-              const session = await api.createSession(agentId);
+              if (sessionKeyRef.current) {
+                await api.deleteSession(agentId, sessionKeyRef.current).catch(() => {});
+              }
+              const session = await api.createSession(agentId, "tui:main");
               sessionKeyRef.current = session.key;
               setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
             } catch (err) {
@@ -216,29 +252,42 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
-      <Box flexDirection="column" flexGrow={1} paddingX={1}>
+      <Box flexDirection="column" flexGrow={1} paddingX={1} width={process.stdout.columns} overflow="hidden">
         {error && <Text color="red">{error}</Text>}
         {!agentReady && !error && <Text color="gray">Loading agent...</Text>}
         {visible.map((msg, i) => (
           <Box key={i} flexDirection="column">
-            <Text>
+            <Text wrap="wrap">
               <Text color={msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray"} bold>
                 {msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System"}
               </Text>
-              <Text>: {msg.content}</Text>
+              <Text>: </Text>
             </Text>
-            {msg.toolCalls?.map((tc) => (
-              <Text key={tc.id} color="gray" dimColor>
-                {"  "}🔧 {tc.name}{tc.result ? ` → ${tc.result.slice(0, 80)}` : " ..."}
-              </Text>
-            ))}
+            {msg.blocks ? msg.blocks.map((block, j) => (
+              block.type === "text" ? (
+                <Text key={j} wrap="wrap">{block.text}</Text>
+              ) : (
+                <Text key={j} color="gray" dimColor>
+                  {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
+                </Text>
+              )
+            )) : (
+              <Text wrap="wrap">{msg.content}</Text>
+            )}
           </Box>
         ))}
       </Box>
 
       <Box borderStyle="single" paddingX={1}>
         <Text color="green">&gt; </Text>
-        <Text>{input}</Text>
+        <Text>{(() => {
+          const maxWidth = (process.stdout.columns || 80) - 6;
+          let visible = input;
+          while (stringWidth(visible) > maxWidth && visible.length > 0) {
+            visible = visible.slice(1);
+          }
+          return visible;
+        })()}</Text>
         <Text color="gray">█</Text>
       </Box>
     </Box>
