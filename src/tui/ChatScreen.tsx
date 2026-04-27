@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, Static, useInput, useApp } from "ink";
+import { randomUUID } from "node:crypto";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, ContentBlock, TuiOptions, Screen, SSEEvent } from "./types.js";
 import * as api from "./api.js";
@@ -7,7 +8,7 @@ import * as api from "./api.js";
 const MAX_VISIBLE_MESSAGES = 50;
 const MAX_HISTORY_MESSAGES = 20;
 
-function extractResultText(result: unknown): string {
+export function extractResultText(result: unknown): string {
   if (typeof result === "string") return result;
   if (Array.isArray(result)) {
     const texts: string[] = [];
@@ -22,7 +23,7 @@ function extractResultText(result: unknown): string {
   return JSON.stringify(result);
 }
 
-function historyToChatMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number }>): ChatMessage[] {
+export function historyToChatMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number; toolCallId?: string }>): ChatMessage[] {
   const result: ChatMessage[] = [];
   let current: { text: string; blocks: ContentBlock[]; timestamp: Date } | null = null;
 
@@ -56,8 +57,10 @@ function historyToChatMessages(items: Array<{ role: string; type?: string; conte
       flushAssistant();
       result.push({ role: "user", content: text, timestamp: ts });
     } else if (role === "toolResult") {
-      // Mark matching tool calls as completed
-      if (current) {
+      if (current && m.toolCallId) {
+        const tc = current.blocks.find((b) => b.type === "tool" && b.id === m.toolCallId);
+        if (tc && tc.type === "tool" && !tc.result) tc.result = "✓";
+      } else if (current) {
         for (const b of current.blocks) {
           if (b.type === "tool" && !b.result) { b.result = "✓"; break; }
         }
@@ -105,6 +108,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const sessionKeyRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const pendingSteerRef = useRef<ChatMessage[]>([]);
+  const settledRef = useRef<ChatMessage[]>([]);
   const autoMessageSent = useRef(false);
 
   const initAgent = useCallback(async (requestedAgent?: string) => {
@@ -173,7 +177,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     let blocks: ContentBlock[] = [];
     const abort = new AbortController();
     abortRef.current = abort;
-    let streamMsgId = `stream-${Date.now()}`;
+    let streamMsgId = randomUUID();
     pendingSteerRef.current = [];
 
     const updateAssistant = () => {
@@ -216,7 +220,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
           setMessages((prev) => [...prev, ...flushed]);
         }
         blocks = [];
-        streamMsgId = `stream-${Date.now()}`;
+        streamMsgId = randomUUID();
       } else if (e.type === "error") {
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.message}`, timestamp: new Date() }]);
       }
@@ -258,6 +262,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       const handled = dispatch(slash.command, slash.args, {
         onNewChat: () => {
           setMessages([]);
+          settledRef.current = [];
           setIsStreaming(true);
           (async () => {
             try {
@@ -308,7 +313,6 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     }
   });
 
-  const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
   const contentWidth = (process.stdout.columns || 80) - 2;
 
   const renderMessage = (msg: ChatMessage, i: number) => {
@@ -367,9 +371,15 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     return <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
   };
 
-  // Split: settled messages go to Static (terminal scrollback), active message stays dynamic
-  const settledMessages = isStreaming ? visible.slice(0, -1) : visible;
-  const activeMessage = isStreaming ? visible[visible.length - 1] : null;
+  // Split: settled messages go to Static (terminal scrollback), active message stays dynamic.
+  // settledRef is append-only so Static gets a stable reference and doesn't re-render old items.
+  const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
+  const settledCount = isStreaming ? Math.max(visible.length - 1, 0) : visible.length;
+  if (settledCount > settledRef.current.length) {
+    const newSettled = visible.slice(settledRef.current.length, settledCount);
+    settledRef.current = [...settledRef.current, ...newSettled];
+  }
+  const activeMessage = isStreaming && visible.length > 0 ? visible[visible.length - 1] : null;
 
   return (
     <Box flexDirection="column">
@@ -380,17 +390,17 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
-      <Static items={settledMessages.map((msg, i) => ({ ...msg, _idx: i }))}>
+      <Static items={settledRef.current.map((msg, i) => ({ ...msg, _idx: i }))}>
         {(item) => renderMessage(item, item._idx)}
       </Static>
 
       {error && <Box paddingX={1}><Text color="red">{error}</Text></Box>}
       {!agentReady && !error && <Box paddingX={1}><Text color="gray">Loading agent...</Text></Box>}
-      {activeMessage && <Box paddingX={1} flexDirection="column">{renderMessage(activeMessage, settledMessages.length)}</Box>}
+      {activeMessage && <Box paddingX={1} flexDirection="column">{renderMessage(activeMessage, settledRef.current.length)}</Box>}
 
       <Box borderStyle="single" paddingX={1} flexShrink={0} flexGrow={0}>
         <Text color="green">&gt; </Text>
-        <Text wrap="truncate">{input || (isStreaming ? "" : "")}</Text>
+        <Text wrap="truncate">{input}</Text>
         <Text color="gray">█</Text>
         {isStreaming && !input && (
           <Text color="gray" dimColor> type to steer · esc to stop</Text>

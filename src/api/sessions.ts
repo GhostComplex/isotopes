@@ -12,7 +12,7 @@ import { sendJson, sendError } from "./middleware.js";
 import { createLogger } from "../core/logger.js";
 import { randomUUID } from "node:crypto";
 import { runAgentLoop, abortAgentSession } from "../core/agent-runner.js";
-import { userMessage as mkUserMsg } from "../core/messages.js";
+import { userMessage } from "../core/messages.js";
 import { agentEventBus } from "../core/agent-event-bus.js";
 import type { DefaultSessionStore } from "../core/session-store.js";
 import type { Session } from "../core/types.js";
@@ -35,6 +35,8 @@ interface ActiveSession {
 const activeSessions = new Map<string, ActiveSession>();
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_SESSIONS = 100;
+const MAX_PENDING_MESSAGES = 50;
+const MAX_STEER_MESSAGE_LEN = 10_000;
 
 function evictStaleSessions() {
   const now = Date.now();
@@ -353,7 +355,7 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
         if (pending.length === 0) return null;
         const drained = pending.splice(0);
         for (const m of drained) {
-          await store.addMessage(sessionId, mkUserMsg(m.content, m.timestamp));
+          await store.addMessage(sessionId, userMessage(m.content, m.timestamp));
         }
         const formatted = drained.map((m) => m.content).join("\n");
         return `[Messages arrived while you were working]\n${formatted}`;
@@ -388,6 +390,14 @@ addRoute("POST", "/api/sessions/:agentId/:key/steer", async (req, res, _deps) =>
   const body = req.body as { message?: string } | undefined;
   if (!body?.message) {
     sendError(res, 400, "Request body must include 'message'");
+    return;
+  }
+  if (body.message.length > MAX_STEER_MESSAGE_LEN) {
+    sendError(res, 400, `Message exceeds max length of ${MAX_STEER_MESSAGE_LEN}`);
+    return;
+  }
+  if (active.pendingMessages.length >= MAX_PENDING_MESSAGES) {
+    sendError(res, 429, `Steer queue full (max ${MAX_PENDING_MESSAGES})`);
     return;
   }
 
