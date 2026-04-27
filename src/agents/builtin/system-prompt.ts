@@ -3,16 +3,16 @@ export interface BuildPromptOptions {
   extraSystemPrompt?: string;
 }
 
-export function buildBuiltinSubagentSystemPrompt(options: BuildPromptOptions): string {
+export function buildSpawnAgentSystemPrompt(options: BuildPromptOptions): string {
   const { task, extraSystemPrompt } = options;
   const sections: string[] = [];
 
   sections.push(
-    "You are a focused subagent spawned to complete a single task and then exit.",
+    "You are a focused agent spawned to complete a single task and then exit.",
   );
 
   sections.push(
-    "Capabilities: read-only inspection plus shell. You cannot spawn further subagents, " +
+    "Capabilities: read-only inspection plus shell. You cannot spawn further agents, " +
       "write or edit files, or fetch from the web. If the task requires those, return a " +
       "concise explanation of what is needed and stop.",
   );

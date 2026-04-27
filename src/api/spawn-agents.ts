@@ -1,25 +1,25 @@
-// src/api/subagents.ts — Subagent management API routes
-// GET    /api/subagents      — list running subagent tasks
-// DELETE /api/subagents/:id  — cancel a running subagent
+// src/api/spawn-agents.ts — Spawn agent management API routes
+// GET    /api/spawn-agents      — list running spawn agent tasks
+// DELETE /api/spawn-agents/:id  — cancel a running spawn agent
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
 import { taskRegistry } from "../agents/task-registry.js";
-import { cancelSubagent } from "../tools/subagent.js";
+import { cancelAgent } from "../tools/spawn-agent.js";
 
 // ---------------------------------------------------------------------------
-// GET /api/subagents — list running subagents
+// GET /api/spawn-agents — list running spawn agents
 // ---------------------------------------------------------------------------
 
-addRoute("GET", "/api/subagents", (_req, res) => {
+addRoute("GET", "/api/spawn-agents", (_req, res) => {
   sendJson(res, 200, { items: taskRegistry.list() });
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /api/subagents/:id — cancel a running subagent
+// DELETE /api/spawn-agents/:id — cancel a running spawn agent
 // ---------------------------------------------------------------------------
 
-addRoute("DELETE", "/api/subagents/:id", (req, res) => {
+addRoute("DELETE", "/api/spawn-agents/:id", (req, res) => {
   const { id } = req.params;
 
   const task = taskRegistry.get(id);
@@ -28,7 +28,7 @@ addRoute("DELETE", "/api/subagents/:id", (req, res) => {
     return;
   }
 
-  cancelSubagent(id);
+  cancelAgent(id);
   taskRegistry.unregister(id);
 
   sendJson(res, 200, { ok: true });

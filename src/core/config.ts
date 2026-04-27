@@ -96,11 +96,13 @@ export interface AgentConfigFile {
   heartbeatPrompt?: string;
   /**
    * Coding mode controls how the agent handles code modifications:
-   * - 'subagent': Force all code through spawn_subagent (removes write_file, edit)
+   * - 'spawn-agent': Force all code through spawn_agent (removes write_file, edit)
    * - 'direct': Agent can modify files directly
    * - 'auto': Agent chooses (default)
    */
-  codingMode?: "subagent" | "direct" | "auto";
+  codingMode?: "spawn-agent" | "direct" | "auto";
+  /** Whether this agent can be spawned by other agents via spawn_agent. Default: false */
+  spawnable?: boolean;
 }
 
 export interface AgentToolsConfigFile {
@@ -198,9 +200,6 @@ export const DEFAULT_SPAWN_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", "Gr
 /** Claude Agent SDK settings source — controls which `settings.json` files the spawned `claude` CLI loads. */
 export type SettingSource = "user" | "project" | "local";
 
-/** Valid spawned runner types */
-export type SpawnRunnerType = "claude" | "builtin";
-
 /** Claude-specific spawning configuration */
 export interface ClaudeSpawningConfigFile {
   permissionMode?: SpawnPermissionMode;
@@ -209,19 +208,17 @@ export interface ClaudeSpawningConfigFile {
   settingSources?: SettingSource[];
 }
 
-/** Sub-agent execution configuration in config file */
+/** Spawn agent execution configuration in config file */
 export interface SpawningConfigFile {
   /** Whether spawning is enabled. Default: false */
   enabled?: boolean;
-  /** Runner types allowed to be spawned. Default: ["claude", "builtin"] */
-  allowedTypes?: SpawnRunnerType[];
-  /** Default timeout in seconds for sub-agent runs */
+  /** Default timeout in seconds for spawn agent runs */
   timeout?: number;
-  /** Default maximum turns per sub-agent run */
+  /** Default maximum turns per spawn agent run */
   maxTurns?: number;
   /** Maximum agent nesting depth. Default: 1 (spawned agents cannot spawn further) */
   maxDepth?: number;
-  /** Whether to create Discord threads for sub-agent output. Default: true */
+  /** Whether to create Discord threads for spawn agent output. Default: true */
   useThread?: boolean;
   /** Whether to show tool call details in Discord. Default: true */
   showToolCalls?: boolean;
@@ -238,7 +235,6 @@ export interface ResolvedClaudeSpawningConfig {
 
 /** Resolved spawning configuration with defaults applied */
 export interface ResolvedSpawningConfig {
-  allowedTypes: Set<SpawnRunnerType>;
   timeout?: number;
   maxTurns?: number;
   maxDepth?: number;
@@ -361,8 +357,6 @@ export function resolveSessionConfig(
 }
 
 const VALID_PERMISSION_MODES = new Set<SpawnPermissionMode>(["skip", "allowlist", "default"]);
-const VALID_RUNNER_TYPES = new Set<SpawnRunnerType>(["claude", "builtin"]);
-const DEFAULT_ALLOWED_TYPES: SpawnRunnerType[] = ["claude", "builtin"];
 
 /**
  * Resolve spawning config with defaults applied.
@@ -388,7 +382,7 @@ export function resolveSpawningConfig(
   if (permissionMode === "skip") {
     log.warn(
       "⚠️  SECURITY WARNING: agents.spawning.claude.permissionMode is set to 'skip'. " +
-      "Sub-agents will have unrestricted tool access without any permission prompts.",
+      "Spawned agents will have unrestricted tool access without any permission prompts.",
     );
     if (claude?.enableShell) {
       log.warn(
@@ -397,15 +391,7 @@ export function resolveSpawningConfig(
     }
   }
 
-  const allowedTypes = (spawningConfig?.allowedTypes ?? DEFAULT_ALLOWED_TYPES);
-  for (const t of allowedTypes) {
-    if (!VALID_RUNNER_TYPES.has(t)) {
-      throw new Error(`Invalid agents.spawning.allowedTypes entry "${t}" (must be claude or builtin)`);
-    }
-  }
-
   return {
-    allowedTypes: new Set(allowedTypes),
     timeout: spawningConfig?.timeout,
     maxTurns: spawningConfig?.maxTurns,
     maxDepth: spawningConfig?.maxDepth,
@@ -586,6 +572,7 @@ export function toAgentConfig(
     heartbeatInterval: agent.heartbeatInterval,
     heartbeatPrompt: agent.heartbeatPrompt,
     codingMode: agent.codingMode,
+    spawnable: agent.spawnable,
   };
 }
 

@@ -60,7 +60,7 @@ export interface InitAgentOptions {
   compaction?: CompactionConfigFile;
   /** Sandbox config */
   sandbox?: SandboxConfigFile;
-  /** Subagent config */
+  /** Spawning config */
   spawning?: SpawningConfigFile;
   /** PiMonoCore implementation */
   core: PiMonoCore;
@@ -72,6 +72,8 @@ export interface InitAgentOptions {
   transportContext?: LazyTransportContext;
   /** Hook registry for lifecycle events (optional) */
   hooks?: HookRegistry;
+  /** Pre-computed list of spawnable agent IDs from config */
+  spawnableAgentIds?: string[];
 }
 
 export interface InitAgentResult {
@@ -144,13 +146,13 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
   const fsImpl: FsLike = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
-  // Subagent tools spawn child runners (Claude CLI, builtin) that execute on
+  // Spawn agent tools spawn child runners (Claude CLI, builtin) that execute on
   // the host, bypassing the Docker sandbox. Disable them entirely for
   // sandboxed agents — see issue #440.
   const spawningEnabled = spawning?.enabled === true && !isSandboxed;
   if (spawning?.enabled === true && isSandboxed) {
     log.warn(
-      `Subagent tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined. Use \`docker exec\` with a custom image to run a coding CLI inside the sandbox.`,
+      `Spawning tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined. Use \`docker exec\` with a custom image to run a coding CLI inside the sandbox.`,
     );
   }
 
@@ -166,6 +168,8 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     agentConfig.id,
     agentConfig.provider,
     toolRegistry,
+    agentManager,
+    opts.spawnableAgentIds,
   );
   const filteredTools = applyToolPolicy(workspaceTools, agentConfig.toolSettings);
   for (const { tool, handler } of filteredTools) {

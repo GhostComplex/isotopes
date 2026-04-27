@@ -33,17 +33,17 @@ import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
 import type { UsageTracker } from "../../core/usage-tracker.js";
 import { buildSessionKey } from "../../core/session-keys.js";
 import {
-  runWithSubagentContextAsync,
-  type SubagentStreamContext,
-} from "../../core/subagent-context.js";
-import { DiscordSink } from "./discord-subagent-sink.js";
+  runWithSpawnAgentContextAsync,
+  type SpawnAgentStreamContext,
+} from "../../core/spawn-agent-context.js";
+import { DiscordSink } from "./discord-spawn-agent-sink.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../../core/channel-history.js";
 import { DedupeCache } from "../../core/dedupe.js";
 import { InboundDebouncer } from "../../core/debounce.js";
 import { SlashCommandHandler } from "../../commands/slash-commands.js";
 import { taskRegistry } from "../../agents/task-registry.js";
 import { failureTracker } from "../../agents/failure-tracker.js";
-import { cancelSubagent } from "../../tools/subagent.js";
+import { cancelAgent } from "../../tools/spawn-agent.js";
 
 const log = loggers.discord;
 
@@ -173,10 +173,10 @@ export interface DiscordTransportConfig {
   threadBindings?: ThreadBindingConfig;
   /** Thread binding manager instance (created automatically if not provided) */
   threadBindingManager?: ThreadBindingManager;
-  /** Whether to enable subagent Discord streaming (default: true) */
-  enableSubagentStreaming?: boolean;
-  /** Whether to show tool calls in subagent threads (default: true) */
-  subagentShowToolCalls?: boolean;
+  /** Whether to enable spawn agent Discord streaming (default: true) */
+  enableSpawnAgentStreaming?: boolean;
+  /** Whether to show tool calls in spawn agent threads (default: true) */
+  spawnAgentShowToolCalls?: boolean;
   /** Whether to show tool call info in agent responses (default: false) */
   showToolCalls?: boolean;
   /** Whether to respond to messages from other bots. Default: false */
@@ -205,7 +205,7 @@ export interface DiscordTransportConfig {
  * - Session per channel/thread
  * - Streaming responses with typing indicator
  * - Auto-chunking for long messages
- * - Subagent output streaming to threads
+ * - Spawn agent output streaming to threads
  */
 export class DiscordTransport implements Transport {
   private client: Client;
@@ -295,7 +295,7 @@ export class DiscordTransport implements Transport {
     return this.threadBindingManager;
   }
 
-  /** Access the Discord client (for subagent context) */
+  /** Access the Discord client (for spawn agent context) */
   getClient(): Client {
     return this.client;
   }
@@ -374,16 +374,16 @@ export class DiscordTransport implements Transport {
       return;
     }
 
-    // 3. Extract content early for subagent thread interception
+    // 3. Extract content early for spawn agent thread interception
     let content = this.extractContent(msg);
     if (!content.trim() && !this.hasImageAttachments(msg)) return;
 
-    // 3.5. Subagent thread interception — handle /stop in subagent threads BEFORE shouldRespond check
-    // This allows /stop to work without @mention in subagent threads
+    // 3.5. Spawn agent thread interception — handle /stop in spawn agent threads BEFORE shouldRespond check
+    // This allows /stop to work without @mention in spawn agent threads
     if (isThread) {
       const task = taskRegistry.getByThreadId(msg.channelId);
       if (task) {
-        await this.handleSubagentThreadMessage(msg, task, content);
+        await this.handleSpawnAgentThreadMessage(msg, task, content);
         return;
       }
     }
@@ -622,10 +622,10 @@ export class DiscordTransport implements Transport {
   }
 
   /**
-   * Handle a message in a subagent thread.
-   * Supports /stop and /cancel commands to kill the running subagent.
+   * Handle a message in a spawn agent thread.
+   * Supports /stop and /cancel commands to kill the running spawn agent.
    */
-  private async handleSubagentThreadMessage(
+  private async handleSpawnAgentThreadMessage(
     msg: DiscordMessage,
     task: { taskId: string; sessionId: string; channelId: string; threadId?: string; task: string },
     content: string,
@@ -634,23 +634,23 @@ export class DiscordTransport implements Transport {
 
     // Check for stop/cancel commands
     if (normalizedContent === "/stop" || normalizedContent === "/cancel") {
-      log.info(`Cancelling subagent from thread`, { taskId: task.taskId, threadId: msg.channelId });
-      const cancelled = cancelSubagent(task.taskId);
+      log.info(`Cancelling spawn agent from thread`, { taskId: task.taskId, threadId: msg.channelId });
+      const cancelled = cancelAgent(task.taskId);
       if (cancelled) {
         // Record cancellation to block future re-attempts of this task
         if (task.sessionId) {
           failureTracker.recordCancel(task.sessionId, task.task);
         }
-        await (msg.channel as SendableChannel).send("🛑 Subagent cancelled.");
+        await (msg.channel as SendableChannel).send("🛑 Spawn agent cancelled.");
       } else {
-        await (msg.channel as SendableChannel).send("⚠️ Subagent already finished or not found.");
+        await (msg.channel as SendableChannel).send("⚠️ Spawn agent already finished or not found.");
       }
       return;
     }
 
-    // For now, other messages in subagent threads are acknowledged but not forwarded
-    // (sub-agent prompt is one-shot — true steering would require SDK support)
-    log.debug(`Subagent thread message ignored (steering not supported)`, {
+    // For now, other messages in spawn agent threads are acknowledged but not forwarded
+    // (spawn agent prompt is one-shot — true steering would require SDK support)
+    log.debug(`Spawn agent thread message ignored (steering not supported)`, {
       taskId: task.taskId,
       content: content.slice(0, 50),
     });
@@ -720,14 +720,14 @@ export class DiscordTransport implements Transport {
   }
 
   // ---------------------------------------------------------------------------
-  // Subagent context helpers
+  // Spawn agent context helpers
   // ---------------------------------------------------------------------------
 
   /**
-   * Create a subagent Discord context for the given channel.
-   * This context enables subagent tool to stream output to Discord threads.
+   * Create a spawn agent Discord context for the given channel.
+   * This context enables spawn agent tool to stream output to Discord threads.
    */
-  private createSubagentContext(channel: SendableChannel, sessionId?: string): SubagentStreamContext {
+  private createSpawnAgentContext(channel: SendableChannel, sessionId?: string): SpawnAgentStreamContext {
     const threadBindingConfig = this.config.threadBindings;
     const autoUnbindEnabled = threadBindingConfig?.autoUnbindOnComplete !== false;
     const sendFarewell = threadBindingConfig?.sendFarewell ?? false;
@@ -766,10 +766,10 @@ export class DiscordTransport implements Transport {
       },
       channelId: channel.id,
       sessionId,
-      showToolCalls: this.config.subagentShowToolCalls ?? true,
+      showToolCalls: this.config.spawnAgentShowToolCalls ?? true,
       onComplete: autoUnbindEnabled
         ? async (threadId: string) => {
-            log.debug(`Subagent completed, auto-unbinding thread ${threadId}`);
+            log.debug(`Spawn agent completed, auto-unbinding thread ${threadId}`);
 
             if (sendFarewell) {
               try {
@@ -785,9 +785,9 @@ export class DiscordTransport implements Transport {
               }
             }
 
-            const removed = this.threadBindingManager.unbind(threadId, "subagent-complete");
+            const removed = this.threadBindingManager.unbind(threadId, "spawn-agent-complete");
             if (removed) {
-              log.info(`Auto-unbound thread ${threadId} after subagent completion`);
+              log.info(`Auto-unbound thread ${threadId} after spawn agent completion`);
             }
           }
         : undefined,
@@ -885,19 +885,19 @@ export class DiscordTransport implements Transport {
         });
       };
 
-      // Run with or without subagent context based on config
+      // Run with or without spawn agent context based on config
       let errorMessage: string | null;
       let responseText: string;
 
-      if (this.config.enableSubagentStreaming !== false) {
-        // Run with subagent Discord context enabled
-        const subagentContext = this.createSubagentContext(channel, sessionId);
-        const result = await runWithSubagentContextAsync(subagentContext, runLoop);
+      if (this.config.enableSpawnAgentStreaming !== false) {
+        // Run with spawn agent Discord context enabled
+        const spawnAgentContext = this.createSpawnAgentContext(channel, sessionId);
+        const result = await runWithSpawnAgentContextAsync(spawnAgentContext, runLoop);
 
         errorMessage = result.errorMessage;
         responseText = result.responseText;
       } else {
-        // Run without subagent context (original behavior)
+        // Run without spawn agent context (original behavior)
         const result = await runLoop();
 
         errorMessage = result.errorMessage;

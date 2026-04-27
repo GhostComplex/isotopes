@@ -92,7 +92,7 @@ describe("InProcessRunner", () => {
     const out = await collect(
       runner.run(
         "task-1",
-        { runner: "in-process", prompt: "hi", cwd: "/tmp" },
+        { agentId: "test-agent", prompt: "hi", cwd: "/tmp" },
         { abort: new AbortController().signal },
       ),
     );
@@ -114,7 +114,7 @@ describe("InProcessRunner", () => {
       runner.run(
         "task-2",
         {
-          runner: "in-process",
+          agentId: "test-agent",
           prompt: "do thing",
           cwd: "/tmp",
           inProcess: { provider: fakeProvider(), tools },
@@ -149,7 +149,7 @@ describe("InProcessRunner", () => {
       runner.run(
         "task-3",
         {
-          runner: "in-process",
+          agentId: "test-agent",
           prompt: "p",
           cwd: "/tmp",
           inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
@@ -171,7 +171,7 @@ describe("InProcessRunner", () => {
     const runner = new InProcessRunner(harness.core);
     const out = await collect(
       runner.run("task-skip", {
-        runner: "in-process", prompt: "p", cwd: "/tmp",
+        agentId: "test-agent", prompt: "p", cwd: "/tmp",
         inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
@@ -186,7 +186,7 @@ describe("InProcessRunner", () => {
     const runner = new InProcessRunner(harness.core);
     const out = await collect(
       runner.run("task-tool", {
-        runner: "in-process", prompt: "p", cwd: "/tmp",
+        agentId: "test-agent", prompt: "p", cwd: "/tmp",
         inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
@@ -202,7 +202,7 @@ describe("InProcessRunner", () => {
     const runner = new InProcessRunner(harness.core);
     const out = await collect(
       runner.run("task-tresult", {
-        runner: "in-process", prompt: "p", cwd: "/tmp",
+        agentId: "test-agent", prompt: "p", cwd: "/tmp",
         inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
@@ -217,7 +217,7 @@ describe("InProcessRunner", () => {
     const runner = new InProcessRunner(harness.core);
     const out = await collect(
       runner.run("task-err", {
-        runner: "in-process", prompt: "p", cwd: "/tmp",
+        agentId: "test-agent", prompt: "p", cwd: "/tmp",
         inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
@@ -251,7 +251,7 @@ describe("InProcessRunner", () => {
       runner.run(
         "task-4",
         {
-          runner: "in-process",
+          agentId: "test-agent",
           prompt: "p",
           cwd: "/tmp",
           inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },

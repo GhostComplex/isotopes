@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { createLogger } from "../../core/logger.js";
 import { PiMonoCore } from "../../core/pi-mono.js";
 import { ToolRegistry, type ToolHandler } from "../../core/tools.js";
-import { buildBuiltinSubagentSystemPrompt } from "../builtin/system-prompt.js";
+import { buildSpawnAgentSystemPrompt } from "../builtin/system-prompt.js";
 import type { RunnerSignals, Runner } from "../runner.js";
-import type { RunnerKind, RunEvent, RunOptions } from "../types.js";
+import type { RunEvent, RunOptions } from "../types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
@@ -14,7 +14,7 @@ const DENIED_TOOLS: ReadonlySet<string> = new Set([
   "edit",
   "web_fetch",
   "web_search",
-  "spawn_subagent",
+  "spawn_agent",
 ]);
 
 const log = createLogger("agents:runner:in-process");
@@ -31,8 +31,6 @@ function isAgentEvent(e: { type: string }): e is AgentEvent {
 }
 
 export class InProcessRunner implements Runner {
-  readonly kind: RunnerKind = "in-process";
-
   constructor(private readonly core: PiMonoCore) {}
 
   async *run(
@@ -48,7 +46,7 @@ export class InProcessRunner implements Runner {
 
     const agentId = `agent-inproc-${runId}-${randomUUID().slice(0, 8)}`;
     const tools = filterTools(options.inProcess.tools, agentId);
-    const systemPrompt = buildBuiltinSubagentSystemPrompt({
+    const systemPrompt = buildSpawnAgentSystemPrompt({
       task: options.prompt,
       extraSystemPrompt: options.inProcess.extraSystemPrompt,
     });

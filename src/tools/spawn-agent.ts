@@ -1,11 +1,9 @@
-// src/tools/subagent.ts — Subagent tool for spawning Claude as a sub-agent
-// Allows the main agent to delegate tasks to coding agents like Claude, Codex, etc.
+// src/tools/spawn-agent.ts — Spawn tool for delegating tasks to coding agents
 
 import { createLogger } from "../core/logger.js";
 import {
   AgentRuntime,
   summarizeEvents,
-  type RunnerKind,
   type RunEvent,
 } from "../agents/index.js";
 import type { InProcessOptions } from "../agents/types.js";
@@ -15,24 +13,20 @@ import { createRunRecorder } from "../agents/persistence.js";
 import type { SessionStore } from "../core/types.js";
 import type { ResolvedSpawningConfig } from "../core/config.js";
 
-const log = createLogger("tools:subagent");
+const log = createLogger("tools:spawn-agent");
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Configuration for the subagent backend */
-export interface SubagentBackendConfig {
-  /** Resolved subagent config from config.ts */
+export interface SpawnBackendConfig {
   config?: ResolvedSpawningConfig;
-  /** AgentCore used to host in-process builtin subagents. */
   core?: PiMonoCore;
 }
 
-/** Options for spawning a sub-agent */
-export interface SpawnSubagentOptions {
-  /** Which agent to use (default: claude) */
-  agent?: RunnerKind;
+export interface SpawnAgentOptions {
+  /** Agent ID — "claude" for external CLI, or a named agent ID for in-process */
+  agent?: string;
   /** Working directory for the agent (required) */
   cwd: string;
   /** Model override */
@@ -51,23 +45,21 @@ export interface SpawnSubagentOptions {
   sessionId?: string;
   /** Channel ID for task registry tracking */
   channelId?: string;
-  /** Thread ID where subagent streams output (for /stop support) */
+  /** Thread ID where agent streams output (for /stop support) */
   threadId?: string;
-  /** Parent agent id, used as the owner of the persisted subagent session. */
+  /** Parent agent id, used as the owner of the persisted session. */
   parentAgentId?: string;
   /**
-   * Real agentId to record this run under. Named subagents pass their own
-   * id (e.g. `code-reviewer`); anonymous/dynamic subagents leave this
-   * unset and the recorder falls back to `parentAgentId`. See
-   * docs/subagent-architecture.md §4.4.
+   * Real agentId to record this run under. Named agents pass their own
+   * id (e.g. `code-reviewer`); anonymous/dynamic agents leave this
+   * unset and the recorder falls back to `parentAgentId`.
    */
   targetAgentId?: string;
-  /** Builtin-backend-specific options. Required when agent === "builtin". */
+  /** In-process backend options. Required when agent is not an external runner. */
   builtin?: InProcessOptions;
 }
 
-/** Result from spawning a sub-agent */
-export interface SpawnSubagentResult {
+export interface SpawnAgentResult {
   success: boolean;
   output?: string;
   error?: string;
@@ -79,39 +71,28 @@ export interface SpawnSubagentResult {
 // Tool implementation
 // ---------------------------------------------------------------------------
 
-/** Shared backend instance (lazy initialized) */
 let sharedBackend: AgentRuntime | undefined;
-
-/** Cached backend config */
-let backendConfig: SubagentBackendConfig = {};
-
-/** Optional factory for resolving the SessionStore to use for a given target agentId. */
-let subagentStoreFactory: ((agentId: string) => Promise<SessionStore | undefined> | SessionStore | undefined) | undefined;
+let backendConfig: SpawnBackendConfig = {};
+let spawnStoreFactory: ((agentId: string) => Promise<SessionStore | undefined> | SessionStore | undefined) | undefined;
 
 /**
- * Register a factory that resolves the SessionStore for a target agent's
- * subagent runs. The factory is called once per spawn with the resolved
- * `targetAgentId` (defaulted to `parentAgentId` for anonymous runs).
- *
- * Pass `undefined` to disable persistence (default).
+ * Register a factory that resolves the SessionStore for a spawned agent's
+ * runs. Called once per spawn with the resolved `targetAgentId`.
  */
-export function setSubagentSessionStoreFactory(
+export function setSpawnSessionStoreFactory(
   factory: ((agentId: string) => Promise<SessionStore | undefined> | SessionStore | undefined) | undefined,
 ): void {
-  subagentStoreFactory = factory;
+  spawnStoreFactory = factory;
 }
 
 /**
- * Initialize the subagent backend with configuration.
- * Should be called during app startup with config from `subagent`.
- * 
- * @param config - Configuration from resolveSubagentConfig()
+ * Initialize the spawn backend with configuration.
+ * Should be called during app startup with config from `spawning`.
  */
-export function initSubagentBackend(config: SubagentBackendConfig): void {
+export function initSpawnBackend(config: SpawnBackendConfig): void {
   backendConfig = config;
   sharedBackend = undefined;
-  log.info("Subagent backend initialized", {
-    allowedTypes: config.config?.allowedTypes ? [...config.config.allowedTypes] : undefined,
+  log.info("Spawn backend initialized", {
     claudePermissionMode: config.config?.claude.permissionMode,
   });
 }
@@ -137,14 +118,13 @@ function getBackend(allowedWorkspaces?: string[]): AgentRuntime {
   return sharedBackend;
 }
 
-/** Counter for generating unique task IDs */
 let taskCounter = 0;
 
 /**
  * Get the shared AgentRuntime instance for use by other modules.
  * Returns undefined if the backend hasn't been initialized.
  */
-export function getSubagentBackend(allowedWorkspaces?: string[]): AgentRuntime | undefined {
+export function getSpawnBackend(allowedWorkspaces?: string[]): AgentRuntime | undefined {
   if (!backendConfig.config) {
     return undefined;
   }
@@ -152,49 +132,41 @@ export function getSubagentBackend(allowedWorkspaces?: string[]): AgentRuntime |
 }
 
 /**
- * Spawn a sub-agent to execute a task.
- *
- * This tool allows the main agent to delegate complex tasks (like coding,
- * refactoring, debugging) to specialized coding agents.
- *
- * @param prompt - The task description for the sub-agent
- * @param options - Spawn options
- * @returns Result with output or error
- *
- * @example
- * ```typescript
- * const result = await spawnSubagent(
- *   "Fix the bug in src/main.ts that causes the crash",
- *   { agent: "claude", cwd: "/project" }
- * );
- * if (result.success) {
- *   console.log("Task completed:", result.output);
- * }
- * ```
+ * Get the list of available agent IDs that can be spawned.
+ * Includes external runner IDs (e.g. "claude") and signals whether
+ * in-process agents are available.
  */
-export async function spawnSubagent(
-  prompt: string,
-  options: SpawnSubagentOptions,
-): Promise<SpawnSubagentResult> {
-  const runner: RunnerKind = options.agent ?? "external";
-  const taskId = `subagent-${++taskCounter}-${Date.now()}`;
+export function getSupportedAgents(): { externalIds: string[]; inProcessAvailable: boolean } {
+  const backend = getBackend();
+  return {
+    externalIds: backend.getExternalRunnerIds(),
+    inProcessAvailable: backend.hasInProcessRunner(),
+  };
+}
 
-  log.info("Spawning sub-agent", { taskId, runner, cwd: options.cwd });
+/**
+ * Spawn an agent to execute a task.
+ */
+export async function spawnAgent(
+  prompt: string,
+  options: SpawnAgentOptions,
+): Promise<SpawnAgentResult> {
+  const agentId = options.agent ?? "claude";
+  const taskId = `spawn-${++taskCounter}-${Date.now()}`;
+
+  log.info("Spawning agent", { taskId, agentId, cwd: options.cwd });
 
   const backend = getBackend(options.allowedWorkspaces);
 
-  // Register task for tracking/abort
   taskRegistry.register(taskId, options.sessionId ?? "", options.channelId ?? "", prompt);
 
-  // Set threadId if provided (for /stop support in threads)
   if (options.threadId) {
     taskRegistry.setThreadId(taskId, options.threadId);
   }
 
-  // Bind to SessionStore (no-op when no factory has been registered).
   const parentAgentId = options.parentAgentId ?? "unknown";
   const targetAgentId = options.targetAgentId ?? parentAgentId;
-  const store = subagentStoreFactory ? await subagentStoreFactory(targetAgentId) : undefined;
+  const store = spawnStoreFactory ? await spawnStoreFactory(targetAgentId) : undefined;
 
   const recorder = await createRunRecorder({
     store,
@@ -202,7 +174,7 @@ export async function spawnSubagent(
     parentAgentId,
     parentSessionId: options.sessionId,
     taskId,
-    backend: runner,
+    backend: agentId,
     cwd: options.cwd,
     prompt,
     channelId: options.channelId,
@@ -213,7 +185,7 @@ export async function spawnSubagent(
 
   try {
     const events = backend.spawn(taskId, {
-      runner,
+      agentId,
       prompt,
       cwd: options.cwd,
       model: options.model,
@@ -224,7 +196,6 @@ export async function spawnSubagent(
       ...(options.builtin ? { inProcess: options.builtin } : {}),
     });
 
-    // Collect events, optionally streaming via callback
     const collected: RunEvent[] = [];
     for await (const event of events) {
       collected.push(event);
@@ -232,10 +203,9 @@ export async function spawnSubagent(
       await recorder.record(event);
     }
 
-    // Build result from collected events
     const result = summarizeEvents(collected);
 
-    log.info("Sub-agent completed", {
+    log.info("Agent completed", {
       taskId,
       success: result.success,
       exitCode: result.exitCode,
@@ -259,7 +229,7 @@ export async function spawnSubagent(
     };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    log.error("Sub-agent failed", { taskId, error });
+    log.error("Agent spawn failed", { taskId, error });
 
     await recorder.patchMetadata({
       exitCode: 1,
@@ -279,12 +249,9 @@ export async function spawnSubagent(
 }
 
 /**
- * Cancel a running sub-agent by task ID pattern.
- *
- * @param pattern - Task ID or pattern to match
- * @returns true if any tasks were cancelled
+ * Cancel a running agent by task ID pattern.
  */
-export function cancelSubagent(pattern?: string): boolean {
+export function cancelAgent(pattern?: string): boolean {
   const backend = getBackend();
   if (pattern) {
     return backend.cancel(pattern);
@@ -294,25 +261,17 @@ export function cancelSubagent(pattern?: string): boolean {
 }
 
 /**
- * Check if any sub-agents are currently running.
+ * Check if any spawned agents are currently running.
  */
-export function hasRunningSubagents(): boolean {
+export function hasRunningAgents(): boolean {
   const backend = getBackend();
   return backend.activeCount > 0;
 }
 
 /**
- * Get the number of active sub-agents.
+ * Get the number of active spawned agents.
  */
-export function getActiveSubagentCount(): number {
+export function getActiveAgentCount(): number {
   const backend = getBackend();
   return backend.activeCount;
 }
-
-/**
- * Get list of supported agent backends from config.
- */
-export function getSupportedAgents(): readonly string[] {
-  return backendConfig.config?.allowedTypes ? [...backendConfig.config.allowedTypes] : ["claude", "builtin"];
-}
-

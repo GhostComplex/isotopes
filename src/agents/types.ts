@@ -4,8 +4,6 @@ import type { SpawnPermissionMode } from "../core/config.js";
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
 
-export type RunnerKind = "in-process" | "external";
-
 export type RunEvent =
   | { type: "run:start" }
   | { type: "run:message"; content: string }
@@ -33,7 +31,7 @@ export interface InProcessOptions {
 export type OnCompleteCallback = (result: RunResult) => void | Promise<void>;
 
 export interface RunOptions {
-  runner: RunnerKind;
+  agentId: string;
   prompt: string;
   cwd: string;
   model?: string;
@@ -49,7 +47,7 @@ export interface RunOptions {
   onComplete?: OnCompleteCallback;
 }
 
-export interface RunTask extends Pick<RunOptions, "runner" | "prompt" | "cwd" | "model" | "permissionMode" | "allowedTools" | "timeout" | "maxTurns"> {
+export interface RunTask extends Pick<RunOptions, "agentId" | "prompt" | "cwd" | "model" | "permissionMode" | "allowedTools" | "timeout" | "maxTurns"> {
   id: string;
   channelId: string;
   useThread?: boolean;

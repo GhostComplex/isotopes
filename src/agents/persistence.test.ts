@@ -170,7 +170,7 @@ describe("createRunRecorder", () => {
         key: expect.stringMatching(/^agent:code-reviewer:run:/),
         channelId: "C1",
         threadId: "T1",
-        subagent: expect.objectContaining({
+        spawnAgent: expect.objectContaining({
           parentAgentId: "dev",
           parentSessionId: "parent-sess",
           taskId: "task-1",
@@ -222,11 +222,11 @@ describe("createRunRecorder", () => {
     await r.patchMetadata({ exitCode: 0, costUsd: 0.5 });
     expect(store.setMetadata).toHaveBeenCalled();
     const patch = (store.setMetadata as ReturnType<typeof vi.fn>).mock.calls[0]![1];
-    expect(patch.subagent.exitCode).toBe(0);
-    expect(patch.subagent.costUsd).toBe(0.5);
-    expect(typeof patch.subagent.durationMs).toBe("number");
-    expect(patch.subagent.parentAgentId).toBe("dev");
-    expect(patch.subagent.taskId).toBe("task-9");
+    expect(patch.spawnAgent.exitCode).toBe(0);
+    expect(patch.spawnAgent.costUsd).toBe(0.5);
+    expect(typeof patch.spawnAgent.durationMs).toBe("number");
+    expect(patch.spawnAgent.parentAgentId).toBe("dev");
+    expect(patch.spawnAgent.taskId).toBe("task-9");
   });
 
   it("survives store failures without throwing", async () => {

@@ -1,9 +1,9 @@
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { createLogger } from "../core/logger.js";
-import type { RunnerKind, RunEvent, RunOptions } from "./types.js";
+import type { RunEvent, RunOptions } from "./types.js";
 import { summarizeEvents } from "./helpers.js";
-import type { ResolvedSpawningConfig, SpawnRunnerType } from "../core/config.js";
+import type { ResolvedSpawningConfig } from "../core/config.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
 import type { Runner } from "./runner.js";
 import { ExternalRunner } from "./runners/external.js";
@@ -22,13 +22,13 @@ export interface AgentRuntimeOptions {
   allowedWorkspaceRoots?: string[];
   config?: ResolvedSpawningConfig;
   core?: PiMonoCore;
-  runners?: Partial<Record<RunnerKind, Runner>>;
+  externalRunners?: Record<string, Runner>;
 }
 
 export class AgentRuntime {
   private allowedRoots: string[];
-  private runners: Partial<Record<RunnerKind, Runner>>;
-  private allowedTypes: Set<SpawnRunnerType>;
+  private externalRunners: Map<string, Runner>;
+  private inProcessRunner?: InProcessRunner;
   private runs = new Map<string, RunHandle>();
   public workspacesKey: string;
 
@@ -37,24 +37,30 @@ export class AgentRuntime {
 
     this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
     this.workspacesKey = this.allowedRoots.slice().sort().join(":");
-    this.allowedTypes = opts.config?.allowedTypes ?? new Set(["claude", "builtin"]);
 
-    if (opts.runners) {
-      this.runners = { ...opts.runners };
+    if (opts.externalRunners) {
+      this.externalRunners = new Map(Object.entries(opts.externalRunners));
     } else {
-      this.runners = {};
-      if (this.allowedTypes.has("claude")) {
-        const claude = opts.config?.claude;
-        this.runners["external"] = new ExternalRunner({
-          permissionMode: claude?.permissionMode,
-          allowedTools: claude?.allowedTools,
-          settingSources: claude?.settingSources,
-        });
-      }
-      if (this.allowedTypes.has("builtin") && opts.core) {
-        this.runners["in-process"] = new InProcessRunner(opts.core);
-      }
+      this.externalRunners = new Map();
+      const claude = opts.config?.claude;
+      this.externalRunners.set("claude", new ExternalRunner({
+        permissionMode: claude?.permissionMode,
+        allowedTools: claude?.allowedTools,
+        settingSources: claude?.settingSources,
+      }));
     }
+
+    if (opts.core) {
+      this.inProcessRunner = new InProcessRunner(opts.core);
+    }
+  }
+
+  getExternalRunnerIds(): string[] {
+    return [...this.externalRunners.keys()];
+  }
+
+  hasInProcessRunner(): boolean {
+    return this.inProcessRunner !== undefined;
   }
 
   validateCwd(cwd: string): void {
@@ -89,11 +95,16 @@ export class AgentRuntime {
     }
   }
 
-  validateRunner(runner: RunnerKind): void {
-    const agentType = runner === "external" ? "claude" : "builtin";
-    if (!this.allowedTypes.has(agentType as SpawnRunnerType)) {
-      throw new Error(`Runner "${runner}" not allowed. Allowed types: ${[...this.allowedTypes].join(", ")}`);
-    }
+  private resolveRunner(agentId: string): Runner {
+    const external = this.externalRunners.get(agentId);
+    if (external) return external;
+
+    if (this.inProcessRunner) return this.inProcessRunner;
+
+    throw new Error(
+      `No runner available for agent "${agentId}". ` +
+      "Pass `core` when constructing AgentRuntime to enable in-process runners.",
+    );
   }
 
   async *spawn(
@@ -105,22 +116,12 @@ export class AgentRuntime {
     if (depth >= maxDepth) {
       throw new Error(
         `Max agent nesting depth reached (depth=${depth}, maxDepth=${maxDepth}). ` +
-          "Spawning further sub-agents is not allowed at this depth.",
+          "Spawning further agents is not allowed at this depth.",
       );
     }
 
-    this.validateRunner(options.runner);
     this.validateCwd(options.cwd);
-
-    const runner = this.runners[options.runner];
-    if (!runner) {
-      throw new Error(
-        `No runner registered for "${options.runner}". ` +
-          (options.runner === "in-process"
-            ? "Pass `core` when constructing AgentRuntime to enable in-process runners."
-            : "Check AgentRuntime configuration."),
-      );
-    }
+    const runner = this.resolveRunner(options.agentId);
 
     if (this.runs.size >= MAX_CONCURRENT_RUNS) {
       throw new Error(
@@ -131,7 +132,7 @@ export class AgentRuntime {
     const abortController = new AbortController();
     this.runs.set(runId, { abort: abortController });
 
-    log.info(`Spawning ${options.runner} run`, { runId, cwd: options.cwd });
+    log.info(`Spawning run for agent "${options.agentId}"`, { runId, cwd: options.cwd });
 
     yield { type: "run:start" };
 
@@ -169,7 +170,7 @@ export class AgentRuntime {
       yield doneEv;
     }
 
-    log.info(`${options.runner} run completed`, { runId });
+    log.info(`Run completed for agent "${options.agentId}"`, { runId });
 
     if (options.onComplete) {
       try {

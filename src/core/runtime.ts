@@ -9,7 +9,7 @@ import {
   type IsotopesConfigFile,
 } from "./config.js";
 import path from "node:path";
-import { initSubagentBackend, setSubagentSessionStoreFactory } from "../tools/subagent.js";
+import { initSpawnBackend, setSpawnSessionStoreFactory } from "../tools/spawn-agent.js";
 import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";
 import { SessionStoreManager } from "./session-store-manager.js";
@@ -61,12 +61,12 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   await ensureDirectories();
 
-  // SessionStoreManager backs both main-agent transcripts and subagent runs.
+  // SessionStoreManager backs both main-agent transcripts and spawn agent runs.
   // Plugin system — initialize early so hooks are available during agent init.
   const pluginManager = new PluginManager();
   const sessionStoreManager = new SessionStoreManager({ hooks: pluginManager.getHooks() });
 
-  // Initialize core first — the builtin subagent backend hosts subagents
+  // Initialize core first — the builtin spawn agent backend hosts spawn agents
   // in-process via this same core.
   const core = new PiMonoCore();
   const agentManager = new DefaultAgentManager(core);
@@ -74,14 +74,14 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   // Initialize agent spawning backend
   if (config.spawning?.enabled) {
     const spawningConfig = resolveSpawningConfig(config.spawning);
-    initSubagentBackend({
+    initSpawnBackend({
       config: spawningConfig,
       core,
     });
-    log.info(`Spawning backend initialized (allowedTypes: ${[...spawningConfig.allowedTypes].join(",")}, claude.permissionMode: ${spawningConfig.claude.permissionMode})`);
+    log.info(`Spawning backend initialized (claude.permissionMode: ${spawningConfig.claude.permissionMode})`);
 
-    setSubagentSessionStoreFactory((agentId) => sessionStoreManager.getOrCreate(agentId));
-    log.info("Subagent session store factory → shared SessionStoreManager");
+    setSpawnSessionStoreFactory((agentId) => sessionStoreManager.getOrCreate(agentId));
+    log.info("Spawn session store factory → shared SessionStoreManager");
   }
 
   const agentWorkspaces = new Map<string, string>();
@@ -113,6 +113,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Sandbox executor initialized (image: ${dockerConfig.image})`);
   }
 
+  // Pre-compute spawnable agent IDs from config (before agent init loop)
+  const spawnableAgentIds = config.agents
+    .filter((a) => a.spawnable === true)
+    .map((a) => a.id);
+
   // Create agents
   for (let agentIdx = 0; agentIdx < config.agents.length; agentIdx++) {
     const agentFile = config.agents[agentIdx];
@@ -131,6 +136,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       sandboxExecutor,
       transportContext: transportCtx,
       hooks: pluginManager.getHooks(),
+      spawnableAgentIds,
     });
 
     agentWorkspaces.set(result.agentConfig.id, result.workspacePath);

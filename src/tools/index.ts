@@ -44,18 +44,18 @@ export type {
 } from "./github.js";
 
 export {
-  spawnSubagent,
-  cancelSubagent,
-  hasRunningSubagents,
-  getActiveSubagentCount,
+  spawnAgent,
+  cancelAgent,
+  hasRunningAgents,
+  getActiveAgentCount,
   getSupportedAgents,
-  initSubagentBackend,
-} from "./subagent.js";
+  initSpawnBackend,
+} from "./spawn-agent.js";
 export type {
-  SpawnSubagentOptions,
-  SpawnSubagentResult,
-  SubagentBackendConfig,
-} from "./subagent.js";
+  SpawnAgentOptions,
+  SpawnAgentResult,
+  SpawnBackendConfig,
+} from "./spawn-agent.js";
 
 export { createWebFetchTool, createWebSearchTool } from "./web.js";
 export type { SearchResult } from "./web.js";

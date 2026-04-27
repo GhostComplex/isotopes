@@ -5,7 +5,7 @@ import {
   type SettingSource,
   type SpawnPermissionMode,
 } from "../../core/config.js";
-import type { RunnerKind, RunEvent, RunOptions } from "../types.js";
+import type { RunEvent, RunOptions } from "../types.js";
 import type { RunnerSignals, Runner } from "../runner.js";
 
 const log = createLogger("agents:runner:external");
@@ -94,8 +94,6 @@ function translatePermissionMode(
 }
 
 export class ExternalRunner implements Runner {
-  readonly kind: RunnerKind = "external";
-
   private permissionMode: SpawnPermissionMode;
   private allowedTools: string[];
   private settingSources: SettingSource[];

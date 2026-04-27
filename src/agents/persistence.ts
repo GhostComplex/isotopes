@@ -6,7 +6,7 @@ import type {
   Session,
   SessionMetadata,
   SessionStore,
-  SubagentSessionMetadata,
+  SpawnAgentSessionMetadata,
 } from "../core/types.js";
 import type { RunEvent } from "./types.js";
 
@@ -77,7 +77,7 @@ export function runEventToMessage(event: RunEvent): AgentMessage | undefined {
   }
 }
 
-export function terminalEventPatch(event: RunEvent): Partial<SubagentSessionMetadata> | undefined {
+export function terminalEventPatch(event: RunEvent): Partial<SpawnAgentSessionMetadata> | undefined {
   switch (event.type) {
     case "run:done":
       return { exitCode: event.exitCode, costUsd: event.costUsd };
@@ -90,7 +90,7 @@ export function terminalEventPatch(event: RunEvent): Partial<SubagentSessionMeta
 
 export interface RunRecorder {
   record(event: RunEvent): Promise<void>;
-  patchMetadata(patch: Partial<SubagentSessionMetadata>): Promise<void>;
+  patchMetadata(patch: Partial<SpawnAgentSessionMetadata>): Promise<void>;
   sessionId?: string;
 }
 
@@ -119,7 +119,7 @@ export async function createRunRecorder(
   const { store } = options;
   if (!store) return NOOP_RECORDER;
 
-  const subagentMeta: SubagentSessionMetadata = {
+  const spawnAgentMeta: SpawnAgentSessionMetadata = {
     parentAgentId: options.parentAgentId,
     parentSessionId: options.parentSessionId,
     taskId: options.taskId,
@@ -129,7 +129,7 @@ export async function createRunRecorder(
   };
   const metadata: SessionMetadata = {
     key: options.sessionKey ?? buildRunSessionKey(options.targetAgentId),
-    subagent: subagentMeta,
+    spawnAgent: spawnAgentMeta,
     channelId: options.channelId,
     threadId: options.threadId,
   };
@@ -168,17 +168,17 @@ export async function createRunRecorder(
     async patchMetadata(patch) {
       try {
         const current = await store.get(sessionId);
-        const prev = current?.metadata?.subagent ?? subagentMeta;
+        const prev = current?.metadata?.spawnAgent ?? spawnAgentMeta;
         const durationMs =
           patch.durationMs === undefined && (patch.exitCode !== undefined || patch.error !== undefined)
             ? Date.now() - startedAt
             : patch.durationMs;
-        const merged: SubagentSessionMetadata = {
+        const merged: SpawnAgentSessionMetadata = {
           ...prev,
           ...patch,
           ...(durationMs !== undefined ? { durationMs } : {}),
         };
-        await store.setMetadata(sessionId, { subagent: merged });
+        await store.setMetadata(sessionId, { spawnAgent: merged });
       } catch (err) {
         log.warn("Failed to patch run metadata", {
           sessionId,

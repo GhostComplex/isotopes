@@ -1,21 +1,21 @@
-// src/plugins/discord/discord-subagent-sink.ts — Stream sub-agent events to Discord
+// src/plugins/discord/discord-spawn-agent-sink.ts — Stream agent spawn events to Discord
 // Formats RunEvents and sends them to a Discord channel or thread.
 
 import { createLogger } from "../../core/logger.js";
 import type { RunEvent, RunResult } from "../../agents/types.js";
-import type { SubagentStreamSink } from "../../core/subagent-context.js";
+import type { SpawnAgentStreamSink } from "../../core/spawn-agent-context.js";
 
-const log = createLogger("subagent:discord-sink");
+const log = createLogger("spawn-agent:discord-sink");
 
 // ---------------------------------------------------------------------------
 
-/** Configuration for how sub-agent output is displayed in Discord */
+/** Configuration for how spawn agent output is displayed in Discord */
 export interface DiscordSinkConfig {
   /** Whether to show tool call details */
   showToolCalls: boolean;
   /** Whether to show thinking/reasoning content */
   showThinking: boolean;
-  /** Whether to create a thread for sub-agent output */
+  /** Whether to create a thread for spawn agent output */
   useThread: boolean;
 }
 
@@ -157,7 +157,7 @@ export function formatSummary(result: RunResult, threadId?: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Streams sub-agent events to a Discord channel.
+ * Streams spawn agent events to a Discord channel.
  *
  * Optionally creates a thread for the output. Formats events according
  * to the DiscordSinkConfig (e.g., hiding tool calls).
@@ -167,7 +167,7 @@ export function formatSummary(result: RunResult, threadId?: string): string {
  * - Sends individual events to the thread
  * - Sends the final summary to the **main channel** (not the thread)
  */
-export class DiscordSink implements SubagentStreamSink {
+export class DiscordSink implements SpawnAgentStreamSink {
   /** The channel where events are sent (thread if created, otherwise main channel) */
   private targetChannelId: string;
   /** The thread ID if one was created */
@@ -191,7 +191,7 @@ export class DiscordSink implements SubagentStreamSink {
    * @param taskName - Display name for the task (used as thread name)
    */
   async start(taskName: string): Promise<void> {
-    const content = `🤖 Starting sub-agent: **${truncate(taskName, 200)}**`;
+    const content = `🤖 Starting spawn agent: **${truncate(taskName, 200)}**`;
 
     try {
       const msg = await this.sendMessage(this.channelId, content);
@@ -201,7 +201,7 @@ export class DiscordSink implements SubagentStreamSink {
         const thread = await this.createThread(this.channelId, threadName, msg.id);
         this.threadId = thread.id;
         this.targetChannelId = thread.id;
-        log.debug("Created thread for sub-agent output", { threadId: thread.id });
+        log.debug("Created thread for spawn agent output", { threadId: thread.id });
       }
     } catch (err) {
       log.error("Failed to send start message", err);

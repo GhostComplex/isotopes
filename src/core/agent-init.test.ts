@@ -114,7 +114,7 @@ describe("initializeAgent", () => {
     );
   });
 
-  it("registers spawn_subagent when subagent enabled and no sandbox", async () => {
+  it("registers spawn_agent when spawning enabled and no sandbox", async () => {
     const result = await initializeAgent({
       agentFile: makeMinimalAgentFile(),
       spawning: { enabled: true },
@@ -123,10 +123,10 @@ describe("initializeAgent", () => {
     });
 
     const toolNames = result.toolRegistry.list().map((t) => t.name);
-    expect(toolNames).toContain("spawn_subagent");
+    expect(toolNames).toContain("spawn_agent");
   });
 
-  it("does not register spawn_subagent when sandbox is active (issue #440)", async () => {
+  it("does not register spawn_agent when sandbox is active (issue #440)", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await initializeAgent({
@@ -139,10 +139,9 @@ describe("initializeAgent", () => {
     });
 
     const toolNames = result.toolRegistry.list().map((t) => t.name);
-    expect(toolNames).not.toContain("spawn_subagent");
-    // Warn fired — proves the sandboxed branch ran (test isn't passing for the wrong reason).
+    expect(toolNames).not.toContain("spawn_agent");
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Subagent tools disabled for test-agent"),
+      expect.stringContaining("Spawning tools disabled for test-agent"),
     );
 
     warnSpy.mockRestore();

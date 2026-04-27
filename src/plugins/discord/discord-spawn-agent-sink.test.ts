@@ -1,6 +1,6 @@
-// src/subagent/discord-sink.test.ts — Tests for Discord sink formatters
+// src/plugins/discord/discord-spawn-agent-sink.test.ts — Tests for Discord sink formatters
 import { describe, it, expect, vi } from "vitest";
-import { truncate, formatEvent, formatSummary, DiscordSink, type DiscordSinkConfig } from "./discord-subagent-sink.js";
+import { truncate, formatEvent, formatSummary, DiscordSink, type DiscordSinkConfig } from "./discord-spawn-agent-sink.js";
 import type { RunEvent, RunResult } from "../../agents/types.js";
 
 const showAll: DiscordSinkConfig = { showToolCalls: true, showThinking: false, useThread: false };

@@ -112,11 +112,11 @@ describe("AgentRuntime", () => {
 
   it("rejects unknown runner type", async () => {
     const gen = runtime.spawn("t1", {
-      runner: "bogus" as never,
+      agentId: "bogus",
       prompt: "x",
       cwd: process.cwd(),
     });
-    await expect(gen.next()).rejects.toThrow(/No runner registered/);
+    await expect(gen.next()).rejects.toThrow(/No runner available for agent/);
   });
 
   it("streams SDK messages through mapSdkToRunEvent", async () => {
@@ -128,7 +128,7 @@ describe("AgentRuntime", () => {
 
     const events: RunEvent[] = [];
     for await (const ev of runtime.spawn("t2", {
-      runner: "external",
+      agentId: "claude",
       prompt: "hi",
       cwd: process.cwd(),
     })) {
@@ -148,7 +148,7 @@ describe("AgentRuntime", () => {
 
     const events: RunEvent[] = [];
     for await (const ev of runtime.spawn("t3", {
-      runner: "external",
+      agentId: "claude",
       prompt: "x",
       cwd: process.cwd(),
     })) {
@@ -186,7 +186,7 @@ describe("AgentRuntime", () => {
     let capturedResult: RunResult | undefined;
     const events: RunEvent[] = [];
     for await (const ev of runtime.spawn("t-cb", {
-      runner: "external",
+      agentId: "claude",
       prompt: "hi",
       cwd: process.cwd(),
       onComplete: (result) => { capturedResult = result; },
@@ -208,7 +208,7 @@ describe("AgentRuntime", () => {
 
     const events: RunEvent[] = [];
     for await (const ev of runtime.spawn("t-cb-err", {
-      runner: "external",
+      agentId: "claude",
       prompt: "hi",
       cwd: process.cwd(),
       onComplete: () => { throw new Error("callback boom"); },
@@ -238,7 +238,7 @@ describe("AgentRuntime depth limiting", () => {
 
     const events: RunEvent[] = [];
     for await (const ev of runtime.spawn("t-d0", {
-      runner: "external",
+      agentId: "claude",
       prompt: "hi",
       cwd: process.cwd(),
       depth: 0,
@@ -250,7 +250,7 @@ describe("AgentRuntime depth limiting", () => {
 
   it("rejects spawn when depth >= maxDepth", async () => {
     const gen = runtime.spawn("t-deep", {
-      runner: "external",
+      agentId: "claude",
       prompt: "hi",
       cwd: process.cwd(),
       depth: 1,
@@ -261,7 +261,7 @@ describe("AgentRuntime depth limiting", () => {
 
   it("rejects spawn when depth exceeds default maxDepth", async () => {
     const gen = runtime.spawn("t-deep2", {
-      runner: "external",
+      agentId: "claude",
       prompt: "hi",
       cwd: process.cwd(),
       depth: 1,
@@ -277,7 +277,7 @@ describe("AgentRuntime depth limiting", () => {
 
     const events: RunEvent[] = [];
     for await (const ev of runtime.spawn("t-deep3", {
-      runner: "external",
+      agentId: "claude",
       prompt: "hi",
       cwd: process.cwd(),
       depth: 2,
@@ -293,7 +293,7 @@ describe("ExternalRunner.buildSdkOptions settingSources", () => {
   it("defaults settingSources to ['user']", () => {
     const runner = new ExternalRunner({});
     const opts = runner.buildSdkOptions(
-      { runner: "external", cwd: "/tmp", prompt: "hi" },
+      { agentId: "claude", cwd: "/tmp", prompt: "hi" },
       new AbortController(),
     );
     expect(opts.settingSources).toEqual(["user"]);
@@ -303,7 +303,7 @@ describe("ExternalRunner.buildSdkOptions settingSources", () => {
   it("forwards explicit settingSources, including empty array (opt-out)", () => {
     const runner = new ExternalRunner({ settingSources: [] });
     const opts = runner.buildSdkOptions(
-      { runner: "external", cwd: "/tmp", prompt: "hi" },
+      { agentId: "claude", cwd: "/tmp", prompt: "hi" },
       new AbortController(),
     );
     expect(opts.settingSources).toEqual([]);
