@@ -148,22 +148,17 @@ channels:
         configPath,
         `
 tools:
-  cli: false
-  fs:
-    workspaceOnly: true
+  allow:
+    - read_file
 
 agents:
   - id: assistant
-    tools:
-      cli: true
 `,
       );
 
       const config = await loadConfig(configPath);
 
-      expect(config.tools?.cli).toBe(false);
-      expect(config.tools?.fs?.workspaceOnly).toBe(true);
-      expect(config.agents[0].tools?.cli).toBe(true);
+      expect(config.agents[0].id).toBe("assistant");
     });
 
     it("loads object-form agents with defaults", async () => {
@@ -288,15 +283,13 @@ agents:
     it("merges tool settings with defaults", () => {
       const agentFile = {
         id: "test",
-        tools: { cli: true },
+        tools: { allow: ["read_file"] },
       };
       const config = toAgentConfig(agentFile, undefined, undefined, {
-        cli: false,
-        fs: { workspaceOnly: true },
+        deny: ["exec"],
       });
 
-      expect(config.toolSettings?.cli).toBe(true);
-      expect(config.toolSettings?.fs?.workspaceOnly).toBe(true);
+      expect(config.toolSettings?.allow).toEqual(["read_file"]);
     });
 
     it("includes compaction config from agent-level", () => {
@@ -413,19 +406,17 @@ agents:
 
     it("inherits tools from agentDefaults", () => {
       const agentFile = { id: "test" };
-      const defaults = { tools: { cli: true } };
+      const defaults = { tools: { allow: ["read_file"] } };
 
       const config = toAgentConfig(agentFile, defaults);
 
-      expect(config.toolSettings?.cli).toBe(true);
+      expect(config.toolSettings?.allow).toEqual(["read_file"]);
     });
   });
 
   describe("resolveToolSettings", () => {
-    it("defaults cli off and workspaceOnly on", () => {
+    it("defaults to empty allow/deny", () => {
       expect(resolveToolSettings()).toEqual({
-        cli: false,
-        fs: { workspaceOnly: true },
         allow: undefined,
         deny: undefined,
       });
@@ -434,13 +425,11 @@ agents:
     it("lets agent settings override global defaults", () => {
       expect(
         resolveToolSettings(
-          { fs: { workspaceOnly: false } },
-          { cli: true, fs: { workspaceOnly: true } },
+          { allow: ["read_file"] },
+          { allow: ["write_file"] },
         ),
       ).toEqual({
-        cli: true,
-        fs: { workspaceOnly: false },
-        allow: undefined,
+        allow: ["read_file"],
         deny: undefined,
       });
     });

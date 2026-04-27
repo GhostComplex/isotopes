@@ -69,7 +69,7 @@ describe("workspace context", () => {
 describe("read_file tool", () => {
   it("reads a file from the workspace", async () => {
     const registry = new ToolRegistry("test");
-    const { tool, handler } = createReadFileTool({ basePath: tmpDir });
+    const { tool, handler } = createReadFileTool({ workspacePath: tmpDir });
     registry.register(tool, handler);
 
     const result = await registry.execute("read_file", { path: "hello.txt" });
@@ -78,7 +78,7 @@ describe("read_file tool", () => {
 
   it("returns error for nonexistent file", async () => {
     const registry = new ToolRegistry("test");
-    const { tool, handler } = createReadFileTool({ basePath: tmpDir });
+    const { tool, handler } = createReadFileTool({ workspacePath: tmpDir });
     registry.register(tool, handler);
 
     const result = await registry.execute("read_file", { path: "nope.txt" });
@@ -98,7 +98,7 @@ describe("edit tool", () => {
     await fs.writeFile(editFile, "foo bar baz\n");
 
     const registry = new ToolRegistry("test");
-    const { tool, handler } = createEditFileTool({ basePath: tmpDir });
+    const { tool, handler } = createEditFileTool({ workspacePath: tmpDir });
     registry.register(tool, handler);
 
     const result = await registry.execute("edit", {
@@ -199,7 +199,7 @@ describe("NO_REPLY suppression", () => {
 
 describe("tool policy deny", () => {
   it("removes denied tools from the registry", () => {
-    const tools = createWorkspaceToolsWithGuards(tmpDir, { cli: true });
+    const tools = createWorkspaceToolsWithGuards(tmpDir);
     const filtered = applyToolPolicy(tools, { deny: ["read_file"] });
 
     const names = filtered.map((t) => t.tool.name);
@@ -209,7 +209,7 @@ describe("tool policy deny", () => {
   });
 
   it("denied tool cannot be executed", async () => {
-    const tools = createWorkspaceToolsWithGuards(tmpDir, { cli: true });
+    const tools = createWorkspaceToolsWithGuards(tmpDir);
     const filtered = applyToolPolicy(tools, { deny: ["read_file"] });
 
     const registry = new ToolRegistry("test");
@@ -238,7 +238,7 @@ describe("tool policy deny", () => {
   });
 
   it("allow list restricts to only specified tools", () => {
-    const tools = createWorkspaceToolsWithGuards(tmpDir, { cli: true });
+    const tools = createWorkspaceToolsWithGuards(tmpDir);
     const filtered = applyToolPolicy(tools, { allow: ["read_file", "edit"] });
 
     const names = filtered.map((t) => t.tool.name);
@@ -246,7 +246,7 @@ describe("tool policy deny", () => {
   });
 
   it("deny takes precedence over allow", () => {
-    const tools = createWorkspaceToolsWithGuards(tmpDir, { cli: true });
+    const tools = createWorkspaceToolsWithGuards(tmpDir);
     const filtered = applyToolPolicy(tools, {
       allow: ["read_file", "edit"],
       deny: ["edit"],
@@ -268,7 +268,6 @@ describe("full tool wiring", () => {
 
     // Workspace tools (read, write, edit, list_dir, time)
     const workspaceTools = createWorkspaceToolsWithGuards(tmpDir, {
-      cli: true,
       web: true,
     });
     for (const { tool, handler } of workspaceTools) {

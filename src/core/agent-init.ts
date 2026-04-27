@@ -28,7 +28,6 @@ import {
   ToolRegistry,
   buildToolGuardPrompt,
   createWorkspaceToolsWithGuards,
-  resolveToolGuards,
   applyToolPolicy,
 } from "./tools.js";
 import { createReactTools, LazyTransportContext } from "../tools/react.js";
@@ -137,7 +136,6 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   log.debug(`Loaded workspace context for ${agentConfig.id}: systemPrompt=${workspaceContext.systemPromptAdditions.length > 0}, memory=${workspaceContext.memory !== null}`);
 
   // 7. Create tool registry and process registry
-  const resolvedToolGuards = resolveToolGuards(agentConfig.toolSettings);
   const toolRegistry = new ToolRegistry(agentConfig.id);
   const processRegistry = new ProcessRegistry();
   const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];
@@ -184,24 +182,22 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   }
 
   // 11. Register exec/process tools
-  if (resolvedToolGuards.cli) {
-    const execTools = createExecTools({
-      cwd: workspacePath,
-      registry: processRegistry,
-      sandboxExecutor,
-      agentId: agentConfig.id,
-      isMainAgent: false,
-      agentSandboxConfig: agentConfig.sandbox,
-      allowedWorkspaces: agentAllowedWorkspaces,
-    });
-    const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
-    for (const { tool, handler } of filteredExecTools) {
-      toolRegistry.register(tool, handler);
-    }
+  const execTools = createExecTools({
+    cwd: workspacePath,
+    registry: processRegistry,
+    sandboxExecutor,
+    agentId: agentConfig.id,
+    isMainAgent: false,
+    agentSandboxConfig: agentConfig.sandbox,
+    allowedWorkspaces: agentAllowedWorkspaces,
+  });
+  const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
+  for (const { tool, handler } of filteredExecTools) {
+    toolRegistry.register(tool, handler);
   }
 
   // 12. Build tool guard prompt and append to system prompt
-  const toolGuardPrompt = buildToolGuardPrompt(toolRegistry.list(), resolvedToolGuards, workspacePath, agentAllowedWorkspaces);
+  const toolGuardPrompt = buildToolGuardPrompt(toolRegistry.list(), workspacePath);
   systemPrompt = [
     systemPrompt,
     toolGuardPrompt,

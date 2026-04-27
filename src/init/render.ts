@@ -25,10 +25,7 @@ function renderProvider(answers: InitAnswers): string {
 `;
 }
 
-const TOOLS = `tools:
-  cli: false                # Shell execution (turn on once you trust the agent)
-  fs:
-    workspaceOnly: true     # File tools restricted to the agent's workspace
+const TOOLS = `tools: {}
 `;
 
 const AGENTS = `agents:
