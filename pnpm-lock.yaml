@@ -38,9 +38,6 @@ importers:
       react:
         specifier: ^18.3.1
         version: 18.3.1
-      string-width:
-        specifier: ^8.2.0
-        version: 8.2.0
       yaml:
         specifier: 2.7.1
         version: 2.7.1

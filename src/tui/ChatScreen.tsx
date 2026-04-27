@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import stringWidth from "string-width";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, ContentBlock, TuiOptions, Screen, SSEEvent } from "./types.js";
 import * as api from "./api.js";
@@ -340,14 +339,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
       <Box borderStyle="single" paddingX={1} height={3}>
         <Text color="green">&gt; </Text>
-        <Text>{(() => {
-          const maxWidth = (process.stdout.columns || 80) - 6;
-          let visible = input;
-          while (stringWidth(visible) > maxWidth && visible.length > 0) {
-            visible = visible.slice(1);
-          }
-          return visible;
-        })()}</Text>
+        <Text wrap="truncate">{input}</Text>
         <Text color="gray">█</Text>
       </Box>
     </Box>
