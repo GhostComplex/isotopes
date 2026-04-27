@@ -219,6 +219,8 @@ export interface SubagentConfigFile {
   timeout?: number;
   /** Default maximum turns per sub-agent run */
   maxTurns?: number;
+  /** Maximum agent nesting depth. Default: 1 (subagents cannot spawn further agents) */
+  maxDepth?: number;
   /** Whether to create Discord threads for sub-agent output. Default: true */
   useThread?: boolean;
   /** Whether to show tool call details in Discord. Default: true */
@@ -239,6 +241,7 @@ export interface ResolvedSubagentConfig {
   allowedTypes: Set<SubagentType>;
   timeout?: number;
   maxTurns?: number;
+  maxDepth?: number;
   useThread: boolean;
   showToolCalls: boolean;
   claude: ResolvedClaudeSubagentConfig;
@@ -406,6 +409,7 @@ export function resolveSubagentConfig(
     allowedTypes: new Set(allowedTypes),
     timeout: subagentConfig?.timeout,
     maxTurns: subagentConfig?.maxTurns,
+    maxDepth: subagentConfig?.maxDepth,
     useThread: subagentConfig?.useThread ?? true,
     showToolCalls: subagentConfig?.showToolCalls ?? true,
     claude: {

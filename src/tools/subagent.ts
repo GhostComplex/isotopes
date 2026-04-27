@@ -41,6 +41,8 @@ export interface SpawnSubagentOptions {
   timeout?: number;
   /** Maximum turns (default: 50) */
   maxTurns?: number;
+  /** Current nesting depth (0 = top-level). */
+  depth?: number;
   /** Allowed workspace roots for validation */
   allowedWorkspaces?: string[];
   /** Callback for streaming events */
@@ -217,6 +219,8 @@ export async function spawnSubagent(
       model: options.model,
       timeout: options.timeout,
       maxTurns: options.maxTurns ?? 50,
+      depth: options.depth,
+      maxDepth: backendConfig.config?.maxDepth,
       ...(options.builtin ? { inProcess: options.builtin } : {}),
     });
 
