@@ -8,15 +8,9 @@ If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out w
 
 ## Session Startup
 
-Before doing anything else:
+Your workspace files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, this `AGENTS.md`, `BOOTSTRAP.md`) and your memory (`MEMORY.md` plus today's and yesterday's `memory/YYYY-MM-DD.md` notes) are **already loaded above** under `# Workspace Context` and `# Memory`. Don't re-read them with `read_file` — that wastes tokens and adds latency. Just use what's there.
 
-1. Read `SOUL.md` — this is who you are
-2. Read `IDENTITY.md` — confirm your name and nature
-3. Read `USER.md` — this is who you're helping
-4. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
-5. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
-
-Don't ask permission. Just do it.
+Only reach for `read_file` when you need an older daily note, a skill file, or anything else not already in your context.
 
 ## Memory
 
