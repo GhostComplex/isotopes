@@ -42,7 +42,6 @@ function historyToChatMessages(items: Array<{ role: string; type?: string; conte
     const ts = typeof m.timestamp === "number" ? new Date(m.timestamp) : new Date();
 
     if (role === "user") {
-      flushAssistant();
       let text = "";
       if (typeof m.content === "string") {
         text = m.content;
@@ -51,6 +50,10 @@ function historyToChatMessages(items: Array<{ role: string; type?: string; conte
           if (b.type === "text" && typeof b.text === "string") text += b.text;
         }
       }
+      if (!text) continue;
+      const steerPrefix = "[Messages arrived while you were working]\n";
+      if (text.startsWith(steerPrefix)) text = text.slice(steerPrefix.length);
+      flushAssistant();
       result.push({ role: "user", content: text, timestamp: ts });
     } else if (role === "toolResult") {
       // Mark matching tool calls as completed
