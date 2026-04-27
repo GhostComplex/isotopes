@@ -3,7 +3,7 @@ export type {
   RunEvent,
   RunResult,
   RunOptions,
-  InProcessOptions,
+  BuiltinOptions,
   RunTask,
   OnCompleteCallback,
 } from "./types.js";

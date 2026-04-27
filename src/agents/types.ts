@@ -36,7 +36,7 @@ export interface RunResult {
  *   and tool registry) and the target's already-assembled system prompt
  *   (SOUL.md/MEMORY.md/TOOLS.md/tool guards merged at init time).
  */
-export type InProcessOptions =
+export type BuiltinOptions =
   | {
       mode: "ephemeral";
       provider: ProviderConfig;
@@ -64,7 +64,7 @@ export interface RunOptions {
   depth?: number;
   /** Maximum allowed nesting depth. Spawn is rejected when depth >= maxDepth. */
   maxDepth?: number;
-  inProcess?: InProcessOptions;
+  builtin?: BuiltinOptions;
   onComplete?: OnCompleteCallback;
 }
 

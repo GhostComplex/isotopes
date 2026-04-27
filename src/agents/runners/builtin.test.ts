@@ -86,7 +86,7 @@ async function collect(gen: AsyncGenerator<RunEvent>): Promise<RunEvent[]> {
 }
 
 describe("BuiltinRunner", () => {
-  it("yields error+done(1) when options.inProcess is missing", async () => {
+  it("yields error+done(1) when options.builtin is missing", async () => {
     const harness = makeCore([]);
     const runner = new BuiltinRunner(harness.core);
     const out = await collect(
@@ -117,14 +117,14 @@ describe("BuiltinRunner", () => {
           agentId: "test-agent",
           prompt: "do thing",
           cwd: "/tmp",
-          inProcess: { mode: "ephemeral", provider: fakeProvider(), tools },
+          builtin: { mode: "ephemeral", provider: fakeProvider(), tools },
         },
         { abort: new AbortController().signal },
       ),
     );
 
     expect(harness.setIds).toHaveLength(1);
-    expect(harness.setIds[0]).toMatch(/^agent-inproc-task-2-/);
+    expect(harness.setIds[0]).toMatch(/^agent-builtin-task-2-/);
     expect(harness.clearedIds).toEqual(harness.setIds);
 
     expect(harness.capturedConfig?.compaction).toEqual({ mode: "off" });
@@ -152,7 +152,7 @@ describe("BuiltinRunner", () => {
           agentId: "test-agent",
           prompt: "p",
           cwd: "/tmp",
-          inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+          builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
         },
         { abort: ac.signal },
       ),
@@ -172,7 +172,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-skip", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+        builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out).toEqual([{ type: "run:done", exitCode: 0 }]);
@@ -187,7 +187,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-tool", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+        builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out[0]).toEqual({ type: "run:tool_use", toolName: "shell", toolInput: { cmd: "ls" } });
@@ -203,7 +203,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-tresult", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+        builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out[0]).toEqual({ type: "run:tool_result", toolName: "test", toolResult: "ok" });
@@ -218,7 +218,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-err", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+        builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out).toEqual([
@@ -254,7 +254,7 @@ describe("BuiltinRunner", () => {
           agentId: "test-agent",
           prompt: "p",
           cwd: "/tmp",
-          inProcess: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+          builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
         },
         { abort: new AbortController().signal },
       ),
@@ -313,7 +313,7 @@ describe("BuiltinRunner", () => {
           agentId: "eous",
           prompt: "who are you?",
           cwd: "/eous-workspace",
-          inProcess: { mode: "named", cache: namedCache, systemPrompt: "I am eous." },
+          builtin: { mode: "named", cache: namedCache, systemPrompt: "I am eous." },
         },
         { abort: new AbortController().signal },
       ),

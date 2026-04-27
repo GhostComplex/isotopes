@@ -7,7 +7,7 @@ import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
 import { spawnAgent, getSupportedAgents } from "../tools/spawn-agent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import type { RunEvent, InProcessOptions } from "../agents/types.js";
+import type { RunEvent, BuiltinOptions } from "../agents/types.js";
 import { getSpawnAgentContext, type SpawnAgentStreamContext } from "./spawn-agent-context.js";
 import { failureTracker } from "../agents/failure-tracker.js";
 import { createLogger } from "./logger.js";
@@ -283,7 +283,7 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
         const namedWorkspace = agentManager?.getWorkspacePath?.(agent);
         const isNamed = namedCache !== undefined && namedSystemPrompt !== undefined && namedSystemPrompt.length > 0;
 
-        let builtin: InProcessOptions | undefined;
+        let builtin: BuiltinOptions | undefined;
         let targetAgentId: string | undefined;
         let effectiveCwd = cwd;
         let effectiveAllowedWorkspaces = allAllowedWorkspaces;
@@ -335,7 +335,7 @@ async function runSpawnAgentPlain(
   allowedWorkspaces: string[],
   maxTurns?: number,
   parentAgentId?: string,
-  builtin?: InProcessOptions,
+  builtin?: BuiltinOptions,
   targetAgentId?: string,
 ): Promise<string> {
   const result = await spawnAgent(task, {
@@ -367,7 +367,7 @@ async function runSpawnAgentWithStreaming(
   context: SpawnAgentStreamContext,
   maxTurns?: number,
   parentAgentId?: string,
-  builtin?: InProcessOptions,
+  builtin?: BuiltinOptions,
   targetAgentId?: string,
 ): Promise<string> {
   const { channelId, showToolCalls = true, onComplete } = context;

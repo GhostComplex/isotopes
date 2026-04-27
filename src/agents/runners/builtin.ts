@@ -38,31 +38,31 @@ export class BuiltinRunner implements Runner {
     options: RunOptions,
     signals: RunnerSignals,
   ): AsyncGenerator<RunEvent> {
-    if (!options.inProcess) {
-      yield { type: "run:error", error: "builtin runner requires options.inProcess" };
+    if (!options.builtin) {
+      yield { type: "run:error", error: "builtin runner requires options.builtin" };
       yield { type: "run:done", exitCode: 1 };
       return;
     }
 
-    if (options.inProcess.mode === "named") {
-      yield* this.runNamed(runId, options, signals, options.inProcess);
+    if (options.builtin.mode === "named") {
+      yield* this.runNamed(runId, options, signals, options.builtin);
       return;
     }
 
-    yield* this.runEphemeral(runId, options, signals, options.inProcess);
+    yield* this.runEphemeral(runId, options, signals, options.builtin);
   }
 
   private async *runEphemeral(
     runId: string,
     options: RunOptions,
     signals: RunnerSignals,
-    inProcess: Extract<NonNullable<RunOptions["inProcess"]>, { mode: "ephemeral" }>,
+    builtin: Extract<NonNullable<RunOptions["builtin"]>, { mode: "ephemeral" }>,
   ): AsyncGenerator<RunEvent> {
-    const agentId = `agent-inproc-${runId}-${randomUUID().slice(0, 8)}`;
-    const tools = filterTools(inProcess.tools, agentId);
+    const agentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;
+    const tools = filterTools(builtin.tools, agentId);
     const systemPrompt = buildSpawnAgentSystemPrompt({
       task: options.prompt,
-      extraSystemPrompt: inProcess.extraSystemPrompt,
+      extraSystemPrompt: builtin.extraSystemPrompt,
     });
 
     log.info("BuiltinRunner.run (ephemeral)", { runId, agentId, toolCount: tools.list().length });
@@ -71,7 +71,7 @@ export class BuiltinRunner implements Runner {
 
     const cache = this.core.createServiceCache({
       id: agentId,
-      provider: inProcess.provider,
+      provider: builtin.provider,
       compaction: { mode: "off" },
     });
 
@@ -98,14 +98,14 @@ export class BuiltinRunner implements Runner {
     runId: string,
     options: RunOptions,
     signals: RunnerSignals,
-    inProcess: Extract<NonNullable<RunOptions["inProcess"]>, { mode: "named" }>,
+    builtin: Extract<NonNullable<RunOptions["builtin"]>, { mode: "named" }>,
   ): AsyncGenerator<RunEvent> {
     log.info("BuiltinRunner.run (named)", { runId, agentId: options.agentId });
 
     const sessionManager = SessionManager.inMemory();
-    const session = await inProcess.cache.createSession({
+    const session = await builtin.cache.createSession({
       sessionManager,
-      systemPrompt: inProcess.systemPrompt,
+      systemPrompt: builtin.systemPrompt,
     });
 
     const onAbort = () => session.abort();

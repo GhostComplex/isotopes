@@ -6,7 +6,7 @@ import {
   summarizeEvents,
   type RunEvent,
 } from "../agents/index.js";
-import type { InProcessOptions } from "../agents/types.js";
+import type { BuiltinOptions } from "../agents/types.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
 import { taskRegistry } from "../agents/task-registry.js";
 import { createRunRecorder } from "../agents/persistence.js";
@@ -55,8 +55,8 @@ export interface SpawnAgentOptions {
    * unset and the recorder falls back to `parentAgentId`.
    */
   targetAgentId?: string;
-  /** In-process backend options. Required when agent is not an external runner. */
-  builtin?: InProcessOptions;
+  /** Builtin runner payload. Required when agent is not an external runner. */
+  builtin?: BuiltinOptions;
 }
 
 export interface SpawnAgentResult {
@@ -188,7 +188,7 @@ export async function spawnAgent(
       maxTurns: options.maxTurns ?? 50,
       depth: options.depth,
       maxDepth: backendConfig.config?.maxDepth,
-      ...(options.builtin ? { inProcess: options.builtin } : {}),
+      ...(options.builtin ? { builtin: options.builtin } : {}),
     });
 
     const collected: RunEvent[] = [];
