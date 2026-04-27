@@ -311,28 +311,32 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
               if (!labelRendered) {
                 labelRendered = true;
                 elements.push(
-                  <Text key={j} wrap="wrap">
-                    <Text color={roleColor} bold>{roleLabel}</Text>
-                    <Text>: {block.text}</Text>
-                  </Text>
+                  <Box key={j}>
+                    <Text wrap="wrap">
+                      <Text color={roleColor} bold>{roleLabel}</Text>
+                      <Text>: {block.text}</Text>
+                    </Text>
+                  </Box>
                 );
               } else {
-                elements.push(<Text key={j} wrap="wrap">{block.text}</Text>);
+                elements.push(<Box key={j}><Text wrap="wrap">{block.text}</Text></Box>);
               }
             } else {
               if (!labelRendered) {
                 labelRendered = true;
                 elements.push(
-                  <Text key={`label`}>
+                  <Box key={`label`}>
                     <Text color={roleColor} bold>{roleLabel}</Text>
                     <Text>:</Text>
-                  </Text>
+                  </Box>
                 );
               }
               elements.push(
-                <Text key={j} color="gray" dimColor wrap="truncate-end">
-                  {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
-                </Text>
+                <Box key={j}>
+                  <Text color="gray" dimColor wrap="truncate-end">
+                    {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
+                  </Text>
+                </Box>
               );
             }
           }
