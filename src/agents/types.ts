@@ -27,7 +27,7 @@ export interface RunResult {
 /**
  * Builtin runner payload. Two modes:
  *
- * - "ephemeral": fire-and-forget agent. Uses the parent's provider and
+ * - "subagent": fire-and-forget agent. Uses the parent's provider and
  *   a filtered subset of the parent's tools. The system prompt is the
  *   generic `buildSpawnAgentSystemPrompt()` preamble + task. By
  *   convention spawned via the magic agent id "subagent" so its run
@@ -47,7 +47,7 @@ export interface RunResult {
  */
 export type BuiltinOptions =
   | {
-      mode: "ephemeral";
+      mode: "subagent";
       provider: ProviderConfig;
       tools: ToolRegistry;
       extraSystemPrompt?: string;

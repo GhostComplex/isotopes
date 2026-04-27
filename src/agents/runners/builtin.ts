@@ -49,14 +49,14 @@ export class BuiltinRunner implements Runner {
       return;
     }
 
-    yield* this.runEphemeral(runId, options, signals, options.builtin);
+    yield* this.runSubagent(runId, options, signals, options.builtin);
   }
 
-  private async *runEphemeral(
+  private async *runSubagent(
     runId: string,
     options: RunOptions,
     signals: RunnerSignals,
-    builtin: Extract<NonNullable<RunOptions["builtin"]>, { mode: "ephemeral" }>,
+    builtin: Extract<NonNullable<RunOptions["builtin"]>, { mode: "subagent" }>,
   ): AsyncGenerator<RunEvent> {
     const agentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;
     const tools = filterTools(builtin.tools, agentId);
@@ -65,15 +65,15 @@ export class BuiltinRunner implements Runner {
       extraSystemPrompt: builtin.extraSystemPrompt,
     });
 
-    log.info("BuiltinRunner.run (ephemeral)", { runId, agentId, toolCount: tools.list().length });
+    log.info("BuiltinRunner.run (subagent)", { runId, agentId, toolCount: tools.list().length });
 
     this.core.setToolRegistry(agentId, tools);
 
-    // Compaction is intentionally OFF for ephemeral spawns: the system
+    // Compaction is intentionally OFF for subagent spawns: the system
     // prompt steers the agent toward terse single-shot tasks, there's no
     // SOUL/MEMORY identity worth preserving across compactions, and
     // compaction would add LLM-call overhead that defeats the
-    // fire-and-forget premise. Long ephemeral runs that overflow context
+    // fire-and-forget premise. Long subagent runs that overflow context
     // will fail loudly — that's a signal the task should use a named
     // agent or Claude CLI instead. See issue #585 for making this opt-in.
     const cache = this.core.createServiceCache({
@@ -116,7 +116,7 @@ export class BuiltinRunner implements Runner {
     // the same named agent (or a spawn racing with direct user chat) are
     // session-isolated. Compaction and provider settings deliberately
     // inherit from the target agent's config (named = full identity);
-    // do NOT force `compaction: { mode: "off" }` here as ephemeral does.
+    // do NOT force `compaction: { mode: "off" }` here as subagent does.
     const sessionManager = builtin.sessionManager ?? SessionManager.inMemory();
     const session = await builtin.cache.createSession({
       sessionManager,

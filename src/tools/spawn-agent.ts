@@ -179,7 +179,7 @@ export async function spawnAgent(
     threadId: options.threadId,
   });
 
-  // For builtin runs (named + ephemeral) the SDK can persist the real
+  // For builtin runs (named + subagent) the SDK can persist the real
   // structured conversation directly into the run's session. Hand the
   // SessionManager backing this session into the BuiltinOptions so the
   // SDK writes there. We then skip per-event recorder.record() to avoid

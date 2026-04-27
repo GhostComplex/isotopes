@@ -207,7 +207,7 @@ export interface SpawnAgentToolOptions {
  * posted to the main channel when complete.
  */
 /**
- * Magic agent id that triggers ephemeral builtin spawn (parent's
+ * Magic agent id that triggers subagent builtin spawn (parent's
  * provider + filtered tools + generic system prompt + task). Run
  * sessions land in `~/.isotopes/agents/subagent/sessions/` regardless
  * of which agent triggered the spawn — keeps real agents' session
@@ -218,7 +218,7 @@ export const SUBAGENT_AGENT_ID = "subagent";
 export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: Tool; handler: ToolHandler } {
   const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds, agentManager } = options;
   const availableAgents: string[] = [...getSupportedAgents()];
-  // Always expose the ephemeral magic id, gated by parent having
+  // Always expose the subagent magic id, gated by parent having
   // provider+tools to lend (always true for real agents).
   if (parentProvider && parentTools && !availableAgents.includes(SUBAGENT_AGENT_ID)) {
     availableAgents.push(SUBAGENT_AGENT_ID);
@@ -288,7 +288,7 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
 
       try {
         // Resolve spawn mode:
-        //  - magic id "subagent" → ephemeral builtin (parent's provider+tools,
+        //  - magic id "subagent" → subagent builtin (parent's provider+tools,
         //    generic preamble, run session lands in subagent/ store)
         //  - registered named agent (in agentManager) → named builtin (full
         //    identity, run session lands in target's own sessions/)
@@ -305,9 +305,9 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
         let effectiveAllowedWorkspaces = allAllowedWorkspaces;
 
         if (isSubagent && parentProvider && parentTools) {
-          builtin = { mode: "ephemeral", provider: parentProvider, tools: parentTools };
+          builtin = { mode: "subagent", provider: parentProvider, tools: parentTools };
           targetAgentId = SUBAGENT_AGENT_ID;
-          log.info("Spawning ephemeral subagent", { parentAgentId, cwd: effectiveCwd });
+          log.info("Spawning subagent", { parentAgentId, cwd: effectiveCwd });
         } else if (isNamed) {
           builtin = { mode: "named", cache: namedCache, systemPrompt: namedSystemPrompt };
           targetAgentId = agent;
@@ -322,7 +322,7 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
           }
           log.info("Spawning named agent", { agent, parentAgentId, cwd: effectiveCwd });
         } else if (parentProvider && parentTools) {
-          builtin = { mode: "ephemeral", provider: parentProvider, tools: parentTools };
+          builtin = { mode: "subagent", provider: parentProvider, tools: parentTools };
         }
 
         let result: string;

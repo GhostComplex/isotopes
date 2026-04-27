@@ -117,7 +117,7 @@ describe("BuiltinRunner", () => {
           agentId: "test-agent",
           prompt: "do thing",
           cwd: "/tmp",
-          builtin: { mode: "ephemeral", provider: fakeProvider(), tools },
+          builtin: { mode: "subagent", provider: fakeProvider(), tools },
         },
         { abort: new AbortController().signal },
       ),
@@ -152,7 +152,7 @@ describe("BuiltinRunner", () => {
           agentId: "test-agent",
           prompt: "p",
           cwd: "/tmp",
-          builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+          builtin: { mode: "subagent", provider: fakeProvider(), tools: makeRegistry([]) },
         },
         { abort: ac.signal },
       ),
@@ -172,7 +172,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-skip", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+        builtin: { mode: "subagent", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out).toEqual([{ type: "run:done", exitCode: 0 }]);
@@ -187,7 +187,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-tool", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+        builtin: { mode: "subagent", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out[0]).toEqual({ type: "run:tool_use", toolName: "shell", toolInput: { cmd: "ls" } });
@@ -203,7 +203,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-tresult", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+        builtin: { mode: "subagent", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out[0]).toEqual({ type: "run:tool_result", toolName: "test", toolResult: "ok" });
@@ -218,7 +218,7 @@ describe("BuiltinRunner", () => {
     const out = await collect(
       runner.run("task-err", {
         agentId: "test-agent", prompt: "p", cwd: "/tmp",
-        builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+        builtin: { mode: "subagent", provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out).toEqual([
@@ -254,7 +254,7 @@ describe("BuiltinRunner", () => {
           agentId: "test-agent",
           prompt: "p",
           cwd: "/tmp",
-          builtin: { mode: "ephemeral", provider: fakeProvider(), tools: makeRegistry([]) },
+          builtin: { mode: "subagent", provider: fakeProvider(), tools: makeRegistry([]) },
         },
         { abort: new AbortController().signal },
       ),
