@@ -313,7 +313,8 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
-      <Box flexDirection="column" paddingX={1} height={messageHeight} overflow="hidden">
+      <Box flexDirection="column-reverse" paddingX={1} height={messageHeight} overflow="hidden">
+        <Box flexDirection="column">
         {error && <Text color="red">{error}</Text>}
         {!agentReady && !error && <Text color="gray">Loading agent...</Text>}
         {visible.map((msg, i) => {
@@ -371,6 +372,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
           return <Box key={i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
         })}
+        </Box>
       </Box>
 
       <Box borderStyle="single" paddingX={1} height={3}>
