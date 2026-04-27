@@ -1,61 +1,58 @@
-// src/subagent/persistence.test.ts — adapter + recorder tests.
 import { describe, it, expect, vi } from "vitest";
 import {
-  eventToMessage,
+  runEventToMessage,
   terminalEventPatch,
-  createSubagentRecorder,
-  buildSubagentSessionKey,
+  createRunRecorder,
+  buildRunSessionKey,
 } from "./persistence.js";
-import type { SubagentEvent } from "./types.js";
+import type { RunEvent } from "./types.js";
 import { msgField } from "../core/messages.js";
 import type { SessionStore, AgentMessage, Session } from "../core/types.js";
 
-describe("buildSubagentSessionKey", () => {
+describe("buildRunSessionKey", () => {
   it("produces the expected sessionKey", () => {
-    const key = buildSubagentSessionKey("code-reviewer");
-    expect(key.startsWith("agent:code-reviewer:subagent:")).toBe(true);
-    // suffix should be a UUID-shaped string (8-4-4-4-12)
-    const uuid = key.slice("agent:code-reviewer:subagent:".length);
+    const key = buildRunSessionKey("code-reviewer");
+    expect(key.startsWith("agent:code-reviewer:run:")).toBe(true);
+    const uuid = key.slice("agent:code-reviewer:run:".length);
     expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
   it("produces a fresh uuid each call", () => {
-    expect(buildSubagentSessionKey("alice")).not.toBe(buildSubagentSessionKey("alice"));
+    expect(buildRunSessionKey("alice")).not.toBe(buildRunSessionKey("alice"));
   });
 });
 
-describe("eventToMessage", () => {
+describe("runEventToMessage", () => {
   it("returns undefined for control events", () => {
-    expect(eventToMessage({ type: "start" })).toBeUndefined();
-    expect(eventToMessage({ type: "done", exitCode: 0 })).toBeUndefined();
+    expect(runEventToMessage({ type: "run:start" })).toBeUndefined();
+    expect(runEventToMessage({ type: "run:done", exitCode: 0 })).toBeUndefined();
   });
 
   it("converts message events to assistant text", () => {
-    const msg = eventToMessage({ type: "message", content: "hello" });
+    const msg = runEventToMessage({ type: "run:message", content: "hello" });
     expect(msg?.role).toBe("assistant");
     expect(msg ? msgField(msg, "content") : undefined).toEqual([{ type: "text", text: "hello" }]);
   });
 
   it("skips empty messages", () => {
-    expect(eventToMessage({ type: "message", content: "" })).toBeUndefined();
-    expect(eventToMessage({ type: "message" })).toBeUndefined();
+    expect(runEventToMessage({ type: "run:message", content: "" })).toBeUndefined();
   });
 
   it("encodes tool_use as text with tool name + input", () => {
-    const msg = eventToMessage({
-      type: "tool_use",
+    const msg = runEventToMessage({
+      type: "run:tool_use",
       toolName: "Read",
       toolInput: { path: "x" },
     });
     expect(msg?.role).toBe("assistant");
-    const text = (msgField<Array<{text:string}>>(msg!, "content") ?? [])[0]?.text;
+    const text = (msgField<Array<{ text: string }>>(msg!, "content") ?? [])[0]?.text;
     expect(text).toContain("🔧 Read(");
     expect(text).toContain("\"path\"");
   });
 
   it("converts tool_result to toolResult message", () => {
-    const msg = eventToMessage({
-      type: "tool_result",
+    const msg = runEventToMessage({
+      type: "run:tool_result",
       toolName: "Read",
       toolResult: "file contents",
     });
@@ -65,15 +62,15 @@ describe("eventToMessage", () => {
   });
 
   it("flags error events with error text in content", () => {
-    const msg = eventToMessage({ type: "error", error: "boom" });
+    const msg = runEventToMessage({ type: "run:error", error: "boom" });
     expect(msg?.role).toBe("assistant");
-    const content = msg ? msgField<Array<{text: string}>>(msg, "content") : [];
+    const content = msg ? msgField<Array<{ text: string }>>(msg, "content") : [];
     expect(content[0].text).toContain("boom");
   });
 
   it("truncates oversized tool_result", () => {
     const long = "x".repeat(10_000);
-    const msg = eventToMessage({ type: "tool_result", toolResult: long });
+    const msg = runEventToMessage({ type: "run:tool_result", toolName: "test", toolResult: long });
     const content = msg ? msgField<string>(msg, "content") : "";
     expect(content.length).toBeLessThan(long.length);
     expect(content.endsWith("…")).toBe(true);
@@ -82,19 +79,19 @@ describe("eventToMessage", () => {
 
 describe("terminalEventPatch", () => {
   it("extracts exitCode/cost from done", () => {
-    expect(terminalEventPatch({ type: "done", exitCode: 0, costUsd: 0.42 })).toEqual({
+    expect(terminalEventPatch({ type: "run:done", exitCode: 0, costUsd: 0.42 })).toEqual({
       exitCode: 0,
       costUsd: 0.42,
     });
   });
 
   it("captures error from error event", () => {
-    expect(terminalEventPatch({ type: "error", error: "x" })).toEqual({ error: "x" });
+    expect(terminalEventPatch({ type: "run:error", error: "x" })).toEqual({ error: "x" });
   });
 
   it("returns undefined for non-terminal events", () => {
-    expect(terminalEventPatch({ type: "message", content: "hi" })).toBeUndefined();
-    expect(terminalEventPatch({ type: "start" })).toBeUndefined();
+    expect(terminalEventPatch({ type: "run:message", content: "hi" })).toBeUndefined();
+    expect(terminalEventPatch({ type: "run:start" })).toBeUndefined();
   });
 });
 
@@ -139,28 +136,28 @@ function fakeStore(): SessionStore & {
   };
 }
 
-describe("createSubagentRecorder", () => {
+describe("createRunRecorder", () => {
   it("is a no-op when no store is provided", async () => {
-    const r = await createSubagentRecorder({
+    const r = await createRunRecorder({
       targetAgentId: "dev",
       parentAgentId: "dev",
       taskId: "task-1",
-      backend: "claude",
+      backend: "external",
     });
     expect(r.sessionId).toBeUndefined();
-    await r.record({ type: "message", content: "hi" });
+    await r.record({ type: "run:message", content: "hi" });
     await r.patchMetadata({ exitCode: 0 });
   });
 
-  it("creates session under the target agentId with subagent metadata", async () => {
+  it("creates session under the target agentId with run metadata", async () => {
     const store = fakeStore();
-    const r = await createSubagentRecorder({
+    const r = await createRunRecorder({
       store,
       targetAgentId: "code-reviewer",
       parentAgentId: "dev",
       parentSessionId: "parent-sess",
       taskId: "task-1",
-      backend: "claude",
+      backend: "external",
       cwd: "/work",
       prompt: "do it",
       channelId: "C1",
@@ -170,25 +167,25 @@ describe("createSubagentRecorder", () => {
     expect(store.create).toHaveBeenCalledWith(
       "code-reviewer",
       expect.objectContaining({
-        key: expect.stringMatching(/^agent:code-reviewer:subagent:/),
+        key: expect.stringMatching(/^agent:code-reviewer:run:/),
         channelId: "C1",
         threadId: "T1",
-        subagent: expect.objectContaining({
+        spawnAgent: expect.objectContaining({
           parentAgentId: "dev",
           parentSessionId: "parent-sess",
           taskId: "task-1",
-          backend: "claude",
+          backend: "external",
         }),
       }),
     );
     expect(store.__session.metadata?.transport).toBeUndefined();
 
-    const events: SubagentEvent[] = [
-      { type: "start" }, // skipped
-      { type: "message", content: "hi" },
-      { type: "tool_use", toolName: "Read", toolInput: { path: "x" } },
-      { type: "tool_result", toolName: "Read", toolResult: "ok" },
-      { type: "done", exitCode: 0, costUsd: 0.1 }, // skipped
+    const events: RunEvent[] = [
+      { type: "run:start" },
+      { type: "run:message", content: "hi" },
+      { type: "run:tool_use", toolName: "Read", toolInput: { path: "x" } },
+      { type: "run:tool_result", toolName: "Read", toolResult: "ok" },
+      { type: "run:done", exitCode: 0, costUsd: 0.1 },
     ];
     for (const e of events) await r.record(e);
 
@@ -199,66 +196,66 @@ describe("createSubagentRecorder", () => {
 
   it("respects a caller-provided sessionKey", async () => {
     const store = fakeStore();
-    await createSubagentRecorder({
+    await createRunRecorder({
       store,
       targetAgentId: "alice",
       parentAgentId: "alice",
       taskId: "task-2",
-      backend: "claude",
-      sessionKey: "agent:alice:subagent:fixed-key",
+      backend: "external",
+      sessionKey: "agent:alice:run:fixed-key",
     });
     expect(store.create).toHaveBeenCalledWith(
       "alice",
-      expect.objectContaining({ key: "agent:alice:subagent:fixed-key" }),
+      expect.objectContaining({ key: "agent:alice:run:fixed-key" }),
     );
   });
 
   it("merges terminal metadata under subagent and computes durationMs", async () => {
     const store = fakeStore();
-    const r = await createSubagentRecorder({
+    const r = await createRunRecorder({
       store,
       targetAgentId: "dev",
       parentAgentId: "dev",
       taskId: "task-9",
-      backend: "claude",
+      backend: "external",
     });
     await r.patchMetadata({ exitCode: 0, costUsd: 0.5 });
     expect(store.setMetadata).toHaveBeenCalled();
     const patch = (store.setMetadata as ReturnType<typeof vi.fn>).mock.calls[0]![1];
-    expect(patch.subagent.exitCode).toBe(0);
-    expect(patch.subagent.costUsd).toBe(0.5);
-    expect(typeof patch.subagent.durationMs).toBe("number");
-    expect(patch.subagent.parentAgentId).toBe("dev");
-    expect(patch.subagent.taskId).toBe("task-9");
+    expect(patch.spawnAgent.exitCode).toBe(0);
+    expect(patch.spawnAgent.costUsd).toBe(0.5);
+    expect(typeof patch.spawnAgent.durationMs).toBe("number");
+    expect(patch.spawnAgent.parentAgentId).toBe("dev");
+    expect(patch.spawnAgent.taskId).toBe("task-9");
   });
 
   it("survives store failures without throwing", async () => {
     const store = fakeStore();
     (store.addMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("disk full"));
     (store.setMetadata as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("disk full"));
-    const r = await createSubagentRecorder({
+    const r = await createRunRecorder({
       store,
       targetAgentId: "dev",
       parentAgentId: "dev",
       taskId: "task-x",
-      backend: "claude",
+      backend: "external",
     });
-    await expect(r.record({ type: "message", content: "hi" })).resolves.toBeUndefined();
+    await expect(r.record({ type: "run:message", content: "hi" })).resolves.toBeUndefined();
     await expect(r.patchMetadata({ exitCode: 1, error: "x" })).resolves.toBeUndefined();
   });
 
   it("returns no-op recorder when store.create throws", async () => {
     const store = fakeStore();
     (store.create as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("nope"));
-    const r = await createSubagentRecorder({
+    const r = await createRunRecorder({
       store,
       targetAgentId: "dev",
       parentAgentId: "dev",
       taskId: "task-x",
-      backend: "claude",
+      backend: "external",
     });
     expect(r.sessionId).toBeUndefined();
-    await r.record({ type: "message", content: "hi" });
+    await r.record({ type: "run:message", content: "hi" });
     expect(store.addMessage).not.toHaveBeenCalled();
   });
 });

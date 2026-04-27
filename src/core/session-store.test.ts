@@ -578,7 +578,7 @@ describe("DefaultSessionStore", () => {
   describe("setMetadata", () => {
     it("merges patch into existing metadata and persists to index", async () => {
       const session = await store.create("dev", {
-        subagent: {
+        spawnAgent: {
           parentAgentId: "dev",
           taskId: "task-1",
           backend: "claude",
@@ -586,7 +586,7 @@ describe("DefaultSessionStore", () => {
       });
 
       await store.setMetadata(session.id, {
-        subagent: {
+        spawnAgent: {
           parentAgentId: "dev",
           taskId: "task-1",
           backend: "claude",
@@ -597,15 +597,15 @@ describe("DefaultSessionStore", () => {
       });
 
       const got = await store.get(session.id);
-      expect(got?.metadata?.subagent?.exitCode).toBe(0);
-      expect(got?.metadata?.subagent?.costUsd).toBe(0.42);
+      expect(got?.metadata?.spawnAgent?.exitCode).toBe(0);
+      expect(got?.metadata?.spawnAgent?.costUsd).toBe(0.42);
 
       // Reopen the store to confirm the patch survived persistence.
       const reopened = new DefaultSessionStore({ dataDir: tempDir });
       await reopened.init();
       const reloaded = await reopened.get(session.id);
-      expect(reloaded?.metadata?.subagent?.exitCode).toBe(0);
-      expect(reloaded?.metadata?.subagent?.durationMs).toBe(1234);
+      expect(reloaded?.metadata?.spawnAgent?.exitCode).toBe(0);
+      expect(reloaded?.metadata?.spawnAgent?.durationMs).toBe(1234);
       reopened.destroy();
     });
 

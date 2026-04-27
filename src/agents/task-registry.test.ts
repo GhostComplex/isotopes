@@ -1,5 +1,3 @@
-// src/subagent/task-registry.test.ts
-
 import { describe, it, expect, beforeEach } from "vitest";
 import { TaskRegistry } from "./task-registry.js";
 
@@ -61,7 +59,6 @@ describe("TaskRegistry", () => {
       registry.register("task-1", "sess-1", "chan-1", "task A");
       registry.register("task-2", "sess-1", "chan-2", "task B");
       registry.register("task-3", "sess-2", "chan-1", "task C");
-
       const sess1Tasks = registry.getBySession("sess-1");
       expect(sess1Tasks).toHaveLength(2);
       expect(sess1Tasks.map((t) => t.taskId).sort()).toEqual(["task-1", "task-2"]);
@@ -101,7 +98,6 @@ describe("TaskRegistry", () => {
     it("returns task with matching threadId", () => {
       registry.register("task-1", "sess-1", "chan-1", "do something");
       registry.setThreadId("task-1", "thread-123");
-      
       const task = registry.getByThreadId("thread-123");
       expect(task).toBeDefined();
       expect(task!.taskId).toBe("task-1");

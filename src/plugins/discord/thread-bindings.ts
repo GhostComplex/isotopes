@@ -61,10 +61,10 @@ export class ThreadBindingManager {
       }
       logger.debug(`Loaded ${this.bindings.size} thread binding(s) from ${this.persistPath}`);
 
-      // Clear stale bindings on startup (subagents are dead after restart)
+      // Clear stale bindings on startup (spawn agents are dead after restart)
       if (options?.clearStale && this.bindings.size > 0) {
         const staleCount = this.bindings.size;
-        await this.clearAll("startup cleanup: subagents dead after restart");
+        await this.clearAll("startup cleanup: spawn agents dead after restart");
         logger.info(`Cleared ${staleCount} stale thread binding(s) on startup`);
       }
     } catch (err) {
@@ -150,7 +150,7 @@ export class ThreadBindingManager {
   }
 
   /**
-   * Clear all bindings. Used for startup cleanup when subagents are dead.
+   * Clear all bindings. Used for startup cleanup when spawn agents are dead.
    * Notifies unbind listeners for each binding.
    *
    * @param reason - Reason for clearing (for logging/debugging)

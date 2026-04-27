@@ -49,7 +49,7 @@ export interface DiscordAccountContextConfig {
   };
 }
 
-export interface DiscordAccountSubagentStreamingConfig {
+export interface DiscordAccountSpawnAgentStreamingConfig {
   enabled?: boolean;
   showToolCalls?: boolean;
 }
@@ -70,7 +70,7 @@ export interface DiscordAccountConfig {
   };
   guilds?: Record<string, GuildConfig>;
   threadBindings?: ThreadBindingConfig;
-  subagentStreaming?: DiscordAccountSubagentStreamingConfig;
+  spawnAgentStreaming?: DiscordAccountSpawnAgentStreamingConfig;
   allowBots?: boolean;
   context?: DiscordAccountContextConfig;
   adminUsers?: string[];

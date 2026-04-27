@@ -1,5 +1,3 @@
-// src/subagent/failure-tracker.ts — Prevents repeated spawning of failing tasks
-
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("failure-tracker");
@@ -10,11 +8,8 @@ export interface BlockCheck {
 }
 
 export class FailureTracker {
-  // sessionId → taskKey → failure count
   private failures = new Map<string, Map<string, number>>();
-  // sessionId → set of cancelled task keys
   private cancelled = new Map<string, Set<string>>();
-  // sessionId → spawn count in current window
   private spawnCounts = new Map<string, { count: number; windowStart: number }>();
 
   private maxSpawnsPerWindow: number;
@@ -58,7 +53,6 @@ export class FailureTracker {
   }
 
   shouldBlock(sessionId: string, task: string, maxFailures = 2): BlockCheck {
-    // Rate limit check
     const entry = this.spawnCounts.get(sessionId);
     if (entry && Date.now() - entry.windowStart <= this.windowMs && entry.count >= this.maxSpawnsPerWindow) {
       return { blocked: true, reason: `Rate limit: ${entry.count} spawns in ${this.windowMs / 60000} min window.` };
@@ -66,12 +60,10 @@ export class FailureTracker {
 
     const key = taskKey(task);
 
-    // Cancelled check
     if (this.cancelled.get(sessionId)?.has(key)) {
       return { blocked: true, reason: "This task was cancelled. Not re-attempting in this session." };
     }
 
-    // Failure count check
     const count = this.failures.get(sessionId)?.get(key) ?? 0;
     if (count >= maxFailures) {
       return { blocked: true, reason: `This task has failed ${count} times. Not re-attempting.` };
@@ -85,7 +77,6 @@ export class FailureTracker {
     this.cancelled.delete(sessionId);
     this.spawnCounts.delete(sessionId);
   }
-
 }
 
 function taskKey(task: string): string {

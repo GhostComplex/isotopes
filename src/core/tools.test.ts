@@ -578,13 +578,13 @@ describe("Built-in tools", () => {
       expect(calls).toContain("writeFile");
     });
 
-    it("excludes file writing tools when codingMode is 'subagent'", () => {
+    it("excludes file writing tools when codingMode is 'spawn-agent'", () => {
       const tools = createWorkspaceToolsWithGuards(
         "/tmp/workspace",
         undefined,
-        true, // subagentEnabled
+        true, // spawnAgentEnabled
         [], // allowedWorkspaces
-        "subagent",
+        "spawn-agent",
       );
       const names = tools.map((entry) => entry.tool.name);
 
@@ -592,8 +592,8 @@ describe("Built-in tools", () => {
       expect(names).not.toContain("write_file");
       expect(names).not.toContain("edit");
 
-      // Should still have spawn_subagent, read_file (exec is in cli.ts)
-      expect(names).toContain("spawn_subagent");
+      // Should still have spawn_agent, read_file (exec is in cli.ts)
+      expect(names).toContain("spawn_agent");
       expect(names).toContain("read_file");
     });
 
