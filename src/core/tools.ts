@@ -5,13 +5,13 @@ import path from "node:path";
 import type { AgentToolSettings, ProviderConfig, Tool } from "./types.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
-import { spawnSubagent, getSupportedAgents } from "../tools/subagent.js";
+import { spawnAgent, getSupportedAgents } from "../tools/spawn-agent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import type { SubagentAgent, SubagentEvent } from "../subagent/types.js";
-import { getSubagentContext, type SubagentStreamContext } from "./subagent-context.js";
-import { failureTracker } from "../subagent/failure-tracker.js";
+import type { RunEvent } from "../agents/types.js";
+import { getSpawnAgentContext, type SpawnAgentStreamContext } from "./spawn-agent-context.js";
+import { failureTracker } from "../agents/failure-tracker.js";
 import { createLogger } from "./logger.js";
-const log = createLogger("tools:subagent");
+const log = createLogger("tools:spawn-agent");
 /** Function that executes a tool call and returns a string result. */
 export type ToolHandler = (args: unknown) => Promise<string>;
 /** A registered tool entry pairing a schema with its execution handler. */
@@ -159,59 +159,67 @@ export function createTimeTool(): { tool: Tool; handler: ToolHandler } {
   };
 }
 // ---------------------------------------------------------------------------
-// Subagent tool
+// Spawn agent tool
 // ---------------------------------------------------------------------------
-export interface SubagentToolOptions {
-  /** Workspace path for the sub-agent */
+export interface SpawnAgentToolOptions {
+  /** Workspace path for the spawned agent */
   workspacePath: string;
   /** Additional allowed workspaces (from agent config) */
   allowedWorkspaces?: string[];
-  /** Allowed agents (defaults to all) */
+  /** Allowed agents (defaults to all available) */
   allowedAgents?: string[];
+  /** Agent manager — used to discover available in-process agents */
+  agentManager?: { list(): { id: string; spawnable?: boolean }[] };
+  /** Pre-computed list of spawnable agent IDs (avoids init order issues) */
+  spawnableAgentIds?: string[];
   /** Default timeout in seconds (default: 300) */
   timeout?: number;
-  /** Maximum number of turns for the sub-agent (default: 50) */
+  /** Maximum number of turns for the spawned agent (default: 50) */
   maxTurns?: number;
-  /** Parent agent id, used as the owner of the persisted subagent run. */
+  /** Parent agent id, used as the owner of the persisted spawn agent run. */
   parentAgentId?: string;
   /**
-   * Parent agent's provider config — forwarded to the builtin runner so
-   * in-process subagents reuse the parent's LLM credentials.
+   * Parent agent's provider config — forwarded to the in-process runner so
+   * spawned agents reuse the parent's LLM credentials.
    */
   parentProvider?: ProviderConfig;
   /**
-   * Parent agent's tool registry — forwarded to the builtin runner, which
-   * filters it by role to derive the subagent's tool set.
+   * Parent agent's tool registry — forwarded to the in-process runner, which
+   * filters it by role to derive the spawn agent's tool set.
    */
   parentTools?: ToolRegistry;
 }
 /**
- * Create a sub-agent spawning tool.
- * Allows the agent to delegate tasks to coding agents like Claude, Codex, Gemini.
+ * Create a spawn agent tool.
+ * Allows the agent to delegate tasks to coding agents like Claude or named in-process agents.
  *
- * When running within a Discord context (via `runWithSubagentContext`), the
- * subagent output will be streamed to a Discord thread and a summary will be
+ * When running within a Discord context (via `runWithSpawnAgentContext`), the
+ * spawn agent output will be streamed to a Discord thread and a summary will be
  * posted to the main channel when complete.
  */
-export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; handler: ToolHandler } {
-  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools } = options;
-  const supportedAgents = getSupportedAgents();
-  // Builtin requires parent provider + tools; drop it from the menu when those aren't wired.
-  const builtinAvailable = parentProvider !== undefined && parentTools !== undefined;
-  const supported = builtinAvailable ? supportedAgents : supportedAgents.filter((a) => a !== "builtin");
-  const agents = allowedAgents ?? [...supported];
+export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: Tool; handler: ToolHandler } {
+  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds } = options;
+  const availableAgents: string[] = [...getSupportedAgents()];
+  if (spawnableAgentIds) {
+    for (const id of spawnableAgentIds) {
+      if (!availableAgents.includes(id)) {
+        availableAgents.push(id);
+      }
+    }
+  }
+  const agents = allowedAgents ?? [...availableAgents];
   // Combine workspace path with additional allowed workspaces
   const allAllowedWorkspaces = [workspacePath, ...allowedWorkspaces];
   return {
     tool: {
-      name: "spawn_subagent",
-      description: `Spawn a coding sub-agent to execute a task. Available agents: ${agents.join(", ")}. The sub-agent runs in the workspace directory and can read/write files, execute commands, etc.`,
+      name: "spawn_agent",
+      description: `Spawn a coding agent to execute a task. Available agents: ${agents.join(", ")}. The spawned agent runs in the workspace directory and can read/write files, execute commands, etc.`,
       parameters: {
         type: "object",
         properties: {
           task: {
             type: "string",
-            description: "The task description for the sub-agent. Be specific about what you want it to do.",
+            description: "The task description for the spawned agent. Be specific about what you want it to do.",
           },
           agent: {
             type: "string",
@@ -220,7 +228,7 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
           },
           working_directory: {
             type: "string",
-            description: "Working directory for the sub-agent (relative to workspace or absolute). Defaults to workspace root.",
+            description: "Working directory for the spawned agent (relative to workspace or absolute). Defaults to workspace root.",
           },
         },
         required: ["task"],
@@ -241,14 +249,14 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
       // Check for Discord context
-      const discordContext = getSubagentContext();
+      const discordContext = getSpawnAgentContext();
 
       // Check failure tracker (only when sessionId available)
       const sessionId = discordContext?.sessionId;
       if (sessionId) {
         const check = failureTracker.shouldBlock(sessionId, task);
         if (check.blocked) {
-          log.warn("Blocking subagent spawn due to previous failures", { sessionId, reason: check.reason });
+          log.warn("Blocking spawn agent due to previous failures", { sessionId, reason: check.reason });
           return `[blocked] ${check.reason}`;
         }
         // Record spawn attempt for rate limiting
@@ -256,19 +264,18 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
       }
 
       try {
-        const builtin = agent === "builtin" && parentProvider && parentTools
+        const builtin = parentProvider && parentTools
           ? { provider: parentProvider, tools: parentTools }
           : undefined;
         let result: string;
         if (discordContext) {
-          result = await runSubagentWithStreaming(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin);
+          result = await runSpawnAgentWithStreaming(task, agent, cwd, timeout, allAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin);
         } else {
-          // Run without streaming
-          result = await runSubagentPlain(task, agent as SubagentAgent, cwd, timeout, allAllowedWorkspaces, maxTurns, parentAgentId, builtin);
+          result = await runSpawnAgentPlain(task, agent, cwd, timeout, allAllowedWorkspaces, maxTurns, parentAgentId, builtin);
         }
 
         // Record failure if result indicates failure
-        if (sessionId && (result.includes("[sub-agent failed]") || result.includes("[error]"))) {
+        if (sessionId && (result.includes("[spawn agent failed]") || result.includes("[error]"))) {
           failureTracker.recordFailure(sessionId, task, result);
         }
 
@@ -279,17 +286,17 @@ export function createSubagentTool(options: SubagentToolOptions): { tool: Tool; 
         if (sessionId) {
           failureTracker.recordFailure(sessionId, task, error);
         }
-        return `[error] Failed to spawn sub-agent: ${error}`;
+        return `[error] Failed to spawn agent: ${error}`;
       }
     },
   };
 }
 /**
- * Run subagent without transport streaming.
+ * Run spawn agent without transport streaming.
  */
-async function runSubagentPlain(
+async function runSpawnAgentPlain(
   task: string,
-  agent: SubagentAgent,
+  agent: string,
   cwd: string,
   timeout: number | undefined,
   allowedWorkspaces: string[],
@@ -297,7 +304,7 @@ async function runSubagentPlain(
   parentAgentId?: string,
   builtin?: { provider: ProviderConfig; tools: ToolRegistry },
 ): Promise<string> {
-  const result = await spawnSubagent(task, {
+  const result = await spawnAgent(task, {
     agent,
     cwd,
     timeout,
@@ -307,22 +314,22 @@ async function runSubagentPlain(
     ...(builtin ? { builtin } : {}),
   });
   if (result.success) {
-    return result.output ?? "[sub-agent completed with no output]";
+    return result.output ?? "[spawn agent completed with no output]";
   } else {
-    return `[sub-agent failed] ${result.error ?? "unknown error"}`;
+    return `[spawn agent failed] ${result.error ?? "unknown error"}`;
   }
 }
 /**
- * Run subagent with transport streaming.
+ * Run spawn agent with transport streaming.
  * Creates a sink via the stream context, streams events to it, and posts a summary.
  */
-async function runSubagentWithStreaming(
+async function runSpawnAgentWithStreaming(
   task: string,
-  agent: SubagentAgent,
+  agent: string,
   cwd: string,
   timeout: number | undefined,
   allowedWorkspaces: string[],
-  context: SubagentStreamContext,
+  context: SpawnAgentStreamContext,
   maxTurns?: number,
   parentAgentId?: string,
   builtin?: { provider: ProviderConfig; tools: ToolRegistry },
@@ -330,15 +337,15 @@ async function runSubagentWithStreaming(
   const { channelId, showToolCalls = true, onComplete } = context;
   const sink = context.createSink(channelId, { showToolCalls, useThread: true });
   const taskLabel = `${agent}: ${task.slice(0, 50)}${task.length > 50 ? "..." : ""}`;
-  log.info("Starting sub-agent with streaming", { agent, cwd, channelId });
+  log.info("Starting spawn agent with streaming", { agent, cwd, channelId });
   await sink.start(taskLabel);
 
   const threadId = sink.getThreadId?.();
   const startTime = Date.now();
-  const events: SubagentEvent[] = [];
+  const events: RunEvent[] = [];
 
   try {
-    const result = await spawnSubagent(task, {
+    const result = await spawnAgent(task, {
       agent,
       cwd,
       timeout,
@@ -355,7 +362,7 @@ async function runSubagentWithStreaming(
     });
 
     const durationMs = Date.now() - startTime;
-    const costUsd = events.find(e => e.costUsd !== undefined)?.costUsd;
+    const costUsd = events.find((e): e is Extract<RunEvent, { type: "run:done" }> => e.type === "run:done" && "costUsd" in e)?.costUsd;
 
     await sink.finish({
       success: result.success,
@@ -374,20 +381,20 @@ async function runSubagentWithStreaming(
         log.warn("onComplete callback failed", { error: err instanceof Error ? err.message : String(err) });
       }
     }
-    log.info("Sub-agent with streaming completed", {
+    log.info("Spawn agent with streaming completed", {
       success: result.success,
       threadId,
     });
     if (result.success) {
       const threadMention = threadId ? ` (see <#${threadId}>)` : "";
-      return `[sub-agent completed]${threadMention}\n${result.output ?? "(no output)"}`;
+      return `[spawn agent completed]${threadMention}\n${result.output ?? "(no output)"}`;
     } else {
-      return `[sub-agent failed] ${result.error ?? "unknown error"}`;
+      return `[spawn agent failed] ${result.error ?? "unknown error"}`;
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    log.error("Sub-agent with streaming failed", { error });
-    const errorEvent: SubagentEvent = { type: "error", error };
+    log.error("Spawn agent with streaming failed", { error });
+    const errorEvent: RunEvent = { type: "run:error", error };
     events.push(errorEvent);
     await sink.sendEvent(errorEvent);
     const durationMs = Date.now() - startTime;
@@ -830,20 +837,22 @@ export function applyToolPolicy(
 export function createWorkspaceTools(workspacePath: string, fsImpl?: FsLike): { tool: Tool; handler: ToolHandler }[] {
   return createWorkspaceToolsWithGuards(workspacePath, undefined, false, [], "auto", undefined, fsImpl);
 }
-/** Tools that modify files - excluded when codingMode is 'subagent' */
+/** Tools that modify files - excluded when codingMode is 'spawn-agent' */
 export const FILE_WRITING_TOOLS = ["write_file", "edit"];
 
 export function createWorkspaceToolsWithGuards(
   workspacePath: string,
   settings?: AgentToolSettings,
-  subagentEnabled = false,
+  spawnAgentEnabled = false,
   allowedWorkspaces: string[] = [],
-  codingMode: "subagent" | "direct" | "auto" = "auto",
-  subagentMaxTurns?: number,
+  codingMode: "spawn-agent" | "direct" | "auto" = "auto",
+  spawnAgentMaxTurns?: number,
   fsImpl?: FsLike,
   parentAgentId?: string,
   parentProvider?: ProviderConfig,
   parentTools?: ToolRegistry,
+  agentManager?: { list(): { id: string; spawnable?: boolean }[] },
+  spawnableAgentIds?: string[],
 ): { tool: Tool; handler: ToolHandler }[] {
   const guards = resolveToolGuards(settings);
   // Always use workspacePath as base for relative path resolution.
@@ -860,8 +869,8 @@ export function createWorkspaceToolsWithGuards(
     createListDirTool({ basePath: fileBasePath, constrainToWorkspace, allowedWorkspaces, fsImpl }),
     createTimeTool(),
   ];
-  if (subagentEnabled) {
-    tools.push(createSubagentTool({ workspacePath, allowedWorkspaces, maxTurns: subagentMaxTurns, parentAgentId, parentProvider, parentTools }));
+  if (spawnAgentEnabled) {
+    tools.push(createSpawnAgentTool({ workspacePath, allowedWorkspaces, maxTurns: spawnAgentMaxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds }));
   }
   // Web fetch tool
   if (settings?.web) {
@@ -869,8 +878,8 @@ export function createWorkspaceToolsWithGuards(
     tools.push(createWebSearchTool());
   }
 
-  // Filter out file writing tools when codingMode is 'subagent'
-  if (codingMode === "subagent") {
+  // Filter out file writing tools when codingMode is 'spawn-agent'
+  if (codingMode === "spawn-agent") {
     tools = tools.filter((t) => !FILE_WRITING_TOOLS.includes(t.tool.name));
   }
 

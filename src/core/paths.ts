@@ -54,9 +54,8 @@ export function normalizeAgentId(agentId: string): string {
 /**
  * Get the sessions directory for an agent.
  *
- * All transcripts (main agent + subagent runs targeting this agent) live
- * under `~/.isotopes/agents/<normalizedAgentId>/sessions/`. See
- * docs/subagent-architecture.md §4.4.
+ * All transcripts (main agent + spawn agent runs targeting this agent) live
+ * under `~/.isotopes/agents/<normalizedAgentId>/sessions/`.
  */
 export function getAgentSessionsDir(agentId: string): string {
   return path.join(getIsotopesHome(), "agents", normalizeAgentId(agentId), "sessions");

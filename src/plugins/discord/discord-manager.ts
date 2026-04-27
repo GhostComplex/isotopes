@@ -37,7 +37,7 @@ export interface DiscordTransportManagerConfig {
  *
  * Each account in the config gets its own transport with an independent Client,
  * token, and identity. All per-account behavior (dmAccess, allowBots, threadBindings,
- * subagentStreaming, context, adminUsers, etc.) is read from the account config.
+ * spawnAgentStreaming, context, adminUsers, etc.) is read from the account config.
  */
 export class DiscordTransportManager {
   private transports: Map<string, DiscordTransport> = new Map();
@@ -72,8 +72,8 @@ export class DiscordTransportManager {
         guilds: account.guilds,
         threadBindings: account.threadBindings,
         threadBindingManager: shared.threadBindingManager,
-        enableSubagentStreaming: account.subagentStreaming?.enabled,
-        subagentShowToolCalls: account.subagentStreaming?.showToolCalls,
+        enableSpawnAgentStreaming: account.spawnAgentStreaming?.enabled,
+        spawnAgentShowToolCalls: account.spawnAgentStreaming?.showToolCalls,
         allowBots: account.allowBots,
         context: account.context,
         usageTracker: shared.usageTracker,

@@ -1,14 +1,10 @@
-// src/subagent/runners/builtin.ts — In-process subagent runner backed by PiMonoCore
-// Reuses the parent agent's pi-mono core, provider config, and (filtered) tool
-// registry — no separate API key, no separate SDK process.
-
 import { randomUUID } from "node:crypto";
 import { createLogger } from "../../core/logger.js";
 import { PiMonoCore } from "../../core/pi-mono.js";
 import { ToolRegistry, type ToolHandler } from "../../core/tools.js";
-import { buildBuiltinSubagentSystemPrompt } from "../builtin/system-prompt.js";
-import type { RunnerSignals, SubagentRunner } from "../runner.js";
-import type { SubagentAgent, SubagentEvent, SubagentSpawnOptions } from "../types.js";
+import { buildSpawnAgentSystemPrompt } from "../builtin/system-prompt.js";
+import type { RunnerSignals, Runner } from "../runner.js";
+import type { RunEvent, RunOptions } from "../types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
@@ -18,10 +14,10 @@ const DENIED_TOOLS: ReadonlySet<string> = new Set([
   "edit",
   "web_fetch",
   "web_search",
-  "spawn_subagent",
+  "spawn_agent",
 ]);
 
-const log = createLogger("subagent:runner:builtin");
+const log = createLogger("agents:runner:builtin");
 
 const AGENT_EVENT_TYPES = new Set([
   "agent_start", "agent_end",
@@ -34,37 +30,34 @@ function isAgentEvent(e: { type: string }): e is AgentEvent {
   return AGENT_EVENT_TYPES.has(e.type);
 }
 
-/** Runner that runs a subagent in-process via the supplied PiMonoCore. */
-export class BuiltinRunner implements SubagentRunner {
-  readonly agent: SubagentAgent = "builtin";
-
+export class BuiltinRunner implements Runner {
   constructor(private readonly core: PiMonoCore) {}
 
   async *run(
-    taskId: string,
-    options: SubagentSpawnOptions,
+    runId: string,
+    options: RunOptions,
     signals: RunnerSignals,
-  ): AsyncGenerator<SubagentEvent> {
-    if (!options.builtin) {
-      yield { type: "error", error: "builtin runner requires options.builtin" };
-      yield { type: "done", exitCode: 1 };
+  ): AsyncGenerator<RunEvent> {
+    if (!options.inProcess) {
+      yield { type: "run:error", error: "builtin runner requires options.inProcess" };
+      yield { type: "run:done", exitCode: 1 };
       return;
     }
 
-    const subagentId = `subagent-builtin-${taskId}-${randomUUID().slice(0, 8)}`;
-    const tools = filterTools(options.builtin.tools, subagentId);
-    const systemPrompt = buildBuiltinSubagentSystemPrompt({
+    const agentId = `agent-inproc-${runId}-${randomUUID().slice(0, 8)}`;
+    const tools = filterTools(options.inProcess.tools, agentId);
+    const systemPrompt = buildSpawnAgentSystemPrompt({
       task: options.prompt,
-      extraSystemPrompt: options.builtin.extraSystemPrompt,
+      extraSystemPrompt: options.inProcess.extraSystemPrompt,
     });
 
-    log.info("BuiltinRunner.run", { taskId, subagentId, toolCount: tools.list().length });
+    log.info("BuiltinRunner.run", { runId, agentId, toolCount: tools.list().length });
 
-    this.core.setToolRegistry(subagentId, tools);
+    this.core.setToolRegistry(agentId, tools);
 
     const cache = this.core.createServiceCache({
-      id: subagentId,
-      provider: options.builtin.provider,
+      id: agentId,
+      provider: options.inProcess.provider,
       compaction: { mode: "off" },
     });
 
@@ -79,11 +72,11 @@ export class BuiltinRunner implements SubagentRunner {
     if (signals.abort.aborted) session.abort();
 
     try {
-      yield* bridgeSessionToSubagentEvents(session, options.prompt);
+      yield* bridgeSessionToRunEvents(session, options.prompt);
     } finally {
       signals.abort.removeEventListener("abort", onAbort);
       session.dispose();
-      this.core.clearToolRegistry(subagentId);
+      this.core.clearToolRegistry(agentId);
     }
   }
 }
@@ -99,10 +92,10 @@ function filterTools(parent: ToolRegistry, agentId: string): ToolRegistry {
   return filtered;
 }
 
-async function* bridgeSessionToSubagentEvents(
+async function* bridgeSessionToRunEvents(
   session: import("@mariozechner/pi-coding-agent").AgentSession,
   prompt: string,
-): AsyncGenerator<SubagentEvent, void, void> {
+): AsyncGenerator<RunEvent, void, void> {
   type QueueItem = AgentEvent | { type: "__done__" } | { type: "__error__"; error: unknown };
   const queue: QueueItem[] = [];
   let resolve: (() => void) | null = null;
@@ -129,8 +122,8 @@ async function* bridgeSessionToSubagentEvents(
 
       const item = queue.shift()!;
       if (item.type === "__error__") {
-        yield { type: "error", error: String((item as { error: unknown }).error) };
-        yield { type: "done", exitCode: 1 };
+        yield { type: "run:error", error: String((item as { error: unknown }).error) };
+        yield { type: "run:done", exitCode: 1 };
         endedNormally = true;
         return;
       }
@@ -148,29 +141,29 @@ async function* bridgeSessionToSubagentEvents(
         }
         case "turn_end": {
           const text = buffer.trim();
-          if (text.length > 0) yield { type: "message", content: text };
+          if (text.length > 0) yield { type: "run:message", content: text };
           buffer = "";
           break;
         }
         case "tool_execution_start":
-          yield { type: "tool_use", toolName: e.toolName, toolInput: e.args };
+          yield { type: "run:tool_use", toolName: e.toolName, toolInput: e.args };
           break;
         case "tool_execution_end": {
           const output = typeof e.result === "string" ? e.result : JSON.stringify(e.result);
-          yield { type: "tool_result", toolResult: output, ...(e.isError ? { error: "tool error" } : {}) };
+          yield { type: "run:tool_result", toolName: e.toolName ?? "unknown", toolResult: output, ...(e.isError ? { isError: true } : {}) };
           break;
         }
         case "agent_end": {
           const trailing = buffer.trim();
-          if (trailing.length > 0) yield { type: "message", content: trailing };
+          if (trailing.length > 0) yield { type: "run:message", content: trailing };
           buffer = "";
           const lastAssistant = [...e.messages].reverse().find((m) => m.role === "assistant");
           const errMsg = (lastAssistant as unknown as { errorMessage?: string })?.errorMessage;
           if (errMsg) {
-            yield { type: "error", error: errMsg };
-            yield { type: "done", exitCode: 1 };
+            yield { type: "run:error", error: errMsg };
+            yield { type: "run:done", exitCode: 1 };
           } else {
-            yield { type: "done", exitCode: 0 };
+            yield { type: "run:done", exitCode: 0 };
           }
           endedNormally = true;
           return;
@@ -181,8 +174,8 @@ async function* bridgeSessionToSubagentEvents(
     unsub();
     if (!endedNormally) {
       const trailing = buffer.trim();
-      if (trailing.length > 0) yield { type: "message", content: trailing };
-      yield { type: "done", exitCode: 0 };
+      if (trailing.length > 0) yield { type: "run:message", content: trailing };
+      yield { type: "run:done", exitCode: 0 };
     }
   }
 }

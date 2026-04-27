@@ -1,7 +1,7 @@
-// src/subagent/discord-sink.test.ts — Tests for Discord sink formatters
+// src/plugins/discord/discord-spawn-agent-sink.test.ts — Tests for Discord sink formatters
 import { describe, it, expect, vi } from "vitest";
-import { truncate, formatEvent, formatSummary, DiscordSink, type DiscordSinkConfig } from "./discord-subagent-sink.js";
-import type { SubagentEvent, SubagentResult } from "../../subagent/types.js";
+import { truncate, formatEvent, formatSummary, DiscordSink, type DiscordSinkConfig } from "./discord-spawn-agent-sink.js";
+import type { RunEvent, RunResult } from "../../agents/types.js";
 
 const showAll: DiscordSinkConfig = { showToolCalls: true, showThinking: false, useThread: false };
 const hideTools: DiscordSinkConfig = { showToolCalls: false, showThinking: false, useThread: false };
@@ -18,38 +18,38 @@ describe("truncate", () => {
 
 describe("formatEvent", () => {
   it("returns undefined for start/done (handled separately)", () => {
-    expect(formatEvent({ type: "start" }, showAll)).toBeUndefined();
-    expect(formatEvent({ type: "done", exitCode: 0 }, showAll)).toBeUndefined();
+    expect(formatEvent({ type: "run:start" }, showAll)).toBeUndefined();
+    expect(formatEvent({ type: "run:done", exitCode: 0 }, showAll)).toBeUndefined();
   });
 
   it("formats message content", () => {
-    expect(formatEvent({ type: "message", content: "hello" }, showAll)).toBe("hello");
+    expect(formatEvent({ type: "run:message", content: "hello" }, showAll)).toBe("hello");
   });
 
   it("drops empty message", () => {
-    expect(formatEvent({ type: "message" }, showAll)).toBeUndefined();
+    expect(formatEvent({ type: "run:message", content: "" }, showAll)).toBeUndefined();
   });
 
   it("formats tool_use when enabled, hides when disabled", () => {
-    const ev: SubagentEvent = { type: "tool_use", toolName: "Read" };
+    const ev: RunEvent = { type: "run:tool_use", toolName: "Read" };
     expect(formatEvent(ev, showAll)).toContain("Read");
     expect(formatEvent(ev, hideTools)).toBeUndefined();
   });
 
   it("formats tool_result when enabled", () => {
-    const ev: SubagentEvent = { type: "tool_result", toolName: "Read", toolResult: "file content" };
+    const ev: RunEvent = { type: "run:tool_result", toolName: "Read", toolResult: "file content" };
     const out = formatEvent(ev, showAll)!;
     expect(out).toContain("Read");
     expect(out).toContain("file content");
   });
 
   it("formats errors", () => {
-    expect(formatEvent({ type: "error", error: "boom" }, showAll)).toContain("boom");
+    expect(formatEvent({ type: "run:error", error: "boom" }, showAll)).toContain("boom");
   });
 });
 
 describe("formatSummary", () => {
-  const baseResult: SubagentResult = {
+  const baseResult: RunResult = {
     success: true,
     events: [],
     exitCode: 0,
@@ -70,9 +70,9 @@ describe("formatSummary", () => {
     const out = formatSummary({
       ...baseResult,
       events: [
-        { type: "message", content: "a" },
-        { type: "message", content: "b" },
-        { type: "tool_use", toolName: "Read" },
+        { type: "run:message", content: "a" },
+        { type: "run:message", content: "b" },
+        { type: "run:tool_use", toolName: "Read" },
       ],
     });
     expect(out).toContain("2 messages");
@@ -106,7 +106,7 @@ describe("DiscordSink", () => {
     expect(createThread).toHaveBeenCalledWith("main-ch", "task", "msg-1");
     expect(sink.getThreadId()).toBe("thread-1");
 
-    await sink.sendEvent({ type: "message", content: "hi" });
+    await sink.sendEvent({ type: "run:message", content: "hi" });
     // event was sent to thread target
     expect(sendMessage).toHaveBeenCalledWith("thread-1", "hi");
 

@@ -3,8 +3,7 @@
 // One DefaultSessionStore per agentId, rooted at
 // ~/.isotopes/agents/<normalizedAgentId>/sessions/. Used by both the main
 // agent write path (via DiscordTransport / sessionStoreForAgent) and the
-// subagent write path (via createSubagentRecorder). See
-// docs/subagent-architecture.md §4.4.
+// spawn agent write path (via createRunRecorder).
 
 import { DefaultSessionStore } from "./session-store.js";
 import {

@@ -1,9 +1,7 @@
-// src/subagent/runners/builtin.test.ts — Tests for BuiltinRunner
-
 import { describe, it, expect, vi } from "vitest";
 import type { AgentConfig, ProviderConfig } from "../../core/types.js";
 import { ToolRegistry } from "../../core/tools.js";
-import type { SubagentEvent } from "../types.js";
+import type { RunEvent } from "../types.js";
 import { BuiltinRunner } from "./builtin.js";
 import type { AgentServiceCache, PiMonoCore } from "../../core/pi-mono.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
@@ -37,7 +35,6 @@ function makeCore(events: AgentEvent[]): {
 
   const mockSession = {
     subscribe: vi.fn((cb: (event: { type: string }) => void) => {
-      // Fire events asynchronously when prompt is called
       (mockSession as unknown as Record<string, unknown>)._cb = cb;
       return () => {};
     }),
@@ -82,25 +79,25 @@ function makeCore(events: AgentEvent[]): {
   };
 }
 
-async function collect(gen: AsyncGenerator<SubagentEvent>): Promise<SubagentEvent[]> {
-  const out: SubagentEvent[] = [];
+async function collect(gen: AsyncGenerator<RunEvent>): Promise<RunEvent[]> {
+  const out: RunEvent[] = [];
   for await (const e of gen) out.push(e);
   return out;
 }
 
 describe("BuiltinRunner", () => {
-  it("yields error+done(1) when options.builtin is missing", async () => {
+  it("yields error+done(1) when options.inProcess is missing", async () => {
     const harness = makeCore([]);
     const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run(
         "task-1",
-        { agent: "builtin", prompt: "hi", cwd: "/tmp" },
+        { agentId: "test-agent", prompt: "hi", cwd: "/tmp" },
         { abort: new AbortController().signal },
       ),
     );
-    expect(out[0].type).toBe("error");
-    expect(out.at(-1)).toEqual({ type: "done", exitCode: 1 });
+    expect(out[0].type).toBe("run:error");
+    expect(out.at(-1)).toEqual({ type: "run:done", exitCode: 1 });
   });
 
   it("registers a filtered tool registry, runs, and clears it", async () => {
@@ -117,25 +114,25 @@ describe("BuiltinRunner", () => {
       runner.run(
         "task-2",
         {
-          agent: "builtin",
+          agentId: "test-agent",
           prompt: "do thing",
           cwd: "/tmp",
-          builtin: { provider: fakeProvider(), tools },
+          inProcess: { provider: fakeProvider(), tools },
         },
         { abort: new AbortController().signal },
       ),
     );
 
     expect(harness.setIds).toHaveLength(1);
-    expect(harness.setIds[0]).toMatch(/^subagent-builtin-task-2-/);
+    expect(harness.setIds[0]).toMatch(/^agent-inproc-task-2-/);
     expect(harness.clearedIds).toEqual(harness.setIds);
 
     expect(harness.capturedConfig?.compaction).toEqual({ mode: "off" });
     expect(harness.capturedConfig?.provider?.type).toBe("anthropic");
 
     expect(out).toEqual([
-      { type: "message", content: "ok" },
-      { type: "done", exitCode: 0 },
+      { type: "run:message", content: "ok" },
+      { type: "run:done", exitCode: 0 },
     ]);
   });
 
@@ -152,10 +149,10 @@ describe("BuiltinRunner", () => {
       runner.run(
         "task-3",
         {
-          agent: "builtin",
+          agentId: "test-agent",
           prompt: "p",
           cwd: "/tmp",
-          builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
+          inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
         },
         { abort: ac.signal },
       ),
@@ -174,14 +171,14 @@ describe("BuiltinRunner", () => {
     const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run("task-skip", {
-        agent: "builtin", prompt: "p", cwd: "/tmp",
-        builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
+        agentId: "test-agent", prompt: "p", cwd: "/tmp",
+        inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
-    expect(out).toEqual([{ type: "done", exitCode: 0 }]);
+    expect(out).toEqual([{ type: "run:done", exitCode: 0 }]);
   });
 
-  it("translates tool_execution_start to tool_use", async () => {
+  it("translates tool_execution_start to run:tool_use", async () => {
     const harness = makeCore([
       { type: "tool_execution_start", toolCallId: "1", toolName: "shell", args: { cmd: "ls" } } as AgentEvent,
       { type: "agent_end", messages: [] } as AgentEvent,
@@ -189,14 +186,14 @@ describe("BuiltinRunner", () => {
     const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run("task-tool", {
-        agent: "builtin", prompt: "p", cwd: "/tmp",
-        builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
+        agentId: "test-agent", prompt: "p", cwd: "/tmp",
+        inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
-    expect(out[0]).toEqual({ type: "tool_use", toolName: "shell", toolInput: { cmd: "ls" } });
+    expect(out[0]).toEqual({ type: "run:tool_use", toolName: "shell", toolInput: { cmd: "ls" } });
   });
 
-  it("translates tool_execution_end to tool_result with error flag", async () => {
+  it("translates tool_execution_end to run:tool_result with error flag", async () => {
     const harness = makeCore([
       { type: "tool_execution_end", toolCallId: "1", toolName: "test", result: "ok", isError: false } as AgentEvent,
       { type: "tool_execution_end", toolCallId: "2", toolName: "test", result: "boom", isError: true } as AgentEvent,
@@ -205,12 +202,12 @@ describe("BuiltinRunner", () => {
     const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run("task-tresult", {
-        agent: "builtin", prompt: "p", cwd: "/tmp",
-        builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
+        agentId: "test-agent", prompt: "p", cwd: "/tmp",
+        inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
-    expect(out[0]).toEqual({ type: "tool_result", toolResult: "ok" });
-    expect(out[1]).toEqual({ type: "tool_result", toolResult: "boom", error: "tool error" });
+    expect(out[0]).toEqual({ type: "run:tool_result", toolName: "test", toolResult: "ok" });
+    expect(out[1]).toEqual({ type: "run:tool_result", toolName: "test", toolResult: "boom", isError: true });
   });
 
   it("emits error+done(1) when agent_end carries errorMessage", async () => {
@@ -220,13 +217,13 @@ describe("BuiltinRunner", () => {
     const runner = new BuiltinRunner(harness.core);
     const out = await collect(
       runner.run("task-err", {
-        agent: "builtin", prompt: "p", cwd: "/tmp",
-        builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
+        agentId: "test-agent", prompt: "p", cwd: "/tmp",
+        inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
       }, { abort: new AbortController().signal }),
     );
     expect(out).toEqual([
-      { type: "error", error: "kaboom" },
-      { type: "done", exitCode: 1 },
+      { type: "run:error", error: "kaboom" },
+      { type: "run:done", exitCode: 1 },
     ]);
   });
 
@@ -251,20 +248,20 @@ describe("BuiltinRunner", () => {
     const runner = new BuiltinRunner(core);
 
     const out = await collect(
-        runner.run(
-          "task-4",
-          {
-            agent: "builtin",
-            prompt: "p",
-            cwd: "/tmp",
-            builtin: { provider: fakeProvider(), tools: makeRegistry([]) },
-          },
-          { abort: new AbortController().signal },
-        ),
-      );
+      runner.run(
+        "task-4",
+        {
+          agentId: "test-agent",
+          prompt: "p",
+          cwd: "/tmp",
+          inProcess: { provider: fakeProvider(), tools: makeRegistry([]) },
+        },
+        { abort: new AbortController().signal },
+      ),
+    );
 
-    expect(out.some((e) => e.type === "error")).toBe(true);
-    expect(out.at(-1)).toEqual({ type: "done", exitCode: 1 });
+    expect(out.some((e) => e.type === "run:error")).toBe(true);
+    expect(out.at(-1)).toEqual({ type: "run:done", exitCode: 1 });
     expect(clearedIds).toEqual(setIds);
   });
 });

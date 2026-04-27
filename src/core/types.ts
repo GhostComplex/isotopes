@@ -66,15 +66,15 @@ export interface AgentConfig {
   heartbeatPrompt?: string;
   /**
    * Coding mode controls how the agent handles code modifications:
-   * - 'subagent': Force all code changes through spawn_subagent (removes write_file, edit)
+   * - 'spawn-agent': Force all code changes through spawn_agent (removes write_file, edit)
    * - 'direct': Agent can modify files directly (default behavior)
    * - 'auto': Agent chooses based on task complexity (default)
    */
-  codingMode?: "subagent" | "direct" | "auto";
+  codingMode?: "spawn-agent" | "direct" | "auto";
+  /** Whether this agent can be spawned by other agents. Default: false */
+  spawnable?: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Session store
 // ---------------------------------------------------------------------------
 
 /** A conversation session binding an agent to a transport channel. */
@@ -85,8 +85,8 @@ export interface Session {
   lastActiveAt: Date;
 }
 
-/** Per-run metadata for a subagent session (presence flags this as a subagent run). */
-export interface SubagentSessionMetadata {
+/** Per-run metadata for a spawn agent session (presence flags this as a spawn agent run). */
+export interface SpawnAgentSessionMetadata {
   parentAgentId: string;
   parentSessionId?: string;
   taskId: string;
@@ -102,8 +102,8 @@ export interface SubagentSessionMetadata {
 
 /**
  * Session metadata. `transport` is set for sessions originating from a chat
- * transport (discord/web). Subagent runs have `subagent` populated
- * and no `transport` — use `metadata.subagent !== undefined` as the
+ * transport (discord/web). Spawn agent runs have `spawnAgent` populated
+ * and no `transport` — use `metadata.spawnAgent !== undefined` as the
  * discriminator.
  */
 export interface SessionMetadata {
@@ -115,8 +115,8 @@ export interface SessionMetadata {
   threadId?: string;
   /** If true, session is exempt from TTL-based cleanup */
   persistent?: boolean;
-  /** Subagent run metadata; presence indicates the session backs a subagent run. */
-  subagent?: SubagentSessionMetadata;
+  /** Spawn agent run metadata; presence indicates the session backs a spawn agent run. */
+  spawnAgent?: SpawnAgentSessionMetadata;
 }
 
 /** Session TTL and cleanup configuration */

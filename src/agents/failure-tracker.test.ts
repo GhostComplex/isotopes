@@ -1,5 +1,3 @@
-// src/subagent/failure-tracker.test.ts
-
 import { describe, it, expect, beforeEach } from "vitest";
 import { FailureTracker } from "./failure-tracker.js";
 
@@ -54,8 +52,6 @@ describe("FailureTracker", () => {
     it("increments failure count independently per session", () => {
       tracker.recordFailure("session-1", "task A", "error");
       tracker.recordFailure("session-2", "task A", "error");
-
-      // Each session has 1 failure — below maxFailures=2
       expect(tracker.shouldBlock("session-1", "task A").blocked).toBe(false);
       expect(tracker.shouldBlock("session-2", "task A").blocked).toBe(false);
     });
@@ -63,7 +59,6 @@ describe("FailureTracker", () => {
     it("increments failure count independently per task", () => {
       tracker.recordFailure("session-1", "task A", "error");
       tracker.recordFailure("session-1", "task B", "error");
-
       expect(tracker.shouldBlock("session-1", "task A").blocked).toBe(false);
       expect(tracker.shouldBlock("session-1", "task B").blocked).toBe(false);
     });
@@ -74,9 +69,7 @@ describe("FailureTracker", () => {
       tracker.recordFailure("session-1", "task A", "error");
       tracker.recordFailure("session-1", "task A", "error");
       tracker.recordCancel("session-1", "task C");
-
       tracker.clearSession("session-1");
-
       expect(tracker.shouldBlock("session-1", "task A").blocked).toBe(false);
       expect(tracker.shouldBlock("session-1", "task C").blocked).toBe(false);
     });
@@ -86,9 +79,7 @@ describe("FailureTracker", () => {
       tracker.recordFailure("session-1", "task A", "error");
       tracker.recordFailure("session-2", "task A", "error");
       tracker.recordFailure("session-2", "task A", "error");
-
       tracker.clearSession("session-1");
-
       expect(tracker.shouldBlock("session-1", "task A").blocked).toBe(false);
       expect(tracker.shouldBlock("session-2", "task A").blocked).toBe(true);
     });
@@ -124,7 +115,6 @@ describe("FailureTracker", () => {
     it("allows spawns below rate limit", () => {
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
-
       expect(tracker.shouldBlock("session-1", "any task").blocked).toBe(false);
     });
 
@@ -132,7 +122,6 @@ describe("FailureTracker", () => {
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
-
       const check = tracker.shouldBlock("session-1", "any task");
       expect(check.blocked).toBe(true);
       expect(check.reason).toContain("Rate limit");
@@ -142,9 +131,7 @@ describe("FailureTracker", () => {
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
-
       tracker.recordSpawn("session-2");
-
       expect(tracker.shouldBlock("session-1", "task").blocked).toBe(true);
       expect(tracker.shouldBlock("session-2", "task").blocked).toBe(false);
     });
@@ -153,11 +140,8 @@ describe("FailureTracker", () => {
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
-
       expect(tracker.shouldBlock("session-1", "task").blocked).toBe(true);
-
       await new Promise(resolve => setTimeout(resolve, 1100));
-
       expect(tracker.shouldBlock("session-1", "task").blocked).toBe(false);
     });
 
@@ -165,7 +149,6 @@ describe("FailureTracker", () => {
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
-
       const check = tracker.shouldBlock("session-1", "new task");
       expect(check.blocked).toBe(true);
       expect(check.reason).toContain("Rate limit");
@@ -175,9 +158,7 @@ describe("FailureTracker", () => {
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
-
       tracker.clearSession("session-1");
-
       expect(tracker.shouldBlock("session-1", "task").blocked).toBe(false);
     });
 
@@ -185,11 +166,9 @@ describe("FailureTracker", () => {
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
       tracker.recordSpawn("session-1");
-
       const check1 = tracker.shouldBlock("session-1", "implement feature X");
       const check2 = tracker.shouldBlock("session-1", "implement feature Y");
       const check3 = tracker.shouldBlock("session-1", "implement feature Z");
-
       expect(check1.blocked).toBe(true);
       expect(check2.blocked).toBe(true);
       expect(check3.blocked).toBe(true);

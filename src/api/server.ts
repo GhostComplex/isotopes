@@ -29,7 +29,6 @@ import "./logs.js";
 import "./usage.js";
 import "./status.js";
 import "./sessions.js";
-import "./subagents.js";
 
 const log = createLogger("api:server");
 
