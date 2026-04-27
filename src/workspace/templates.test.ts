@@ -128,7 +128,7 @@ describe("Workspace Templates", () => {
       await seedWorkspaceTemplates(tempDir);
 
       const bootstrap = await fs.readFile(path.join(tempDir, "BOOTSTRAP.md"), "utf-8");
-      expect(bootstrap).toContain("MUST read your IDENTITY.md file");
+      expect(bootstrap).toContain("IDENTITY.md is already loaded");
       expect(bootstrap).toContain("Do NOT fabricate identity");
     });
 
