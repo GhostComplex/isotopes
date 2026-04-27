@@ -169,16 +169,17 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     setIsStreaming(true);
 
     const sessionKey = sessionKeyRef.current;
-    const blocks: ContentBlock[] = [];
+    let blocks: ContentBlock[] = [];
     const abort = new AbortController();
     abortRef.current = abort;
-    const streamMsgId = `stream-${Date.now()}`;
+    let streamMsgId = `stream-${Date.now()}`;
 
     const updateAssistant = () => {
       const fullText = blocks.filter((b) => b.type === "text").map((b) => b.text).join("");
-      const assistantMsg: ChatMessage = { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date(), id: streamMsgId };
+      const msgId = streamMsgId;
+      const assistantMsg: ChatMessage = { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date(), id: msgId };
       setMessages((prev) => {
-        const idx = prev.findIndex((m) => m.id === streamMsgId);
+        const idx = prev.findIndex((m) => m.id === msgId);
         if (idx >= 0) {
           const updated = [...prev];
           updated[idx] = assistantMsg;
@@ -207,6 +208,9 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
           tc.isError = e.isError;
         }
         updateAssistant();
+      } else if (e.type === "turn_end") {
+        blocks = [];
+        streamMsgId = `stream-${Date.now()}`;
       } else if (e.type === "error") {
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.message}`, timestamp: new Date() }]);
       }

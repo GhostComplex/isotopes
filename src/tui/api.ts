@@ -97,6 +97,8 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
         return { type: "tool_call", toolCallId: parsed.toolCallId, toolName: parsed.toolName, args: parsed.args };
       case "tool_result":
         return { type: "tool_result", toolCallId: parsed.toolCallId, toolName: parsed.toolName, result: parsed.result, isError: parsed.isError };
+      case "turn_end":
+        return { type: "turn_end" };
       case "error":
         return { type: "error", message: parsed.message };
       case "agent_end":

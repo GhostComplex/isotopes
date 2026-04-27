@@ -51,6 +51,7 @@ export type SSEEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_call"; toolCallId: string; toolName: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; toolName: string; result: unknown; isError: boolean }
+  | { type: "turn_end" }
   | { type: "error"; message: string }
   | { type: "agent_end"; stopReason: string };
 

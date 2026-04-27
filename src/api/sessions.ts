@@ -329,6 +329,8 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
       writeEvent("tool_call", { toolCallId: e.toolCallId, toolName: e.toolName, args: e.args });
     } else if (e.type === "tool_execution_end") {
       writeEvent("tool_result", { toolCallId: e.toolCallId, toolName: e.toolName, result: e.result, isError: e.isError });
+    } else if (e.type === "turn_end") {
+      writeEvent("turn_end", {});
     }
   });
 
