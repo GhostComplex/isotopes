@@ -52,8 +52,16 @@ function historyToChatMessages(items: Array<{ role: string; type?: string; conte
         }
       }
       result.push({ role: "user", content: text, timestamp: ts });
+    } else if (role === "toolResult") {
+      // Mark matching tool calls as completed
+      if (current) {
+        for (const b of current.blocks) {
+          if (b.type === "tool" && !b.result) { b.result = "✓"; break; }
+        }
+      }
     } else if (role === "assistant") {
-      if (!current) current = { text: "", blocks: [], timestamp: ts };
+      flushAssistant();
+      current = { text: "", blocks: [], timestamp: ts };
       if (Array.isArray(m.content)) {
         for (const b of m.content as Array<Record<string, unknown>>) {
           if (b.type === "text" && typeof b.text === "string") {
