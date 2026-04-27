@@ -206,9 +206,23 @@ export interface SpawnAgentToolOptions {
  * spawn agent output will be streamed to a Discord thread and a summary will be
  * posted to the main channel when complete.
  */
+/**
+ * Magic agent id that triggers ephemeral builtin spawn (parent's
+ * provider + filtered tools + generic system prompt + task). Run
+ * sessions land in `~/.isotopes/agents/subagent/sessions/` regardless
+ * of which agent triggered the spawn — keeps real agents' session
+ * directories clean while preserving structured run history.
+ */
+export const SUBAGENT_AGENT_ID = "subagent";
+
 export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: Tool; handler: ToolHandler } {
   const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds, agentManager } = options;
   const availableAgents: string[] = [...getSupportedAgents()];
+  // Always expose the ephemeral magic id, gated by parent having
+  // provider+tools to lend (always true for real agents).
+  if (parentProvider && parentTools && !availableAgents.includes(SUBAGENT_AGENT_ID)) {
+    availableAgents.push(SUBAGENT_AGENT_ID);
+  }
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
       if (!availableAgents.includes(id)) {
@@ -273,14 +287,16 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
       }
 
       try {
-        // Resolve spawn mode: if `agent` matches a registered named agent
-        // (with full identity in agentManager), use named mode — load its
-        // own system prompt, AgentServiceCache (provider+tools wired at
-        // init), and workspace as cwd. Otherwise fall back to ephemeral
-        // mode using the parent agent's provider/tools.
-        const namedCache = agentManager?.get?.(agent);
-        const namedSystemPrompt = agentManager?.getSystemPrompt?.(agent);
-        const namedWorkspace = agentManager?.getWorkspacePath?.(agent);
+        // Resolve spawn mode:
+        //  - magic id "subagent" → ephemeral builtin (parent's provider+tools,
+        //    generic preamble, run session lands in subagent/ store)
+        //  - registered named agent (in agentManager) → named builtin (full
+        //    identity, run session lands in target's own sessions/)
+        //  - otherwise → external runner ("claude") via ClaudeRunner
+        const isSubagent = agent === SUBAGENT_AGENT_ID;
+        const namedCache = !isSubagent ? agentManager?.get?.(agent) : undefined;
+        const namedSystemPrompt = !isSubagent ? agentManager?.getSystemPrompt?.(agent) : undefined;
+        const namedWorkspace = !isSubagent ? agentManager?.getWorkspacePath?.(agent) : undefined;
         const isNamed = namedCache !== undefined && namedSystemPrompt !== undefined && namedSystemPrompt.length > 0;
 
         let builtin: BuiltinOptions | undefined;
@@ -288,7 +304,11 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: To
         let effectiveCwd = cwd;
         let effectiveAllowedWorkspaces = allAllowedWorkspaces;
 
-        if (isNamed) {
+        if (isSubagent && parentProvider && parentTools) {
+          builtin = { mode: "ephemeral", provider: parentProvider, tools: parentTools };
+          targetAgentId = SUBAGENT_AGENT_ID;
+          log.info("Spawning ephemeral subagent", { parentAgentId, cwd: effectiveCwd });
+        } else if (isNamed) {
           builtin = { mode: "named", cache: namedCache, systemPrompt: namedSystemPrompt };
           targetAgentId = agent;
           if (namedWorkspace) {

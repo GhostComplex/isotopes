@@ -2,6 +2,7 @@ import type { ProviderConfig } from "../core/types.js";
 import type { ToolRegistry } from "../core/tools.js";
 import type { SpawnPermissionMode } from "../core/config.js";
 import type { AgentServiceCache } from "../core/pi-mono.js";
+import type { SessionManager } from "@mariozechner/pi-coding-agent";
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
 
@@ -26,15 +27,23 @@ export interface RunResult {
 /**
  * Builtin runner payload. Two modes:
  *
- * - "ephemeral": fire-and-forget agent with no identity. Uses the parent's
- *   provider and a filtered subset of the parent's tools. The session is
- *   in-memory and discarded; the system prompt is the generic
- *   `buildSpawnAgentSystemPrompt()` preamble + task.
+ * - "ephemeral": fire-and-forget agent. Uses the parent's provider and
+ *   a filtered subset of the parent's tools. The system prompt is the
+ *   generic `buildSpawnAgentSystemPrompt()` preamble + task. By
+ *   convention spawned via the magic agent id "subagent" so its run
+ *   sessions land in `~/.isotopes/agents/subagent/sessions/`.
  *
- * - "named": spawn into an existing named agent's full identity. Uses the
- *   target agent's `AgentServiceCache` (which already owns its provider
- *   and tool registry) and the target's already-assembled system prompt
- *   (SOUL.md/MEMORY.md/TOOLS.md/tool guards merged at init time).
+ * - "named": spawn into an existing named agent's full identity. Uses
+ *   the target agent's `AgentServiceCache` (which already owns its
+ *   provider and tool registry) and the target's already-assembled
+ *   system prompt (SOUL.md/MEMORY.md/TOOLS.md/tool guards merged at
+ *   init time). Run sessions land in the target agent's own
+ *   `sessions/` directory alongside its chat sessions.
+ *
+ * Both modes accept an optional `sessionManager`: when provided, the
+ * SDK persists the conversation through it (structured messages,
+ * resumable in principle); when omitted, the runner falls back to
+ * `SessionManager.inMemory()` (transient).
  */
 export type BuiltinOptions =
   | {
@@ -42,11 +51,13 @@ export type BuiltinOptions =
       provider: ProviderConfig;
       tools: ToolRegistry;
       extraSystemPrompt?: string;
+      sessionManager?: SessionManager;
     }
   | {
       mode: "named";
       cache: AgentServiceCache;
       systemPrompt: string;
+      sessionManager?: SessionManager;
     };
 
 export type OnCompleteCallback = (result: RunResult) => void | Promise<void>;

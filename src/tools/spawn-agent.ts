@@ -179,6 +179,21 @@ export async function spawnAgent(
     threadId: options.threadId,
   });
 
+  // For builtin runs (named + ephemeral) the SDK can persist the real
+  // structured conversation directly into the run's session. Hand the
+  // SessionManager backing this session into the BuiltinOptions so the
+  // SDK writes there. We then skip per-event recorder.record() to avoid
+  // double-writing the same session — recorder.patchMetadata() still
+  // runs at the end to capture exitCode/costUsd/durationMs.
+  let builtin = options.builtin;
+  if (builtin && store && recorder.sessionId) {
+    const sessionManager = await store.getSessionManager(recorder.sessionId);
+    if (sessionManager) {
+      builtin = { ...builtin, sessionManager };
+    }
+  }
+  const sdkPersists = builtin?.sessionManager !== undefined;
+
   const startedAt = Date.now();
 
   try {
@@ -191,14 +206,16 @@ export async function spawnAgent(
       maxTurns: options.maxTurns ?? 50,
       depth: options.depth,
       maxDepth: backendConfig.config?.maxDepth,
-      ...(options.builtin ? { builtin: options.builtin } : {}),
+      ...(builtin ? { builtin } : {}),
     });
 
     const collected: RunEvent[] = [];
     for await (const event of events) {
       collected.push(event);
       options.onEvent?.(event);
-      await recorder.record(event);
+      if (!sdkPersists) {
+        await recorder.record(event);
+      }
     }
 
     const result = summarizeEvents(collected);

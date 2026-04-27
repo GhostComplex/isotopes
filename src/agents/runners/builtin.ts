@@ -82,7 +82,7 @@ export class BuiltinRunner implements Runner {
       compaction: { mode: "off" },
     });
 
-    const sessionManager = SessionManager.inMemory();
+    const sessionManager = builtin.sessionManager ?? SessionManager.inMemory();
     const session = await cache.createSession({
       sessionManager,
       systemPrompt,
@@ -117,7 +117,7 @@ export class BuiltinRunner implements Runner {
     // session-isolated. Compaction and provider settings deliberately
     // inherit from the target agent's config (named = full identity);
     // do NOT force `compaction: { mode: "off" }` here as ephemeral does.
-    const sessionManager = SessionManager.inMemory();
+    const sessionManager = builtin.sessionManager ?? SessionManager.inMemory();
     const session = await builtin.cache.createSession({
       sessionManager,
       systemPrompt: builtin.systemPrompt,
