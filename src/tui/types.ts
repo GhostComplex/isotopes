@@ -1,7 +1,11 @@
+export type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "tool"; id: string; name: string; args: string; result?: string; isError?: boolean };
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
-  toolCalls?: ToolCallEntry[];
+  blocks?: ContentBlock[];
   timestamp: Date;
 }
 

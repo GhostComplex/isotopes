@@ -1,27 +1,81 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
-import type { ChatMessage, ToolCallEntry, TuiOptions, Screen, SSEEvent } from "./types.js";
+import type { ChatMessage, ContentBlock, TuiOptions, Screen, SSEEvent } from "./types.js";
 import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
 const MAX_HISTORY_MESSAGES = 20;
 
-function historyMessageToChatMessage(m: { role: string; content?: unknown; timestamp?: number }): ChatMessage | null {
-  if (m.role !== "user" && m.role !== "assistant") return null;
-  const role = m.role as "user" | "assistant";
+function extractResultText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (Array.isArray(result)) {
+    const texts: string[] = [];
+    for (const block of result as Array<Record<string, unknown>>) {
+      if (block.type === "text" && typeof block.text === "string") texts.push(block.text);
+    }
+    if (texts.length > 0) return texts.join("\n");
+  }
+  if (result && typeof result === "object" && "content" in (result as Record<string, unknown>)) {
+    return extractResultText((result as Record<string, unknown>).content);
+  }
+  return JSON.stringify(result);
+}
 
-  let text = "";
-  if (typeof m.content === "string") {
-    text = m.content;
-  } else if (Array.isArray(m.content)) {
-    for (const block of m.content as Array<Record<string, unknown>>) {
-      if (block.type === "text" && typeof block.text === "string") text += block.text;
+function historyToChatMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number }>): ChatMessage[] {
+  const result: ChatMessage[] = [];
+  let current: { text: string; blocks: ContentBlock[]; timestamp: Date } | null = null;
+
+  const flushAssistant = () => {
+    if (current && (current.text || current.blocks.length > 0)) {
+      // Mark all tool calls as completed in history
+      for (const b of current.blocks) {
+        if (b.type === "tool" && !b.result) b.result = "✓";
+      }
+      result.push({ role: "assistant", content: current.text, blocks: current.blocks.length > 0 ? current.blocks : undefined, timestamp: current.timestamp });
+    }
+    current = null;
+  };
+
+  for (const m of items) {
+    const role = m.role ?? m.type;
+    const ts = typeof m.timestamp === "number" ? new Date(m.timestamp) : new Date();
+
+    if (role === "user") {
+      flushAssistant();
+      let text = "";
+      if (typeof m.content === "string") {
+        text = m.content;
+      } else if (Array.isArray(m.content)) {
+        for (const b of m.content as Array<Record<string, unknown>>) {
+          if (b.type === "text" && typeof b.text === "string") text += b.text;
+        }
+      }
+      result.push({ role: "user", content: text, timestamp: ts });
+    } else if (role === "assistant") {
+      if (!current) current = { text: "", blocks: [], timestamp: ts };
+      if (Array.isArray(m.content)) {
+        for (const b of m.content as Array<Record<string, unknown>>) {
+          if (b.type === "text" && typeof b.text === "string") {
+            current.text += b.text;
+            current.blocks.push({ type: "text", text: b.text });
+          } else if (b.type === "toolCall" && typeof b.name === "string") {
+            current.blocks.push({
+              type: "tool",
+              id: String(b.id ?? ""),
+              name: b.name,
+              args: typeof b.arguments === "string" ? b.arguments : JSON.stringify(b.arguments ?? {}),
+            });
+          }
+        }
+      } else if (typeof m.content === "string") {
+        current.text += m.content;
+        current.blocks.push({ type: "text", text: m.content });
+      }
     }
   }
-
-  const ts = typeof m.timestamp === "number" ? new Date(m.timestamp) : new Date();
-  return { role, content: text, timestamp: ts };
+  flushAssistant();
+  return result;
 }
 
 interface Props {
@@ -67,10 +121,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
       if (session.resumed) {
         const { items: history } = await api.getHistory(session.agentId, session.key);
-        const chatMessages = history
-          .map(historyMessageToChatMessage)
-          .filter((m): m is ChatMessage => m !== null)
-          .slice(-MAX_HISTORY_MESSAGES);
+        const chatMessages = historyToChatMessages(history).slice(-MAX_HISTORY_MESSAGES);
         if (chatMessages.length > 0) {
           const skipped = history.length - chatMessages.length;
           const prefix: ChatMessage[] = skipped > 0
@@ -107,37 +158,40 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     setIsStreaming(true);
 
     const sessionKey = sessionKeyRef.current;
-    let responseText = "";
-    const toolCalls: ToolCallEntry[] = [];
+    const blocks: ContentBlock[] = [];
     const abort = new AbortController();
     abortRef.current = abort;
 
+    const updateAssistant = () => {
+      const fullText = blocks.filter((b) => b.type === "text").map((b) => b.text).join("");
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant") {
+          return [...prev.slice(0, -1), { ...last, content: fullText, blocks: [...blocks] }];
+        }
+        return [...prev, { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date() }];
+      });
+    };
+
     const handleEvent = (e: SSEEvent) => {
       if (e.type === "text_delta") {
-        responseText += e.text;
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
-            return [...prev.slice(0, -1), { ...last, content: responseText, toolCalls: [...toolCalls] }];
-          }
-          return [...prev, { role: "assistant", content: responseText, toolCalls: [...toolCalls], timestamp: new Date() }];
-        });
+        const lastBlock = blocks[blocks.length - 1];
+        if (lastBlock?.type === "text") {
+          lastBlock.text += e.text;
+        } else {
+          blocks.push({ type: "text", text: e.text });
+        }
+        updateAssistant();
       } else if (e.type === "tool_call") {
-        toolCalls.push({ id: e.toolCallId, name: e.toolName, args: typeof e.args === "string" ? e.args : JSON.stringify(e.args) });
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
-            return [...prev.slice(0, -1), { ...last, toolCalls: [...toolCalls] }];
-          }
-          return prev;
-        });
+        blocks.push({ type: "tool", id: e.toolCallId, name: e.toolName, args: typeof e.args === "string" ? e.args : JSON.stringify(e.args) });
+        updateAssistant();
       } else if (e.type === "tool_result") {
-        const output = typeof e.result === "string" ? e.result : JSON.stringify(e.result);
-        const tc = toolCalls.find((t) => t.id === e.toolCallId);
+        const tc = blocks.find((b): b is ContentBlock & { type: "tool" } => b.type === "tool" && b.id === e.toolCallId);
         if (tc) {
-          tc.result = output;
+          tc.result = extractResultText(e.result);
           tc.isError = e.isError;
         }
+        updateAssistant();
       } else if (e.type === "error") {
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.message}`, timestamp: new Date() }]);
       }
@@ -168,7 +222,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
           setIsStreaming(true);
           (async () => {
             try {
-              const session = await api.createSession(agentId);
+              if (sessionKeyRef.current) {
+                await api.deleteSession(agentId, sessionKeyRef.current).catch(() => {});
+              }
+              const session = await api.createSession(agentId, "tui:main");
               sessionKeyRef.current = session.key;
               setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
             } catch (err) {
@@ -206,39 +263,83 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   });
 
   const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
+  const contentWidth = (process.stdout.columns || 80) - 2;
+  const headerHeight = 3;
+  const inputHeight = 3;
+  const messageHeight = (process.stdout.rows || 24) - headerHeight - inputHeight;
 
   return (
     <Box flexDirection="column" height={process.stdout.rows}>
-      <Box borderStyle="single" paddingX={1}>
+      <Box borderStyle="single" paddingX={1} height={headerHeight}>
         <Text bold>isotopes</Text>
         <Text> — agent: </Text>
         <Text color="cyan">{agentId || "loading..."}</Text>
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
-      <Box flexDirection="column" flexGrow={1} paddingX={1}>
+      <Box flexDirection="column" paddingX={1} height={messageHeight} overflow="hidden">
         {error && <Text color="red">{error}</Text>}
         {!agentReady && !error && <Text color="gray">Loading agent...</Text>}
-        {visible.map((msg, i) => (
-          <Box key={i} flexDirection="column">
-            <Text>
-              <Text color={msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray"} bold>
-                {msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System"}
-              </Text>
-              <Text>: {msg.content}</Text>
-            </Text>
-            {msg.toolCalls?.map((tc) => (
-              <Text key={tc.id} color="gray" dimColor>
-                {"  "}🔧 {tc.name}{tc.result ? ` → ${tc.result.slice(0, 80)}` : " ..."}
-              </Text>
-            ))}
-          </Box>
-        ))}
+        {visible.map((msg, i) => {
+          const roleLabel = msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System";
+          const roleColor = msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray";
+
+          if (!msg.blocks) {
+            return (
+              <Box key={i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
+                <Text wrap="wrap">
+                  <Text color={roleColor} bold>{roleLabel}</Text>
+                  <Text>: {msg.content}</Text>
+                </Text>
+              </Box>
+            );
+          }
+
+          const elements: React.ReactNode[] = [];
+          let labelRendered = false;
+          for (let j = 0; j < msg.blocks.length; j++) {
+            const block = msg.blocks[j];
+            if (block.type === "text") {
+              if (!labelRendered) {
+                labelRendered = true;
+                elements.push(
+                  <Box key={j}>
+                    <Text wrap="wrap">
+                      <Text color={roleColor} bold>{roleLabel}</Text>
+                      <Text>: {block.text}</Text>
+                    </Text>
+                  </Box>
+                );
+              } else {
+                elements.push(<Box key={j}><Text wrap="wrap">{block.text}</Text></Box>);
+              }
+            } else {
+              if (!labelRendered) {
+                labelRendered = true;
+                elements.push(
+                  <Box key={`label`}>
+                    <Text color={roleColor} bold>{roleLabel}</Text>
+                    <Text>:</Text>
+                  </Box>
+                );
+              }
+              elements.push(
+                <Box key={j}>
+                  <Text color="gray" dimColor wrap="truncate-end">
+                    {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
+                  </Text>
+                </Box>
+              );
+            }
+          }
+
+          return <Box key={i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
+        })}
       </Box>
 
-      <Box borderStyle="single" paddingX={1}>
+      <Box borderStyle="single" paddingX={1} height={3}>
         <Text color="green">&gt; </Text>
-        <Text>{input}</Text>
+        <Text wrap="truncate">{input}</Text>
         <Text color="gray">█</Text>
       </Box>
     </Box>
