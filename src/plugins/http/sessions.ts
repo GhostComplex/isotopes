@@ -1,4 +1,4 @@
-// src/api/sessions.ts — Unified session endpoints (read, create, stream, abort, delete)
+// src/plugins/http/sessions.ts — Unified session endpoints (read, create, stream, abort, delete)
 //
 // /api/sessions                        — list all sessions
 // /api/sessions/:agentId               — list sessions for one agent
@@ -9,13 +9,13 @@
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../../core/logger.js";
 import { randomUUID } from "node:crypto";
-import { runAgentLoop, abortAgentSession } from "../core/agent-runner.js";
-import { userMessage } from "../core/messages.js";
-import { agentEventBus } from "../core/agent-event-bus.js";
-import type { DefaultSessionStore } from "../core/session-store.js";
-import type { Session } from "../core/types.js";
+import { runAgentLoop, abortAgentSession } from "../../core/agent-runner.js";
+import { userMessage } from "../../core/messages.js";
+import { agentEventBus } from "../../core/agent-event-bus.js";
+import type { DefaultSessionStore } from "../../core/session-store.js";
+import type { Session } from "../../core/types.js";
 
 const log = createLogger("api:sessions");
 

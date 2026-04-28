@@ -1,14 +1,14 @@
-// src/api/server.ts — HTTP server for the Isotopes REST API
+// src/plugins/http/server.ts — HTTP server for the Isotopes REST API
 // Minimal server built on Node.js built-in http module (no Express).
 
 import http from "node:http";
 import path from "node:path";
-import { createLogger } from "../core/logger.js";
-import type { CronScheduler } from "../automation/cron-job.js";
-import type { ConfigReloader } from "../workspace/config-reloader.js";
-import type { DefaultAgentManager } from '../core/agent-manager.js';
-import type { UsageTracker } from "../core/usage-tracker.js";
-import type { SessionStoreManager } from "../core/session-store-manager.js";
+import { createLogger } from "../../core/logger.js";
+import type { CronScheduler } from "../../automation/cron-job.js";
+import type { ConfigReloader } from "../../workspace/config-reloader.js";
+import type { DefaultAgentManager } from "../../core/agent-manager.js";
+import type { UsageTracker } from "../../core/usage-tracker.js";
+import type { SessionStoreManager } from "../../core/session-store-manager.js";
 import {
   applyCors,
   parseJsonBody,
@@ -19,8 +19,8 @@ import {
 } from "./middleware.js";
 import { matchRoute, type RouteDeps } from "./routes.js";
 import { serveStaticFile } from "./static.js";
-import type { HookRegistry } from "../plugins/hooks.js";
-import type { UIRegistry } from "../plugins/ui-registry.js";
+import type { HookRegistry } from "../../plugins/hooks.js";
+import type { UIRegistry } from "../../plugins/ui-registry.js";
 
 // Register route modules (side-effect imports)
 import "./cron.js";

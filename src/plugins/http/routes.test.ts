@@ -1,9 +1,9 @@
-// src/api/routes.test.ts — Unit tests for REST route handlers
+// src/plugins/http/routes.test.ts — Unit tests for REST route handlers
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
-import { CronScheduler } from "../automation/cron-job.js";
+import { CronScheduler } from "../../automation/cron-job.js";
 
 function request(
   port: number,

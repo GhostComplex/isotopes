@@ -1,11 +1,11 @@
-// src/api/chat.test.ts — Unit tests for chat session creation with sessionKey
+// src/plugins/http/chat.test.ts — Unit tests for chat session creation with sessionKey
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
-import { CronScheduler } from "../automation/cron-job.js";
-import { createMockAgentManager } from "../core/test-helpers.js";
-import { SessionStoreManager } from "../core/session-store-manager.js";
+import { CronScheduler } from "../../automation/cron-job.js";
+import { createMockAgentManager } from "../../core/test-helpers.js";
+import { SessionStoreManager } from "../../core/session-store-manager.js";
 
 function request(
   port: number,

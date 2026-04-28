@@ -1,4 +1,4 @@
-// src/api/config.ts — Configuration routes
+// src/plugins/http/config.ts — Configuration routes
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";

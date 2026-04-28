@@ -23,7 +23,7 @@ import {
   ensureDirectories,
 } from "./paths.js";
 import { HotReloadManager } from "../workspace/index.js";
-import { ApiServer } from "../api/server.js";
+import { ApiServer } from "../plugins/http/server.js";
 import { CronScheduler } from "../automation/cron-job.js";
 import { HeartbeatManager } from "../automation/heartbeat.js";
 import { UsageTracker } from "./usage-tracker.js";
