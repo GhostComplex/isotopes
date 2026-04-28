@@ -111,11 +111,14 @@ export class DiscordSubagentSink {
     if (!this.threadId) return;
 
     const seconds = (summary.durationMs / 1000).toFixed(1);
+    // Success: just the status line — assistant text already streamed via
+    // sendEvent(message_update). Failure: append the error since it doesn't
+    // come through the message_update channel.
     const head = summary.success
       ? `${OK_PREFIX} done in ${seconds}s`
       : `${FAIL_PREFIX} failed in ${seconds}s`;
     const body = summary.success
-      ? (summary.output ? `\n${truncate(summary.output, 1500)}` : "")
+      ? ""
       : (summary.error ? `\n${truncate(summary.error, 1500)}` : "");
     try {
       await this.ctx.sendMessage(this.threadId, head + body);
