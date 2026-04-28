@@ -8,6 +8,7 @@ import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import type { UsageTracker } from "../../core/usage-tracker.js";
 import type { SessionStoreManager } from "../../core/session-store-manager.js";
 import type { HookRegistry } from "../../plugins/hooks.js";
+import type { AgentRuntime } from "../../agents/runtime.js";
 import type { ApiRequest } from "./middleware.js";
 
 // ---------------------------------------------------------------------------
@@ -22,6 +23,7 @@ export interface RouteDeps {
   usageTracker?: UsageTracker;
   sessionStoreManager?: SessionStoreManager;
   hooks?: HookRegistry;
+  agentRuntime?: AgentRuntime;
 }
 
 /** Handler function for a matched API route. */

@@ -6,6 +6,7 @@ import type {
 } from "../../core/types.js";
 import type { DiscordAccountConfig } from "./types.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
+import type { AgentRuntime } from "../../agents/runtime.js";
 import { getDiscordToken } from "./config.js";
 import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
@@ -20,6 +21,8 @@ const VALID_REPLY_TO_MODES = new Set<ReplyToMode>(["off", "first", "all"]);
 /** Shared infrastructure injected into every Discord account transport. */
 export interface DiscordSharedConfig {
   agentManager: DefaultAgentManager;
+  /** Unified runtime — required at runtime; optional only for unit tests. */
+  agentRuntime?: AgentRuntime;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   threadBindingManager?: ThreadBindingManager;

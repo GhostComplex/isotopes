@@ -21,6 +21,13 @@ const log = createLogger("tools:spawn-agent");
 export interface SpawnBackendConfig {
   config?: ResolvedSpawningConfig;
   core?: PiMonoCore;
+  /**
+   * Optional pre-constructed runtime to use as the spawn backend. When
+   * provided, getBackend() returns this instance instead of constructing
+   * a per-workspacesKey singleton internally. Set by the app layer so the
+   * spawn tool and the chat-side runtime share one AgentRuntime.
+   */
+  runtime?: AgentRuntime;
 }
 
 export interface SpawnAgentOptions {
@@ -90,13 +97,17 @@ export function setSpawnSessionStoreFactory(
  */
 export function initSpawnBackend(config: SpawnBackendConfig): void {
   backendConfig = config;
-  sharedBackend = undefined;
+  sharedBackend = config.runtime;
   log.info("Spawn backend initialized", {
     claudePermissionMode: config.config?.claude.permissionMode,
+    injectedRuntime: !!config.runtime,
   });
 }
 
 function getBackend(allowedWorkspaces?: string[]): AgentRuntime {
+  if (backendConfig.runtime) {
+    return backendConfig.runtime;
+  }
   const key = allowedWorkspaces?.sort().join(":") ?? "";
   if (sharedBackend && sharedBackend.workspacesKey === key) {
     return sharedBackend;

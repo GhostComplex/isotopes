@@ -64,6 +64,7 @@ export interface ApiServerDeps {
   uiRegistry?: UIRegistry;
   sessionStoreManager?: SessionStoreManager;
   hooks?: HookRegistry;
+  agentRuntime?: import("../../agents/runtime.js").AgentRuntime;
 }
 
 export class ApiServer {
@@ -83,6 +84,7 @@ export class ApiServer {
       usageTracker: deps.usageTracker,
       sessionStoreManager: deps.sessionStoreManager,
       hooks: deps.hooks,
+      agentRuntime: deps.agentRuntime,
     };
   }
 

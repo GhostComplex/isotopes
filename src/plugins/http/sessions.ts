@@ -11,7 +11,7 @@ import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
 import { createLogger } from "../../core/logger.js";
 import { randomUUID } from "node:crypto";
-import { runAgentLoop, abortAgentSession } from "../../core/agent-runner.js";
+import { consumeRootRun, cancelRunBySessionId } from "../../core/agent-run.js";
 import { userMessage } from "../../core/messages.js";
 import { agentEventBus } from "../../core/agent-event-bus.js";
 import type { DefaultSessionStore } from "../../core/session-store.js";
@@ -307,6 +307,11 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
     return;
   }
 
+  if (!deps.agentRuntime) {
+    sendError(res, 503, "Agent runtime not available");
+    return;
+  }
+
   const store = await deps.sessionStoreManager.getOrCreate(agentId);
   const sessionId = active.sessionId;
 
@@ -337,19 +342,15 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
   });
 
   try {
-    const systemPrompt = deps.agentManager.getSystemPrompt?.(agentId) ?? "";
     const cwd = deps.agentManager.getWorkspacePath?.(agentId);
 
-    const result = await runAgentLoop({
-      cache,
-      sessionStore: store,
+    const result = await consumeRootRun(deps.agentRuntime, {
+      to: agentId,
       sessionId,
-      systemPrompt,
-      cwd,
-      textInput: body.message,
+      content: body.message,
+      ...(cwd ? { cwd } : {}),
       log,
-      hooks: deps.hooks,
-      agentId,
+      ...(deps.hooks ? { hooks: deps.hooks } : {}),
       onToolComplete: async () => {
         const pending = active.pendingMessages;
         if (pending.length === 0) return null;
@@ -411,7 +412,7 @@ addRoute("POST", "/api/sessions/:agentId/:key/steer", async (req, res, _deps) =>
 // POST /api/sessions/:agentId/:key/abort — abort current response
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res) => {
+addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res, deps) => {
   const sessionKey = `${req.params.agentId}:${req.params.key}`;
   const session = activeSessions.get(sessionKey);
   if (!session) {
@@ -419,7 +420,9 @@ addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res) => {
     return;
   }
 
-  abortAgentSession(session.sessionId);
+  if (deps.agentRuntime) {
+    cancelRunBySessionId(deps.agentRuntime, session.sessionId);
+  }
   session.pendingMessages.length = 0;
   sendJson(res, 200, { ok: true });
 });

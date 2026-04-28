@@ -43,6 +43,7 @@ export default {
         accounts,
         shared: {
           agentManager: ctx.agentManager,
+          agentRuntime: ctx.agentRuntime,
           sessionStore: defaultSessionStore,
           sessionStoreForAgent: (agentId) =>
             ctx.getSessionStoreForAgent(agentId) ?? sessionStores.get(agentId) ?? defaultSessionStore,
