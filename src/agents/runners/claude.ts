@@ -19,8 +19,6 @@ import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-a
 
 const log = createLogger("agents:runner:claude");
 
-export const CLAUDE_AGENT_ID = "claude";
-
 export interface ClaudeRunnerOptions {
   permissionMode?: SpawnPermissionMode;
   allowedTools?: string[];

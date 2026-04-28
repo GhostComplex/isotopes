@@ -64,6 +64,7 @@ export async function consumeRootRun(
       sessionId,
       content,
       ...(cwd ? { cwd } : {}),
+      onRunStart: (id) => { runId = id; },
     });
 
     // Wrap the iteration so the agent's tools (notably send_message) see
@@ -73,11 +74,6 @@ export async function consumeRootRun(
       async () => {
         for await (const event of stream) {
           agentEventBus.session(sessionId).emit(event);
-
-          if (runId === undefined) {
-            const found = runtime.listRuns().find((r) => r.sessionId === sessionId);
-            if (found) runId = found.runId;
-          }
 
           if (event.type === "message_update") {
             const ame = event.assistantMessageEvent;

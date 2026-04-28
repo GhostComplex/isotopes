@@ -7,6 +7,7 @@ import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import type { AgentRuntime } from "../agents/runtime.js";
+import { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID, SendMessageValidationError } from "../agents/runtime.js";
 import type { SendMessageRequest } from "../agents/types.js";
 import { getMessageContext } from "../transport/context.js";
 import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
@@ -165,12 +166,10 @@ export function createTimeTool(): { tool: Tool; handler: ToolHandler } {
 // send_message tool — single delegation verb (replaces legacy spawn_agent)
 // ---------------------------------------------------------------------------
 
-/** Magic agent id that resolves to an ephemeral leaf session backed by the
- * caller's filtered tools + provider. */
-export const SUBAGENT_AGENT_ID = "subagent";
-/** Magic agent id that resolves to a Claude CLI leaf session via the
- * runtime's ClaudeRunner. Requires `cwd`. */
-export const CLAUDE_AGENT_ID = "claude";
+// SUBAGENT_AGENT_ID and CLAUDE_AGENT_ID are owned by the agents layer
+// (src/agents/runtime.ts) — re-exported above so existing import paths
+// pointing at this file keep working.
+export { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID };
 
 export interface SendMessageToolOptions {
   /** Unified runtime — the tool calls runtime.sendMessage to deliver. */
@@ -322,6 +321,16 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        // Validation errors (unknown target, missing cwd, leaf cap, etc.)
+        // are caller-fixable. Surface them as [error] so the LLM doesn't
+        // treat them like a target crash and retry; also don't poison
+        // failureTracker with a non-failure.
+        if (err instanceof SendMessageValidationError) {
+          if (sink) {
+            await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
+          }
+          return `[error] ${msg}`;
+        }
         if (sink) {
           await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
         }
@@ -688,22 +697,41 @@ export function applyToolPolicy(
 /** Tools that modify files - excluded when codingMode is 'send-message' */
 export const FILE_WRITING_TOOLS = ["write_file", "edit"];
 
+export interface CreateWorkspaceToolsOptions {
+  workspacePath: string;
+  settings?: AgentToolSettings;
+  /** Register the `send_message` tool. Requires `runtime` + `parentAgentId`. */
+  sendMessageEnabled?: boolean;
+  /** "send-message" excludes write_file/edit (caller delegates code edits). */
+  codingMode?: "send-message" | "direct" | "auto";
+  fsImpl?: FsLike;
+  parentAgentId?: string;
+  /** Caller's provider — needed when targeting `subagent` (lent to leaf). */
+  parentProvider?: ProviderConfig;
+  /** Caller's tool registry — filtered + lent to leaf sessions. */
+  parentTools?: ToolRegistry;
+  /** Unified runtime — required when sendMessageEnabled is true. */
+  runtime?: AgentRuntime;
+  /** Pre-computed list of registered agent ids the LLM can address. */
+  spawnableAgentIds?: string[];
+}
+
 export function createWorkspaceToolsWithGuards(
-  workspacePath: string,
-  settings?: AgentToolSettings,
-  sendMessageEnabled = false,
-  allowedWorkspaces: string[] = [],
-  codingMode: "send-message" | "direct" | "auto" = "auto",
-  _unusedMaxTurns?: number,
-  fsImpl?: FsLike,
-  parentAgentId?: string,
-  parentProvider?: ProviderConfig,
-  parentTools?: ToolRegistry,
-  runtime?: AgentRuntime,
-  spawnableAgentIds?: string[],
+  options: CreateWorkspaceToolsOptions,
 ): { tool: Tool; handler: ToolHandler }[] {
-  void allowedWorkspaces;
-  const fileOpts: FileToolOptions = { workspacePath, fsImpl };
+  const {
+    workspacePath,
+    settings,
+    sendMessageEnabled = false,
+    codingMode = "auto",
+    fsImpl,
+    parentAgentId,
+    parentProvider,
+    parentTools,
+    runtime,
+    spawnableAgentIds,
+  } = options;
+  const fileOpts: FileToolOptions = { workspacePath, ...(fsImpl ? { fsImpl } : {}) };
   let tools = [
     createReadFileTool(fileOpts),
     createWriteFileTool(fileOpts),

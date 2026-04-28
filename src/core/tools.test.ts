@@ -527,7 +527,7 @@ describe("Built-in tools", () => {
 
   describe("createWorkspaceToolsWithGuards", () => {
     it("creates all standard workspace tools", () => {
-      const tools = createWorkspaceToolsWithGuards("/tmp/workspace");
+      const tools = createWorkspaceToolsWithGuards({ workspacePath: "/tmp/workspace" });
 
       const names = tools.map((t: { tool: Tool }) => t.tool.name);
       expect(names).toContain("read_file");
@@ -540,7 +540,7 @@ describe("Built-in tools", () => {
     });
 
     it("does not include shell or exec (exec is registered in cli.ts)", () => {
-      const tools = createWorkspaceToolsWithGuards("/tmp/workspace");
+      const tools = createWorkspaceToolsWithGuards({ workspacePath: "/tmp/workspace" });
       const names = tools.map((entry) => entry.tool.name);
       expect(names).not.toContain("shell");
       expect(names).toContain("read_file");
@@ -558,16 +558,11 @@ describe("Built-in tools", () => {
         readdir: vi.fn(async () => []),
       };
 
-      const tools = createWorkspaceToolsWithGuards(
-        "/tmp/workspace",
-        undefined,
-        false,
-        [],
-        "auto",
-        undefined,
+      const tools = createWorkspaceToolsWithGuards({
+        workspacePath: "/tmp/workspace",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fakeFs as any,
-      );
+        fsImpl: fakeFs as any,
+      });
       const writeTool = tools.find((t) => t.tool.name === "write_file");
       expect(writeTool).toBeDefined();
 
@@ -579,13 +574,10 @@ describe("Built-in tools", () => {
     });
 
     it("excludes file writing tools when codingMode is 'send-message'", () => {
-      const tools = createWorkspaceToolsWithGuards(
-        "/tmp/workspace",
-        undefined,
-        false,
-        [],
-        "send-message",
-      );
+      const tools = createWorkspaceToolsWithGuards({
+        workspacePath: "/tmp/workspace",
+        codingMode: "send-message",
+      });
       const names = tools.map((entry) => entry.tool.name);
 
       // Should exclude write_file and edit
@@ -597,20 +589,14 @@ describe("Built-in tools", () => {
     });
 
     it("includes file writing tools when codingMode is 'direct' or 'auto'", () => {
-      const directTools = createWorkspaceToolsWithGuards(
-        "/tmp/workspace",
-        undefined,
-        false,
-        [],
-        "direct",
-      );
-      const autoTools = createWorkspaceToolsWithGuards(
-        "/tmp/workspace",
-        undefined,
-        false,
-        [],
-        "auto",
-      );
+      const directTools = createWorkspaceToolsWithGuards({
+        workspacePath: "/tmp/workspace",
+        codingMode: "direct",
+      });
+      const autoTools = createWorkspaceToolsWithGuards({
+        workspacePath: "/tmp/workspace",
+        codingMode: "auto",
+      });
 
       expect(directTools.map((e) => e.tool.name)).toContain("write_file");
       expect(directTools.map((e) => e.tool.name)).toContain("edit");
@@ -622,7 +608,7 @@ describe("Built-in tools", () => {
   describe("buildToolGuardPrompt", () => {
     it("lists available tools and workspace path", () => {
       const prompt = buildToolGuardPrompt(
-        createWorkspaceToolsWithGuards("/tmp/workspace").map((entry) => entry.tool),
+        createWorkspaceToolsWithGuards({ workspacePath: "/tmp/workspace" }).map((entry) => entry.tool),
         "/tmp/workspace",
       );
 
