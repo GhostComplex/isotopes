@@ -4,9 +4,15 @@ import { PiMonoCore } from "../../core/pi-mono.js";
 import { ToolRegistry, type ToolHandler } from "../../core/tools.js";
 import { buildSpawnAgentSystemPrompt } from "../builtin/system-prompt.js";
 import type { RunnerSignals, Runner } from "../runner.js";
-import type { RunEvent, RunOptions } from "../types.js";
+import type {
+  RunEvent,
+  RunOptions,
+  AgentSessionKind,
+  RegisteredAgent,
+  SendMessageRequest,
+} from "../types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 
 const DENIED_TOOLS: ReadonlySet<string> = new Set([
@@ -141,6 +147,73 @@ export class BuiltinRunner implements Runner {
       session.dispose();
     }
   }
+
+  // -------------------------------------------------------------------------
+  // New unified API (issue #568) — emits AgentEvent directly.
+  // Coexists with run() / runSubagent / runNamed during migration.
+  // -------------------------------------------------------------------------
+
+  async *sendMessage(opts: {
+    request: SendMessageRequest;
+    agent?: RegisteredAgent;
+    kind: AgentSessionKind;
+    sessionId: string;
+    runId: string;
+    abort: AbortSignal;
+    onSessionReady?: (session: AgentSession) => void;
+  }): AsyncGenerator<AgentEvent> {
+    const { request, agent, kind, sessionId, runId, abort, onSessionReady } = opts;
+
+    let session: AgentSession;
+    let cleanup: (() => void) | undefined;
+
+    if (kind === "root") {
+      if (!agent) throw new Error("BuiltinRunner.sendMessage: root requires agent");
+      log.info("BuiltinRunner.sendMessage (root)", { runId, agentId: agent.id, sessionId });
+      const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
+      if (!sessionManager) {
+        throw new Error(`Session "${sessionId}" not found`);
+      }
+      session = await agent.cache.createSession({
+        sessionManager,
+        systemPrompt: agent.systemPrompt,
+        ...(request.cwd ? { cwd: request.cwd } : {}),
+      });
+    } else {
+      const leaf = request.leafContext;
+      if (!leaf) throw new Error("BuiltinRunner.sendMessage: leaf requires leafContext");
+      const ephAgentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;
+      const filteredTools = filterTools(leaf.tools, ephAgentId);
+      log.info("BuiltinRunner.sendMessage (leaf)", { runId, ephAgentId, toolCount: filteredTools.list().length });
+      this.core.setToolRegistry(ephAgentId, filteredTools);
+      const cache = this.core.createServiceCache({
+        id: ephAgentId,
+        provider: leaf.provider,
+        compaction: { mode: "off" },
+      });
+      const sessionManager = SessionManager.inMemory();
+      const systemPrompt = buildSpawnAgentSystemPrompt({
+        task: request.content,
+        ...(leaf.extraSystemPrompt ? { extraSystemPrompt: leaf.extraSystemPrompt } : {}),
+      });
+      session = await cache.createSession({ sessionManager, systemPrompt });
+      cleanup = () => this.core.clearToolRegistry(ephAgentId);
+    }
+
+    onSessionReady?.(session);
+
+    const onAbort = () => session.abort();
+    abort.addEventListener("abort", onAbort, { once: true });
+    if (abort.aborted) session.abort();
+
+    try {
+      yield* streamSessionAgentEvents(session, request.content);
+    } finally {
+      abort.removeEventListener("abort", onAbort);
+      session.dispose();
+      cleanup?.();
+    }
+  }
 }
 
 function filterTools(parent: ToolRegistry, agentId: string): ToolRegistry {
@@ -239,5 +312,48 @@ async function* bridgeSessionToRunEvents(
       if (trailing.length > 0) yield { type: "run:message", content: trailing };
       yield { type: "run:done", exitCode: 0 };
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// New unified-runtime helper: yields AgentEvent directly (no projection to
+// RunEvent). Drives `session.prompt(content)` and forwards events until
+// `agent_end`.
+// ---------------------------------------------------------------------------
+
+async function* streamSessionAgentEvents(
+  session: AgentSession,
+  content: string,
+): AsyncGenerator<AgentEvent, void, void> {
+  type QueueItem = AgentEvent | { type: "__error__"; error: unknown };
+  const queue: QueueItem[] = [];
+  let resolve: (() => void) | null = null;
+
+  const unsub = session.subscribe((event: AgentSessionEvent) => {
+    if (!isAgentEvent(event)) return;
+    queue.push(event as AgentEvent);
+    if (resolve) { resolve(); resolve = null; }
+  });
+
+  session.prompt(content).catch((err) => {
+    queue.push({ type: "__error__", error: err });
+    if (resolve) { resolve(); resolve = null; }
+  });
+
+  try {
+    while (true) {
+      while (queue.length === 0) {
+        await new Promise<void>((r) => { resolve = r; });
+      }
+      const item = queue.shift()!;
+      if ((item as { type: string }).type === "__error__") {
+        throw (item as { error: unknown }).error;
+      }
+      const e = item as AgentEvent;
+      yield e;
+      if (e.type === "agent_end") return;
+    }
+  } finally {
+    unsub();
   }
 }

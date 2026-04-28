@@ -2,9 +2,67 @@ import type { ProviderConfig } from "../core/types.js";
 import type { ToolRegistry } from "../core/tools.js";
 import type { SpawnPermissionMode } from "../core/config.js";
 import type { AgentServiceCache } from "../core/pi-mono.js";
+import type { DefaultSessionStore } from "../core/session-store.js";
 import type { SessionManager } from "@mariozechner/pi-coding-agent";
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
+
+// ---------------------------------------------------------------------------
+// New unified runtime types (issue #568). Coexist with the legacy RunEvent /
+// RunOptions / BuiltinOptions surface during the migration; legacy types
+// will be removed in a follow-up commit once all callers move over.
+// ---------------------------------------------------------------------------
+
+export type AgentSessionKind = "root" | "leaf";
+
+/**
+ * An agent registered with the runtime. The minimal public contract is `id`
+ * + `capabilities`; the runtime also stores execution-related fields
+ * (cache, systemPrompt, sessionStore, tools) so it can drive the agent's
+ * loop without re-resolving them per message.
+ */
+export interface RegisteredAgent {
+  readonly id: string;
+  readonly cache: AgentServiceCache;
+  readonly systemPrompt: string;
+  readonly sessionStore: DefaultSessionStore;
+  readonly tools: ToolRegistry;
+  readonly capabilities: {
+    tools: string[];
+    canBeAddressed: boolean;
+  };
+}
+
+/**
+ * Single execution verb. `to` is either a registered agent id (root
+ * session) or the magic id `"subagent"` (ephemeral leaf session).
+ *
+ * `leafContext` is required when `to === "subagent"` because leaf sessions
+ * inherit the caller's provider + filtered tool set.
+ */
+export interface SendMessageRequest {
+  to: string;
+  sessionId?: string;
+  content: string;
+  from?: { agentId: string; displayName?: string };
+  parentSessionId?: string;
+  cwd?: string;
+  timeoutSeconds?: number;
+  leafContext?: {
+    provider: ProviderConfig;
+    tools: ToolRegistry;
+    extraSystemPrompt?: string;
+  };
+}
+
+export interface RunInfo {
+  runId: string;
+  agentId: string;
+  kind: AgentSessionKind;
+  sessionId: string;
+  startedAt: number;
+  parentSessionId?: string;
+}
 
 export type RunEvent =
   | { type: "run:start" }
