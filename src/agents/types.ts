@@ -9,6 +9,16 @@ export type RunStatus = "created" | "running" | "awaiting" | "completed" | "fail
 
 export type AgentSessionKind = "root" | "leaf";
 
+/** How a target agent handles incoming a2a messages when no explicit
+ * sessionId is supplied:
+ *   - "always-new":   each `send_message` call creates a fresh session
+ *   - "parent-reuse": same caller's session reuses the same target session
+ *                     (key = peer:${fromAgentId}:${parentSessionId}); falls
+ *                     back to a fresh session when no parentSessionId is
+ *                     available (heartbeat/cron triggers, transport-direct).
+ */
+export type AgentSessionPolicy = "always-new" | "parent-reuse";
+
 /** An agent registered with the runtime. The runtime stores cache /
  * systemPrompt / sessionStore / tools so it can drive the agent's loop
  * without re-resolving them per message. */
@@ -22,6 +32,8 @@ export interface RegisteredAgent {
     tools: string[];
     canBeAddressed: boolean;
   };
+  /** Defaults to "always-new" when omitted. */
+  readonly sessionPolicy?: AgentSessionPolicy;
 }
 
 /** Single execution verb. `to` is a registered agent id (root session)

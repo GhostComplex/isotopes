@@ -103,6 +103,9 @@ export interface AgentConfigFile {
   codingMode?: "send-message" | "direct" | "auto";
   /** Whether this agent can be spawned by other agents via send_message. Default: false */
   spawnable?: boolean;
+  /** How this agent treats incoming a2a `send_message` calls when no
+   * sessionId is provided. "always-new" (default) | "parent-reuse". */
+  sessionPolicy?: "always-new" | "parent-reuse";
 }
 
 export interface AgentToolsConfigFile {
@@ -565,6 +568,7 @@ export function toAgentConfig(
     heartbeatPrompt: agent.heartbeatPrompt,
     codingMode: agent.codingMode,
     spawnable: agent.spawnable,
+    sessionPolicy: agent.sessionPolicy,
   };
 }
 

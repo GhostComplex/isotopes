@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { createLogger } from "../core/logger.js";
 import type {
   AgentSessionKind,
+  AgentSessionPolicy,
   RegisteredAgent,
   SendMessageRequest,
   RunInfo,
@@ -142,10 +143,38 @@ export class AgentRuntime {
     }
 
     const runId = randomUUID();
-    const sessionId = req.sessionId
-      ?? (isLeaf
-        ? `subagent:${runId}`
-        : `peer:${req.from?.agentId ?? "transport"}:${randomUUID()}`);
+
+    // Resolve sessionId. Three paths:
+    //   1. Explicit sessionId on request → must already exist (load).
+    //   2. Leaf (subagent) → ephemeral synthetic id; always fresh.
+    //   3. Root, no sessionId → look up target's sessionPolicy:
+    //        - "parent-reuse" + parentSessionId present → key reuses the same
+    //          target session across multiple calls from the same parent.
+    //        - otherwise → fresh randomUUID.
+    //      In both root cases, if the resolved key has no existing session in
+    //      the target's store, create one before driving the SDK. (Loading
+    //      `getSessionManager` only resolves existing sessions.)
+    let sessionId: string;
+    if (req.sessionId) {
+      sessionId = req.sessionId;
+    } else if (isLeaf) {
+      sessionId = `subagent:${runId}`;
+    } else {
+      const policy: AgentSessionPolicy = agent!.sessionPolicy ?? "always-new";
+      const fromId = req.from?.agentId ?? "transport";
+      const suffix = policy === "parent-reuse" && req.parentSessionId
+        ? req.parentSessionId
+        : randomUUID();
+      const sessionKey = `peer:${fromId}:${suffix}`;
+      const existing = await agent!.sessionStore.findByKey(sessionKey);
+      if (existing) {
+        sessionId = existing.id;
+      } else {
+        const session = await agent!.sessionStore.create(agent!.id, { key: sessionKey });
+        sessionId = session.id;
+        log.debug("Created peer session", { target: agent!.id, key: sessionKey, sessionId });
+      }
+    }
 
     const abort = new AbortController();
     const handle: RunHandle = {

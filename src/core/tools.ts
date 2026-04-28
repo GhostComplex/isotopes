@@ -8,6 +8,7 @@ import type { FsLike } from "../sandbox/fs-bridge.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import type { SendMessageRequest } from "../agents/types.js";
+import { getMessageContext } from "../transport/context.js";
 import { getAgentEndMeta } from "./messages.js";
 import { createLogger } from "./logger.js";
 const log = createLogger("tools:send-message");
@@ -227,17 +228,19 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         return `[error] Unknown target: ${to}. Available: ${targets.join(", ")}`;
       }
       const isSubagent = to === SUBAGENT_AGENT_ID;
+      const ctx = getMessageContext();
       const req: SendMessageRequest = {
         to,
         content,
         cwd: workspacePath,
         from: { agentId: parentAgentId },
         ...(conversation_id ? { sessionId: conversation_id } : {}),
+        ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
         ...(isSubagent && parentProvider && parentTools
           ? { leafContext: { provider: parentProvider, tools: parentTools } }
           : {}),
       };
-      log.info("send_message", { from: parentAgentId, to, hasConversation: !!conversation_id });
+      log.info("send_message", { from: parentAgentId, to, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
       let assistantText = "";
       let errorMessage: string | null = null;
       try {

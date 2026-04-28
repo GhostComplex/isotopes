@@ -67,6 +67,12 @@ export interface AgentConfig {
   codingMode?: "send-message" | "direct" | "auto";
   /** Whether this agent can be spawned by other agents. Default: false */
   spawnable?: boolean;
+  /** How this agent treats incoming a2a `send_message` calls when no
+   * sessionId is provided. "always-new" (default) creates a fresh session
+   * per call; "parent-reuse" reuses one session per (caller, parent-session)
+   * pair so multi-turn delegations from the same parent stay in one
+   * conversation. */
+  sessionPolicy?: "always-new" | "parent-reuse";
 }
 
 // ---------------------------------------------------------------------------

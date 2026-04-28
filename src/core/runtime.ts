@@ -155,6 +155,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
         tools: result.toolRegistry.list().map((t) => t.name),
         canBeAddressed: true,
       },
+      ...(result.agentConfig.sessionPolicy ? { sessionPolicy: result.agentConfig.sessionPolicy } : {}),
     });
   }
 

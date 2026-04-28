@@ -14,6 +14,7 @@ import { userMessage, assistantMessage, getAgentEndMeta, getUsage } from "./mess
 import type { Logger } from "./logger.js";
 import type { UsageTracker } from "./usage-tracker.js";
 import type { HookRegistry } from "../plugins/hooks.js";
+import { runWithMessageContext } from "../transport/context.js";
 
 export interface ConsumeRootRunOptions {
   /** Registered agent id to address. */
@@ -65,45 +66,52 @@ export async function consumeRootRun(
       ...(cwd ? { cwd } : {}),
     });
 
-    for await (const event of stream) {
-      agentEventBus.session(sessionId).emit(event);
+    // Wrap the iteration so the agent's tools (notably send_message) see
+    // this session's id as `parentSessionId` via AsyncLocalStorage.
+    await runWithMessageContext(
+      { transport: "internal", channelKey: sessionId, agentId: to, parentSessionId: sessionId },
+      async () => {
+        for await (const event of stream) {
+          agentEventBus.session(sessionId).emit(event);
 
-      if (runId === undefined) {
-        const found = runtime.listRuns().find((r) => r.sessionId === sessionId);
-        if (found) runId = found.runId;
-      }
+          if (runId === undefined) {
+            const found = runtime.listRuns().find((r) => r.sessionId === sessionId);
+            if (found) runId = found.runId;
+          }
 
-      if (event.type === "message_update") {
-        const ame = event.assistantMessageEvent;
-        if (ame.type === "text_delta") responseText += ame.delta;
-      } else if (event.type === "tool_execution_start") {
-        log.debug(`Tool call: ${event.toolName}`, { id: event.toolCallId });
-      } else if (event.type === "tool_execution_end") {
-        log.debug(`Tool result: ${event.toolCallId}`);
-      } else if (event.type === "turn_end") {
-        const usage = getUsage(event.message);
-        if (usageTracker && usage) {
-          usageTracker.record(sessionId, usage as Parameters<typeof usageTracker.record>[1]);
-        }
-        if (onToolComplete && runId) {
-          try {
-            const pendingContext = await onToolComplete();
-            if (pendingContext) {
-              log.debug("Injecting pending messages via runtime.steer()");
-              await runtime.steer(runId, pendingContext);
+          if (event.type === "message_update") {
+            const ame = event.assistantMessageEvent;
+            if (ame.type === "text_delta") responseText += ame.delta;
+          } else if (event.type === "tool_execution_start") {
+            log.debug(`Tool call: ${event.toolName}`, { id: event.toolCallId });
+          } else if (event.type === "tool_execution_end") {
+            log.debug(`Tool result: ${event.toolCallId}`);
+          } else if (event.type === "turn_end") {
+            const usage = getUsage(event.message);
+            if (usageTracker && usage) {
+              usageTracker.record(sessionId, usage as Parameters<typeof usageTracker.record>[1]);
             }
-          } catch (err) {
-            log.warn("onToolComplete failed", { error: err });
+            if (onToolComplete && runId) {
+              try {
+                const pendingContext = await onToolComplete();
+                if (pendingContext) {
+                  log.debug("Injecting pending messages via runtime.steer()");
+                  await runtime.steer(runId, pendingContext);
+                }
+              } catch (err) {
+                log.warn("onToolComplete failed", { error: err });
+              }
+            }
+          } else if (event.type === "agent_end") {
+            const meta = getAgentEndMeta(event.messages);
+            if (meta.stopReason === "error") {
+              errorMessage = meta.errorMessage ?? "Unknown agent error";
+              log.error(`Agent ended with error: ${errorMessage}`);
+            }
           }
         }
-      } else if (event.type === "agent_end") {
-        const meta = getAgentEndMeta(event.messages);
-        if (meta.stopReason === "error") {
-          errorMessage = meta.errorMessage ?? "Unknown agent error";
-          log.error(`Agent ended with error: ${errorMessage}`);
-        }
-      }
-    }
+      },
+    );
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
     log.error(`runtime.sendMessage threw: ${errorMessage}`);
