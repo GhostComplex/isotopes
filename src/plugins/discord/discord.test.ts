@@ -166,6 +166,7 @@ describe("DiscordTransport", () => {
         transport as unknown as {
           runAgentAndRespond: (
             cache: AgentServiceCache,
+            agentId: string,
             sessionId: string,
             sessionStore: SessionStore,
             systemPrompt: string,
@@ -173,7 +174,7 @@ describe("DiscordTransport", () => {
             channel: MockChannel,
           ) => Promise<void>;
         }
-      ).runAgentAndRespond(erroringAgent, "session-123", sessionStore, "", undefined, channel);
+      ).runAgentAndRespond(erroringAgent, "default", "session-123", sessionStore, "", undefined, channel);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Agent ended with error: No API provider registered for api: undefined"),

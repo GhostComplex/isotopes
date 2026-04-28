@@ -66,6 +66,7 @@ export class DiscordTransportManager {
       const transport = new DiscordTransport({
         token,
         agentManager: shared.agentManager,
+        ...(shared.agentRuntime ? { agentRuntime: shared.agentRuntime } : {}),
         sessionStore: shared.sessionStore,
         sessionStoreForAgent: shared.sessionStoreForAgent,
         defaultAgentId: account.defaultAgentId,

@@ -26,6 +26,7 @@ import { shouldRespondToMessage } from "../../core/mention.js";
 import { loggers } from "../../core/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import { runAgentLoop, abortAgentSession, isAgentSessionActive } from "../../core/agent-runner.js";
+import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../core/agent-run.js";
 import { agentEventBus } from "../../core/agent-event-bus.js";
 import { isSilentReply } from "../../core/silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -150,6 +151,13 @@ export interface DiscordTransportConfig {
   /** Discord bot token from Developer Portal */
   token: string;
   agentManager: DefaultAgentManager;
+  /**
+   * Unified runtime. When provided, the transport drives the agent loop via
+   * `runtime.sendMessage` (the #568 path). When omitted, falls back to the
+   * legacy `runAgentLoop` (kept temporarily for unit tests that pre-date the
+   * runtime; will be removed once those tests are migrated).
+   */
+  agentRuntime?: import("../../agents/runtime.js").AgentRuntime;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   /** Default agent ID to use when no @mention routing */
@@ -405,9 +413,16 @@ export class DiscordTransport implements Transport {
       const sessionStore = this.getSessionStore(agentId);
       const sessionKey = this.getSessionKey(msg, agentId);
       const session = await sessionStore.findByKey(sessionKey);
-      if (session && isAgentSessionActive(session.id)) {
+      const isActive = this.config.agentRuntime
+        ? isRootRunActive(this.config.agentRuntime, session?.id ?? "")
+        : (session ? isAgentSessionActive(session.id) : false);
+      if (session && isActive) {
         log.info(`Main-agent /stop`, { sessionId: session.id, agentId });
-        abortAgentSession(session.id);
+        if (this.config.agentRuntime) {
+          cancelRunBySessionId(this.config.agentRuntime, session.id);
+        } else {
+          abortAgentSession(session.id);
+        }
         this.pendingMessages.delete(session.id);
         await (msg.channel as SendableChannel).send("🛑 Stopped.");
         return;
@@ -507,7 +522,10 @@ export class DiscordTransport implements Transport {
     // 6.5. If session is currently active (in a prompt turn), buffer this message instead.
     // The buffer is drained at turn_end via onToolComplete, where each message is
     // also persisted to SessionStore so future prompt() invocations replay them.
-    if (isAgentSessionActive(session.id)) {
+    const sessionActive = this.config.agentRuntime
+      ? isRootRunActive(this.config.agentRuntime, session.id)
+      : isAgentSessionActive(session.id);
+    if (sessionActive) {
       log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
       const pending = this.pendingMessages.get(session.id) ?? [];
       pending.push({
@@ -543,7 +561,7 @@ export class DiscordTransport implements Transport {
     // 9. Run agent — SDK loads history from SessionManager automatically
     const systemPrompt = this.config.agentManager.getSystemPrompt(agentId) ?? "";
     const cwd = this.config.agentManager.getWorkspacePath(agentId);
-    await this.runAgentAndRespond(agent, session.id, sessionStore, systemPrompt, cwd, msg.channel as SendableChannel, msg.id);
+    await this.runAgentAndRespond(agent, agentId, session.id, sessionStore, systemPrompt, cwd, msg.channel as SendableChannel, msg.id);
   }
 
   private isDmAllowed(userId: string): boolean {
@@ -800,6 +818,7 @@ export class DiscordTransport implements Transport {
 
   private async runAgentAndRespond(
     cache: AgentServiceCache,
+    agentId: string,
     sessionId: string,
     sessionStore: SessionStore,
     systemPrompt: string,
@@ -854,8 +873,31 @@ export class DiscordTransport implements Transport {
         }
       });
 
-      // Create the agent loop runner function
+      // Create the agent loop runner function. Prefers the unified runtime
+      // path (#568); falls back to the legacy runAgentLoop for tests that
+      // don't construct an AgentRuntime.
       const runLoop = () => {
+        const runtime = this.config.agentRuntime;
+        if (runtime) {
+          return consumeRootRun(runtime, {
+            to: agentId,
+            sessionId,
+            content: "",
+            ...(cwd ? { cwd } : {}),
+            log,
+            ...(this.config.usageTracker ? { usageTracker: this.config.usageTracker } : {}),
+            onToolComplete: async () => {
+              const pending = this.pendingMessages.get(sessionId);
+              if (!pending?.length) return null;
+              const messages = pending.splice(0);
+              for (const m of messages) {
+                await sessionStore.addMessage(sessionId, mkUserMsg(m.content, m.timestamp));
+              }
+              const formatted = messages.map(m => `${m.sender}: ${m.content}`).join("\n");
+              return `[Messages arrived while you were working]\n${formatted}`;
+            },
+          });
+        }
         return runAgentLoop({
           cache,
           sessionStore,
