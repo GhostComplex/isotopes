@@ -25,6 +25,7 @@ import { shouldRespondToMessage } from "../../core/mention.js";
 import { loggers } from "../../core/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../core/agent-run.js";
+import { runWithDiscordSubagentStream, type DiscordSubagentStreamContext } from "./subagent-stream-context.js";
 import { agentEventBus } from "../../core/agent-event-bus.js";
 import { isSilentReply } from "../../core/silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -211,6 +212,10 @@ export class DiscordTransport implements Transport {
   private debouncer: InboundDebouncer;
   private commandHandler: SlashCommandHandler;
 
+  // Maps a Discord thread id (created for a sub-run via send_message) to
+  // the runtime's runId. Used so /stop in that thread cancels the right run.
+  private subagentThreads = new Map<string, string>();
+
   // Buffer messages that arrive while a session is prompting
   private pendingMessages = new Map<string, Array<{ content: string; sender: string; timestamp: number }>>();
 
@@ -380,6 +385,22 @@ export class DiscordTransport implements Transport {
     // content since extractContent only strips numeric Discord ids.
     const stopMatch = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i.exec(msg.content.trim());
     if (stopMatch) {
+      // 3.6a. /stop in a known sub-run thread → cancel that specific runId.
+      // No @mention required: posting in the thread itself scopes the intent.
+      if (isThread) {
+        const subRunId = this.subagentThreads.get(msg.channelId);
+        if (subRunId && this.config.agentRuntime) {
+          const cancelled = this.config.agentRuntime.cancel(subRunId);
+          if (cancelled) {
+            log.info(`Sub-run /stop`, { runId: subRunId, threadId: msg.channelId });
+            await (msg.channel as SendableChannel).send("🛑 Sub-run cancelled.");
+          } else {
+            await (msg.channel as SendableChannel).send("⚠️ Sub-run already finished.");
+          }
+          return;
+        }
+      }
+
       const botId = this.client.user?.id;
       const isMentioned = botId ? msg.mentions.has(botId) : false;
       if (msg.guild && !isMentioned) {
@@ -773,8 +794,37 @@ export class DiscordTransport implements Transport {
         });
       };
 
-      // Run with or without spawn agent context based on config
-      const { responseText, errorMessage } = await runLoop();
+      // Wrap the run in a Discord subagent stream context so any nested
+      // send_message tool call streams its sub-run to a dedicated thread,
+      // and the (threadId → runId) mapping flows back here for /stop routing.
+      const streamCtx: DiscordSubagentStreamContext = {
+        parentChannelId: channel.id,
+        showToolCalls: this.config.showToolCalls ?? true,
+        registerSubagentThread: (threadId, runId) => {
+          this.subagentThreads.set(threadId, runId);
+        },
+        unregisterSubagentThread: (threadId) => {
+          this.subagentThreads.delete(threadId);
+        },
+        sendMessage: async (channelId, content) => {
+          const target = await this.client.channels.fetch(channelId);
+          if (!target || !("send" in target)) throw new Error(`Cannot send to channel ${channelId}`);
+          const msg = await (target as SendableChannel).send(content);
+          return { id: msg.id };
+        },
+        createThread: async (parentChannelId, name, messageId) => {
+          const parent = await this.client.channels.fetch(parentChannelId);
+          if (!parent || !("threads" in parent)) {
+            throw new Error(`Cannot create thread in channel ${parentChannelId}`);
+          }
+          const textChannel = parent as TextChannel;
+          const message = await textChannel.messages.fetch(messageId);
+          const thread = await message.startThread({ name, autoArchiveDuration: 60 });
+          return { id: thread.id };
+        },
+      };
+
+      const { responseText, errorMessage } = await runWithDiscordSubagentStream(streamCtx, runLoop);
 
       // Check for silent reply tokens — suppress outbound delivery
       if (isSilentReply(responseText)) {

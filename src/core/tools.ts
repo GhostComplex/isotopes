@@ -9,6 +9,8 @@ import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import type { SendMessageRequest } from "../agents/types.js";
 import { getMessageContext } from "../transport/context.js";
+import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
+import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
 import { getAgentEndMeta } from "./messages.js";
 import { createLogger } from "./logger.js";
 const log = createLogger("tools:send-message");
@@ -264,10 +266,32 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
           : {}),
       };
       log.info("send_message", { from: parentAgentId, to, cwd, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
+
+      // If a Discord subagent stream context is in scope (i.e. the parent
+      // agent's loop was started by DiscordTransport), open a thread and
+      // stream this sub-run's events there. Sink lifecycle is bracketed:
+      //   start (creates thread, registers threadId↔runId)
+      //   sendEvent for each AgentEvent
+      //   finish (posts summary, unregisters)
+      const discordCtx = getDiscordSubagentStreamContext();
+      let sink: DiscordSubagentSink | undefined;
+      const startedAt = Date.now();
+      const taskLabel = `${to}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`;
+
+      req.onRunStart = (runId: string) => {
+        if (discordCtx) {
+          const showToolCalls = discordCtx.showToolCalls ?? true;
+          sink = new DiscordSubagentSink(discordCtx, runId, { showToolCalls });
+          // Open the thread asynchronously; we don't block the run on it.
+          void sink.start(taskLabel);
+        }
+      };
+
       let assistantText = "";
       let errorMessage: string | null = null;
       try {
         for await (const event of runtime.sendMessage(req)) {
+          if (sink) await sink.sendEvent(event);
           if (event.type === "message_update") {
             const ame = event.assistantMessageEvent;
             if (ame.type === "text_delta") assistantText += ame.delta;
@@ -279,7 +303,19 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
           }
         }
       } catch (err) {
-        return `[send_message failed] ${err instanceof Error ? err.message : String(err)}`;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (sink) {
+          await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
+        }
+        return `[send_message failed] ${msg}`;
+      }
+      if (sink) {
+        await sink.finish({
+          success: !errorMessage,
+          ...(assistantText.trim() ? { output: assistantText.trim() } : {}),
+          ...(errorMessage ? { error: errorMessage } : {}),
+          durationMs: Date.now() - startedAt,
+        });
       }
       if (errorMessage) {
         return `[send_message failed] ${errorMessage}`;

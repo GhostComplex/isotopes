@@ -51,6 +51,11 @@ export interface SendMessageRequest {
     tools: ToolRegistry;
     extraSystemPrompt?: string;
   };
+  /** Called once after the run is registered (handle exists, runId stable)
+   * but before any AgentEvent is yielded. Lets callers wire side-channel
+   * UI (Discord thread streaming, audit logs) using the runId without
+   * having to scan listRuns(). */
+  onRunStart?: (runId: string) => void;
 }
 
 export interface RunInfo {

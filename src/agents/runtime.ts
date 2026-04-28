@@ -210,6 +210,12 @@ export class AgentRuntime {
     log.info("sendMessage", { runId, agentId: req.to, kind, sessionId });
 
     try {
+      req.onRunStart?.(runId);
+    } catch (err) {
+      log.warn("onRunStart callback threw", { runId, error: err instanceof Error ? err.message : String(err) });
+    }
+
+    try {
       if (isClaude) {
         yield* this.claudeRunner!.sendMessage({
           request: req,
