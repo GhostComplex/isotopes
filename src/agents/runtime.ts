@@ -160,7 +160,7 @@ export class AgentRuntime {
     } else if (isLeaf) {
       sessionId = `subagent:${runId}`;
     } else {
-      const policy: AgentSessionPolicy = agent!.sessionPolicy ?? "always-new";
+      const policy: AgentSessionPolicy = agent!.sessionPolicy ?? "parent-reuse";
       const fromId = req.from?.agentId ?? "transport";
       const suffix = policy === "parent-reuse" && req.parentSessionId
         ? req.parentSessionId

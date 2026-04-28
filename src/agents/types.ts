@@ -32,7 +32,7 @@ export interface RegisteredAgent {
     tools: string[];
     canBeAddressed: boolean;
   };
-  /** Defaults to "always-new" when omitted. */
+  /** Defaults to "parent-reuse" when omitted. */
   readonly sessionPolicy?: AgentSessionPolicy;
 }
 

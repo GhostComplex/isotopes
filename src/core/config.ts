@@ -104,7 +104,7 @@ export interface AgentConfigFile {
   /** Whether this agent can be spawned by other agents via send_message. Default: false */
   spawnable?: boolean;
   /** How this agent treats incoming a2a `send_message` calls when no
-   * sessionId is provided. "always-new" (default) | "parent-reuse". */
+   * sessionId is provided. "parent-reuse" (default) | "always-new". */
   sessionPolicy?: "always-new" | "parent-reuse";
 }
 
