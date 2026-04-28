@@ -16,8 +16,5 @@ export {
 } from "./runtime.js";
 export type { AgentRuntimeOptions } from "./runtime.js";
 
-export { TaskRegistry, taskRegistry } from "./task-registry.js";
-export type { TaskInfo } from "./task-registry.js";
-
 export { FailureTracker, failureTracker } from "./failure-tracker.js";
 export type { BlockCheck } from "./failure-tracker.js";
