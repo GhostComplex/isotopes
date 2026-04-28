@@ -73,6 +73,8 @@ export interface InitAgentOptions {
   hooks?: HookRegistry;
   /** Pre-computed list of spawnable agent IDs from config */
   spawnableAgentIds?: string[];
+  /** Unified runtime — wired into the send_message tool. */
+  runtime?: import("../agents/runtime.js").AgentRuntime;
 }
 
 export interface InitAgentResult {
@@ -166,7 +168,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     agentConfig.id,
     agentConfig.provider,
     toolRegistry,
-    agentManager,
+    opts.runtime,
     opts.spawnableAgentIds,
   );
   const filteredTools = applyToolPolicy(workspaceTools, agentConfig.toolSettings);

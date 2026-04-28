@@ -59,8 +59,8 @@ describe("AgentRuntime.sendMessage — validation", () => {
     await expect(consume(rt.sendMessage({ to: "ghost", content: "hi" }))).rejects.toThrow(/Unknown agent/);
   });
 
-  it("rejects claude target (not yet supported)", async () => {
-    await expect(consume(rt.sendMessage({ to: "claude", content: "hi" }))).rejects.toThrow(/does not yet support/);
+  it("rejects unknown claude target (was reserved magic id; now just unregistered)", async () => {
+    await expect(consume(rt.sendMessage({ to: "claude", content: "hi" }))).rejects.toThrow(/Unknown agent/);
   });
 
   it("rejects subagent target without leafContext", async () => {

@@ -31,18 +31,10 @@ import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
 import type { UsageTracker } from "../../core/usage-tracker.js";
 import { buildSessionKey } from "../../core/session-keys.js";
-import {
-  runWithSpawnAgentContextAsync,
-  type SpawnAgentStreamContext,
-} from "../../core/spawn-agent-context.js";
-import { DiscordSink } from "./discord-spawn-agent-sink.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../../core/channel-history.js";
 import { DedupeCache } from "../../core/dedupe.js";
 import { InboundDebouncer } from "../../core/debounce.js";
 import { SlashCommandHandler } from "../../commands/slash-commands.js";
-import { taskRegistry } from "../../agents/task-registry.js";
-import { failureTracker } from "../../agents/failure-tracker.js";
-import { cancelAgent } from "../../tools/spawn-agent.js";
 
 const log = loggers.discord;
 
@@ -179,10 +171,6 @@ export interface DiscordTransportConfig {
   threadBindings?: ThreadBindingConfig;
   /** Thread binding manager instance (created automatically if not provided) */
   threadBindingManager?: ThreadBindingManager;
-  /** Whether to enable spawn agent Discord streaming (default: true) */
-  enableSpawnAgentStreaming?: boolean;
-  /** Whether to show tool calls in spawn agent threads (default: true) */
-  spawnAgentShowToolCalls?: boolean;
   /** Whether to show tool call info in agent responses (default: false) */
   showToolCalls?: boolean;
   /** Whether to respond to messages from other bots. Default: false */
@@ -384,17 +372,7 @@ export class DiscordTransport implements Transport {
     let content = this.extractContent(msg);
     if (!content.trim() && !this.hasImageAttachments(msg)) return;
 
-    // 3.5. Spawn agent thread interception — handle /stop in spawn agent threads BEFORE shouldRespond check
-    // This allows /stop to work without @mention in spawn agent threads
-    if (isThread) {
-      const task = taskRegistry.getByThreadId(msg.channelId);
-      if (task) {
-        await this.handleSpawnAgentThreadMessage(msg, task, content);
-        return;
-      }
-    }
-
-    // 3.6. Main-agent /stop or /cancel — abort current runAgentLoop if any.
+    // 3.6. Main-agent /stop or /cancel — abort current run if any.
     // Runs before shouldRespond so it works without channel-config gating, but in
     // group channels we still require @mention so a shared /stop in a multi-bot
     // channel only aborts the addressed bot's session. DMs are 1:1 so no mention
@@ -639,34 +617,12 @@ export class DiscordTransport implements Transport {
    * Supports /stop and /cancel commands to kill the running spawn agent.
    */
   private async handleSpawnAgentThreadMessage(
-    msg: DiscordMessage,
-    task: { taskId: string; sessionId: string; channelId: string; threadId?: string; task: string },
-    content: string,
+    _msg: DiscordMessage,
+    _task: { taskId: string; sessionId: string; channelId: string; threadId?: string; task: string },
+    _content: string,
   ): Promise<void> {
-    const normalizedContent = content.trim().toLowerCase();
-
-    // Check for stop/cancel commands
-    if (normalizedContent === "/stop" || normalizedContent === "/cancel") {
-      log.info(`Cancelling spawn agent from thread`, { taskId: task.taskId, threadId: msg.channelId });
-      const cancelled = cancelAgent(task.taskId);
-      if (cancelled) {
-        // Record cancellation to block future re-attempts of this task
-        if (task.sessionId) {
-          failureTracker.recordCancel(task.sessionId, task.task);
-        }
-        await (msg.channel as SendableChannel).send("🛑 Spawn agent cancelled.");
-      } else {
-        await (msg.channel as SendableChannel).send("⚠️ Spawn agent already finished or not found.");
-      }
-      return;
-    }
-
-    // For now, other messages in spawn agent threads are acknowledged but not forwarded
-    // (spawn agent prompt is one-shot — true steering would require SDK support)
-    log.debug(`Spawn agent thread message ignored (steering not supported)`, {
-      taskId: task.taskId,
-      content: content.slice(0, 50),
-    });
+    // Spawn agent thread routing was removed in #568; this method is a stub
+    // pending removal of remaining call sites.
   }
 
   private resolveAgentId(msg: DiscordMessage): string {
@@ -730,81 +686,6 @@ export class DiscordTransport implements Transport {
       threadId: msg.thread?.id,
     });
     return session;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Spawn agent context helpers
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Create a spawn agent Discord context for the given channel.
-   * This context enables spawn agent tool to stream output to Discord threads.
-   */
-  private createSpawnAgentContext(channel: SendableChannel, sessionId?: string): SpawnAgentStreamContext {
-    const threadBindingConfig = this.config.threadBindings;
-    const autoUnbindEnabled = threadBindingConfig?.autoUnbindOnComplete !== false;
-    const sendFarewell = threadBindingConfig?.sendFarewell ?? false;
-    const farewellMessage = threadBindingConfig?.farewellMessage ?? "Task completed. Returning to parent channel.";
-
-    const sendMessage = async (channelId: string, content: string) => {
-      const targetChannel = await this.client.channels.fetch(channelId);
-      if (!targetChannel || !("send" in targetChannel)) {
-        throw new Error(`Cannot send message to channel ${channelId}`);
-      }
-      const msg = await (targetChannel as SendableChannel).send(content);
-      return { id: msg.id };
-    };
-
-    const createThread = async (channelId: string, name: string, messageId: string) => {
-      const targetChannel = await this.client.channels.fetch(channelId);
-      if (!targetChannel || !("threads" in targetChannel)) {
-        throw new Error(`Cannot create thread in channel ${channelId}`);
-      }
-      const textChannel = targetChannel as TextChannel;
-      const message = await textChannel.messages.fetch(messageId);
-      const thread = await message.startThread({
-        name,
-        autoArchiveDuration: 60,
-      });
-      return { id: thread.id };
-    };
-
-    return {
-      createSink: (channelId, config) => {
-        return new DiscordSink(sendMessage, createThread, channelId, {
-          showToolCalls: config.showToolCalls,
-          showThinking: false,
-          useThread: config.useThread,
-        });
-      },
-      channelId: channel.id,
-      sessionId,
-      showToolCalls: this.config.spawnAgentShowToolCalls ?? true,
-      onComplete: autoUnbindEnabled
-        ? async (threadId: string) => {
-            log.debug(`Spawn agent completed, auto-unbinding thread ${threadId}`);
-
-            if (sendFarewell) {
-              try {
-                const thread = await this.client.channels.fetch(threadId);
-                if (thread && "send" in thread) {
-                  await (thread as SendableChannel).send(farewellMessage);
-                }
-              } catch (err) {
-                log.warn("Failed to send farewell message", {
-                  threadId,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-              }
-            }
-
-            const removed = this.threadBindingManager.unbind(threadId, "spawn-agent-complete");
-            if (removed) {
-              log.info(`Auto-unbound thread ${threadId} after spawn agent completion`);
-            }
-          }
-        : undefined,
-    };
   }
 
   // ---------------------------------------------------------------------------
@@ -893,23 +774,7 @@ export class DiscordTransport implements Transport {
       };
 
       // Run with or without spawn agent context based on config
-      let errorMessage: string | null;
-      let responseText: string;
-
-      if (this.config.enableSpawnAgentStreaming !== false) {
-        // Run with spawn agent Discord context enabled
-        const spawnAgentContext = this.createSpawnAgentContext(channel, sessionId);
-        const result = await runWithSpawnAgentContextAsync(spawnAgentContext, runLoop);
-
-        errorMessage = result.errorMessage;
-        responseText = result.responseText;
-      } else {
-        // Run without spawn agent context (original behavior)
-        const result = await runLoop();
-
-        errorMessage = result.errorMessage;
-        responseText = result.responseText;
-      }
+      const { responseText, errorMessage } = await runLoop();
 
       // Check for silent reply tokens — suppress outbound delivery
       if (isSilentReply(responseText)) {

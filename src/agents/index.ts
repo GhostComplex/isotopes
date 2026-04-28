@@ -1,28 +1,23 @@
+// src/agents/index.ts — Public surface of the agent layer.
+
 export type {
   RunStatus,
-  RunEvent,
-  RunResult,
-  RunOptions,
-  BuiltinOptions,
-  RunTask,
-  OnCompleteCallback,
+  AgentSessionKind,
+  RegisteredAgent,
+  SendMessageRequest,
+  RunInfo,
 } from "./types.js";
-
-export type { Runner, RunnerSignals } from "./runner.js";
 
 export {
   AgentRuntime,
-  MAX_CONCURRENT_RUNS,
-  DEFAULT_MAX_DEPTH,
+  LEAF_CONCURRENCY_CAP,
+  LEAF_DEFAULT_TIMEOUT_SEC,
+  RESERVED_AGENT_IDS,
 } from "./runtime.js";
 export type { AgentRuntimeOptions } from "./runtime.js";
-
-export { summarizeEvents, collectResult } from "./helpers.js";
 
 export { TaskRegistry, taskRegistry } from "./task-registry.js";
 export type { TaskInfo } from "./task-registry.js";
 
 export { FailureTracker, failureTracker } from "./failure-tracker.js";
 export type { BlockCheck } from "./failure-tracker.js";
-
-export { mapSdkToRunEvent } from "./runners/claude.js";

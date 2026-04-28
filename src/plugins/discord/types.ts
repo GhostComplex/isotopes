@@ -49,11 +49,6 @@ export interface DiscordAccountContextConfig {
   };
 }
 
-export interface DiscordAccountSpawnAgentStreamingConfig {
-  enabled?: boolean;
-  showToolCalls?: boolean;
-}
-
 export interface DiscordAccountConfig {
   token?: string;
   tokenEnv?: string;
@@ -70,7 +65,6 @@ export interface DiscordAccountConfig {
   };
   guilds?: Record<string, GuildConfig>;
   threadBindings?: ThreadBindingConfig;
-  spawnAgentStreaming?: DiscordAccountSpawnAgentStreamingConfig;
   allowBots?: boolean;
   context?: DiscordAccountContextConfig;
   adminUsers?: string[];

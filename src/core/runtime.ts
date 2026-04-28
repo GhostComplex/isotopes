@@ -4,12 +4,10 @@
 
 import {
   toAgentConfig,
-  resolveSpawningConfig,
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
 import path from "node:path";
-import { initSpawnBackend, setSpawnSessionStoreFactory } from "../tools/spawn-agent.js";
 import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";
 import { SessionStoreManager } from "./session-store-manager.js";
@@ -72,9 +70,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const core = new PiMonoCore();
   const agentManager = new DefaultAgentManager(core);
 
-  // Single AgentRuntime shared by chat (sendMessage path) and the legacy
-  // spawn tool. Constructed up-front so agents can be registered into its
-  // registry as they're initialized.
+  // Single AgentRuntime shared by all transports + the in-agent send_message tool.
   const allowedRoots: string[] = [];
   for (const a of config.agents) {
     if (a.allowedWorkspaces?.length) allowedRoots.push(...a.allowedWorkspaces);
@@ -82,24 +78,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const agentRuntime = new AgentRuntime({
     allowedWorkspaceRoots: allowedRoots,
     core,
-    ...(config.spawning?.enabled ? { config: resolveSpawningConfig(config.spawning) } : {}),
   });
-
-  // Initialize agent spawning backend
-  if (config.spawning?.enabled) {
-    const spawningConfig = resolveSpawningConfig(config.spawning);
-    initSpawnBackend({
-      config: spawningConfig,
-      core,
-      runtime: agentRuntime,
-    });
-    log.info(`Spawning backend initialized (claude.permissionMode: ${spawningConfig.claude.permissionMode})`);
-
-    setSpawnSessionStoreFactory((agentId) => sessionStoreManager.getOrCreate(agentId));
-    log.info("Spawn session store factory → shared SessionStoreManager");
-  } else {
-    initSpawnBackend({ core, runtime: agentRuntime });
-  }
 
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
@@ -154,6 +133,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       transportContext: transportCtx,
       hooks: pluginManager.getHooks(),
       spawnableAgentIds,
+      runtime: agentRuntime,
     });
 
     agentWorkspaces.set(result.agentConfig.id, result.workspacePath);

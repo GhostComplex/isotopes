@@ -4,7 +4,7 @@
 // ~/.isotopes/agents/<normalizedAgentId>/sessions/. Two write paths:
 //   - chat sessions (DiscordTransport / sessionStoreForAgent)
 //   - spawn agent runs — sole entry is SessionManager injection into the
-//     SDK from src/tools/spawn-agent.ts; there is no separate per-event
+//     SDK from src/agents/runtime.ts; there is no separate per-event
 //     recorder fallback.
 
 import { DefaultSessionStore } from "./session-store.js";
