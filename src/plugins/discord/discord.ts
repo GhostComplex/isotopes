@@ -18,14 +18,12 @@ import {
   type Transport,
 } from "../../core/types.js";
 import type { ThreadBindingConfig } from "./types.js";
-import type { AgentServiceCache } from "../../core/pi-mono.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../core/messages.js";
 import type { ContextConfigFile } from "../../core/config.js";
 import { shouldRespondToMessage } from "../../core/mention.js";
 import { loggers } from "../../core/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { runAgentLoop, abortAgentSession, isAgentSessionActive } from "../../core/agent-runner.js";
 import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../core/agent-run.js";
 import { agentEventBus } from "../../core/agent-event-bus.js";
 import { isSilentReply } from "../../core/silent-reply.js";
@@ -413,16 +411,13 @@ export class DiscordTransport implements Transport {
       const sessionStore = this.getSessionStore(agentId);
       const sessionKey = this.getSessionKey(msg, agentId);
       const session = await sessionStore.findByKey(sessionKey);
-      const isActive = this.config.agentRuntime
-        ? isRootRunActive(this.config.agentRuntime, session?.id ?? "")
-        : (session ? isAgentSessionActive(session.id) : false);
-      if (session && isActive) {
+      const runtimeForCheck = this.config.agentRuntime;
+      const isActive = runtimeForCheck && session
+        ? isRootRunActive(runtimeForCheck, session.id)
+        : false;
+      if (session && isActive && runtimeForCheck) {
         log.info(`Main-agent /stop`, { sessionId: session.id, agentId });
-        if (this.config.agentRuntime) {
-          cancelRunBySessionId(this.config.agentRuntime, session.id);
-        } else {
-          abortAgentSession(session.id);
-        }
+        cancelRunBySessionId(runtimeForCheck, session.id);
         this.pendingMessages.delete(session.id);
         await (msg.channel as SendableChannel).send("🛑 Stopped.");
         return;
@@ -524,7 +519,7 @@ export class DiscordTransport implements Transport {
     // also persisted to SessionStore so future prompt() invocations replay them.
     const sessionActive = this.config.agentRuntime
       ? isRootRunActive(this.config.agentRuntime, session.id)
-      : isAgentSessionActive(session.id);
+      : false;
     if (sessionActive) {
       log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
       const pending = this.pendingMessages.get(session.id) ?? [];
@@ -558,10 +553,10 @@ export class DiscordTransport implements Transport {
       : mkUserMsg(contentWithMeta, msg.createdTimestamp);
     await sessionStore.addMessage(session.id, userMsg);
 
-    // 9. Run agent — SDK loads history from SessionManager automatically
-    const systemPrompt = this.config.agentManager.getSystemPrompt(agentId) ?? "";
+    // 9. Run agent via runtime.sendMessage (system prompt comes from the
+    // registered agent in the runtime, not from agentManager).
     const cwd = this.config.agentManager.getWorkspacePath(agentId);
-    await this.runAgentAndRespond(agent, agentId, session.id, sessionStore, systemPrompt, cwd, msg.channel as SendableChannel, msg.id);
+    await this.runAgentAndRespond(agentId, session.id, sessionStore, cwd, msg.channel as SendableChannel, msg.id);
   }
 
   private isDmAllowed(userId: string): boolean {
@@ -817,11 +812,9 @@ export class DiscordTransport implements Transport {
   // ---------------------------------------------------------------------------
 
   private async runAgentAndRespond(
-    cache: AgentServiceCache,
     agentId: string,
     sessionId: string,
     sessionStore: SessionStore,
-    systemPrompt: string,
     cwd: string | undefined,
     channel: SendableChannel,
     triggerMessageId?: string,
@@ -873,54 +866,26 @@ export class DiscordTransport implements Transport {
         }
       });
 
-      // Create the agent loop runner function. Prefers the unified runtime
-      // path (#568); falls back to the legacy runAgentLoop for tests that
-      // don't construct an AgentRuntime.
+      // Create the agent loop runner function via runtime.sendMessage.
+      const runtime = this.config.agentRuntime;
+      if (!runtime) {
+        throw new Error("DiscordTransport.runAgentAndRespond requires agentRuntime");
+      }
       const runLoop = () => {
-        const runtime = this.config.agentRuntime;
-        if (runtime) {
-          return consumeRootRun(runtime, {
-            to: agentId,
-            sessionId,
-            content: "",
-            ...(cwd ? { cwd } : {}),
-            log,
-            ...(this.config.usageTracker ? { usageTracker: this.config.usageTracker } : {}),
-            onToolComplete: async () => {
-              const pending = this.pendingMessages.get(sessionId);
-              if (!pending?.length) return null;
-              const messages = pending.splice(0);
-              for (const m of messages) {
-                await sessionStore.addMessage(sessionId, mkUserMsg(m.content, m.timestamp));
-              }
-              const formatted = messages.map(m => `${m.sender}: ${m.content}`).join("\n");
-              return `[Messages arrived while you were working]\n${formatted}`;
-            },
-          });
-        }
-        return runAgentLoop({
-          cache,
-          sessionStore,
+        return consumeRootRun(runtime, {
+          to: agentId,
           sessionId,
-          systemPrompt,
-          cwd,
+          content: "",
+          ...(cwd ? { cwd } : {}),
           log,
-          usageTracker: this.config.usageTracker,
+          ...(this.config.usageTracker ? { usageTracker: this.config.usageTracker } : {}),
           onToolComplete: async () => {
             const pending = this.pendingMessages.get(sessionId);
             if (!pending?.length) return null;
-
-            const messages = pending.splice(0); // drain buffer
-
-            // Persist each buffered message to SessionStore so history reflects
-            // what the model actually saw via steer(). Without this, replayed
-            // history (clearMessages + getMessages on next prompt) loses these
-            // messages, leaving the assistant reply referencing user input that
-            // appears never to have been sent.
+            const messages = pending.splice(0);
             for (const m of messages) {
               await sessionStore.addMessage(sessionId, mkUserMsg(m.content, m.timestamp));
             }
-
             const formatted = messages.map(m => `${m.sender}: ${m.content}`).join("\n");
             return `[Messages arrived while you were working]\n${formatted}`;
           },
