@@ -11,7 +11,7 @@ Delegate coding tasks to sub-agents via the `send_message` tool. Always use **cl
 
 1. **claude** — Default. Always try first. Runs the Claude CLI in `working_directory`.
 2. **subagent** — Ephemeral helper that inherits your filtered tool set. Use for tasks where claude isn't available or you want the call to share your provider.
-3. **Named agents** (e.g. `eous`) — Use when you specifically need that agent's persona / persisted memory.
+3. **Named agents** — Use when you specifically need that agent's persona / persisted memory.
 
 ## When to Use
 
@@ -40,7 +40,7 @@ Delegate coding tasks to sub-agents via the `send_message` tool. Always use **cl
 ```
 send_message(
   to: "claude",
-  content: "In /Users/steins.ghost/_repos/isotopes, do X. Details: ...",
+  content: "In /Users/user_name/_repos/isotopes, do X. Details: ...",
   working_directory: "/Users/steins.ghost/_repos/isotopes"
 )
 ```
@@ -70,7 +70,7 @@ Validation: Run `npm run build` and `npm test` after changes.
 ```
 send_message(
   to: "claude",
-  content: "Review PR #XX in /Users/steins.ghost/_repos/isotopes.
+  content: "Review PR #XX in /Users/user_name/_repos/isotopes.
     Run: git diff main...feat/branch-name
     Check for: bugs, missing error handling, test coverage, style issues.
     Summarize findings.",

@@ -1,12 +1,5 @@
-// src/agents/runners/builtin.ts — In-process agent runner driven by the
-// pi-coding-agent SDK. Single entry point: `sendMessage`. Yields the SDK's
-// `AgentEvent` stream directly.
-//
-// Two session kinds:
-//   - root: addressed to a registered agent; reuses that agent's
-//     AgentServiceCache + persistent SessionStore + full SOUL prompt.
-//   - leaf: addressed to magic id "subagent"; ephemeral cache built from
-//     the caller's filtered tool set and provider, generic preamble.
+// In-process runner. Two kinds: root (registered agent's cache+SOUL+store)
+// and leaf (ephemeral cache + parent's filtered tools).
 
 import { randomUUID } from "node:crypto";
 import { createLogger } from "../../core/logger.js";

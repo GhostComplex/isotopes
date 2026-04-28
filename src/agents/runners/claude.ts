@@ -1,9 +1,5 @@
-// src/agents/runners/claude.ts — Claude CLI runner exposed via the unified
-// runtime as a "leaf" target. `to: "claude"` from `send_message` reaches
-// here. Internally drives @anthropic-ai/claude-agent-sdk's `query()` and
-// translates SDKMessage → AgentEvent so the rest of the system (tool
-// handler, agentEventBus, REST/SSE consumers) only ever sees one event
-// taxonomy.
+// Claude CLI leaf runner. Translates SDKMessage → AgentEvent so callers
+// see one event taxonomy.
 
 import { query, type Options, type PermissionMode, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createLogger } from "../../core/logger.js";
@@ -58,15 +54,8 @@ export class ClaudeRunner {
     if (options?.maxTurns !== undefined) this.defaultMaxTurns = options.maxTurns;
   }
 
-  /**
-   * Drive a single Claude CLI invocation. Yields AgentEvents until the
-   * SDK returns a `result` message.
-   *
-   * `request.cwd` is required (Claude CLI needs an explicit working
-   * directory). `request.content` is the prompt sent to Claude as the
-   * first/only user turn — Claude CLI manages its own session state, so
-   * conversational continuity across calls is out of scope here.
-   */
+  /** `request.cwd` is required; Claude CLI manages its own session state
+   * so conversational continuity across calls is out of scope. */
   async *sendMessage(opts: {
     request: SendMessageRequest;
     runId: string;
@@ -197,12 +186,9 @@ function translateSdkMessage(msg: SDKMessage, toolNameById: Map<string, string>)
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// AgentEvent constructors. We only need fields that downstream consumers
-// actually read (consumeRootRun + send_message tool); SDK-internal fields
-// like `partial`, `usage`, `provider`, `model`, etc. are stubbed with
-// type assertions because no consumer touches them.
-// ---------------------------------------------------------------------------
+// AgentEvent constructors. SDK-internal fields (partial, usage, provider,
+// model) are type-asserted because consumeRootRun + send_message tool only
+// read delta / messages — keeping the rest constructed would just lie.
 
 function buildAssistantMessage(text: string, extras: { stopReason?: string; errorMessage?: string } = {}): AgentMessage {
   return {

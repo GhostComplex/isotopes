@@ -1,6 +1,5 @@
-// src/agents/runtime-v2.test.ts — Tests for the new sendMessage / Agent
-// registry surface added in #568. Existing runtime.test.ts continues to
-// cover the legacy spawn() path until it's removed.
+// AgentRuntime registry + sendMessage validation. Flow tests live in
+// runtime-flow.test.ts.
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { AgentRuntime, RESERVED_AGENT_IDS, LEAF_CONCURRENCY_CAP } from "./runtime.js";

@@ -1,9 +1,5 @@
-// src/agents/runtime.ts — AgentRuntime: single execution verb (sendMessage),
-// agent registry, push-model steer, run lifecycle/cancel.
-//
-// Issue #568: this is the only entry point for executing any agent loop.
-// Chat transports (REST/Discord/TUI), heartbeat/cron, and the in-agent
-// `send_message` tool all go through `runtime.sendMessage`.
+// AgentRuntime: single execution verb (sendMessage), agent registry,
+// push-model steer, run lifecycle.
 
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
@@ -24,22 +20,15 @@ import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("agents:runtime");
 
-/** Magic agent id that resolves to an ephemeral leaf session backed by the
- * caller's filtered tool set + provider (BuiltinRunner). */
+// Magic ids — reserved (cannot be registered as named agents). See #613
+// for the policy decision on whether `claude` should be conditionally
+// reserved when no ClaudeRunner is configured.
 export const SUBAGENT_AGENT_ID = "subagent";
-
-/** Magic agent id that resolves to a Claude CLI leaf session (ClaudeRunner). */
 export const CLAUDE_AGENT_ID = "claude";
+export const RESERVED_AGENT_IDS: ReadonlySet<string> = new Set([SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID]);
 
 export const LEAF_CONCURRENCY_CAP = 5;
 export const LEAF_DEFAULT_TIMEOUT_SEC = 900;
-/**
- * Magic ids that cannot be used as registered-agent ids. `claude` is
- * reserved unconditionally — even when no ClaudeRunner is configured —
- * so users don't have to migrate registered agents named `claude` later
- * if they decide to enable the Claude CLI runner. See issue tracker.
- */
-export const RESERVED_AGENT_IDS: ReadonlySet<string> = new Set([SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID]);
 
 interface RunHandle {
   runId: string;
@@ -62,14 +51,8 @@ export interface AgentRuntimeOptions {
   claude?: ClaudeRunnerOptions;
 }
 
-/**
- * Thrown by `runtime.sendMessage` for caller-fixable input errors (unknown
- * target, missing leafContext, missing cwd, runner not configured, leaf
- * concurrency cap, leaf can't resume, cwd outside allowed roots).
- *
- * Tool handlers can distinguish these from runtime/SDK crashes and surface
- * them as `[error]` instead of `[failed]` (which signals "retry").
- */
+/** Caller-fixable input error. Tool handlers should surface as `[error]`
+ * instead of `[failed]` so the LLM doesn't retry. */
 export class SendMessageValidationError extends Error {
   readonly isValidationError = true;
   constructor(message: string) {
@@ -124,9 +107,7 @@ export class AgentRuntime {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Agent registry
-  // -------------------------------------------------------------------------
+  // ---------- Agent registry ----------
 
   registerAgent(agent: RegisteredAgent): void {
     if (RESERVED_AGENT_IDS.has(agent.id)) {
@@ -149,18 +130,8 @@ export class AgentRuntime {
     return [...this.agents.values()];
   }
 
-  // -------------------------------------------------------------------------
-  // Single execution verb
-  // -------------------------------------------------------------------------
-
-  /**
-   * Three target shapes:
-   *   - `to === "subagent"`  → ephemeral leaf via BuiltinRunner; requires `leafContext`
-   *   - `to === "claude"`    → ephemeral leaf via Claude CLI; requires `cwd`
-   *   - `to === <agent-id>`  → registered agent (root session)
-   *
-   * Yields the SDK's `AgentEvent` stream directly.
-   */
+  /** `to`: "subagent" (leaf, needs leafContext) | "claude" (leaf, needs cwd)
+   * | registered-id (root). Yields SDK AgentEvent. */
   async *sendMessage(req: SendMessageRequest): AsyncGenerator<AgentEvent> {
     const isSubagent = req.to === SUBAGENT_AGENT_ID;
     const isClaude = req.to === CLAUDE_AGENT_ID;
@@ -268,9 +239,7 @@ export class AgentRuntime {
       }
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
-      // If the consumer broke out of the for-await early (e.g. REST SSE
-      // client disconnected), the inner runner / SDK is still chugging.
-      // Aborting here ensures no orphan work, no lingering tokens spent.
+      // Consumer break → abort inner runner so no orphan SDK work.
       if (!handle.abort.signal.aborted) handle.abort.abort();
       if (handle.cancelReason && req.onCancel) {
         try { req.onCancel(handle.cancelReason); } catch (err) {
@@ -281,9 +250,7 @@ export class AgentRuntime {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Lifecycle control
-  // -------------------------------------------------------------------------
+  // ---------- Lifecycle ----------
 
   cancel(runId: string, opts?: { reason?: string }): boolean {
     const handle = this.runs.get(runId);

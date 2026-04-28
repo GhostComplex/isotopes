@@ -1,12 +1,6 @@
-// src/core/agent-run.ts — Helper that adapts the unified runtime's
-// AgentEvent stream to the legacy {responseText, errorMessage} shape used
-// by chat-style callers (REST, Discord, foreground heartbeat/cron).
-//
-// Wraps `runtime.sendMessage` with the same hooks / usage tracker /
-// agentEventBus emission / mid-turn steer behavior that `runAgentLoop`
-// previously baked in. New code should consume the AgentEvent stream
-// directly; this exists so that existing callers can switch over without
-// rewriting every call site.
+// Adapter: AgentEvent stream → {responseText, errorMessage} for chat
+// callers (REST/Discord/heartbeat/cron). Also wires hooks, usage tracker,
+// agentEventBus emission, and mid-turn steer-from-pending-buffer.
 
 import type { AgentRuntime } from "../agents/runtime.js";
 import { agentEventBus } from "./agent-event-bus.js";
@@ -127,12 +121,8 @@ export async function consumeRootRun(
   return { responseText, errorMessage };
 }
 
-/**
- * Convenience: cancel an in-flight root run by sessionId. Returns false
- * when no active run is found for that session. `reason` ("user" |
- * "timeout" | etc.) is plumbed through to the request's onCancel hook
- * so the caller can shape its result message.
- */
+/** Cancel an active root run by sessionId. Default reason "user" so the
+ * tool-result string can discourage retry. */
 export function cancelRunBySessionId(runtime: AgentRuntime, sessionId: string, reason: string = "user"): boolean {
   const run = runtime.listRuns().find((r) => r.sessionId === sessionId);
   if (!run) return false;

@@ -1,7 +1,4 @@
-// src/core/agent-run.test.ts
-//
-// Direct unit coverage for consumeRootRun. Replaces the integration
-// coverage that lived in the deleted src/agents/runtime.test.ts.
+// Direct unit coverage for consumeRootRun + cancelRunBySessionId.
 
 import { describe, it, expect, vi } from "vitest";
 import { consumeRootRun, cancelRunBySessionId } from "./agent-run.js";

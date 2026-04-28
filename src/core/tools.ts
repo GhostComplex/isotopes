@@ -162,13 +162,9 @@ export function createTimeTool(): { tool: Tool; handler: ToolHandler } {
     },
   };
 }
-// ---------------------------------------------------------------------------
-// send_message tool — single delegation verb (replaces legacy spawn_agent)
-// ---------------------------------------------------------------------------
+// ---------- send_message tool ----------
 
-// SUBAGENT_AGENT_ID and CLAUDE_AGENT_ID are owned by the agents layer
-// (src/agents/runtime.ts) — re-exported above so existing import paths
-// pointing at this file keep working.
+// Re-exported from src/agents/runtime.ts for back-compat import paths.
 export { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID };
 
 export interface SendMessageToolOptions {
@@ -256,10 +252,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
       const ctx = getMessageContext();
       const callerSessionId = ctx?.parentSessionId;
 
-      // Pre-flight: block runaway loops on the *parent* session level.
-      // Same key (parentSessionId, content) is used by recordCancel /
-      // recordFailure / recordSpawn below so the LLM sees a consistent
-      // signal across retries.
+      // failureTracker keyed on (parentSessionId, content) — block runaway loops.
       if (callerSessionId) {
         const block = failureTracker.shouldBlock(callerSessionId, content);
         if (block.blocked) {
@@ -284,12 +277,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
       };
       log.info("send_message", { from: parentAgentId, to, cwd, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
 
-      // If a Discord subagent stream context is in scope (i.e. the parent
-      // agent's loop was started by DiscordTransport), open a thread and
-      // stream this sub-run's events there. Sink lifecycle is bracketed:
-      //   start (creates thread, registers threadId↔runId)
-      //   sendEvent for each AgentEvent
-      //   finish (posts summary, unregisters)
+      // Sub-run thread streaming when invoked from inside a Discord chat.
       const discordCtx = getDiscordSubagentStreamContext();
       let sink: DiscordSubagentSink | undefined;
       const startedAt = Date.now();
@@ -299,8 +287,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         if (discordCtx) {
           const showToolCalls = discordCtx.showToolCalls ?? true;
           sink = new DiscordSubagentSink(discordCtx, runId, { showToolCalls });
-          // Open the thread asynchronously; we don't block the run on it.
-          void sink.start(taskLabel);
+          void sink.start(taskLabel); // async; don't block the run
         }
       };
 
@@ -321,10 +308,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // Validation errors (unknown target, missing cwd, leaf cap, etc.)
-        // are caller-fixable. Surface them as [error] so the LLM doesn't
-        // treat them like a target crash and retry; also don't poison
-        // failureTracker with a non-failure.
+        // Validation errors → [error] (LLM shouldn't retry, no failureTracker hit).
         if (err instanceof SendMessageValidationError) {
           if (sink) {
             await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
@@ -338,10 +322,8 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         return `[send_message failed] ${msg}`;
       }
 
-      // User-initiated cancellation: don't surface as a generic failure
-      // (LLMs read "[failed]" as "try again"). Tell the LLM explicitly
-      // not to retry, and record the cancel so any retry bypassing the
-      // signal hits the block path on the next call.
+      // User cancel → distinct result so LLM doesn't retry; recordCancel
+      // also blocks any one-shot retry at the next sendMessage entry.
       if (cancelReason === "user") {
         if (callerSessionId) failureTracker.recordCancel(callerSessionId, content);
         if (sink) {

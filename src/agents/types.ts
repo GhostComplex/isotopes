@@ -1,4 +1,4 @@
-// src/agents/types.ts — Public types for the unified AgentRuntime (#568).
+// Public types for the unified AgentRuntime.
 
 import type { ProviderConfig } from "../core/types.js";
 import type { ToolRegistry } from "../core/tools.js";
@@ -9,19 +9,11 @@ export type RunStatus = "created" | "running" | "awaiting" | "completed" | "fail
 
 export type AgentSessionKind = "root" | "leaf";
 
-/** How a target agent handles incoming a2a messages when no explicit
- * sessionId is supplied:
- *   - "always-new":   each `send_message` call creates a fresh session
- *   - "parent-reuse": same caller's session reuses the same target session
- *                     (key = peer:${fromAgentId}:${parentSessionId}); falls
- *                     back to a fresh session when no parentSessionId is
- *                     available (heartbeat/cron triggers, transport-direct).
- */
+/** "always-new": fresh session per send_message call.
+ *  "parent-reuse": same `(caller, parentSessionId)` reuses one target
+ *  session across calls; falls back to fresh when no parentSessionId. */
 export type AgentSessionPolicy = "always-new" | "parent-reuse";
 
-/** An agent registered with the runtime. The runtime stores cache /
- * systemPrompt / sessionStore / tools so it can drive the agent's loop
- * without re-resolving them per message. */
 export interface RegisteredAgent {
   readonly id: string;
   readonly cache: AgentServiceCache;
@@ -32,12 +24,10 @@ export interface RegisteredAgent {
     tools: string[];
     canBeAddressed: boolean;
   };
-  /** Defaults to "parent-reuse" when omitted. */
+  /** Defaults to "parent-reuse". */
   readonly sessionPolicy?: AgentSessionPolicy;
 }
 
-/** Single execution verb. `to` is a registered agent id (root session)
- * or the magic id `"subagent"` (ephemeral leaf, requires `leafContext`). */
 export interface SendMessageRequest {
   to: string;
   sessionId?: string;
@@ -51,15 +41,11 @@ export interface SendMessageRequest {
     tools: ToolRegistry;
     extraSystemPrompt?: string;
   };
-  /** Called once after the run is registered (handle exists, runId stable)
-   * but before any AgentEvent is yielded. Lets callers wire side-channel
-   * UI (Discord thread streaming, audit logs) using the runId without
-   * having to scan listRuns(). */
+  /** Fires once after run is registered, before any AgentEvent yields.
+   * Use to wire side-channel UI (Discord thread, audit) by runId. */
   onRunStart?: (runId: string) => void;
-  /** Called synchronously when `runtime.cancel(runId, { reason })` runs
-   * for this request. Useful to distinguish user-initiated cancels from
-   * timeouts / target errors so the result returned to the caller's LLM
-   * can encourage or discourage a retry. */
+  /** Fires when `runtime.cancel(runId, { reason })` runs. Lets the caller
+   * shape the LLM-facing result string (e.g. "user cancel — don't retry"). */
   onCancel?: (reason: string) => void;
 }
 

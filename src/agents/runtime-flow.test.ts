@@ -1,12 +1,6 @@
-// src/agents/runtime-flow.test.ts
-//
-// End-to-end flow tests for AgentRuntime.sendMessage that go beyond
-// runtime-v2.test.ts's registry-and-validation coverage.
-//
-// We stub BuiltinRunner directly (private field replacement) so we can
-// assert on the runtime's orchestration: onRunStart timing, cancel reason
-// propagation through onCancel, abort behavior on consumer break, leaf
-// concurrency cap when actually filling the slot.
+// Flow tests for AgentRuntime.sendMessage. Stubs BuiltinRunner via
+// private-field replacement to assert orchestration (onRunStart timing,
+// cancel-reason propagation, abort-on-break, validation error class).
 
 import { describe, it, expect, vi } from "vitest";
 import { AgentRuntime, SendMessageValidationError } from "./runtime.js";
@@ -20,8 +14,6 @@ function fakeAgent(id: string): RegisteredAgent {
     cache: {} as RegisteredAgent["cache"],
     systemPrompt: "you are " + id,
     sessionStore: {
-      // Always returns "no existing session" so runtime takes the create
-      // path; create returns a session with the same key as id.
       findByKey: vi.fn(async () => undefined),
       create: vi.fn(async (_aid: string, opts?: { key?: string }) => ({
         id: opts?.key ?? "stub-session",
@@ -57,9 +49,6 @@ interface StubBuiltinRunner {
 }
 
 function installStubRunner(rt: AgentRuntime, runner: StubBuiltinRunner) {
-  // private-field replacement — BuiltinRunner is constructed lazily from
-  // `core` in the real ctor; for these tests we never pass a real `core`
-  // and just inject our stub directly.
   (rt as unknown as { builtinRunner: StubBuiltinRunner }).builtinRunner = runner;
 }
 

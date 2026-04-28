@@ -153,9 +153,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     processRegistries.set(result.agentConfig.id, result.processRegistry);
     toolRegistries.set(result.agentConfig.id, result.toolRegistry);
 
-    // Register agent with the unified runtime so it can be addressed via
-    // sendMessage. Eagerly initialize the session store so the registry
-    // owns the live store reference.
+    // Eagerly init the store so the registered agent owns a live ref.
     const sessionStore = await sessionStoreManager.getOrCreate(result.agentConfig.id);
     agentRuntime.registerAgent({
       id: result.agentConfig.id,
