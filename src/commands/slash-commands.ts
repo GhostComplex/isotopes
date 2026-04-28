@@ -225,7 +225,7 @@ export class SlashCommandHandler {
 
       const session = await ctx.agentCache.createSession({
         sessionManager,
-        systemPrompt: "",
+        systemPrompt: ctx.agentManager.getSystemPrompt(ctx.agentId) ?? "",
       });
 
       try {
