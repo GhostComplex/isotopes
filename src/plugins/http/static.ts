@@ -1,4 +1,4 @@
-// src/api/static.ts — Static file server for plugin UIs
+// src/plugins/http/static.ts — Static file server for plugin UIs
 
 import fs from "node:fs/promises";
 import path from "node:path";

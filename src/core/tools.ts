@@ -5,14 +5,17 @@ import path from "node:path";
 import type { AgentToolSettings, ProviderConfig, Tool } from "./types.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
-import { spawnAgent, getSupportedAgents } from "../tools/spawn-agent.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import type { RunEvent, BuiltinOptions } from "../agents/types.js";
-import { getSpawnAgentContext, type SpawnAgentStreamContext } from "./spawn-agent-context.js";
+import type { AgentRuntime } from "../agents/runtime.js";
+import { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID, SendMessageValidationError } from "../agents/runtime.js";
+import type { SendMessageRequest } from "../agents/types.js";
+import { getMessageContext } from "../transport/context.js";
+import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
+import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
 import { failureTracker } from "../agents/failure-tracker.js";
+import { getAgentEndMeta } from "./messages.js";
 import { createLogger } from "./logger.js";
-import type { AgentServiceCache } from "./pi-mono.js";
-const log = createLogger("tools:spawn-agent");
+const log = createLogger("tools:send-message");
 /** Function that executes a tool call and returns a string result. */
 export type ToolHandler = (args: unknown) => Promise<string>;
 /** A registered tool entry pairing a schema with its execution handler. */
@@ -159,330 +162,192 @@ export function createTimeTool(): { tool: Tool; handler: ToolHandler } {
     },
   };
 }
-// ---------------------------------------------------------------------------
-// Spawn agent tool
-// ---------------------------------------------------------------------------
-export interface SpawnAgentToolOptions {
-  /** Workspace path for the spawned agent */
-  workspacePath: string;
-  /** Additional allowed workspaces (from agent config) */
-  allowedWorkspaces?: string[];
-  /** Allowed agents (defaults to all available) */
-  allowedAgents?: string[];
-  /** Agent manager — used to discover available in-process agents and to
-   * resolve named-agent identity (cache, system prompt, workspace path) for
-   * named-mode spawn. `get`/`getSystemPrompt`/`getWorkspacePath` are optional
-   * so test fixtures can pass a minimal `{ list }` shim. */
-  agentManager?: {
-    list(): { id: string; spawnable?: boolean }[];
-    get?(id: string): AgentServiceCache | undefined;
-    getSystemPrompt?(id: string): string | undefined;
-    getWorkspacePath?(id: string): string | undefined;
-  };
-  /** Pre-computed list of spawnable agent IDs (avoids init order issues) */
-  spawnableAgentIds?: string[];
-  /** Default timeout in seconds (default: 300) */
-  timeout?: number;
-  /** Maximum number of turns for the spawned agent (default: 50) */
-  maxTurns?: number;
-  /** Parent agent id, used as the owner of the persisted spawn agent run. */
-  parentAgentId?: string;
-  /**
-   * Parent agent's provider config — forwarded to the in-process runner so
-   * spawned agents reuse the parent's LLM credentials.
-   */
-  parentProvider?: ProviderConfig;
-  /**
-   * Parent agent's tool registry — forwarded to the in-process runner, which
-   * filters it by role to derive the spawn agent's tool set.
-   */
-  parentTools?: ToolRegistry;
-}
-/**
- * Create a spawn agent tool.
- * Allows the agent to delegate tasks to coding agents like Claude or named in-process agents.
- *
- * When running within a Discord context (via `runWithSpawnAgentContext`), the
- * spawn agent output will be streamed to a Discord thread and a summary will be
- * posted to the main channel when complete.
- */
-/**
- * Magic agent id that triggers subagent builtin spawn (parent's
- * provider + filtered tools + generic system prompt + task). Run
- * sessions land in `~/.isotopes/agents/subagent/sessions/` regardless
- * of which agent triggered the spawn — keeps real agents' session
- * directories clean while preserving structured run history.
- */
-export const SUBAGENT_AGENT_ID = "subagent";
+// ---------- send_message tool ----------
 
-export function createSpawnAgentTool(options: SpawnAgentToolOptions): { tool: Tool; handler: ToolHandler } {
-  const { workspacePath, allowedWorkspaces = [], allowedAgents, timeout, maxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds, agentManager } = options;
-  const availableAgents: string[] = [...getSupportedAgents()];
-  // Always expose the subagent magic id, gated by parent having
-  // provider+tools to lend (always true for real agents).
-  if (parentProvider && parentTools && !availableAgents.includes(SUBAGENT_AGENT_ID)) {
-    availableAgents.push(SUBAGENT_AGENT_ID);
-  }
+// Re-exported from src/agents/runtime.ts for back-compat import paths.
+export { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID };
+
+export interface SendMessageToolOptions {
+  /** Unified runtime — the tool calls runtime.sendMessage to deliver. */
+  runtime: AgentRuntime;
+  /** Caller's agent id; recorded as `from.agentId` on the request. */
+  parentAgentId: string;
+  /** Caller's workspace path; default cwd when target is leaf and no
+   * `working_directory` is supplied. */
+  workspacePath: string;
+  /** Caller's provider — needed when targeting the "subagent" magic id. */
+  parentProvider?: ProviderConfig;
+  /** Caller's tool registry — filtered and lent to leaf sessions. */
+  parentTools?: ToolRegistry;
+  /** Optional explicit allow-list of target ids. Defaults to runtime registry + magic ids. */
+  allowedAgents?: string[];
+  /** Pre-computed list of registered agent ids (avoids depending on init order). */
+  spawnableAgentIds?: string[];
+}
+
+export function createSendMessageTool(options: SendMessageToolOptions): { tool: Tool; handler: ToolHandler } {
+  const { runtime, parentAgentId, workspacePath, parentProvider, parentTools, allowedAgents, spawnableAgentIds } = options;
+  const computedTargets: string[] = [];
+  if (parentProvider && parentTools) computedTargets.push(SUBAGENT_AGENT_ID);
+  if (runtime.hasClaudeRunner()) computedTargets.push(CLAUDE_AGENT_ID);
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
-      if (!availableAgents.includes(id)) {
-        availableAgents.push(id);
-      }
+      if (id !== parentAgentId && !computedTargets.includes(id)) computedTargets.push(id);
     }
   }
-  const agents = allowedAgents ?? [...availableAgents];
-  // Combine workspace path with additional allowed workspaces
-  const allAllowedWorkspaces = [workspacePath, ...allowedWorkspaces];
+  const targets = allowedAgents ?? computedTargets;
+
   return {
     tool: {
-      name: "spawn_agent",
-      description: `Spawn a coding agent to execute a task. Available agents: ${agents.join(", ")}. The spawned agent runs in the workspace directory and can read/write files, execute commands, etc.`,
+      name: "send_message",
+      description:
+        `Send a message to another agent. Available targets: ${targets.join(", ") || "(none)"}. ` +
+        "For `subagent`, an ephemeral helper runs with your filtered tool set and returns its " +
+        "final assistant message as the result. For `claude`, a Claude CLI session runs against " +
+        "`working_directory` and returns its final assistant message. For a registered agent id, " +
+        "the message is appended to that agent's session as a user-role turn and its reply is returned.",
       parameters: {
         type: "object",
         properties: {
-          task: {
+          to: {
             type: "string",
-            description: "The task description for the spawned agent. Be specific about what you want it to do.",
+            description: `Target agent id. Options: ${targets.join(", ")}.`,
+            enum: targets,
           },
-          agent: {
+          content: {
             type: "string",
-            description: `Which agent to use. Options: ${agents.join(", ")}. Default: claude.`,
-            enum: agents,
+            description: "Message content to deliver as the user-role turn.",
           },
           working_directory: {
             type: "string",
-            description: "Working directory for the spawned agent (relative to workspace or absolute). Defaults to workspace root.",
+            description:
+              "Working directory for the target's session (relative to your workspace or absolute). " +
+              "Required for `claude`; optional for others (defaults to your workspace root).",
+          },
+          conversation_id: {
+            type: "string",
+            description:
+              "Optional existing session id to resume. Only valid for registered agents " +
+              "(not `subagent` or `claude`).",
           },
         },
-        required: ["task"],
+        required: ["to", "content"],
       },
     },
     handler: async (args) => {
-      const { task, agent = "claude", working_directory } = args as {
-        task: string;
-        agent?: string;
+      const { to, content, working_directory, conversation_id } = args as {
+        to: string;
+        content: string;
         working_directory?: string;
+        conversation_id?: string;
       };
-      // Validate agent
-      if (!agents.includes(agent)) {
-        return `[error] Unknown agent: ${agent}. Available: ${agents.join(", ")}`;
+      if (!targets.includes(to)) {
+        return `[error] Unknown target: ${to}. Available: ${targets.join(", ")}`;
       }
-      // Resolve working directory
+      const isSubagent = to === SUBAGENT_AGENT_ID;
+      const isClaude = to === CLAUDE_AGENT_ID;
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
-      // Check for Discord context
-      const discordContext = getSpawnAgentContext();
+      const ctx = getMessageContext();
+      const callerSessionId = ctx?.parentSessionId;
 
-      // Check failure tracker (only when sessionId available)
-      const sessionId = discordContext?.sessionId;
-      if (sessionId) {
-        const check = failureTracker.shouldBlock(sessionId, task);
-        if (check.blocked) {
-          log.warn("Blocking spawn agent due to previous failures", { sessionId, reason: check.reason });
-          return `[blocked] ${check.reason}`;
+      // failureTracker keyed on (parentSessionId, content) — block runaway loops.
+      if (callerSessionId) {
+        const block = failureTracker.shouldBlock(callerSessionId, content);
+        if (block.blocked) {
+          log.warn("send_message blocked", { from: parentAgentId, to, reason: block.reason });
+          return `[blocked] ${block.reason}`;
         }
-        // Record spawn attempt for rate limiting
-        failureTracker.recordSpawn(sessionId);
+        failureTracker.recordSpawn(callerSessionId);
       }
 
+      let cancelReason: string | undefined;
+      const req: SendMessageRequest = {
+        to,
+        content,
+        cwd,
+        from: { agentId: parentAgentId },
+        ...(conversation_id ? { sessionId: conversation_id } : {}),
+        ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
+        ...(isSubagent && parentProvider && parentTools
+          ? { leafContext: { provider: parentProvider, tools: parentTools } }
+          : {}),
+        onCancel: (reason) => { cancelReason = reason; },
+      };
+      log.info("send_message", { from: parentAgentId, to, cwd, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
+
+      // Sub-run thread streaming when invoked from inside a Discord chat.
+      const discordCtx = getDiscordSubagentStreamContext();
+      let sink: DiscordSubagentSink | undefined;
+      const startedAt = Date.now();
+      const taskLabel = `${to}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`;
+
+      req.onRunStart = (runId: string) => {
+        if (discordCtx) {
+          const showToolCalls = discordCtx.showToolCalls ?? true;
+          sink = new DiscordSubagentSink(discordCtx, runId, { showToolCalls });
+          void sink.start(taskLabel); // async; don't block the run
+        }
+      };
+
+      let assistantText = "";
+      let errorMessage: string | null = null;
       try {
-        // Resolve spawn mode:
-        //  - magic id "subagent" → subagent builtin (parent's provider+tools,
-        //    generic preamble, run session lands in subagent/ store)
-        //  - registered named agent (in agentManager) → named builtin (full
-        //    identity, run session lands in target's own sessions/)
-        //  - otherwise → external runner ("claude") via ClaudeRunner
-        const isSubagent = agent === SUBAGENT_AGENT_ID;
-        const namedCache = !isSubagent ? agentManager?.get?.(agent) : undefined;
-        const namedSystemPrompt = !isSubagent ? agentManager?.getSystemPrompt?.(agent) : undefined;
-        const namedWorkspace = !isSubagent ? agentManager?.getWorkspacePath?.(agent) : undefined;
-        const isNamed = namedCache !== undefined && namedSystemPrompt !== undefined && namedSystemPrompt.length > 0;
-
-        let builtin: BuiltinOptions | undefined;
-        let targetAgentId: string | undefined;
-        let effectiveCwd = cwd;
-        let effectiveAllowedWorkspaces = allAllowedWorkspaces;
-
-        if (isSubagent && parentProvider && parentTools) {
-          builtin = { mode: "subagent", provider: parentProvider, tools: parentTools };
-          targetAgentId = SUBAGENT_AGENT_ID;
-          log.info("Spawning subagent", { parentAgentId, cwd: effectiveCwd });
-        } else if (isNamed) {
-          builtin = { mode: "named", cache: namedCache, systemPrompt: namedSystemPrompt };
-          targetAgentId = agent;
-          if (namedWorkspace) {
-            // Named agents run in their OWN workspace, not the parent's.
-            // The parent cannot scope a named-agent spawn to the parent's
-            // filesystem — by design, the named agent retains its full
-            // identity including cwd. We append the target's workspace
-            // to allowedWorkspaces so AgentRuntime.validateCwd accepts it.
-            effectiveCwd = namedWorkspace;
-            effectiveAllowedWorkspaces = [...allAllowedWorkspaces, namedWorkspace];
+        for await (const event of runtime.sendMessage(req)) {
+          if (sink) await sink.sendEvent(event);
+          if (event.type === "message_update") {
+            const ame = event.assistantMessageEvent;
+            if (ame.type === "text_delta") assistantText += ame.delta;
+          } else if (event.type === "agent_end") {
+            const meta = getAgentEndMeta(event.messages);
+            if (meta.stopReason === "error") {
+              errorMessage = meta.errorMessage ?? "Unknown agent error";
+            }
           }
-          log.info("Spawning named agent", { agent, parentAgentId, cwd: effectiveCwd });
-        } else if (!isSubagent && namedCache !== undefined && (namedSystemPrompt === undefined || namedSystemPrompt.length === 0)) {
-          // The agent is registered in agentManager but its assembled
-          // systemPrompt is empty (init race / hot-reload mid-flight).
-          // Don't silently fall through to the external-runner path —
-          // surface it so the user sees a misroute instead of a
-          // confusing "agent not found" from ClaudeRunner.
-          log.warn("Named agent has empty systemPrompt; spawn will route to external runner and likely fail", { agent });
         }
-        // Other agent ids (e.g. "claude") don't get a builtin payload —
-        // they go to the external runner registered for that id.
-
-        let result: string;
-        if (discordContext) {
-          result = await runSpawnAgentWithStreaming(task, agent, effectiveCwd, timeout, effectiveAllowedWorkspaces, discordContext, maxTurns, parentAgentId, builtin, targetAgentId);
-        } else {
-          result = await runSpawnAgentPlain(task, agent, effectiveCwd, timeout, effectiveAllowedWorkspaces, maxTurns, parentAgentId, builtin, targetAgentId);
-        }
-
-        // Record failure if result indicates failure
-        if (sessionId && (result.includes("[spawn agent failed]") || result.includes("[error]"))) {
-          failureTracker.recordFailure(sessionId, task, result);
-        }
-
-        return result;
       } catch (err) {
-        const error = err instanceof Error ? err.message : String(err);
-        // Record failure
-        if (sessionId) {
-          failureTracker.recordFailure(sessionId, task, error);
+        const msg = err instanceof Error ? err.message : String(err);
+        // Validation errors → [error] (LLM shouldn't retry, no failureTracker hit).
+        if (err instanceof SendMessageValidationError) {
+          if (sink) {
+            await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
+          }
+          return `[error] ${msg}`;
         }
-        return `[error] Failed to spawn agent: ${error}`;
+        if (sink) {
+          await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
+        }
+        if (callerSessionId) failureTracker.recordFailure(callerSessionId, content, msg);
+        return `[send_message failed] ${msg}`;
       }
+
+      // User cancel → distinct result so LLM doesn't retry; recordCancel
+      // also blocks any one-shot retry at the next sendMessage entry.
+      if (cancelReason === "user") {
+        if (callerSessionId) failureTracker.recordCancel(callerSessionId, content);
+        if (sink) {
+          await sink.finish({ success: false, error: "cancelled by user", durationMs: Date.now() - startedAt });
+        }
+        return `[send_message cancelled by user — do not retry this same request]`;
+      }
+
+      if (sink) {
+        await sink.finish({
+          success: !errorMessage,
+          ...(assistantText.trim() ? { output: assistantText.trim() } : {}),
+          ...(errorMessage ? { error: errorMessage } : {}),
+          durationMs: Date.now() - startedAt,
+        });
+      }
+      if (errorMessage) {
+        if (callerSessionId) failureTracker.recordFailure(callerSessionId, content, errorMessage);
+        return `[send_message failed] ${errorMessage}`;
+      }
+      const trimmed = assistantText.trim();
+      return trimmed.length > 0 ? trimmed : (isClaude ? "[claude completed with no output]" : "[no reply]");
     },
   };
-}
-/**
- * Run spawn agent without transport streaming.
- */
-async function runSpawnAgentPlain(
-  task: string,
-  agent: string,
-  cwd: string,
-  timeout: number | undefined,
-  allowedWorkspaces: string[],
-  maxTurns?: number,
-  parentAgentId?: string,
-  builtin?: BuiltinOptions,
-  targetAgentId?: string,
-): Promise<string> {
-  const result = await spawnAgent(task, {
-    agent,
-    cwd,
-    timeout,
-    allowedWorkspaces,
-    maxTurns,
-    parentAgentId,
-    ...(targetAgentId ? { targetAgentId } : {}),
-    ...(builtin ? { builtin } : {}),
-  });
-  if (result.success) {
-    return result.output ?? "[spawn agent completed with no output]";
-  } else {
-    return `[spawn agent failed] ${result.error ?? "unknown error"}`;
-  }
-}
-/**
- * Run spawn agent with transport streaming.
- * Creates a sink via the stream context, streams events to it, and posts a summary.
- */
-async function runSpawnAgentWithStreaming(
-  task: string,
-  agent: string,
-  cwd: string,
-  timeout: number | undefined,
-  allowedWorkspaces: string[],
-  context: SpawnAgentStreamContext,
-  maxTurns?: number,
-  parentAgentId?: string,
-  builtin?: BuiltinOptions,
-  targetAgentId?: string,
-): Promise<string> {
-  const { channelId, showToolCalls = true, onComplete } = context;
-  const sink = context.createSink(channelId, { showToolCalls, useThread: true });
-  const taskLabel = `${agent}: ${task.slice(0, 50)}${task.length > 50 ? "..." : ""}`;
-  log.info("Starting spawn agent with streaming", { agent, cwd, channelId });
-  await sink.start(taskLabel);
-
-  const threadId = sink.getThreadId?.();
-  const startTime = Date.now();
-  const events: RunEvent[] = [];
-
-  try {
-    const result = await spawnAgent(task, {
-      agent,
-      cwd,
-      timeout,
-      maxTurns,
-      allowedWorkspaces,
-      channelId,
-      threadId,
-      parentAgentId,
-      ...(targetAgentId ? { targetAgentId } : {}),
-      ...(builtin ? { builtin } : {}),
-      onEvent: async (event) => {
-        events.push(event);
-        await sink.sendEvent(event);
-      },
-    });
-
-    const durationMs = Date.now() - startTime;
-    const costUsd = events.find((e): e is Extract<RunEvent, { type: "run:done" }> => e.type === "run:done" && "costUsd" in e)?.costUsd;
-
-    await sink.finish({
-      success: result.success,
-      output: result.output,
-      error: result.error,
-      events,
-      exitCode: result.exitCode,
-      durationMs,
-      costUsd,
-    });
-
-    if (onComplete && threadId) {
-      try {
-        await onComplete(threadId);
-      } catch (err) {
-        log.warn("onComplete callback failed", { error: err instanceof Error ? err.message : String(err) });
-      }
-    }
-    log.info("Spawn agent with streaming completed", {
-      success: result.success,
-      threadId,
-    });
-    if (result.success) {
-      const threadMention = threadId ? ` (see <#${threadId}>)` : "";
-      return `[spawn agent completed]${threadMention}\n${result.output ?? "(no output)"}`;
-    } else {
-      return `[spawn agent failed] ${result.error ?? "unknown error"}`;
-    }
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    log.error("Spawn agent with streaming failed", { error });
-    const errorEvent: RunEvent = { type: "run:error", error };
-    events.push(errorEvent);
-    await sink.sendEvent(errorEvent);
-    const durationMs = Date.now() - startTime;
-    await sink.finish({
-      success: false,
-      error,
-      events,
-      exitCode: 1,
-      durationMs,
-    });
-    if (onComplete && threadId) {
-      try {
-        await onComplete(threadId);
-      } catch (callbackErr) {
-        log.warn("onComplete callback failed", { error: callbackErr instanceof Error ? callbackErr.message : String(callbackErr) });
-      }
-    }
-    throw err;
-  }
 }
 // ---------------------------------------------------------------------------
 // File tools
@@ -811,29 +676,44 @@ export function applyToolPolicy(
 /**
  * Create a standard set of tools for an agent workspace.
  */
-/** Tools that modify files - excluded when codingMode is 'spawn-agent' */
+/** Tools that modify files - excluded when codingMode is 'send-message' */
 export const FILE_WRITING_TOOLS = ["write_file", "edit"];
 
+export interface CreateWorkspaceToolsOptions {
+  workspacePath: string;
+  settings?: AgentToolSettings;
+  /** Register the `send_message` tool. Requires `runtime` + `parentAgentId`. */
+  sendMessageEnabled?: boolean;
+  /** "send-message" excludes write_file/edit (caller delegates code edits). */
+  codingMode?: "send-message" | "direct" | "auto";
+  fsImpl?: FsLike;
+  parentAgentId?: string;
+  /** Caller's provider — needed when targeting `subagent` (lent to leaf). */
+  parentProvider?: ProviderConfig;
+  /** Caller's tool registry — filtered + lent to leaf sessions. */
+  parentTools?: ToolRegistry;
+  /** Unified runtime — required when sendMessageEnabled is true. */
+  runtime?: AgentRuntime;
+  /** Pre-computed list of registered agent ids the LLM can address. */
+  spawnableAgentIds?: string[];
+}
+
 export function createWorkspaceToolsWithGuards(
-  workspacePath: string,
-  settings?: AgentToolSettings,
-  spawnAgentEnabled = false,
-  allowedWorkspaces: string[] = [],
-  codingMode: "spawn-agent" | "direct" | "auto" = "auto",
-  spawnAgentMaxTurns?: number,
-  fsImpl?: FsLike,
-  parentAgentId?: string,
-  parentProvider?: ProviderConfig,
-  parentTools?: ToolRegistry,
-  agentManager?: {
-    list(): { id: string; spawnable?: boolean }[];
-    get?(id: string): AgentServiceCache | undefined;
-    getSystemPrompt?(id: string): string | undefined;
-    getWorkspacePath?(id: string): string | undefined;
-  },
-  spawnableAgentIds?: string[],
+  options: CreateWorkspaceToolsOptions,
 ): { tool: Tool; handler: ToolHandler }[] {
-  const fileOpts: FileToolOptions = { workspacePath, fsImpl };
+  const {
+    workspacePath,
+    settings,
+    sendMessageEnabled = false,
+    codingMode = "auto",
+    fsImpl,
+    parentAgentId,
+    parentProvider,
+    parentTools,
+    runtime,
+    spawnableAgentIds,
+  } = options;
+  const fileOpts: FileToolOptions = { workspacePath, ...(fsImpl ? { fsImpl } : {}) };
   let tools = [
     createReadFileTool(fileOpts),
     createWriteFileTool(fileOpts),
@@ -841,15 +721,22 @@ export function createWorkspaceToolsWithGuards(
     createListDirTool(fileOpts),
     createTimeTool(),
   ];
-  if (spawnAgentEnabled) {
-    tools.push(createSpawnAgentTool({ workspacePath, allowedWorkspaces, maxTurns: spawnAgentMaxTurns, parentAgentId, parentProvider, parentTools, spawnableAgentIds, agentManager }));
+  if (sendMessageEnabled && runtime && parentAgentId) {
+    tools.push(createSendMessageTool({
+      runtime,
+      parentAgentId,
+      workspacePath,
+      ...(parentProvider ? { parentProvider } : {}),
+      ...(parentTools ? { parentTools } : {}),
+      ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
+    }));
   }
   if (settings?.web) {
     tools.push(createWebFetchTool());
     tools.push(createWebSearchTool());
   }
 
-  if (codingMode === "spawn-agent") {
+  if (codingMode === "send-message") {
     tools = tools.filter((t) => !FILE_WRITING_TOOLS.includes(t.tool.name));
   }
 

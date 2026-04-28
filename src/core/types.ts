@@ -60,13 +60,15 @@ export interface AgentConfig {
   heartbeatPrompt?: string;
   /**
    * Coding mode controls how the agent handles code modifications:
-   * - 'spawn-agent': Force all code changes through spawn_agent (removes write_file, edit)
+   * - 'send-message': Force all code changes through send_message (removes write_file, edit)
    * - 'direct': Agent can modify files directly (default behavior)
    * - 'auto': Agent chooses based on task complexity (default)
    */
-  codingMode?: "spawn-agent" | "direct" | "auto";
+  codingMode?: "send-message" | "direct" | "auto";
   /** Whether this agent can be spawned by other agents. Default: false */
   spawnable?: boolean;
+  /** "parent-reuse" (default) | "always-new". See AgentSessionPolicy. */
+  sessionPolicy?: "always-new" | "parent-reuse";
 }
 
 // ---------------------------------------------------------------------------

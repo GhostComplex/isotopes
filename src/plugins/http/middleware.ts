@@ -1,8 +1,8 @@
-// src/api/middleware.ts — HTTP middleware for the Isotopes REST API
+// src/plugins/http/middleware.ts — HTTP middleware for the Isotopes REST API
 // CORS, JSON body parsing, error handling, and request logging.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../../core/logger.js";
 
 const log = createLogger("api");
 

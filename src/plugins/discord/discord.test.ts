@@ -7,6 +7,21 @@ import type { AgentServiceCache } from "../../core/pi-mono.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import { createMockAgentCache, createMockAgentManager, createMockSessionStore } from "../../core/test-helpers.js";
+import { AgentRuntime } from "../../agents/runtime.js";
+import { PiMonoCore } from "../../core/pi-mono.js";
+
+function makeMockRuntime(agentId: string, cache: unknown, sessionStore: SessionStore): AgentRuntime {
+  const rt = new AgentRuntime({ core: new PiMonoCore() });
+  rt.registerAgent({
+    id: agentId,
+    cache: cache as never,
+    systemPrompt: "",
+    sessionStore: sessionStore as never,
+    tools: { list: () => [] } as never,
+    capabilities: { tools: [], canBeAddressed: true },
+  });
+  return rt;
+}
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -70,15 +85,21 @@ describe("DiscordTransport", () => {
   let transport: DiscordTransport;
   let agentManager: DefaultAgentManager;
   let sessionStore: SessionStore;
+  let sharedAgent: ReturnType<typeof createMockAgentCache>;
+  let sharedRuntime: AgentRuntime;
 
   beforeEach(() => {
     vi.clearAllMocks();
     agentManager = createMockAgentManager();
     sessionStore = createMockSessionStore();
+    sharedAgent = createMockAgentCache();
+    agentManager.get = vi.fn().mockReturnValue(sharedAgent);
+    sharedRuntime = makeMockRuntime("default", sharedAgent, sessionStore);
     transport = new DiscordTransport({
       groupAccess: { policy: "open" },
       token: "test-token",
       agentManager,
+      agentRuntime: sharedRuntime,
       sessionStore,
       defaultAgentId: "default",
     });
@@ -162,18 +183,29 @@ describe("DiscordTransport", () => {
         isThread: vi.fn().mockReturnValue(false),
       };
 
+      // Re-register the erroring agent in a fresh runtime, then swap the
+      // shared transport to use it. Easier than reaching into the runtime
+      // registry, since the runtime is meant to be constructed once per app.
+      const erroringTransport = new DiscordTransport({
+        groupAccess: { policy: "open" },
+        token: "test-token",
+        agentManager,
+        agentRuntime: makeMockRuntime("default", erroringAgent, sessionStore),
+        sessionStore,
+        defaultAgentId: "default",
+      });
+
       await (
-        transport as unknown as {
+        erroringTransport as unknown as {
           runAgentAndRespond: (
-            cache: AgentServiceCache,
+            agentId: string,
             sessionId: string,
             sessionStore: SessionStore,
-            systemPrompt: string,
             cwd: string | undefined,
             channel: MockChannel,
           ) => Promise<void>;
         }
-      ).runAgentAndRespond(erroringAgent, "session-123", sessionStore, "", undefined, channel);
+      ).runAgentAndRespond("default", "session-123", sessionStore, undefined, channel);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Agent ended with error: No API provider registered for api: undefined"),
@@ -265,6 +297,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         guilds: { "guild-1": { requireMention: false } },
@@ -290,6 +323,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         guilds: { "guild-1": { requireMention: true } },
@@ -315,6 +349,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         guilds: { "guild-1": { requireMention: true } },
@@ -362,6 +397,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         threadBindings: { enabled: true },
@@ -383,6 +419,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         threadBindings: { enabled: false },
@@ -418,6 +455,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "test-agent",
         threadBindings: { enabled: true },
@@ -451,6 +489,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         threadBindings: { enabled: true },
         threadBindingManager: bindingManager,
@@ -476,6 +515,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "test-agent",
         threadBindings: { enabled: true },
@@ -501,6 +541,7 @@ describe("DiscordTransport", () => {
       const transportWithThreads = new DiscordTransport({
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "test-agent",
         threadBindings: { enabled: true },
@@ -531,6 +572,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         threadBindings: { enabled: true },
         threadBindingManager: bindingManager,
@@ -544,6 +586,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         threadBindings: { enabled: true },
       });
@@ -586,6 +629,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         adminUsers: ["111111"],
@@ -615,6 +659,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         adminUsers: ["111111"],
@@ -643,6 +688,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         adminUsers: ["111111"],
@@ -667,6 +713,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         adminUsers: ["111111"],
@@ -691,6 +738,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         adminUsers: ["111111"],
@@ -715,6 +763,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         adminUsers: ["111111"],
@@ -769,6 +818,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         guilds: { "guild-1": { requireMention: true } },
@@ -792,6 +842,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         guilds: { "guild-1": { requireMention: true } },
@@ -828,6 +879,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
       });
@@ -863,6 +915,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         context: { historyTurns: 2 },
@@ -907,6 +960,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         guilds: { "guild-1": { requireMention: true } },
@@ -941,6 +995,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
         dmAccess: { policy: "allowlist", allowlist: ["user-bob"] },
@@ -1005,6 +1060,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1026,6 +1082,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
         threads: { respond: false },
@@ -1048,6 +1105,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
         threads: { respond: false },
@@ -1070,6 +1128,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
         threads: { respond: false, observe: false },
@@ -1152,6 +1211,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: makeMockRuntime("default", hangingAgent, localSessionStore),
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1219,6 +1279,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1268,6 +1329,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: makeMockRuntime("default", completingAgent, localSessionStore),
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1364,6 +1426,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: makeMockRuntime("default", agent, localSessionStore),
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1395,6 +1458,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: makeMockRuntime("default", agent, localSessionStore),
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1430,6 +1494,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: makeMockRuntime("default", agent, localSessionStore),
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1455,6 +1520,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: makeMockRuntime("default", agent, localSessionStore),
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1486,6 +1552,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: makeMockRuntime("default", agent, localSessionStore),
         sessionStore: localSessionStore,
         defaultAgentId: "default",
       });
@@ -1517,6 +1584,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: localDefaultAgentManager,
+        agentRuntime: makeMockRuntime("default", agent, localSessionStore),
         sessionStore: localSessionStore,
         defaultAgentId: "default",
         dmAccess: { policy: "allowlist", allowlist: ["user-1"] },
@@ -1576,6 +1644,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: agentManager as unknown as DefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
       });
@@ -1615,6 +1684,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: agentManager as unknown as DefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
       });
@@ -1649,6 +1719,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: agentManager as unknown as DefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
       });
@@ -1683,6 +1754,7 @@ describe("DiscordTransport", () => {
         dmAccess: { policy: "allowlist", allowlist: ["user-1"] },
         token: "test-token",
         agentManager: agentManager as unknown as DefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
       });
@@ -1718,6 +1790,7 @@ describe("DiscordTransport", () => {
         groupAccess: { policy: "open" },
         token: "test-token",
         agentManager: agentManager as unknown as DefaultAgentManager,
+        agentRuntime: sharedRuntime,
         sessionStore,
         defaultAgentId: "default",
       });

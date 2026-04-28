@@ -43,20 +43,6 @@ export type {
   ReviewPROptions,
 } from "./github.js";
 
-export {
-  spawnAgent,
-  cancelAgent,
-  hasRunningAgents,
-  getActiveAgentCount,
-  getSupportedAgents,
-  initSpawnBackend,
-} from "./spawn-agent.js";
-export type {
-  SpawnAgentOptions,
-  SpawnAgentResult,
-  SpawnBackendConfig,
-} from "./spawn-agent.js";
-
 export { createWebFetchTool, createWebSearchTool } from "./web.js";
 export type { SearchResult } from "./web.js";
 

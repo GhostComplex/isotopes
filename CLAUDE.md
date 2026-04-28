@@ -51,7 +51,8 @@ pnpm test:integration
 
 ### Tools (`src/tools/`)
 - `git.ts` / `github.ts` — Git and `gh` CLI wrappers.
-- `subagent.ts` — Subagent spawning and management.
+- Other tool helpers (`exec.ts`, `react.ts`, `web.ts`). Agent-to-agent
+  delegation is the `send_message` tool defined in `src/core/tools.ts`.
 
 ### Other modules
 - `src/automation/` — Cron expression parsing and job scheduling.

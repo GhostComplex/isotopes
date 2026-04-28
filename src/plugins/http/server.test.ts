@@ -1,9 +1,9 @@
-// src/api/server.test.ts — Unit tests for the ApiServer
+// src/plugins/http/server.test.ts — Unit tests for the ApiServer
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
-import { CronScheduler } from "../automation/cron-job.js";
+import { CronScheduler } from "../../automation/cron-job.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

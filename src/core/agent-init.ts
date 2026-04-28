@@ -73,6 +73,8 @@ export interface InitAgentOptions {
   hooks?: HookRegistry;
   /** Pre-computed list of spawnable agent IDs from config */
   spawnableAgentIds?: string[];
+  /** Unified runtime — wired into the send_message tool. */
+  runtime?: import("../agents/runtime.js").AgentRuntime;
 }
 
 export interface InitAgentResult {
@@ -155,20 +157,18 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   }
 
   // 9. Create and register workspace tools
-  const workspaceTools = createWorkspaceToolsWithGuards(
+  const workspaceTools = createWorkspaceToolsWithGuards({
     workspacePath,
-    agentConfig.toolSettings,
-    spawningEnabled,
-    agentAllowedWorkspaces,
-    agentConfig.codingMode,
-    spawning?.maxTurns,
+    settings: agentConfig.toolSettings,
+    sendMessageEnabled: spawningEnabled,
+    codingMode: agentConfig.codingMode,
     fsImpl,
-    agentConfig.id,
-    agentConfig.provider,
-    toolRegistry,
-    agentManager,
-    opts.spawnableAgentIds,
-  );
+    parentAgentId: agentConfig.id,
+    ...(agentConfig.provider ? { parentProvider: agentConfig.provider } : {}),
+    parentTools: toolRegistry,
+    ...(opts.runtime ? { runtime: opts.runtime } : {}),
+    ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
+  });
   const filteredTools = applyToolPolicy(workspaceTools, agentConfig.toolSettings);
   for (const { tool, handler } of filteredTools) {
     toolRegistry.register(tool, handler);

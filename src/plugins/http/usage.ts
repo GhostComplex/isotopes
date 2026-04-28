@@ -1,4 +1,4 @@
-// src/api/usage.ts — Global usage stats route
+// src/plugins/http/usage.ts — Global usage stats route
 
 import { addRoute } from "./routes.js";
 import { sendJson } from "./middleware.js";

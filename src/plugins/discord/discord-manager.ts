@@ -6,6 +6,7 @@ import type {
 } from "../../core/types.js";
 import type { DiscordAccountConfig } from "./types.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
+import type { AgentRuntime } from "../../agents/runtime.js";
 import { getDiscordToken } from "./config.js";
 import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
@@ -20,6 +21,8 @@ const VALID_REPLY_TO_MODES = new Set<ReplyToMode>(["off", "first", "all"]);
 /** Shared infrastructure injected into every Discord account transport. */
 export interface DiscordSharedConfig {
   agentManager: DefaultAgentManager;
+  /** Unified runtime — required at runtime; optional only for unit tests. */
+  agentRuntime?: AgentRuntime;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   threadBindingManager?: ThreadBindingManager;
@@ -32,13 +35,7 @@ export interface DiscordTransportManagerConfig {
   shared: DiscordSharedConfig;
 }
 
-/**
- * DiscordTransportManager — creates and manages multiple DiscordTransport instances.
- *
- * Each account in the config gets its own transport with an independent Client,
- * token, and identity. All per-account behavior (dmAccess, allowBots, threadBindings,
- * spawnAgentStreaming, context, adminUsers, etc.) is read from the account config.
- */
+/** Multi-account Discord transports — one Client per account. */
 export class DiscordTransportManager {
   private transports: Map<string, DiscordTransport> = new Map();
   private config: DiscordTransportManagerConfig;
@@ -63,6 +60,7 @@ export class DiscordTransportManager {
       const transport = new DiscordTransport({
         token,
         agentManager: shared.agentManager,
+        ...(shared.agentRuntime ? { agentRuntime: shared.agentRuntime } : {}),
         sessionStore: shared.sessionStore,
         sessionStoreForAgent: shared.sessionStoreForAgent,
         defaultAgentId: account.defaultAgentId,
@@ -72,8 +70,6 @@ export class DiscordTransportManager {
         guilds: account.guilds,
         threadBindings: account.threadBindings,
         threadBindingManager: shared.threadBindingManager,
-        enableSpawnAgentStreaming: account.spawnAgentStreaming?.enabled,
-        spawnAgentShowToolCalls: account.spawnAgentStreaming?.showToolCalls,
         allowBots: account.allowBots,
         context: account.context,
         usageTracker: shared.usageTracker,

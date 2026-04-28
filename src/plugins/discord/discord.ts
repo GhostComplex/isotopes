@@ -18,32 +18,24 @@ import {
   type Transport,
 } from "../../core/types.js";
 import type { ThreadBindingConfig } from "./types.js";
-import type { AgentServiceCache } from "../../core/pi-mono.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../core/messages.js";
 import type { ContextConfigFile } from "../../core/config.js";
 import { shouldRespondToMessage } from "../../core/mention.js";
 import { loggers } from "../../core/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { runAgentLoop, abortAgentSession, isAgentSessionActive } from "../../core/agent-runner.js";
+import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../core/agent-run.js";
+import { runWithDiscordSubagentStream, type DiscordSubagentStreamContext } from "./subagent-stream-context.js";
 import { agentEventBus } from "../../core/agent-event-bus.js";
 import { isSilentReply } from "../../core/silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
 import type { UsageTracker } from "../../core/usage-tracker.js";
 import { buildSessionKey } from "../../core/session-keys.js";
-import {
-  runWithSpawnAgentContextAsync,
-  type SpawnAgentStreamContext,
-} from "../../core/spawn-agent-context.js";
-import { DiscordSink } from "./discord-spawn-agent-sink.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../../core/channel-history.js";
 import { DedupeCache } from "../../core/dedupe.js";
 import { InboundDebouncer } from "../../core/debounce.js";
 import { SlashCommandHandler } from "../../commands/slash-commands.js";
-import { taskRegistry } from "../../agents/task-registry.js";
-import { failureTracker } from "../../agents/failure-tracker.js";
-import { cancelAgent } from "../../tools/spawn-agent.js";
 
 const log = loggers.discord;
 
@@ -150,6 +142,13 @@ export interface DiscordTransportConfig {
   /** Discord bot token from Developer Portal */
   token: string;
   agentManager: DefaultAgentManager;
+  /**
+   * Unified runtime. When provided, the transport drives the agent loop via
+   * `runtime.sendMessage` (the #568 path). When omitted, falls back to the
+   * legacy `runAgentLoop` (kept temporarily for unit tests that pre-date the
+   * runtime; will be removed once those tests are migrated).
+   */
+  agentRuntime?: import("../../agents/runtime.js").AgentRuntime;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   /** Default agent ID to use when no @mention routing */
@@ -173,10 +172,6 @@ export interface DiscordTransportConfig {
   threadBindings?: ThreadBindingConfig;
   /** Thread binding manager instance (created automatically if not provided) */
   threadBindingManager?: ThreadBindingManager;
-  /** Whether to enable spawn agent Discord streaming (default: true) */
-  enableSpawnAgentStreaming?: boolean;
-  /** Whether to show tool calls in spawn agent threads (default: true) */
-  spawnAgentShowToolCalls?: boolean;
   /** Whether to show tool call info in agent responses (default: false) */
   showToolCalls?: boolean;
   /** Whether to respond to messages from other bots. Default: false */
@@ -216,6 +211,10 @@ export class DiscordTransport implements Transport {
   private dedupe: DedupeCache;
   private debouncer: InboundDebouncer;
   private commandHandler: SlashCommandHandler;
+
+  // Maps a Discord thread id (created for a sub-run via send_message) to
+  // the runtime's runId. Used so /stop in that thread cancels the right run.
+  private subagentThreads = new Map<string, string>();
 
   // Buffer messages that arrive while a session is prompting
   private pendingMessages = new Map<string, Array<{ content: string; sender: string; timestamp: number }>>();
@@ -378,17 +377,7 @@ export class DiscordTransport implements Transport {
     let content = this.extractContent(msg);
     if (!content.trim() && !this.hasImageAttachments(msg)) return;
 
-    // 3.5. Spawn agent thread interception — handle /stop in spawn agent threads BEFORE shouldRespond check
-    // This allows /stop to work without @mention in spawn agent threads
-    if (isThread) {
-      const task = taskRegistry.getByThreadId(msg.channelId);
-      if (task) {
-        await this.handleSpawnAgentThreadMessage(msg, task, content);
-        return;
-      }
-    }
-
-    // 3.6. Main-agent /stop or /cancel — abort current runAgentLoop if any.
+    // 3.6. Main-agent /stop or /cancel — abort current run if any.
     // Runs before shouldRespond so it works without channel-config gating, but in
     // group channels we still require @mention so a shared /stop in a multi-bot
     // channel only aborts the addressed bot's session. DMs are 1:1 so no mention
@@ -396,6 +385,22 @@ export class DiscordTransport implements Transport {
     // content since extractContent only strips numeric Discord ids.
     const stopMatch = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i.exec(msg.content.trim());
     if (stopMatch) {
+      // 3.6a. /stop in a known sub-run thread → cancel that specific runId.
+      // No @mention required: posting in the thread itself scopes the intent.
+      if (isThread) {
+        const subRunId = this.subagentThreads.get(msg.channelId);
+        if (subRunId && this.config.agentRuntime) {
+          const cancelled = this.config.agentRuntime.cancel(subRunId, { reason: "user" });
+          if (cancelled) {
+            log.info(`Sub-run /stop`, { runId: subRunId, threadId: msg.channelId });
+            await (msg.channel as SendableChannel).send("🛑 Sub-run cancelled.");
+          } else {
+            await (msg.channel as SendableChannel).send("⚠️ Sub-run already finished.");
+          }
+          return;
+        }
+      }
+
       const botId = this.client.user?.id;
       const isMentioned = botId ? msg.mentions.has(botId) : false;
       if (msg.guild && !isMentioned) {
@@ -405,9 +410,13 @@ export class DiscordTransport implements Transport {
       const sessionStore = this.getSessionStore(agentId);
       const sessionKey = this.getSessionKey(msg, agentId);
       const session = await sessionStore.findByKey(sessionKey);
-      if (session && isAgentSessionActive(session.id)) {
+      const runtimeForCheck = this.config.agentRuntime;
+      const isActive = runtimeForCheck && session
+        ? isRootRunActive(runtimeForCheck, session.id)
+        : false;
+      if (session && isActive && runtimeForCheck) {
         log.info(`Main-agent /stop`, { sessionId: session.id, agentId });
-        abortAgentSession(session.id);
+        cancelRunBySessionId(runtimeForCheck, session.id);
         this.pendingMessages.delete(session.id);
         await (msg.channel as SendableChannel).send("🛑 Stopped.");
         return;
@@ -507,7 +516,10 @@ export class DiscordTransport implements Transport {
     // 6.5. If session is currently active (in a prompt turn), buffer this message instead.
     // The buffer is drained at turn_end via onToolComplete, where each message is
     // also persisted to SessionStore so future prompt() invocations replay them.
-    if (isAgentSessionActive(session.id)) {
+    const sessionActive = this.config.agentRuntime
+      ? isRootRunActive(this.config.agentRuntime, session.id)
+      : false;
+    if (sessionActive) {
       log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
       const pending = this.pendingMessages.get(session.id) ?? [];
       pending.push({
@@ -540,10 +552,10 @@ export class DiscordTransport implements Transport {
       : mkUserMsg(contentWithMeta, msg.createdTimestamp);
     await sessionStore.addMessage(session.id, userMsg);
 
-    // 9. Run agent — SDK loads history from SessionManager automatically
-    const systemPrompt = this.config.agentManager.getSystemPrompt(agentId) ?? "";
+    // 9. Run agent via runtime.sendMessage (system prompt comes from the
+    // registered agent in the runtime, not from agentManager).
     const cwd = this.config.agentManager.getWorkspacePath(agentId);
-    await this.runAgentAndRespond(agent, session.id, sessionStore, systemPrompt, cwd, msg.channel as SendableChannel, msg.id);
+    await this.runAgentAndRespond(agentId, session.id, sessionStore, cwd, msg.channel as SendableChannel, msg.id);
   }
 
   private isDmAllowed(userId: string): boolean {
@@ -626,34 +638,12 @@ export class DiscordTransport implements Transport {
    * Supports /stop and /cancel commands to kill the running spawn agent.
    */
   private async handleSpawnAgentThreadMessage(
-    msg: DiscordMessage,
-    task: { taskId: string; sessionId: string; channelId: string; threadId?: string; task: string },
-    content: string,
+    _msg: DiscordMessage,
+    _task: { taskId: string; sessionId: string; channelId: string; threadId?: string; task: string },
+    _content: string,
   ): Promise<void> {
-    const normalizedContent = content.trim().toLowerCase();
-
-    // Check for stop/cancel commands
-    if (normalizedContent === "/stop" || normalizedContent === "/cancel") {
-      log.info(`Cancelling spawn agent from thread`, { taskId: task.taskId, threadId: msg.channelId });
-      const cancelled = cancelAgent(task.taskId);
-      if (cancelled) {
-        // Record cancellation to block future re-attempts of this task
-        if (task.sessionId) {
-          failureTracker.recordCancel(task.sessionId, task.task);
-        }
-        await (msg.channel as SendableChannel).send("🛑 Spawn agent cancelled.");
-      } else {
-        await (msg.channel as SendableChannel).send("⚠️ Spawn agent already finished or not found.");
-      }
-      return;
-    }
-
-    // For now, other messages in spawn agent threads are acknowledged but not forwarded
-    // (spawn agent prompt is one-shot — true steering would require SDK support)
-    log.debug(`Spawn agent thread message ignored (steering not supported)`, {
-      taskId: task.taskId,
-      content: content.slice(0, 50),
-    });
+    // Spawn agent thread routing was removed in #568; this method is a stub
+    // pending removal of remaining call sites.
   }
 
   private resolveAgentId(msg: DiscordMessage): string {
@@ -720,89 +710,13 @@ export class DiscordTransport implements Transport {
   }
 
   // ---------------------------------------------------------------------------
-  // Spawn agent context helpers
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Create a spawn agent Discord context for the given channel.
-   * This context enables spawn agent tool to stream output to Discord threads.
-   */
-  private createSpawnAgentContext(channel: SendableChannel, sessionId?: string): SpawnAgentStreamContext {
-    const threadBindingConfig = this.config.threadBindings;
-    const autoUnbindEnabled = threadBindingConfig?.autoUnbindOnComplete !== false;
-    const sendFarewell = threadBindingConfig?.sendFarewell ?? false;
-    const farewellMessage = threadBindingConfig?.farewellMessage ?? "Task completed. Returning to parent channel.";
-
-    const sendMessage = async (channelId: string, content: string) => {
-      const targetChannel = await this.client.channels.fetch(channelId);
-      if (!targetChannel || !("send" in targetChannel)) {
-        throw new Error(`Cannot send message to channel ${channelId}`);
-      }
-      const msg = await (targetChannel as SendableChannel).send(content);
-      return { id: msg.id };
-    };
-
-    const createThread = async (channelId: string, name: string, messageId: string) => {
-      const targetChannel = await this.client.channels.fetch(channelId);
-      if (!targetChannel || !("threads" in targetChannel)) {
-        throw new Error(`Cannot create thread in channel ${channelId}`);
-      }
-      const textChannel = targetChannel as TextChannel;
-      const message = await textChannel.messages.fetch(messageId);
-      const thread = await message.startThread({
-        name,
-        autoArchiveDuration: 60,
-      });
-      return { id: thread.id };
-    };
-
-    return {
-      createSink: (channelId, config) => {
-        return new DiscordSink(sendMessage, createThread, channelId, {
-          showToolCalls: config.showToolCalls,
-          showThinking: false,
-          useThread: config.useThread,
-        });
-      },
-      channelId: channel.id,
-      sessionId,
-      showToolCalls: this.config.spawnAgentShowToolCalls ?? true,
-      onComplete: autoUnbindEnabled
-        ? async (threadId: string) => {
-            log.debug(`Spawn agent completed, auto-unbinding thread ${threadId}`);
-
-            if (sendFarewell) {
-              try {
-                const thread = await this.client.channels.fetch(threadId);
-                if (thread && "send" in thread) {
-                  await (thread as SendableChannel).send(farewellMessage);
-                }
-              } catch (err) {
-                log.warn("Failed to send farewell message", {
-                  threadId,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-              }
-            }
-
-            const removed = this.threadBindingManager.unbind(threadId, "spawn-agent-complete");
-            if (removed) {
-              log.info(`Auto-unbound thread ${threadId} after spawn agent completion`);
-            }
-          }
-        : undefined,
-    };
-  }
-
-  // ---------------------------------------------------------------------------
   // Agent interaction
   // ---------------------------------------------------------------------------
 
   private async runAgentAndRespond(
-    cache: AgentServiceCache,
+    agentId: string,
     sessionId: string,
     sessionStore: SessionStore,
-    systemPrompt: string,
     cwd: string | undefined,
     channel: SendableChannel,
     triggerMessageId?: string,
@@ -854,55 +768,63 @@ export class DiscordTransport implements Transport {
         }
       });
 
-      // Create the agent loop runner function
+      // Create the agent loop runner function via runtime.sendMessage.
+      const runtime = this.config.agentRuntime;
+      if (!runtime) {
+        throw new Error("DiscordTransport.runAgentAndRespond requires agentRuntime");
+      }
       const runLoop = () => {
-        return runAgentLoop({
-          cache,
-          sessionStore,
+        return consumeRootRun(runtime, {
+          to: agentId,
           sessionId,
-          systemPrompt,
-          cwd,
+          content: "",
+          ...(cwd ? { cwd } : {}),
           log,
-          usageTracker: this.config.usageTracker,
+          ...(this.config.usageTracker ? { usageTracker: this.config.usageTracker } : {}),
           onToolComplete: async () => {
             const pending = this.pendingMessages.get(sessionId);
             if (!pending?.length) return null;
-
-            const messages = pending.splice(0); // drain buffer
-
-            // Persist each buffered message to SessionStore so history reflects
-            // what the model actually saw via steer(). Without this, replayed
-            // history (clearMessages + getMessages on next prompt) loses these
-            // messages, leaving the assistant reply referencing user input that
-            // appears never to have been sent.
+            const messages = pending.splice(0);
             for (const m of messages) {
               await sessionStore.addMessage(sessionId, mkUserMsg(m.content, m.timestamp));
             }
-
             const formatted = messages.map(m => `${m.sender}: ${m.content}`).join("\n");
             return `[Messages arrived while you were working]\n${formatted}`;
           },
         });
       };
 
-      // Run with or without spawn agent context based on config
-      let errorMessage: string | null;
-      let responseText: string;
+      // Wrap the run in a Discord subagent stream context so any nested
+      // send_message tool call streams its sub-run to a dedicated thread,
+      // and the (threadId → runId) mapping flows back here for /stop routing.
+      const streamCtx: DiscordSubagentStreamContext = {
+        parentChannelId: channel.id,
+        showToolCalls: this.config.showToolCalls ?? true,
+        registerSubagentThread: (threadId, runId) => {
+          this.subagentThreads.set(threadId, runId);
+        },
+        unregisterSubagentThread: (threadId) => {
+          this.subagentThreads.delete(threadId);
+        },
+        sendMessage: async (channelId, content) => {
+          const target = await this.client.channels.fetch(channelId);
+          if (!target || !("send" in target)) throw new Error(`Cannot send to channel ${channelId}`);
+          const msg = await (target as SendableChannel).send(content);
+          return { id: msg.id };
+        },
+        createThread: async (parentChannelId, name, messageId) => {
+          const parent = await this.client.channels.fetch(parentChannelId);
+          if (!parent || !("threads" in parent)) {
+            throw new Error(`Cannot create thread in channel ${parentChannelId}`);
+          }
+          const textChannel = parent as TextChannel;
+          const message = await textChannel.messages.fetch(messageId);
+          const thread = await message.startThread({ name, autoArchiveDuration: 60 });
+          return { id: thread.id };
+        },
+      };
 
-      if (this.config.enableSpawnAgentStreaming !== false) {
-        // Run with spawn agent Discord context enabled
-        const spawnAgentContext = this.createSpawnAgentContext(channel, sessionId);
-        const result = await runWithSpawnAgentContextAsync(spawnAgentContext, runLoop);
-
-        errorMessage = result.errorMessage;
-        responseText = result.responseText;
-      } else {
-        // Run without spawn agent context (original behavior)
-        const result = await runLoop();
-
-        errorMessage = result.errorMessage;
-        responseText = result.responseText;
-      }
+      const { responseText, errorMessage } = await runWithDiscordSubagentStream(streamCtx, runLoop);
 
       // Check for silent reply tokens — suppress outbound delivery
       if (isSilentReply(responseText)) {

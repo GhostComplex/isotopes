@@ -103,20 +103,25 @@ describe("initializeAgent", () => {
     );
   });
 
-  it("registers spawn_agent when spawning enabled and no sandbox", async () => {
+  it("registers send_message when spawning enabled and no sandbox", async () => {
+    const { AgentRuntime } = await import("../agents/runtime.js");
+    const runtime = new AgentRuntime({ core });
     const result = await initializeAgent({
       agentFile: makeMinimalAgentFile(),
       spawning: { enabled: true },
       core,
       agentManager,
+      runtime,
     });
 
     const toolNames = result.toolRegistry.list().map((t) => t.name);
-    expect(toolNames).toContain("spawn_agent");
+    expect(toolNames).toContain("send_message");
   });
 
-  it("does not register spawn_agent when sandbox is active (issue #440)", async () => {
+  it("does not register send_message when sandbox is active (issue #440)", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { AgentRuntime } = await import("../agents/runtime.js");
+    const runtime = new AgentRuntime({ core });
 
     const result = await initializeAgent({
       agentFile: makeMinimalAgentFile({ sandbox: { mode: "all" } }),
@@ -125,10 +130,11 @@ describe("initializeAgent", () => {
       sandboxExecutor: makeMockSandboxExecutor(),
       core,
       agentManager,
+      runtime,
     });
 
     const toolNames = result.toolRegistry.list().map((t) => t.name);
-    expect(toolNames).not.toContain("spawn_agent");
+    expect(toolNames).not.toContain("send_message");
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("Spawning tools disabled for test-agent"),
     );

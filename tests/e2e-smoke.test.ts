@@ -199,7 +199,7 @@ describe("NO_REPLY suppression", () => {
 
 describe("tool policy deny", () => {
   it("removes denied tools from the registry", () => {
-    const tools = createWorkspaceToolsWithGuards(tmpDir);
+    const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
     const filtered = applyToolPolicy(tools, { deny: ["read_file"] });
 
     const names = filtered.map((t) => t.tool.name);
@@ -209,7 +209,7 @@ describe("tool policy deny", () => {
   });
 
   it("denied tool cannot be executed", async () => {
-    const tools = createWorkspaceToolsWithGuards(tmpDir);
+    const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
     const filtered = applyToolPolicy(tools, { deny: ["read_file"] });
 
     const registry = new ToolRegistry("test");
@@ -238,7 +238,7 @@ describe("tool policy deny", () => {
   });
 
   it("allow list restricts to only specified tools", () => {
-    const tools = createWorkspaceToolsWithGuards(tmpDir);
+    const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
     const filtered = applyToolPolicy(tools, { allow: ["read_file", "edit"] });
 
     const names = filtered.map((t) => t.tool.name);
@@ -246,7 +246,7 @@ describe("tool policy deny", () => {
   });
 
   it("deny takes precedence over allow", () => {
-    const tools = createWorkspaceToolsWithGuards(tmpDir);
+    const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
     const filtered = applyToolPolicy(tools, {
       allow: ["read_file", "edit"],
       deny: ["edit"],
@@ -267,8 +267,9 @@ describe("full tool wiring", () => {
     const registry = new ToolRegistry("test");
 
     // Workspace tools (read, write, edit, list_dir, time)
-    const workspaceTools = createWorkspaceToolsWithGuards(tmpDir, {
-      web: true,
+    const workspaceTools = createWorkspaceToolsWithGuards({
+      workspacePath: tmpDir,
+      settings: { web: true },
     });
     for (const { tool, handler } of workspaceTools) {
       registry.register(tool, handler);

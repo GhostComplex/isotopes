@@ -9,7 +9,6 @@ import {
   type IsotopesConfigFile,
 } from "./config.js";
 import path from "node:path";
-import { initSpawnBackend, setSpawnSessionStoreFactory } from "../tools/spawn-agent.js";
 import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";
 import { SessionStoreManager } from "./session-store-manager.js";
@@ -23,13 +22,14 @@ import {
   ensureDirectories,
 } from "./paths.js";
 import { HotReloadManager } from "../workspace/index.js";
-import { ApiServer } from "../api/server.js";
+import { ApiServer } from "../plugins/http/server.js";
 import { CronScheduler } from "../automation/cron-job.js";
 import { HeartbeatManager } from "../automation/heartbeat.js";
 import { UsageTracker } from "./usage-tracker.js";
 import { PluginManager } from "../plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
-import { runAgentLoop } from "./agent-runner.js";
+import { AgentRuntime } from "../agents/runtime.js";
+import { consumeRootRun } from "./agent-run.js";
 
 const log = createLogger("runtime");
 
@@ -71,18 +71,26 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const core = new PiMonoCore();
   const agentManager = new DefaultAgentManager(core);
 
-  // Initialize agent spawning backend
-  if (config.spawning?.enabled) {
-    const spawningConfig = resolveSpawningConfig(config.spawning);
-    initSpawnBackend({
-      config: spawningConfig,
-      core,
-    });
-    log.info(`Spawning backend initialized (claude.permissionMode: ${spawningConfig.claude.permissionMode})`);
-
-    setSpawnSessionStoreFactory((agentId) => sessionStoreManager.getOrCreate(agentId));
-    log.info("Spawn session store factory → shared SessionStoreManager");
+  // Single AgentRuntime shared by all transports + the in-agent send_message tool.
+  const allowedRoots: string[] = [];
+  for (const a of config.agents) {
+    if (a.allowedWorkspaces?.length) allowedRoots.push(...a.allowedWorkspaces);
   }
+  const claudeOpts = config.spawning?.enabled
+    ? (() => {
+        const s = resolveSpawningConfig(config.spawning!);
+        return {
+          permissionMode: s.claude.permissionMode,
+          ...(s.claude.allowedTools ? { allowedTools: s.claude.allowedTools } : {}),
+          ...(s.claude.settingSources ? { settingSources: s.claude.settingSources } : {}),
+        };
+      })()
+    : undefined;
+  const agentRuntime = new AgentRuntime({
+    allowedWorkspaceRoots: allowedRoots,
+    core,
+    ...(claudeOpts ? { claude: claudeOpts } : {}),
+  });
 
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
@@ -137,12 +145,28 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       transportContext: transportCtx,
       hooks: pluginManager.getHooks(),
       spawnableAgentIds,
+      runtime: agentRuntime,
     });
 
     agentWorkspaces.set(result.agentConfig.id, result.workspacePath);
     transportContexts.set(result.agentConfig.id, transportCtx);
     processRegistries.set(result.agentConfig.id, result.processRegistry);
     toolRegistries.set(result.agentConfig.id, result.toolRegistry);
+
+    // Eagerly init the store so the registered agent owns a live ref.
+    const sessionStore = await sessionStoreManager.getOrCreate(result.agentConfig.id);
+    agentRuntime.registerAgent({
+      id: result.agentConfig.id,
+      cache: result.instance,
+      systemPrompt: result.systemPrompt,
+      sessionStore,
+      tools: result.toolRegistry,
+      capabilities: {
+        tools: result.toolRegistry.list().map((t) => t.name),
+        canBeAddressed: true,
+      },
+      ...(result.agentConfig.sessionPolicy ? { sessionPolicy: result.agentConfig.sessionPolicy } : {}),
+    });
   }
 
   // Hot-reload workspace files
@@ -196,18 +220,14 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       workspacePath,
       config: { ...agentFile.heartbeat, enabled: true },
       runAgentLoop: async (agentId, prompt, _sessionKey) => {
-        const cache = agentManager.get(agentId);
-        if (!cache) throw new Error(`Agent "${agentId}" not found`);
         const store = await sessionStoreManager.getOrCreate(agentId);
         const sessionKey = `heartbeat:${agentId}`;
         const session = (await store.findByKey(sessionKey)) ?? (await store.create(agentId, { key: sessionKey }));
-        const result = await runAgentLoop({
-          cache,
-          sessionStore: store,
+        const result = await consumeRootRun(agentRuntime, {
+          to: agentId,
           sessionId: session.id,
-          systemPrompt: agentManager.getSystemPrompt(agentId) ?? "",
-          cwd: agentManager.getWorkspacePath(agentId),
-          textInput: prompt,
+          content: prompt,
+          ...(agentManager.getWorkspacePath(agentId) ? { cwd: agentManager.getWorkspacePath(agentId) } : {}),
           log,
         });
         return result.responseText;
@@ -252,8 +272,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   cronScheduler.onTrigger(async (job) => {
-    const cache = agentManager.get(job.agentId);
-    if (!cache) {
+    if (!agentRuntime.getAgent(job.agentId)) {
       log.error(`Cron job "${job.name}" references unknown agent "${job.agentId}"`);
       return;
     }
@@ -274,13 +293,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     try {
       const store = await sessionStoreManager.getOrCreate(job.agentId);
       const session = (await store.findByKey(sessionKey)) ?? (await store.create(job.agentId, { key: sessionKey }));
-      const result = await runAgentLoop({
-        cache,
-        sessionStore: store,
+      const result = await consumeRootRun(agentRuntime, {
+        to: job.agentId,
         sessionId: session.id,
-        systemPrompt: agentManager.getSystemPrompt(job.agentId) ?? "",
-        cwd: agentManager.getWorkspacePath(job.agentId),
-        textInput: prompt,
+        content: prompt,
+        ...(agentManager.getWorkspacePath(job.agentId) ? { cwd: agentManager.getWorkspacePath(job.agentId) } : {}),
         log,
       });
       log.info(`Cron "${job.name}" completed (${result.responseText.length} chars)`);
@@ -307,6 +324,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
         isotopesHome: getIsotopesHome(),
         getSessionStoreForAgent: (agentId) =>
           sessionStoreManager.peek(agentId),
+        agentRuntime,
       });
       await transport.start();
       pluginTransports.push(transport);
@@ -326,6 +344,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       uiRegistry: pluginManager.getUIRegistry(),
       sessionStoreManager,
       hooks: pluginManager.getHooks(),
+      agentRuntime,
     },
   );
   await apiServer.start();
