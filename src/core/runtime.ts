@@ -4,6 +4,7 @@
 
 import {
   toAgentConfig,
+  resolveSpawningConfig,
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
@@ -75,9 +76,20 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   for (const a of config.agents) {
     if (a.allowedWorkspaces?.length) allowedRoots.push(...a.allowedWorkspaces);
   }
+  const claudeOpts = config.spawning?.enabled
+    ? (() => {
+        const s = resolveSpawningConfig(config.spawning!);
+        return {
+          permissionMode: s.claude.permissionMode,
+          ...(s.claude.allowedTools ? { allowedTools: s.claude.allowedTools } : {}),
+          ...(s.claude.settingSources ? { settingSources: s.claude.settingSources } : {}),
+        };
+      })()
+    : undefined;
   const agentRuntime = new AgentRuntime({
     allowedWorkspaceRoots: allowedRoots,
     core,
+    ...(claudeOpts ? { claude: claudeOpts } : {}),
   });
 
   const agentWorkspaces = new Map<string, string>();

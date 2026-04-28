@@ -165,19 +165,23 @@ export function createTimeTool(): { tool: Tool; handler: ToolHandler } {
 /** Magic agent id that resolves to an ephemeral leaf session backed by the
  * caller's filtered tools + provider. */
 export const SUBAGENT_AGENT_ID = "subagent";
+/** Magic agent id that resolves to a Claude CLI leaf session via the
+ * runtime's ClaudeRunner. Requires `cwd`. */
+export const CLAUDE_AGENT_ID = "claude";
 
 export interface SendMessageToolOptions {
   /** Unified runtime — the tool calls runtime.sendMessage to deliver. */
   runtime: AgentRuntime;
   /** Caller's agent id; recorded as `from.agentId` on the request. */
   parentAgentId: string;
-  /** Caller's workspace path; used as cwd for the target's turn. */
+  /** Caller's workspace path; default cwd when target is leaf and no
+   * `working_directory` is supplied. */
   workspacePath: string;
   /** Caller's provider — needed when targeting the "subagent" magic id. */
   parentProvider?: ProviderConfig;
   /** Caller's tool registry — filtered and lent to leaf sessions. */
   parentTools?: ToolRegistry;
-  /** Optional explicit allow-list of target ids. Defaults to runtime registry + "subagent". */
+  /** Optional explicit allow-list of target ids. Defaults to runtime registry + magic ids. */
   allowedAgents?: string[];
   /** Pre-computed list of registered agent ids (avoids depending on init order). */
   spawnableAgentIds?: string[];
@@ -187,6 +191,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
   const { runtime, parentAgentId, workspacePath, parentProvider, parentTools, allowedAgents, spawnableAgentIds } = options;
   const computedTargets: string[] = [];
   if (parentProvider && parentTools) computedTargets.push(SUBAGENT_AGENT_ID);
+  if (runtime.hasClaudeRunner()) computedTargets.push(CLAUDE_AGENT_ID);
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
       if (id !== parentAgentId && !computedTargets.includes(id)) computedTargets.push(id);
@@ -200,8 +205,9 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
       description:
         `Send a message to another agent. Available targets: ${targets.join(", ") || "(none)"}. ` +
         "For `subagent`, an ephemeral helper runs with your filtered tool set and returns its " +
-        "final assistant message as the result. For a registered agent id, the message is " +
-        "appended to that agent's session as a user-role turn and its reply is returned.",
+        "final assistant message as the result. For `claude`, a Claude CLI session runs against " +
+        "`working_directory` and returns its final assistant message. For a registered agent id, " +
+        "the message is appended to that agent's session as a user-role turn and its reply is returned.",
       parameters: {
         type: "object",
         properties: {
@@ -214,25 +220,42 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
             type: "string",
             description: "Message content to deliver as the user-role turn.",
           },
+          working_directory: {
+            type: "string",
+            description:
+              "Working directory for the target's session (relative to your workspace or absolute). " +
+              "Required for `claude`; optional for others (defaults to your workspace root).",
+          },
           conversation_id: {
             type: "string",
-            description: "Optional existing session id to resume. Only valid for registered agents (not `subagent`).",
+            description:
+              "Optional existing session id to resume. Only valid for registered agents " +
+              "(not `subagent` or `claude`).",
           },
         },
         required: ["to", "content"],
       },
     },
     handler: async (args) => {
-      const { to, content, conversation_id } = args as { to: string; content: string; conversation_id?: string };
+      const { to, content, working_directory, conversation_id } = args as {
+        to: string;
+        content: string;
+        working_directory?: string;
+        conversation_id?: string;
+      };
       if (!targets.includes(to)) {
         return `[error] Unknown target: ${to}. Available: ${targets.join(", ")}`;
       }
       const isSubagent = to === SUBAGENT_AGENT_ID;
+      const isClaude = to === CLAUDE_AGENT_ID;
+      const cwd = working_directory
+        ? path.resolve(workspacePath, working_directory)
+        : workspacePath;
       const ctx = getMessageContext();
       const req: SendMessageRequest = {
         to,
         content,
-        cwd: workspacePath,
+        cwd,
         from: { agentId: parentAgentId },
         ...(conversation_id ? { sessionId: conversation_id } : {}),
         ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
@@ -240,7 +263,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
           ? { leafContext: { provider: parentProvider, tools: parentTools } }
           : {}),
       };
-      log.info("send_message", { from: parentAgentId, to, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
+      log.info("send_message", { from: parentAgentId, to, cwd, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
       let assistantText = "";
       let errorMessage: string | null = null;
       try {
@@ -262,7 +285,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         return `[send_message failed] ${errorMessage}`;
       }
       const trimmed = assistantText.trim();
-      return trimmed.length > 0 ? trimmed : "[no reply]";
+      return trimmed.length > 0 ? trimmed : (isClaude ? "[claude completed with no output]" : "[no reply]");
     },
   };
 }

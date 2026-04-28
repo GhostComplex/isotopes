@@ -59,8 +59,9 @@ describe("AgentRuntime.sendMessage — validation", () => {
     await expect(consume(rt.sendMessage({ to: "ghost", content: "hi" }))).rejects.toThrow(/Unknown agent/);
   });
 
-  it("rejects unknown claude target (was reserved magic id; now just unregistered)", async () => {
-    await expect(consume(rt.sendMessage({ to: "claude", content: "hi" }))).rejects.toThrow(/Unknown agent/);
+  it("rejects claude target when no claude runner is configured", async () => {
+    await expect(consume(rt.sendMessage({ to: "claude", content: "hi", cwd: "/tmp" })))
+      .rejects.toThrow(/claude runner not configured/);
   });
 
   it("rejects subagent target without leafContext", async () => {

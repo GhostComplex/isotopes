@@ -18,6 +18,7 @@ import type {
 } from "./types.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
 import { BuiltinRunner } from "./runners/builtin.js";
+import { ClaudeRunner, CLAUDE_AGENT_ID, type ClaudeRunnerOptions } from "./runners/claude.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
@@ -25,7 +26,7 @@ const log = createLogger("agents:runtime");
 
 export const LEAF_CONCURRENCY_CAP = 5;
 export const LEAF_DEFAULT_TIMEOUT_SEC = 900;
-export const RESERVED_AGENT_IDS: ReadonlySet<string> = new Set(["subagent"]);
+export const RESERVED_AGENT_IDS: ReadonlySet<string> = new Set(["subagent", CLAUDE_AGENT_ID]);
 
 interface RunHandle {
   runId: string;
@@ -43,11 +44,14 @@ export interface AgentRuntimeOptions {
   allowedWorkspaceRoots?: string[];
   /** Required to drive any builtin (in-process) agent loops. */
   core?: PiMonoCore;
+  /** When supplied, exposes `to: "claude"` as a leaf target via Claude CLI. */
+  claude?: ClaudeRunnerOptions;
 }
 
 export class AgentRuntime {
   private allowedRoots: string[];
   private builtinRunner?: BuiltinRunner;
+  private claudeRunner?: ClaudeRunner;
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
 
@@ -55,10 +59,15 @@ export class AgentRuntime {
     const opts = options ?? {};
     this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
     if (opts.core) this.builtinRunner = new BuiltinRunner(opts.core);
+    if (opts.claude) this.claudeRunner = new ClaudeRunner(opts.claude);
   }
 
   hasBuiltinRunner(): boolean {
     return this.builtinRunner !== undefined;
+  }
+
+  hasClaudeRunner(): boolean {
+    return this.claudeRunner !== undefined;
   }
 
   validateCwd(cwd: string): void {
@@ -115,21 +124,32 @@ export class AgentRuntime {
   // -------------------------------------------------------------------------
 
   /**
-   * `to === "subagent"` produces an ephemeral leaf session (requires
-   * `leafContext`); any other id resolves to a registered agent (root
-   * session). Yields the SDK's `AgentEvent` stream directly.
+   * Three target shapes:
+   *   - `to === "subagent"`  → ephemeral leaf via BuiltinRunner; requires `leafContext`
+   *   - `to === "claude"`    → ephemeral leaf via Claude CLI; requires `cwd`
+   *   - `to === <agent-id>`  → registered agent (root session)
+   *
+   * Yields the SDK's `AgentEvent` stream directly.
    */
   async *sendMessage(req: SendMessageRequest): AsyncGenerator<AgentEvent> {
-    const isLeaf = req.to === "subagent";
+    const isSubagent = req.to === "subagent";
+    const isClaude = req.to === CLAUDE_AGENT_ID;
+    const isLeaf = isSubagent || isClaude;
     const agent = isLeaf ? undefined : this.agents.get(req.to);
     if (!isLeaf && !agent) throw new Error(`Unknown agent: ${req.to}`);
-    if (isLeaf && !req.leafContext) {
+    if (isSubagent && !req.leafContext) {
       throw new Error('sendMessage: leafContext is required when to === "subagent"');
+    }
+    if (isClaude && !this.claudeRunner) {
+      throw new Error('sendMessage: claude runner not configured (pass `claude` option to AgentRuntime)');
+    }
+    if (isClaude && !req.cwd) {
+      throw new Error('sendMessage: cwd is required when to === "claude"');
     }
     if (isLeaf && req.sessionId) {
       throw new Error("sendMessage: leaf sessions are not resumable; omit sessionId");
     }
-    if (!this.builtinRunner) {
+    if (!isClaude && !this.builtinRunner) {
       throw new Error("AgentRuntime: builtin runner not configured (pass `core` to constructor)");
     }
     if (req.cwd) this.validateCwd(req.cwd);
@@ -144,20 +164,12 @@ export class AgentRuntime {
 
     const runId = randomUUID();
 
-    // Resolve sessionId. Three paths:
-    //   1. Explicit sessionId on request → must already exist (load).
-    //   2. Leaf (subagent) → ephemeral synthetic id; always fresh.
-    //   3. Root, no sessionId → look up target's sessionPolicy:
-    //        - "parent-reuse" + parentSessionId present → key reuses the same
-    //          target session across multiple calls from the same parent.
-    //        - otherwise → fresh randomUUID.
-    //      In both root cases, if the resolved key has no existing session in
-    //      the target's store, create one before driving the SDK. (Loading
-    //      `getSessionManager` only resolves existing sessions.)
     let sessionId: string;
     if (req.sessionId) {
       sessionId = req.sessionId;
-    } else if (isLeaf) {
+    } else if (isClaude) {
+      sessionId = `claude:${runId}`;
+    } else if (isSubagent) {
       sessionId = `subagent:${runId}`;
     } else {
       const policy: AgentSessionPolicy = agent!.sessionPolicy ?? "parent-reuse";
@@ -198,15 +210,23 @@ export class AgentRuntime {
     log.info("sendMessage", { runId, agentId: req.to, kind, sessionId });
 
     try {
-      yield* this.builtinRunner.sendMessage({
-        request: req,
-        ...(agent ? { agent } : {}),
-        kind,
-        sessionId,
-        runId,
-        abort: abort.signal,
-        onSessionReady: (session) => { handle.session = session; },
-      });
+      if (isClaude) {
+        yield* this.claudeRunner!.sendMessage({
+          request: req,
+          runId,
+          abort: abort.signal,
+        });
+      } else {
+        yield* this.builtinRunner!.sendMessage({
+          request: req,
+          ...(agent ? { agent } : {}),
+          kind,
+          sessionId,
+          runId,
+          abort: abort.signal,
+          onSessionReady: (session) => { handle.session = session; },
+        });
+      }
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
       this.runs.delete(runId);
