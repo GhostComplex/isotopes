@@ -13,8 +13,8 @@ import type {
   RunInfo,
 } from "./types.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
-import { BuiltinRunner } from "./runners/builtin.js";
-import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude.js";
+import { PiRunner } from "./runner/pi-runner.js";
+import { ClaudeRunner, type ClaudeRunnerOptions } from "./runner/claude-runner.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
@@ -63,7 +63,7 @@ export class SendMessageValidationError extends Error {
 
 export class AgentRuntime {
   private allowedRoots: string[];
-  private builtinRunner?: BuiltinRunner;
+  private piRunner?: PiRunner;
   private claudeRunner?: ClaudeRunner;
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
@@ -71,12 +71,12 @@ export class AgentRuntime {
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
     this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
-    if (opts.core) this.builtinRunner = new BuiltinRunner(opts.core);
+    if (opts.core) this.piRunner = new PiRunner(opts.core);
     if (opts.claude) this.claudeRunner = new ClaudeRunner(opts.claude);
   }
 
-  hasBuiltinRunner(): boolean {
-    return this.builtinRunner !== undefined;
+  hasPiRunner(): boolean {
+    return this.piRunner !== undefined;
   }
 
   hasClaudeRunner(): boolean {
@@ -150,8 +150,8 @@ export class AgentRuntime {
     if (isLeaf && req.sessionId) {
       throw new SendMessageValidationError("sendMessage: leaf sessions are not resumable; omit sessionId");
     }
-    if (!isClaude && !this.builtinRunner) {
-      throw new SendMessageValidationError("AgentRuntime: builtin runner not configured (pass `core` to constructor)");
+    if (!isClaude && !this.piRunner) {
+      throw new SendMessageValidationError("AgentRuntime: pi runner not configured (pass `core` to constructor)");
     }
     if (req.cwd) {
       try { this.validateCwd(req.cwd); }
@@ -227,7 +227,7 @@ export class AgentRuntime {
           abort: abort.signal,
         });
       } else {
-        yield* this.builtinRunner!.sendMessage({
+        yield* this.piRunner!.sendMessage({
           request: req,
           ...(agent ? { agent } : {}),
           kind,
