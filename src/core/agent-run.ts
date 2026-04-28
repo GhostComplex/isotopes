@@ -133,12 +133,14 @@ export async function consumeRootRun(
 
 /**
  * Convenience: cancel an in-flight root run by sessionId. Returns false
- * when no active run is found for that session.
+ * when no active run is found for that session. `reason` ("user" |
+ * "timeout" | etc.) is plumbed through to the request's onCancel hook
+ * so the caller can shape its result message.
  */
-export function cancelRunBySessionId(runtime: AgentRuntime, sessionId: string): boolean {
+export function cancelRunBySessionId(runtime: AgentRuntime, sessionId: string, reason: string = "user"): boolean {
   const run = runtime.listRuns().find((r) => r.sessionId === sessionId);
   if (!run) return false;
-  return runtime.cancel(run.runId);
+  return runtime.cancel(run.runId, { reason });
 }
 
 /** Convenience: is there an in-flight root run for this sessionId? */

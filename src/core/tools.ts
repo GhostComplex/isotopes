@@ -11,6 +11,7 @@ import type { SendMessageRequest } from "../agents/types.js";
 import { getMessageContext } from "../transport/context.js";
 import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
 import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
+import { failureTracker } from "../agents/failure-tracker.js";
 import { getAgentEndMeta } from "./messages.js";
 import { createLogger } from "./logger.js";
 const log = createLogger("tools:send-message");
@@ -254,6 +255,22 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
       const ctx = getMessageContext();
+      const callerSessionId = ctx?.parentSessionId;
+
+      // Pre-flight: block runaway loops on the *parent* session level.
+      // Same key (parentSessionId, content) is used by recordCancel /
+      // recordFailure / recordSpawn below so the LLM sees a consistent
+      // signal across retries.
+      if (callerSessionId) {
+        const block = failureTracker.shouldBlock(callerSessionId, content);
+        if (block.blocked) {
+          log.warn("send_message blocked", { from: parentAgentId, to, reason: block.reason });
+          return `[blocked] ${block.reason}`;
+        }
+        failureTracker.recordSpawn(callerSessionId);
+      }
+
+      let cancelReason: string | undefined;
       const req: SendMessageRequest = {
         to,
         content,
@@ -264,6 +281,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         ...(isSubagent && parentProvider && parentTools
           ? { leafContext: { provider: parentProvider, tools: parentTools } }
           : {}),
+        onCancel: (reason) => { cancelReason = reason; },
       };
       log.info("send_message", { from: parentAgentId, to, cwd, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
 
@@ -307,8 +325,22 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         if (sink) {
           await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
         }
+        if (callerSessionId) failureTracker.recordFailure(callerSessionId, content, msg);
         return `[send_message failed] ${msg}`;
       }
+
+      // User-initiated cancellation: don't surface as a generic failure
+      // (LLMs read "[failed]" as "try again"). Tell the LLM explicitly
+      // not to retry, and record the cancel so any retry bypassing the
+      // signal hits the block path on the next call.
+      if (cancelReason === "user") {
+        if (callerSessionId) failureTracker.recordCancel(callerSessionId, content);
+        if (sink) {
+          await sink.finish({ success: false, error: "cancelled by user", durationMs: Date.now() - startedAt });
+        }
+        return `[send_message cancelled by user — do not retry this same request]`;
+      }
+
       if (sink) {
         await sink.finish({
           success: !errorMessage,
@@ -318,6 +350,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         });
       }
       if (errorMessage) {
+        if (callerSessionId) failureTracker.recordFailure(callerSessionId, content, errorMessage);
         return `[send_message failed] ${errorMessage}`;
       }
       const trimmed = assistantText.trim();

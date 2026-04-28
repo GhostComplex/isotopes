@@ -37,6 +37,7 @@ interface RunHandle {
   abort: AbortController;
   parentSessionId?: string;
   session?: AgentSession;
+  cancelReason?: string;
 }
 
 export interface AgentRuntimeOptions {
@@ -203,7 +204,7 @@ export class AgentRuntime {
     let timeoutHandle: NodeJS.Timeout | undefined;
     if (kind === "leaf") {
       const sec = req.timeoutSeconds ?? LEAF_DEFAULT_TIMEOUT_SEC;
-      timeoutHandle = setTimeout(() => abort.abort(), sec * 1000);
+      timeoutHandle = setTimeout(() => this.cancel(runId, { reason: "timeout" }), sec * 1000);
       timeoutHandle.unref();
     }
 
@@ -235,6 +236,11 @@ export class AgentRuntime {
       }
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
+      if (handle.cancelReason && req.onCancel) {
+        try { req.onCancel(handle.cancelReason); } catch (err) {
+          log.warn("onCancel callback threw", { runId, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
       this.runs.delete(runId);
     }
   }
@@ -243,10 +249,11 @@ export class AgentRuntime {
   // Lifecycle control
   // -------------------------------------------------------------------------
 
-  cancel(runId: string): boolean {
+  cancel(runId: string, opts?: { reason?: string }): boolean {
     const handle = this.runs.get(runId);
     if (!handle) return false;
-    log.info("Cancelling run", { runId, agentId: handle.agentId });
+    if (opts?.reason) handle.cancelReason = opts.reason;
+    log.info("Cancelling run", { runId, agentId: handle.agentId, reason: opts?.reason });
     handle.abort.abort();
     return true;
   }

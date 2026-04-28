@@ -56,6 +56,11 @@ export interface SendMessageRequest {
    * UI (Discord thread streaming, audit logs) using the runId without
    * having to scan listRuns(). */
   onRunStart?: (runId: string) => void;
+  /** Called synchronously when `runtime.cancel(runId, { reason })` runs
+   * for this request. Useful to distinguish user-initiated cancels from
+   * timeouts / target errors so the result returned to the caller's LLM
+   * can encourage or discourage a retry. */
+  onCancel?: (reason: string) => void;
 }
 
 export interface RunInfo {

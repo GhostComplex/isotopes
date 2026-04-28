@@ -390,7 +390,7 @@ export class DiscordTransport implements Transport {
       if (isThread) {
         const subRunId = this.subagentThreads.get(msg.channelId);
         if (subRunId && this.config.agentRuntime) {
-          const cancelled = this.config.agentRuntime.cancel(subRunId);
+          const cancelled = this.config.agentRuntime.cancel(subRunId, { reason: "user" });
           if (cancelled) {
             log.info(`Sub-run /stop`, { runId: subRunId, threadId: msg.channelId });
             await (msg.channel as SendableChannel).send("🛑 Sub-run cancelled.");
