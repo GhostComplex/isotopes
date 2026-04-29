@@ -704,7 +704,6 @@ export function createWorkspaceToolsWithGuards(
     codingMode = "auto",
     fsImpl,
     parentAgentId,
-   
     parentTools,
     runtime,
     spawnableAgentIds,
