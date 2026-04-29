@@ -61,12 +61,57 @@ export class SendMessageValidationError extends Error {
   }
 }
 
+/**
+ * Per-session listener registry: a thin pub/sub keyed by sessionId.
+ * Owned by AgentRuntime as a private field; not exported because callers
+ * should subscribe via runtime.on / runtime.endSession.
+ */
+class SessionEventBus {
+  private listeners = new Map<string, Set<(event: AgentEvent) => void>>();
+
+  on(sessionId: string, listener: (event: AgentEvent) => void): () => void {
+    let set = this.listeners.get(sessionId);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(sessionId, set);
+    }
+    set.add(listener);
+    return () => {
+      set!.delete(listener);
+    };
+  }
+
+  emit(sessionId: string, event: AgentEvent): void {
+    const set = this.listeners.get(sessionId);
+    if (!set) return;
+    for (const fn of set) {
+      try {
+        fn(event);
+      } catch (err) {
+        log.warn("Session event listener threw", err);
+      }
+    }
+  }
+
+  endSession(sessionId: string): void {
+    const set = this.listeners.get(sessionId);
+    if (!set) return;
+    set.clear();
+    this.listeners.delete(sessionId);
+  }
+
+  listenerCount(sessionId: string): number {
+    return this.listeners.get(sessionId)?.size ?? 0;
+  }
+}
+
 export class AgentRuntime {
   private allowedRoots: string[];
   private piRunner?: PiRunner;
   private claudeRunner?: ClaudeRunner;
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
+  private events = new SessionEventBus();
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
@@ -81,6 +126,44 @@ export class AgentRuntime {
 
   hasClaudeRunner(): boolean {
     return this.claudeRunner !== undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Per-session event subscription — facade over SessionEventBus (defined above)
+  // ---------------------------------------------------------------------------
+
+  /** Subscribe to events for a session. Returns an unsubscribe function. */
+  on(sessionId: string, listener: (event: AgentEvent) => void): () => void {
+    return this.events.on(sessionId, listener);
+  }
+
+  /**
+   * @internal Called by agent-run.ts to fan out events from the runner loop.
+   * External callers should subscribe via on(), not emit. Listener errors are
+   * logged and isolated.
+   */
+  emitSessionEvent(sessionId: string, event: AgentEvent): void {
+    this.events.emit(sessionId, event);
+  }
+
+  /**
+   * Remove all listeners for a session and free the underlying entry.
+   * Intended for the session's owner to call in a `finally` block.
+   *
+   * **Single-owner assumption**: the bus assumes one logical flow per
+   * sessionId at a time. If a session ever has multiple concurrent owners
+   * (e.g. HTTP retry overlap, Discord reconnect mid-run), calling
+   * endSession from one owner will tear down the other's subscription
+   * too. The unsubscribe handle returned by `on()` is per-listener and
+   * always safe; `endSession` is the bigger hammer.
+   */
+  endSession(sessionId: string): void {
+    this.events.endSession(sessionId);
+  }
+
+  /** Number of active listeners for a session (mainly for tests / diagnostics). */
+  sessionListenerCount(sessionId: string): number {
+    return this.events.listenerCount(sessionId);
   }
 
   validateCwd(cwd: string): void {
