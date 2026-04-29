@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { resolveBinding } from "./bindings.js";
 import type { Binding } from "./types.js";
-import { toBindings } from "./config.js";
+import { toBindings } from "../vnext/config.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

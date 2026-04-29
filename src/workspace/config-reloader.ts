@@ -2,7 +2,7 @@
 // Watches the Isotopes config file and reloads it when modified.
 
 import { createLogger } from "../vnext/logging/logger.js";
-import { loadConfig, type IsotopesConfigFile } from "../core/config.js";
+import { loadConfig, type IsotopesConfigFile } from "../vnext/config.js";
 import { WorkspaceWatcher, type FileChange } from "./watcher.js";
 
 const log = createLogger("config-reloader");

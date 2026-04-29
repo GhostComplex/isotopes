@@ -33,7 +33,7 @@ export interface DiscordAnswers {
   groupAllowlist?: string[];
 }
 
-import type { SpawnPermissionMode } from "../core/config.js";
+import type { SpawnPermissionMode } from "../vnext/config.js";
 export type SubagentEnableShellChoice = "yes" | "no";
 export type SubagentTypeChoice = "claude" | "builtin" | "both";
 

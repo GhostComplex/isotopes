@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import { VERSION } from "./version.js";
-import { loadConfig } from "./core/config.js";
+import { loadConfig } from "./vnext/config.js";
 import { logger } from "./vnext/logging/logger.js";
 import { createRuntime } from "./core/runtime.js";
 import {

@@ -1,4 +1,4 @@
-// src/core/config.ts — Configuration loading for Isotopes
+// src/vnext/config.ts — Configuration loading for Isotopes
 // Loads agent and runtime configuration from YAML/JSON files.
 
 import fs from "node:fs/promises";
@@ -16,7 +16,7 @@ import type {
   PeerKind,
   ProviderConfig,
   SessionConfig,
-} from "./types.js";
+} from "../core/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "../sandbox/config.js";
 import type { PluginConfigEntry } from "../plugins/types.js";
 import { createLogger } from "../vnext/logging/logger.js";

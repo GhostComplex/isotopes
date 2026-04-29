@@ -11,7 +11,7 @@ import {
   type AgentToolsConfigFile,
   type ProviderConfigFile,
   type SpawningConfigFile,
-} from "./config.js";
+} from "../vnext/config.js";
 import {
   ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,

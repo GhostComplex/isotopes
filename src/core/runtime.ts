@@ -7,7 +7,7 @@ import {
   resolveSpawningConfig,
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
-} from "./config.js";
+} from "../vnext/config.js";
 import path from "node:path";
 import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";

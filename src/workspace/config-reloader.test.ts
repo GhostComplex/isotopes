@@ -6,7 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import YAML from "yaml";
 import { ConfigReloader } from "./config-reloader.js";
-import type { IsotopesConfigFile } from "../core/config.js";
+import type { IsotopesConfigFile } from "../vnext/config.js";
 
 describe("ConfigReloader", () => {
   let tempDir: string;

@@ -1,4 +1,4 @@
-// src/core/config.test.ts — Unit tests for config loading
+// src/vnext/config.test.ts — Unit tests for config loading
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs/promises";

@@ -7,7 +7,7 @@ import type { SessionStore, Tool, Transport } from "../core/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
-import type { IsotopesConfigFile } from "../core/config.js";
+import type { IsotopesConfigFile } from "../vnext/config.js";
 import type { UsageTracker } from "../core/usage-tracker.js";
 import type { LazyTransportContext } from "../tools/react.js";
 import type { AgentRuntime } from "../agents/runtime.js";
