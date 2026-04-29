@@ -1,4 +1,4 @@
-// src/core/channel-history.ts — Transport-agnostic channel history buffer.
+// src/vnext/gateway/channel-history.ts — Transport-agnostic channel history buffer.
 // Records messages the bot observes but doesn't respond to, then injects
 // them as context when the bot IS triggered.
 
