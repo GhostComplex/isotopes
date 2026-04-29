@@ -6,7 +6,7 @@ import type { Transport, SessionStore } from "../../core/types.js";
 import { DiscordTransportManager } from "./discord-manager.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import type { DiscordChannelsConfig } from "./types.js";
-import { createLogger } from "../../core/logger.js";
+import { createLogger } from "../../vnext/logging/logger.js";
 import path from "node:path";
 
 const log = createLogger("plugin:discord");

@@ -3,7 +3,7 @@
 
 import http from "node:http";
 import path from "node:path";
-import { createLogger } from "../../core/logger.js";
+import { createLogger } from "../../vnext/logging/logger.js";
 import type { CronScheduler } from "../../automation/cron-job.js";
 import type { ConfigReloader } from "../../workspace/config-reloader.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";

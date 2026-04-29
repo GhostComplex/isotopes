@@ -2,7 +2,7 @@
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import { HookRegistry } from "./hooks.js";
 import { UIRegistry } from "./ui-registry.js";
 import { ToolPluginRegistry } from "./tool-registry.js";

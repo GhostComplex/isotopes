@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 
-vi.mock("../core/logger.js", () => ({
+vi.mock("../vnext/logging/logger.js", () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),

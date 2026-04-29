@@ -1,4 +1,4 @@
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 const log = createLogger("failure-tracker");
 

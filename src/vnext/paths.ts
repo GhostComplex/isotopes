@@ -1,4 +1,4 @@
-// src/core/paths.ts — Directory and path management for Isotopes
+// src/vnext/paths.ts — Directory and path management for Isotopes
 // Centralizes all path logic for consistent directory structure.
 
 import os from "node:os";

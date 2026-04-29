@@ -2,7 +2,7 @@
 // Watches workspace files and triggers agent reload when they change.
 
 import path from "node:path";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import type { DefaultAgentManager } from '../core/agent-manager.js';;
 import { WorkspaceWatcher } from "./watcher.js";
 

@@ -12,7 +12,7 @@ import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import type { ReplyToMode } from "./reply-directive.js";
 import type { UsageTracker } from "../../core/usage-tracker.js";
-import { createLogger } from "../../core/logger.js";
+import { createLogger } from "../../vnext/logging/logger.js";
 
 const log = createLogger("discord-manager");
 

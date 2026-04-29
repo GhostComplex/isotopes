@@ -1,4 +1,4 @@
-// src/core/logger.test.ts — Unit tests for logger
+// src/vnext/logging/logger.test.ts — Unit tests for logger
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createLogger, logger, loggers } from "./logger.js";

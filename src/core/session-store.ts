@@ -15,7 +15,7 @@ import type {
   SessionStoreConfig,
   SessionConfig,
 } from "./types.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 const log = createLogger("session-store");
 

@@ -16,7 +16,7 @@ import {
   ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
   resolveExplicitWorkspacePath,
-} from "./paths.js";
+} from "../vnext/paths.js";
 import {
   loadWorkspaceContext,
   buildSystemPrompt,
@@ -37,7 +37,7 @@ import * as nodeFs from "node:fs/promises";
 import { PiMonoCore, type AgentServiceCache } from "./pi-mono.js";
 import type { DefaultAgentManager } from "./agent-manager.js";
 import type { AgentConfig } from "./types.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 
 const log = createLogger("agent-init");

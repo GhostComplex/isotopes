@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 
 import { SessionStoreManager } from "./session-store-manager.js";
-import { getAgentSessionsDir, normalizeAgentId } from "./paths.js";
+import { getAgentSessionsDir, normalizeAgentId } from "../vnext/paths.js";
 
 let tmpRoot: string;
 let originalHome: string | undefined;

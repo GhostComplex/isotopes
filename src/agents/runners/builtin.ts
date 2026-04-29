@@ -2,7 +2,7 @@
 // and leaf (ephemeral cache + parent's filtered tools).
 
 import { randomUUID } from "node:crypto";
-import { createLogger } from "../../core/logger.js";
+import { createLogger } from "../../vnext/logging/logger.js";
 import { PiMonoCore } from "../../core/pi-mono.js";
 import { ToolRegistry, type ToolHandler } from "../../core/tools.js";
 import { buildSpawnAgentSystemPrompt } from "../builtin/system-prompt.js";

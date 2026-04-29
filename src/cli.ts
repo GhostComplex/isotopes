@@ -8,13 +8,13 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import { VERSION } from "./version.js";
 import { loadConfig } from "./core/config.js";
-import { logger } from "./core/logger.js";
+import { logger } from "./vnext/logging/logger.js";
 import { createRuntime } from "./core/runtime.js";
 import {
   getConfigPath,
   getIsotopesHome,
   getLogsDir,
-} from "./core/paths.js";
+} from "./vnext/paths.js";
 import { DaemonProcess } from "./daemon/process.js";
 import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
 

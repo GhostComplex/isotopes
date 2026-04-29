@@ -6,7 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 const execAsync = promisify(exec);
 const log = createLogger("daemon:service");

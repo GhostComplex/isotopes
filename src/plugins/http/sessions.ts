@@ -9,7 +9,7 @@
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
-import { createLogger } from "../../core/logger.js";
+import { createLogger } from "../../vnext/logging/logger.js";
 import { randomUUID } from "node:crypto";
 import { consumeRootRun, cancelRunBySessionId } from "../../core/agent-run.js";
 import { userMessage } from "../../core/messages.js";

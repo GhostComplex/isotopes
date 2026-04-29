@@ -12,7 +12,7 @@
 //                      AgentEvent types.
 //   3. finish(result)→ posts a summary, unregisters the thread.
 
-import { createLogger } from "../../core/logger.js";
+import { createLogger } from "../../vnext/logging/logger.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { DiscordSubagentStreamContext } from "./subagent-stream-context.js";
 

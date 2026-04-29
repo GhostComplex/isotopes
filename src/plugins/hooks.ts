@@ -1,7 +1,7 @@
 // src/plugins/hooks.ts — Typed hook registry for plugin lifecycle events
 
 import type { HookName, HookPayloads } from "./types.js";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 type HookHandler<H extends HookName> = (payload: HookPayloads[H]) => void | Promise<void>;
 

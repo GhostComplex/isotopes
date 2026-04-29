@@ -1,4 +1,4 @@
-// src/core/logger.ts — Logging system for Isotopes
+// src/vnext/logging/logger.ts — Logging system for Isotopes
 // Provides structured logging with levels, timestamps, and tags.
 
 /** Log severity level. */

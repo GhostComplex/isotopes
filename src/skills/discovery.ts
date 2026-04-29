@@ -3,7 +3,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { getIsotopesHome } from "../core/paths.js";
+import { getIsotopesHome } from "../vnext/paths.js";
 
 // Directories to skip during recursive scanning
 const IGNORED_DIRS = new Set([

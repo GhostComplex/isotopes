@@ -4,7 +4,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createLogger, type Logger } from "../core/logger.js";
+import { createLogger, type Logger } from "../vnext/logging/logger.js";
 import { isSilentReply } from "../core/silent-reply.js";
 
 // ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-str
 import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
 import { failureTracker } from "../agents/failure-tracker.js";
 import { getAgentEndMeta } from "./messages.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 const log = createLogger("tools:send-message");
 /** Function that executes a tool call and returns a string result. */
 export type ToolHandler = (args: unknown) => Promise<string>;

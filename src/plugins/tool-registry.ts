@@ -2,7 +2,7 @@
 
 import type { ToolEntry } from "../core/tools.js";
 import type { PluginToolContext, PluginToolFactory } from "./types.js";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 const log = createLogger("plugins:tools");
 
