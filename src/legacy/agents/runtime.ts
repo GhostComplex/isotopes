@@ -13,7 +13,7 @@ import type {
   RunInfo,
 } from "./types.js";
 import type { PiMonoCore } from "../core/pi-mono.js";
-import { PiRunner } from "./runners/pi.js";
+import { PiRunner } from "../../agent/runners/pi/runner.js";
 import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";

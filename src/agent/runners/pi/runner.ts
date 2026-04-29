@@ -1,16 +1,16 @@
-// In-process runner. Two kinds: root (registered agent's cache+SOUL+store)
+// src/agent/runners/pi/runner.ts — In-process runner. Two kinds: root (registered agent's cache+SOUL+store)
 // and leaf (ephemeral cache + parent's filtered tools).
 
 import { randomUUID } from "node:crypto";
 import { createLogger } from "../../../logging/logger.js";
-import { PiMonoCore } from "../../core/pi-mono.js";
-import { ToolRegistry, type ToolHandler } from "../../core/tools.js";
-import { buildSpawnAgentSystemPrompt } from "../builtin/system-prompt.js";
+import { PiMonoCore } from "../../../legacy/core/pi-mono.js";
+import { ToolRegistry, type ToolHandler } from "../../../legacy/core/tools.js";
+import { buildSpawnAgentSystemPrompt } from "../../../legacy/agents/builtin/system-prompt.js";
 import type {
   AgentSessionKind,
   RegisteredAgent,
   SendMessageRequest,
-} from "../types.js";
+} from "../../../legacy/agents/types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession, AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
