@@ -1,5 +1,6 @@
 // src/agent/types.ts — Agent-layer types (config, runtime contract)
 
+import type { KnownProvider } from "@mariozechner/pi-ai";
 import type { SandboxConfig } from "../legacy/sandbox/config.js";
 import type { Tool, AgentToolSettings } from "../tools/types.js";
 
@@ -10,9 +11,10 @@ import type { Tool, AgentToolSettings } from "../tools/types.js";
 /**
  * LLM provider connection. Configured once at the top of isotopes.yaml.
  *
- * - `type` is a pi-ai provider key (e.g. "anthropic", "openai", "amazon-bedrock").
- *   See pi-ai's `KnownProvider` for the full list. Custom strings are allowed
- *   if a custom provider plugin registers one.
+ * - `type` is a pi-ai provider key (e.g. "anthropic", "openai", "github-copilot",
+ *   "amazon-bedrock"). The full set is pi-ai's `KnownProvider` union (23 values
+ *   today). Custom strings are allowed if a custom provider plugin registers one
+ *   — same `KnownProvider | string` pattern pi-ai uses for `Provider`.
  * - `defaultModel` is the model used by agents that don't specify their own.
  * - `baseUrl` / `headers` cover proxy / gateway scenarios — replaces the old
  *   `*-proxy` type variants.
@@ -20,7 +22,7 @@ import type { Tool, AgentToolSettings } from "../tools/types.js";
  * Per-agent overrides are no longer supported — agents pick a model only.
  */
 export interface ProviderConfig {
-  type: string;
+  type: KnownProvider | (string & {});
   baseUrl?: string;
   apiKey?: string;
   defaultModel?: string;
