@@ -8,19 +8,6 @@ import type { Tool, AgentToolSettings } from "../tools/types.js";
 // Provider config (single global provider; agents pick model only)
 // ---------------------------------------------------------------------------
 
-/**
- * LLM provider connection. Configured once at the top of isotopes.yaml.
- *
- * - `type` is a pi-ai provider key (e.g. "anthropic", "openai", "github-copilot",
- *   "amazon-bedrock"). The full set is pi-ai's `KnownProvider` union (23 values
- *   today). Custom strings are allowed if a custom provider plugin registers one
- *   — same `KnownProvider | string` pattern pi-ai uses for `Provider`.
- * - `defaultModel` is the model used by agents that don't specify their own.
- * - `baseUrl` / `headers` cover proxy / gateway scenarios — replaces the old
- *   `*-proxy` type variants.
- *
- * Per-agent overrides are no longer supported — agents pick a model only.
- */
 export interface ProviderConfig {
   type: KnownProvider | (string & {});
   baseUrl?: string;
@@ -38,7 +25,6 @@ export interface AgentConfig {
   id: string;
   tools?: Tool[];
   toolSettings?: AgentToolSettings;
-  /** Model id (e.g. "claude-sonnet-4.5"). Falls back to provider.defaultModel. */
   model?: string;
   /** Context compaction configuration */
   compaction?: CompactionConfig;

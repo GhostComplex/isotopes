@@ -43,7 +43,6 @@ function assertPositiveNumber(value: unknown, label: string): void {
 // Config schema
 // ---------------------------------------------------------------------------
 
-/** Provider configuration in config file (single global provider). */
 export interface ProviderConfigFile {
   type: KnownProvider | (string & {});
   baseUrl?: string;
@@ -83,7 +82,6 @@ export interface AgentConfigFile {
    */
   workspace?: string;
   tools?: AgentToolsConfigFile;
-  /** Model id (e.g. "claude-sonnet-4.5"). Falls back to provider.defaultModel. */
   model?: string;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;

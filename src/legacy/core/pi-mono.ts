@@ -75,21 +75,12 @@ function resolveKnownModel(
   throw new Error(`Unknown ${provider} model: ${modelId}`);
 }
 
-/**
- * Resolve a Model<Api> from the global provider config + an explicit model id.
- *
- * Per-agent provider override is no longer supported — agents pick `model`
- * only. The provider type / baseUrl / headers / apiKey come from the single
- * global ProviderConfig.
- */
 export function resolveModel(globalProvider: ProviderConfig, modelId: string): Model<Api> {
   const provider = globalProvider.type as Parameters<typeof getModel>[0];
   const model = resolveKnownModel(provider, modelId);
 
   const proxyHeaders: Record<string, string> = { ...(globalProvider.headers ?? {}) };
-  // For provider types whose pi-ai catalog model expects an explicit Authorization
-  // header instead of pi-ai's built-in env auth, stamp the global apiKey here.
-  // This was the old "*-proxy" behavior — now triggered by setting baseUrl + apiKey.
+  // baseUrl + apiKey together → stamp Authorization (old "*-proxy" behavior)
   if (globalProvider.baseUrl && globalProvider.apiKey) {
     proxyHeaders.Authorization ??= `Bearer ${globalProvider.apiKey}`;
   }
@@ -167,7 +158,6 @@ const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME ||
 
 export interface AgentServiceCacheConfig {
   agentConfig: AgentConfig;
-  /** Single global provider — auth + api type. Per-agent override removed. */
   globalProvider: ProviderConfig;
   toolRegistry?: ToolRegistry;
 }
@@ -187,8 +177,6 @@ export class AgentServiceCache {
     this.model = resolveModel(globalProvider, modelId);
     this.agentDir = path.join(ISOTOPES_HOME, "agents", agentConfig.id, "agent");
 
-    // Build in-memory auth storage from the global provider's API key.
-    // Provider key is the SDK provider name (e.g. "anthropic", "openai").
     const creds: Record<string, { type: "api_key"; key: string }> = {};
     if (globalProvider.apiKey) {
       creds[globalProvider.type] = { type: "api_key", key: globalProvider.apiKey };
@@ -271,10 +259,6 @@ export class AgentServiceCache {
 export class PiMonoCore {
   private toolRegistries = new Map<string, ToolRegistry>();
 
-  /**
-   * @param globalProvider — single provider config used for all agents
-   *        (per-agent provider override is no longer supported)
-   */
   constructor(private readonly globalProvider: ProviderConfig) {}
 
   setToolRegistry(agentId: string, registry: ToolRegistry): void {
