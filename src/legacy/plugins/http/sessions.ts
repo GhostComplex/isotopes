@@ -13,7 +13,6 @@ import { createLogger } from "../../../logging/logger.js";
 import { randomUUID } from "node:crypto";
 import { consumeRootRun, cancelRunBySessionId } from "../../core/agent-run.js";
 import { userMessage } from "../../../agent/runners/pi/messages.js";
-import { agentEventBus } from "../../core/agent-event-bus.js";
 import type { DefaultSessionStore } from "../../core/session-store.js";
 import type { Session } from "../../core/types.js";
 
@@ -304,8 +303,7 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
-  const sessionEmitter = agentEventBus.session(sessionId);
-  const unsub = sessionEmitter.on((e) => {
+  const unsub = deps.agentRuntime.on(sessionId, (e) => {
     if (e.type === "message_update") {
       const ame = e.assistantMessageEvent;
       if (ame.type === "text_delta") {
@@ -350,7 +348,7 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
     writeEvent("error", { message: err instanceof Error ? err.message : String(err) });
   } finally {
     unsub();
-    agentEventBus.removeSession(sessionId);
+    deps.agentRuntime.endSession(sessionId);
     res.end();
   }
 });

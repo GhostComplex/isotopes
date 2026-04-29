@@ -26,7 +26,6 @@ import { loggers } from "../../../logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../core/agent-run.js";
 import { runWithDiscordSubagentStream, type DiscordSubagentStreamContext } from "./subagent-stream-context.js";
-import { agentEventBus } from "../../core/agent-event-bus.js";
 import { isSilentReply } from "../../core/silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
@@ -734,7 +733,12 @@ export class DiscordTransport implements Transport {
     const toolSummaries: string[] = [];
     let streamBuffer: SegmentedStreamBuffer | null = null;
 
-    const unsubBus = agentEventBus.session(sessionId).on((e) => {
+    const runtime = this.config.agentRuntime;
+    if (!runtime) {
+      throw new Error("DiscordTransport.runAgentAndRespond requires agentRuntime");
+    }
+
+    const unsubBus = runtime.on(sessionId, (e) => {
       if (e.type === "message_update" && streamBuffer) {
         const ame = e.assistantMessageEvent;
         if (ame.type === "text_delta" && ame.delta.length > 0) {
@@ -767,10 +771,6 @@ export class DiscordTransport implements Transport {
       });
 
       // Create the agent loop runner function via runtime.sendMessage.
-      const runtime = this.config.agentRuntime;
-      if (!runtime) {
-        throw new Error("DiscordTransport.runAgentAndRespond requires agentRuntime");
-      }
       const runLoop = () => {
         return consumeRootRun(runtime, {
           to: agentId,
@@ -851,7 +851,7 @@ export class DiscordTransport implements Transport {
       }
     } finally {
       unsubBus();
-      agentEventBus.removeSession(sessionId);
+      runtime.endSession(sessionId);
       typing.stop();
       this.pendingMessages.delete(sessionId);
     }

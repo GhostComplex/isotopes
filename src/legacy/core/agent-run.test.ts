@@ -5,7 +5,6 @@ import { consumeRootRun, cancelRunBySessionId } from "./agent-run.js";
 import { AgentRuntime } from "../agents/runtime.js";
 import type { RegisteredAgent, SendMessageRequest } from "../agents/types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { agentEventBus } from "./agent-event-bus.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("test:agent-run");
@@ -119,7 +118,7 @@ describe("consumeRootRun", () => {
     expect(scanCount).toBe(0);
   });
 
-  it("emits every AgentEvent to agentEventBus.session(sessionId)", async () => {
+  it("emits every AgentEvent to runtime.on(sessionId)", async () => {
     const rt = new AgentRuntime();
     rt.registerAgent(fakeAgent("main"));
     installStub(rt, async function* () {
@@ -128,7 +127,7 @@ describe("consumeRootRun", () => {
     });
 
     const seen: AgentEvent["type"][] = [];
-    const unsub = agentEventBus.session("s4").on((e) => seen.push(e.type));
+    const unsub = rt.on("s4", (e) => seen.push(e.type));
     try {
       await consumeRootRun(rt, { to: "main", sessionId: "s4", content: "hi", log });
     } finally {
