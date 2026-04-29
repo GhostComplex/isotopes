@@ -32,7 +32,7 @@ import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
 import type { UsageTracker } from "../../core/usage-tracker.js";
 import { buildSessionKey } from "../../vnext/gateway/session-keys.js";
-import { ChannelHistoryBuffer, buildHistoryContext } from "../../core/channel-history.js";
+import { ChannelHistoryBuffer, buildHistoryContext } from "../../vnext/gateway/channel-history.js";
 import { DedupeCache } from "../../vnext/gateway/dedupe.js";
 import { InboundDebouncer } from "../../vnext/gateway/debounce.js";
 import { SlashCommandHandler } from "../../commands/slash-commands.js";

@@ -1,4 +1,4 @@
-// src/core/channel-history.test.ts — Tests for channel history buffer
+// src/vnext/gateway/channel-history.test.ts — Tests for channel history buffer
 
 import { describe, it, expect } from "vitest";
 import { ChannelHistoryBuffer, buildHistoryContext, type HistoryEntry } from "./channel-history.js";
