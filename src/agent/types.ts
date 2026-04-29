@@ -1,6 +1,5 @@
 // src/agent/types.ts — Agent-layer types (config, runtime contract)
 
-import type { KnownProvider } from "@mariozechner/pi-ai";
 import type { SandboxConfig } from "../legacy/sandbox/config.js";
 import type { Tool, AgentToolSettings } from "../tools/types.js";
 
@@ -8,8 +7,10 @@ import type { Tool, AgentToolSettings } from "../tools/types.js";
 // Provider config (single global provider; agents pick model only)
 // ---------------------------------------------------------------------------
 
+export type ProviderType = "anthropic" | "openai" | "github-copilot";
+
 export interface ProviderConfig {
-  type: KnownProvider | (string & {});
+  type: ProviderType;
   baseUrl?: string;
   apiKey?: string;
   defaultModel?: string;

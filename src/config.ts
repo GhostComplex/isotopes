@@ -4,7 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
-import type { KnownProvider } from "@mariozechner/pi-ai";
+import type { ProviderType } from "./agent/types.js";
 import type {
   AgentConfig,
   CompactionConfig,
@@ -44,7 +44,7 @@ function assertPositiveNumber(value: unknown, label: string): void {
 // ---------------------------------------------------------------------------
 
 export interface ProviderConfigFile {
-  type: KnownProvider | (string & {});
+  type: ProviderType;
   baseUrl?: string;
   apiKey?: string;
   defaultModel?: string;

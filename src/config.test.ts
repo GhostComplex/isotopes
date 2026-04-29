@@ -165,7 +165,7 @@ agents:
         configPath,
         `
 provider:
-  type: anthropic-proxy
+  type: anthropic
   baseUrl: https://proxy.example.com
   defaultModel: claude-sonnet
 
@@ -259,7 +259,7 @@ agents:
 
     it("uses defaultModel from global provider when agent has no model", () => {
       const agentFile = { id: "test" };
-      const defaultProvider = { type: "openai", defaultModel: "gpt-4" };
+      const defaultProvider = { type: "openai" as const, defaultModel: "gpt-4" };
 
       const config = toAgentConfig(agentFile, undefined, defaultProvider);
 
@@ -268,7 +268,7 @@ agents:
 
     it("prefers per-agent model over provider defaultModel", () => {
       const agentFile = { id: "test", model: "claude-3" };
-      const defaultProvider = { type: "openai", defaultModel: "gpt-4" };
+      const defaultProvider = { type: "openai" as const, defaultModel: "gpt-4" };
 
       const config = toAgentConfig(agentFile, undefined, defaultProvider);
 
