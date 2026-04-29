@@ -36,7 +36,7 @@ function isAgentEvent(e: { type: string }): e is AgentEvent {
   return AGENT_EVENT_TYPES.has(e.type);
 }
 
-export class BuiltinRunner {
+export class PiRunner {
   constructor(private readonly core: PiMonoCore) {}
 
   async *sendMessage(opts: {
@@ -54,8 +54,8 @@ export class BuiltinRunner {
     let cleanup: (() => void) | undefined;
 
     if (kind === "root") {
-      if (!agent) throw new Error("BuiltinRunner.sendMessage: root requires agent");
-      log.info("BuiltinRunner.sendMessage (root)", { runId, agentId: agent.id, sessionId });
+      if (!agent) throw new Error("PiRunner.sendMessage: root requires agent");
+      log.info("PiRunner.sendMessage (root)", { runId, agentId: agent.id, sessionId });
       const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
       if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
       session = await agent.cache.createSession({
@@ -65,10 +65,10 @@ export class BuiltinRunner {
       });
     } else {
       const leaf = request.leafContext;
-      if (!leaf) throw new Error("BuiltinRunner.sendMessage: leaf requires leafContext");
+      if (!leaf) throw new Error("PiRunner.sendMessage: leaf requires leafContext");
       const ephAgentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;
       const filteredTools = filterTools(leaf.tools, ephAgentId);
-      log.info("BuiltinRunner.sendMessage (leaf)", { runId, ephAgentId, toolCount: filteredTools.list().length });
+      log.info("PiRunner.sendMessage (leaf)", { runId, ephAgentId, toolCount: filteredTools.list().length });
       this.core.setToolRegistry(ephAgentId, filteredTools);
       const cache = this.core.createServiceCache({
         id: ephAgentId,
