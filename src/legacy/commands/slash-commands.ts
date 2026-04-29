@@ -2,8 +2,8 @@
 // Parses and dispatches /status, /reload, /model commands from chat messages.
 
 import type { SessionStore } from "../../sessions/types.js";
-import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
+import type { AgentRuntime } from "../agents/runtime.js";
 import { createLogger } from "../../logging/logger.js";
 import { failureTracker } from "../agents/failure-tracker.js";
 
@@ -29,8 +29,8 @@ export interface CommandContext {
   sessionId?: string;
   /** Current session key (if available) */
   sessionKey?: string;
-  /** Agent instance (if available) */
-  agentCache?: AgentServiceCache;
+  /** Runtime — used by /compact to drive SDK compaction. */
+  runtime?: AgentRuntime;
 }
 
 /** Result of executing a slash command */
@@ -203,30 +203,16 @@ export class SlashCommandHandler {
       return { response: "ℹ️ No active session to compact." };
     }
 
-    if (!ctx.agentCache) {
-      return { response: "❌ No agent cache available for compaction." };
-    }
-
-    const sessionManager = await ctx.sessionStore.getSessionManager(ctx.sessionId);
-    if (!sessionManager) {
-      return { response: "❌ Session manager not found." };
+    if (!ctx.runtime) {
+      return { response: "❌ No runtime available for compaction." };
     }
 
     try {
       const messagesBefore = (await ctx.sessionStore.getMessages(ctx.sessionId)).length;
 
-      const session = await ctx.agentCache.createSession({
-        sessionManager,
-        systemPrompt: ctx.agentManager.getSystemPrompt(ctx.agentId) ?? "",
-      });
-
-      try {
-        const compacted = await session.compact();
-        if (!compacted) {
-          return { response: "ℹ️ Nothing to compact (context too small)." };
-        }
-      } finally {
-        session.dispose();
+      const compacted = await ctx.runtime.compactSession(ctx.agentId, ctx.sessionId);
+      if (!compacted) {
+        return { response: "ℹ️ Nothing to compact (context too small)." };
       }
 
       const messagesAfter = (await ctx.sessionStore.getMessages(ctx.sessionId)).length;

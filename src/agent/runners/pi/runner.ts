@@ -1,19 +1,29 @@
-// In-process runner. Two kinds: root (registered agent's cache+SOUL+store)
-// and leaf (ephemeral cache + parent's filtered tools).
+// src/agent/runners/pi/runner.ts — In-process pi-coding-agent runner.
+// Two kinds: root (registered agent's session+SOUL+store) and leaf
+// (ephemeral session, parent's filtered tools).
 
 import { randomUUID } from "node:crypto";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import type {
+  AgentSession,
+  AgentSessionEvent,
+  AuthStorage,
+  ModelRegistry,
+} from "@mariozechner/pi-coding-agent";
+import { SessionManager } from "@mariozechner/pi-coding-agent";
+
 import { createLogger } from "../../../logging/logger.js";
-import { PiMonoCore } from "../../core/pi-mono.js";
-import { ToolRegistry, type ToolHandler } from "../../core/tools.js";
-import { buildSpawnAgentSystemPrompt } from "../builtin/system-prompt.js";
+import type { ProviderConfig } from "../../types.js";
+import type { Tool } from "../../../tools/types.js";
+import type { ToolHandler } from "../../../legacy/core/tools.js";
+import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
+import { buildSpawnAgentSystemPrompt } from "../../../legacy/agents/builtin/system-prompt.js";
 import type {
   AgentSessionKind,
   RegisteredAgent,
   SendMessageRequest,
-} from "../types.js";
-import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { AgentSession, AgentSessionEvent } from "@mariozechner/pi-coding-agent";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
+} from "../../../legacy/agents/types.js";
+import { createPiAgentSession } from "./session-factory.js";
 
 const DENIED_TOOLS: ReadonlySet<string> = new Set([
   "write_file",
@@ -23,7 +33,7 @@ const DENIED_TOOLS: ReadonlySet<string> = new Set([
   "send_message",
 ]);
 
-const log = createLogger("agents:runner:builtin");
+const log = createLogger("agents:runner:pi");
 
 const AGENT_EVENT_TYPES = new Set([
   "agent_start", "agent_end",
@@ -36,8 +46,17 @@ function isAgentEvent(e: { type: string }): e is AgentEvent {
   return AGENT_EVENT_TYPES.has(e.type);
 }
 
+export interface PiRunnerDeps {
+  globalProvider: ProviderConfig;
+  authStorage: AuthStorage;
+  modelRegistry: ModelRegistry;
+  /** Per-agent tool entries — runtime owns the per-agent tools map. */
+  getAgentTools: (agentId: string) => Array<{ tool: Tool; handler: ToolHandler }>;
+  hooks?: HookRegistry;
+}
+
 export class PiRunner {
-  constructor(private readonly core: PiMonoCore) {}
+  constructor(private readonly deps: PiRunnerDeps) {}
 
   async *sendMessage(opts: {
     request: SendMessageRequest;
@@ -51,36 +70,44 @@ export class PiRunner {
     const { request, agent, kind, sessionId, runId, abort, onSessionReady } = opts;
 
     let session: AgentSession;
-    let cleanup: (() => void) | undefined;
 
     if (kind === "root") {
       if (!agent) throw new Error("PiRunner.sendMessage: root requires agent");
       log.info("PiRunner.sendMessage (root)", { runId, agentId: agent.id, sessionId });
       const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
       if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
-      session = await agent.cache.createSession({
+      session = await createPiAgentSession({
+        globalProvider: this.deps.globalProvider,
+        authStorage: this.deps.authStorage,
+        modelRegistry: this.deps.modelRegistry,
+        agentConfig: agent.config,
+        tools: this.deps.getAgentTools(agent.id),
         sessionManager,
         systemPrompt: agent.systemPrompt,
         ...(request.cwd ? { cwd: request.cwd } : {}),
+        ...(this.deps.hooks ? { hooks: this.deps.hooks } : {}),
       });
     } else {
       const leaf = request.leafContext;
       if (!leaf) throw new Error("PiRunner.sendMessage: leaf requires leafContext");
       const ephAgentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;
-      const filteredTools = filterTools(leaf.tools, ephAgentId);
-      log.info("PiRunner.sendMessage (leaf)", { runId, ephAgentId, toolCount: filteredTools.list().length });
-      this.core.setToolRegistry(ephAgentId, filteredTools);
-      const cache = this.core.createServiceCache({
-        id: ephAgentId,
-        compaction: { mode: "off" },
-      });
+      const filteredTools = filterToolEntries(leaf.tools);
+      log.info("PiRunner.sendMessage (leaf)", { runId, ephAgentId, toolCount: filteredTools.length });
       const sessionManager = SessionManager.inMemory();
       const systemPrompt = buildSpawnAgentSystemPrompt({
         task: request.content,
         ...(leaf.extraSystemPrompt ? { extraSystemPrompt: leaf.extraSystemPrompt } : {}),
       });
-      session = await cache.createSession({ sessionManager, systemPrompt });
-      cleanup = () => this.core.clearToolRegistry(ephAgentId);
+      session = await createPiAgentSession({
+        globalProvider: this.deps.globalProvider,
+        authStorage: this.deps.authStorage,
+        modelRegistry: this.deps.modelRegistry,
+        agentConfig: { id: ephAgentId, compaction: { mode: "off" } },
+        tools: filteredTools,
+        sessionManager,
+        systemPrompt,
+        ...(this.deps.hooks ? { hooks: this.deps.hooks } : {}),
+      });
     }
 
     onSessionReady?.(session);
@@ -94,24 +121,17 @@ export class PiRunner {
     } finally {
       abort.removeEventListener("abort", onAbort);
       session.dispose();
-      cleanup?.();
     }
   }
 }
 
-function filterTools(parent: ToolRegistry, agentId: string): ToolRegistry {
-  const filtered = new ToolRegistry(agentId);
-  for (const tool of parent.list()) {
-    if (DENIED_TOOLS.has(tool.name)) continue;
-    const entry = parent.get(tool.name);
-    if (!entry) continue;
-    filtered.register(tool, entry.handler as ToolHandler);
-  }
-  return filtered;
+function filterToolEntries(
+  parent: Array<{ tool: Tool; handler: ToolHandler }>,
+): Array<{ tool: Tool; handler: ToolHandler }> {
+  return parent.filter((entry) => !DENIED_TOOLS.has(entry.tool.name));
 }
 
-/** Drives `session.prompt(content)` and forwards SDK AgentEvents until
- * `agent_end`. */
+/** Drives `session.prompt(content)` and forwards SDK AgentEvents until `agent_end`. */
 async function* streamSessionAgentEvents(
   session: AgentSession,
   content: string,

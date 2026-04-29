@@ -1,7 +1,6 @@
 // src/core/agent-manager.ts — Agent lifecycle management
 
 import type { AgentConfig } from "../../agent/types.js";
-import { PiMonoCore, AgentServiceCache } from "./pi-mono.js";
 import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 import {
   buildSystemPrompt,
@@ -20,10 +19,9 @@ export interface AgentCreateOptions {
   initialSystemPrompt?: string;
 }
 
-/** Internal entry combining config, cache, and workspace */
+/** Internal entry combining config and workspace */
 interface AgentEntry {
   config: AgentConfig;
-  cache: AgentServiceCache;
   workspace: WorkspaceContext | null;
   /** Assembled system prompt (workspace context + tool guards) */
   systemPrompt: string;
@@ -38,36 +36,29 @@ interface AgentEntry {
 /**
  * DefaultAgentManager — in-memory agent registry.
  *
- * Manages agent configs and {@link AgentServiceCache} instances backed by
- * a {@link PiMonoCore}. Each agent can optionally have its own workspace
- * directory containing SOUL.md, MEMORY.md, and other context files that
- * are merged into the system prompt.
+ * Manages agent configs and workspace context. Per-agent SDK deps are no
+ * longer cached here — the pi runner builds them per session via
+ * createPiAgentSession.
  */
 export class DefaultAgentManager {
   private agents = new Map<string, AgentEntry>();
 
-  constructor(private core: PiMonoCore) {}
-
-  async create(config: AgentConfig, options?: AgentCreateOptions): Promise<AgentServiceCache> {
+  async create(config: AgentConfig, options?: AgentCreateOptions): Promise<void> {
     if (this.agents.has(config.id)) {
       throw new Error(`Agent "${config.id}" already exists`);
     }
-
-    const cache = this.core.createServiceCache(config);
     this.agents.set(config.id, {
       config,
-      cache,
       workspace: null,
       systemPrompt: options?.initialSystemPrompt ?? "",
       baseSystemPrompt: "",
       workspacePath: options?.workspacePath,
       toolGuardPrompt: options?.toolGuardPrompt,
     });
-    return cache;
   }
 
-  get(id: string): AgentServiceCache | undefined {
-    return this.agents.get(id)?.cache;
+  get(id: string): AgentConfig | undefined {
+    return this.agents.get(id)?.config;
   }
 
   getConfig(id: string): AgentConfig | undefined {
@@ -90,7 +81,7 @@ export class DefaultAgentManager {
     return Array.from(this.agents.values()).map((e) => e.config);
   }
 
-  async update(id: string, updates: Partial<AgentConfig>): Promise<AgentServiceCache> {
+  async update(id: string, updates: Partial<AgentConfig>): Promise<void> {
     const entry = this.agents.get(id);
     if (!entry) {
       throw new Error(`Agent "${id}" not found`);
@@ -102,13 +93,10 @@ export class DefaultAgentManager {
       id,
     };
 
-    const cache = this.core.createServiceCache(updated);
     this.agents.set(id, {
       ...entry,
       config: updated,
-      cache,
     });
-    return cache;
   }
 
   async delete(id: string): Promise<void> {

@@ -1,7 +1,8 @@
 // Public types for the unified AgentRuntime.
 
-import type { ToolRegistry } from "../core/tools.js";
-import type { AgentServiceCache } from "../core/pi-mono.js";
+import type { AgentConfig } from "../../agent/types.js";
+import type { Tool } from "../../tools/types.js";
+import type { ToolHandler } from "../core/tools.js";
 import type { DefaultSessionStore } from "../core/session-store.js";
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
@@ -15,10 +16,9 @@ export type AgentSessionPolicy = "always-new" | "parent-reuse";
 
 export interface RegisteredAgent {
   readonly id: string;
-  readonly cache: AgentServiceCache;
+  readonly config: AgentConfig;
   readonly systemPrompt: string;
   readonly sessionStore: DefaultSessionStore;
-  readonly tools: ToolRegistry;
   readonly capabilities: {
     tools: string[];
     canBeAddressed: boolean;
@@ -36,7 +36,9 @@ export interface SendMessageRequest {
   cwd?: string;
   timeoutSeconds?: number;
   leafContext?: {
-    tools: ToolRegistry;
+    /** Tool entries directly — runtime owns per-agent registries; leaf carries
+     * its own filtered subset (parent's tools minus denied for spawn). */
+    tools: Array<{ tool: Tool; handler: ToolHandler }>;
     extraSystemPrompt?: string;
   };
   /** Fires once after run is registered, before any AgentEvent yields.

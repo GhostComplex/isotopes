@@ -269,7 +269,14 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         ...(conversation_id ? { sessionId: conversation_id } : {}),
         ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
         ...(isSubagent && parentTools
-          ? { leafContext: { tools: parentTools } }
+          ? {
+              leafContext: {
+                tools: parentTools.list().map((tool) => {
+                  const entry = parentTools.get(tool.name);
+                  return { tool, handler: entry!.handler };
+                }),
+              },
+            }
           : {}),
         onCancel: (reason) => { cancelReason = reason; },
       };
