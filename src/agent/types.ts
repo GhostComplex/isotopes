@@ -4,15 +4,16 @@ import type { SandboxConfig } from "../legacy/sandbox/config.js";
 import type { Tool, AgentToolSettings } from "../tools/types.js";
 
 // ---------------------------------------------------------------------------
-// Provider config
+// Provider config (single global provider; agents pick model only)
 // ---------------------------------------------------------------------------
 
-/** LLM provider connection configuration (API type, base URL, credentials). */
+export type ProviderType = "anthropic" | "openai" | "github-copilot";
+
 export interface ProviderConfig {
-  type: 'openai-proxy' | 'anthropic-proxy' | 'openai' | 'anthropic';
+  type: ProviderType;
   baseUrl?: string;
   apiKey?: string;
-  model?: string;
+  defaultModel?: string;
   headers?: Record<string, string>;
 }
 
@@ -25,7 +26,7 @@ export interface AgentConfig {
   id: string;
   tools?: Tool[];
   toolSettings?: AgentToolSettings;
-  provider?: ProviderConfig;
+  model?: string;
   /** Context compaction configuration */
   compaction?: CompactionConfig;
   /** Sandbox execution configuration */

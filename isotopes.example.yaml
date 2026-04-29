@@ -3,13 +3,14 @@
 # Commented values show defaults — uncomment only when you need to change them.
 
 # =============================================================================
-# PROVIDER — default LLM provider (required; per-agent override below)
+# PROVIDER — single global LLM provider (required)
+# Per-agent provider override is no longer supported. Agents pick `model` only.
 # =============================================================================
 provider:
-  type: anthropic                  # anthropic | openai | anthropic-proxy | openai-proxy
-  model: claude-opus-4.6
+  type: anthropic                  # pi-ai KnownProvider name (anthropic | openai | amazon-bedrock | google | …)
+  defaultModel: claude-opus-4.6    # used by agents that don't specify their own model
   apiKey: ${ANTHROPIC_API_KEY}
-  # baseUrl: https://your-proxy.example.com    # for *-proxy types
+  # baseUrl: https://your-proxy.example.com    # for proxy / gateway scenarios
   # headers:                                   # extra HTTP headers
   #   X-Custom-Header: value
 
@@ -20,10 +21,6 @@ provider:
 #   2) object form with shared defaults:
 #        agents:
 #          defaults:
-#            provider:
-#              type: anthropic
-#              model: claude-opus-4.6
-#              apiKey: ${ANTHROPIC_API_KEY}
 #            tools:
 #              cli: false
 #            compaction:
@@ -33,9 +30,11 @@ provider:
 #          list:
 #            - id: main
 #            - id: helper
+#              model: claude-sonnet-4.5     # per-agent model override
 # =============================================================================
 agents:
   - id: main
+    # model: claude-sonnet-4.5              # falls back to provider.defaultModel when omitted
     # workspace: workspace-main             # absolute or relative to ISOTOPES_HOME
     # allowedWorkspaces:                    # extra dirs subagents may cwd into
     #   - /path/to/repo
@@ -48,10 +47,6 @@ agents:
     # heartbeat:                            # periodic wake-up (#191)
     #   enabled: false
     #   intervalSeconds: 300                # 5 min default
-    # provider:                             # per-agent override of top-level provider
-    #   type: openai
-    #   model: gpt-4o
-    #   apiKey: ${OPENAI_API_KEY}
     # tools:                                # per-agent override (see global "tools" below)
     #   cli: true
     # compaction:                           # per-agent override

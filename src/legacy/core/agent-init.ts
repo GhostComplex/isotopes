@@ -164,7 +164,6 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     codingMode: agentConfig.codingMode,
     fsImpl,
     parentAgentId: agentConfig.id,
-    ...(agentConfig.provider ? { parentProvider: agentConfig.provider } : {}),
     parentTools: toolRegistry,
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),

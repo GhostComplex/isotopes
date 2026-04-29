@@ -1,6 +1,6 @@
-// src/core/pi-mono.test.ts — Unit tests for PiMonoCore
+// src/legacy/core/pi-mono.test.ts — Unit tests for PiMonoCore
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AgentConfig } from "../../agent/types.js";
+import type { AgentConfig, ProviderConfig } from "../../agent/types.js";
 
 // ---------------------------------------------------------------------------
 // Mock setup
@@ -41,6 +41,14 @@ function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
   };
 }
 
+function makeProvider(overrides?: Partial<ProviderConfig>): ProviderConfig {
+  return {
+    type: "anthropic",
+    defaultModel: "claude-opus-4.5",
+    ...overrides,
+  };
+}
+
 function resetMocks() {
   vi.mocked(getModel).mockReset().mockImplementation((() => createDefaultMockModel()) as unknown as typeof getModel);
 }
@@ -53,51 +61,46 @@ describe("resolveModel", () => {
   beforeEach(resetMocks);
 
   it("resolves default anthropic model", () => {
-    const model = resolveModel(makeConfig());
+    const model = resolveModel(makeProvider(), "claude-opus-4.5");
     expect(model).toBeDefined();
     expect(model.provider).toBe("anthropic");
   });
 
-  it("applies proxy baseUrl override", () => {
-    const model = resolveModel(makeConfig({
-      provider: {
-        type: "anthropic-proxy",
-        baseUrl: "https://copilot-portal.azurewebsites.net",
-        model: "claude-opus-4.5",
-      },
-    }));
+  it("applies baseUrl override", () => {
+    const model = resolveModel(
+      makeProvider({ baseUrl: "https://copilot-portal.azurewebsites.net" }),
+      "claude-opus-4.5",
+    );
     expect(model.baseUrl).toBe("https://copilot-portal.azurewebsites.net");
   });
 
-  it("injects Authorization header for anthropic-proxy with apiKey", () => {
-    const model = resolveModel(makeConfig({
-      provider: {
-        type: "anthropic-proxy",
+  it("injects Authorization header when baseUrl + apiKey are both set", () => {
+    const model = resolveModel(
+      makeProvider({
         baseUrl: "https://proxy.example.com",
-        model: "claude-opus-4.5",
         apiKey: "proxy-token",
-      },
-    }));
+      }),
+      "claude-opus-4.5",
+    );
     expect(model.headers).toEqual(expect.objectContaining({
       Authorization: "Bearer proxy-token",
     }));
   });
 
-  it("merges configured proxy headers with existing model headers", () => {
+  it("merges configured headers with existing model headers", () => {
     vi.mocked(getModel).mockImplementationOnce((() => ({
       ...createDefaultMockModel(),
       headers: { "X-Model-Header": "base" },
     })) as unknown as typeof getModel);
 
-    const model = resolveModel(makeConfig({
-      provider: {
-        type: "anthropic-proxy",
+    const model = resolveModel(
+      makeProvider({
         baseUrl: "https://proxy.example.com",
-        model: "claude-opus-4.5",
         apiKey: "proxy-token",
         headers: { "X-Proxy-Header": "override" },
-      },
-    }));
+      }),
+      "claude-opus-4.5",
+    );
     expect(model.headers).toEqual(expect.objectContaining({
       Authorization: "Bearer proxy-token",
       "X-Model-Header": "base",
@@ -113,13 +116,10 @@ describe("resolveModel", () => {
       return undefined;
     }) as typeof getModel);
 
-    const model = resolveModel(makeConfig({
-      provider: {
-        type: "anthropic-proxy",
-        baseUrl: "https://proxy.example.com",
-        model: "claude-opus-4.5",
-      },
-    }));
+    const model = resolveModel(
+      makeProvider({ baseUrl: "https://proxy.example.com" }),
+      "claude-opus-4.5",
+    );
     expect(model.id).toBe("claude-opus-4.5");
   });
 });
@@ -128,7 +128,7 @@ describe("PiMonoCore", () => {
   beforeEach(resetMocks);
 
   it("createServiceCache returns an AgentServiceCache", () => {
-    const core = new PiMonoCore();
+    const core = new PiMonoCore(makeProvider());
     const cache = core.createServiceCache(makeConfig());
     expect(cache).toBeDefined();
     expect(cache.model).toBeDefined();
@@ -136,7 +136,7 @@ describe("PiMonoCore", () => {
   });
 
   it("binds tool registries per agent", () => {
-    const core = new PiMonoCore();
+    const core = new PiMonoCore(makeProvider());
 
     const registryA = new ToolRegistry("test");
     registryA.register(
@@ -163,7 +163,7 @@ describe("PiMonoCore", () => {
   });
 
   it("clearToolRegistry removes binding", () => {
-    const core = new PiMonoCore();
+    const core = new PiMonoCore(makeProvider());
     const registry = new ToolRegistry("test");
     registry.register(
       { name: "read_file", description: "Read file", parameters: {} },

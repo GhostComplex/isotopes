@@ -89,7 +89,7 @@ async function runTest() {
   log(`📁 Created temp workspace: ${tempDir}`);
 
   // Initialize components
-  const core = new PiMonoCore();
+  const core = new PiMonoCore({ type: "anthropic", defaultModel: "claude-opus-4.5" });
   const agentManager = new DefaultAgentManager(core);
   const sessionStore = new DefaultSessionStore({ dataDir: path.join(tempDir, "sessions") });
 

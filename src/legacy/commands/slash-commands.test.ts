@@ -110,7 +110,7 @@ describe("SlashCommandHandler", () => {
     it("returns uptime, model, agent, and session info", async () => {
       const agentManager = createMockAgentManager();
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", provider: { type: "anthropic", model: "claude-sonnet-4" } },
+        { id: "agent-1", model: "claude-sonnet-4" },
       ]);
 
       const sessionStore = createMockSessionStore();
@@ -136,7 +136,7 @@ describe("SlashCommandHandler", () => {
 
       const ctx = createContext({ agentManager });
       const result = await handler.execute("/status", ctx);
-      expect(result.response).toContain("claude-opus-4.5");
+      expect(result.response).toContain("(default)");
     });
   });
 
@@ -178,7 +178,7 @@ describe("SlashCommandHandler", () => {
     it("shows current model when no args given", async () => {
       const agentManager = createMockAgentManager();
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", provider: { type: "anthropic", model: "claude-sonnet-4" } },
+        { id: "agent-1", model: "claude-sonnet-4" },
       ]);
 
       const ctx = createContext({ agentManager });
@@ -191,7 +191,7 @@ describe("SlashCommandHandler", () => {
     it("switches model on agent", async () => {
       const agentManager = createMockAgentManager();
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", provider: { type: "anthropic", model: "claude-opus-4.5" } },
+        { id: "agent-1", model: "claude-opus-4.5" },
       ]);
       (agentManager.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
@@ -199,7 +199,7 @@ describe("SlashCommandHandler", () => {
       const result = await handler.execute("/model claude-sonnet-4", ctx);
 
       expect(agentManager.update).toHaveBeenCalledWith("agent-1", {
-        provider: { type: "anthropic", model: "claude-sonnet-4" },
+        model: "claude-sonnet-4",
       });
       expect(result.response).toContain("Model switched");
       expect(result.response).toContain("claude-sonnet-4");

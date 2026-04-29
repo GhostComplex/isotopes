@@ -1,6 +1,5 @@
 // Public types for the unified AgentRuntime.
 
-import type { ProviderConfig } from "../../agent/types.js";
 import type { ToolRegistry } from "../core/tools.js";
 import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultSessionStore } from "../core/session-store.js";
@@ -37,7 +36,6 @@ export interface SendMessageRequest {
   cwd?: string;
   timeoutSeconds?: number;
   leafContext?: {
-    provider: ProviderConfig;
     tools: ToolRegistry;
     extraSystemPrompt?: string;
   };

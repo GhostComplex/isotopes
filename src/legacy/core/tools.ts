@@ -3,7 +3,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolSettings, Tool } from "../../tools/types.js";
-import type { ProviderConfig } from "../../agent/types.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
@@ -176,8 +175,6 @@ export interface SendMessageToolOptions {
   /** Caller's workspace path; default cwd when target is leaf and no
    * `working_directory` is supplied. */
   workspacePath: string;
-  /** Caller's provider — needed when targeting the "subagent" magic id. */
-  parentProvider?: ProviderConfig;
   /** Caller's tool registry — filtered and lent to leaf sessions. */
   parentTools?: ToolRegistry;
   /** Optional explicit allow-list of target ids. Defaults to runtime registry + magic ids. */
@@ -187,9 +184,9 @@ export interface SendMessageToolOptions {
 }
 
 export function createSendMessageTool(options: SendMessageToolOptions): { tool: Tool; handler: ToolHandler } {
-  const { runtime, parentAgentId, workspacePath, parentProvider, parentTools, allowedAgents, spawnableAgentIds } = options;
+  const { runtime, parentAgentId, workspacePath, parentTools, allowedAgents, spawnableAgentIds } = options;
   const computedTargets: string[] = [];
-  if (parentProvider && parentTools) computedTargets.push(SUBAGENT_AGENT_ID);
+  if (parentTools) computedTargets.push(SUBAGENT_AGENT_ID);
   if (runtime.hasClaudeRunner()) computedTargets.push(CLAUDE_AGENT_ID);
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
@@ -271,8 +268,8 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         from: { agentId: parentAgentId },
         ...(conversation_id ? { sessionId: conversation_id } : {}),
         ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
-        ...(isSubagent && parentProvider && parentTools
-          ? { leafContext: { provider: parentProvider, tools: parentTools } }
+        ...(isSubagent && parentTools
+          ? { leafContext: { tools: parentTools } }
           : {}),
         onCancel: (reason) => { cancelReason = reason; },
       };
@@ -689,8 +686,6 @@ export interface CreateWorkspaceToolsOptions {
   codingMode?: "send-message" | "direct" | "auto";
   fsImpl?: FsLike;
   parentAgentId?: string;
-  /** Caller's provider — needed when targeting `subagent` (lent to leaf). */
-  parentProvider?: ProviderConfig;
   /** Caller's tool registry — filtered + lent to leaf sessions. */
   parentTools?: ToolRegistry;
   /** Unified runtime — required when sendMessageEnabled is true. */
@@ -709,7 +704,6 @@ export function createWorkspaceToolsWithGuards(
     codingMode = "auto",
     fsImpl,
     parentAgentId,
-    parentProvider,
     parentTools,
     runtime,
     spawnableAgentIds,
@@ -727,7 +721,6 @@ export function createWorkspaceToolsWithGuards(
       runtime,
       parentAgentId,
       workspacePath,
-      ...(parentProvider ? { parentProvider } : {}),
       ...(parentTools ? { parentTools } : {}),
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
     }));

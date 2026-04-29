@@ -16,7 +16,7 @@ import {
   type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 
-import type { AgentConfig, CompactionConfig } from "../../agent/types.js";
+import type { AgentConfig, CompactionConfig, ProviderConfig } from "../../agent/types.js";
 import type { Tool } from "../../tools/types.js";
 import type { ToolRegistry } from "./tools.js";
 import { createLogger } from "../../logging/logger.js";
@@ -75,22 +75,21 @@ function resolveKnownModel(
   throw new Error(`Unknown ${provider} model: ${modelId}`);
 }
 
-export function resolveModel(config: AgentConfig): Model<Api> {
-  const p = config.provider;
-  const provider = (p?.type.replace(/-proxy$/, "") ?? "anthropic") as Parameters<typeof getModel>[0];
-  const modelId = p?.model ?? DEFAULT_MODEL;
+export function resolveModel(globalProvider: ProviderConfig, modelId: string): Model<Api> {
+  const provider = globalProvider.type as Parameters<typeof getModel>[0];
   const model = resolveKnownModel(provider, modelId);
 
-  const proxyHeaders = { ...(p?.headers ?? {}) };
-  if (p?.type === "anthropic-proxy" && p.apiKey) {
-    proxyHeaders.Authorization ??= `Bearer ${p.apiKey}`;
+  const proxyHeaders: Record<string, string> = { ...(globalProvider.headers ?? {}) };
+  // baseUrl + apiKey together → stamp Authorization (old "*-proxy" behavior)
+  if (globalProvider.baseUrl && globalProvider.apiKey) {
+    proxyHeaders.Authorization ??= `Bearer ${globalProvider.apiKey}`;
   }
   const headers = Object.keys(proxyHeaders).length > 0
     ? { ...(model.headers ?? {}), ...proxyHeaders }
     : undefined;
 
-  if (p?.baseUrl || headers) {
-    return cloneModel(model, { id: modelId, baseUrl: p?.baseUrl, headers });
+  if (globalProvider.baseUrl || headers) {
+    return cloneModel(model, { id: modelId, baseUrl: globalProvider.baseUrl, headers });
   }
 
   return model;
@@ -159,6 +158,7 @@ const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME ||
 
 export interface AgentServiceCacheConfig {
   agentConfig: AgentConfig;
+  globalProvider: ProviderConfig;
   toolRegistry?: ToolRegistry;
 }
 
@@ -169,20 +169,17 @@ export class AgentServiceCache {
   private readonly authStorage: AuthStorage;
   private readonly modelRegistry: ModelRegistry;
   private readonly compactionConfig?: CompactionConfig;
-  private readonly apiKey: string;
 
   constructor(opts: AgentServiceCacheConfig) {
-    const { agentConfig, toolRegistry } = opts;
+    const { agentConfig, globalProvider, toolRegistry } = opts;
 
-    this.model = resolveModel(agentConfig);
+    const modelId = agentConfig.model ?? globalProvider.defaultModel ?? DEFAULT_MODEL;
+    this.model = resolveModel(globalProvider, modelId);
     this.agentDir = path.join(ISOTOPES_HOME, "agents", agentConfig.id, "agent");
-    this.apiKey = agentConfig.provider?.apiKey ?? "";
 
-    // Build in-memory auth storage with the provider's API key
-    const provider = (agentConfig.provider?.type.replace(/-proxy$/, "") ?? "anthropic") as string;
     const creds: Record<string, { type: "api_key"; key: string }> = {};
-    if (this.apiKey) {
-      creds[provider] = { type: "api_key", key: this.apiKey };
+    if (globalProvider.apiKey) {
+      creds[globalProvider.type] = { type: "api_key", key: globalProvider.apiKey };
     }
     this.authStorage = AuthStorage.inMemory(creds);
     this.modelRegistry = ModelRegistry.create(this.authStorage);
@@ -262,6 +259,8 @@ export class AgentServiceCache {
 export class PiMonoCore {
   private toolRegistries = new Map<string, ToolRegistry>();
 
+  constructor(private readonly globalProvider: ProviderConfig) {}
+
   setToolRegistry(agentId: string, registry: ToolRegistry): void {
     this.toolRegistries.set(agentId, registry);
   }
@@ -273,6 +272,7 @@ export class PiMonoCore {
   createServiceCache(config: AgentConfig): AgentServiceCache {
     return new AgentServiceCache({
       agentConfig: config,
+      globalProvider: this.globalProvider,
       toolRegistry: this.toolRegistries.get(config.id),
     });
   }
