@@ -1,4 +1,4 @@
-// src/core/debounce.test.ts — Tests for inbound message debouncer
+// src/vnext/transport/debounce.test.ts — Tests for inbound message debouncer
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { InboundDebouncer } from "./debounce.js";

@@ -1,4 +1,4 @@
-// src/core/dedupe.ts — TTL-based message deduplication cache.
+// src/vnext/transport/dedupe.ts — TTL-based message deduplication cache.
 // Lazy eviction (no timers) — cleanup runs on insertion.
 
 export interface DedupeCacheOptions {

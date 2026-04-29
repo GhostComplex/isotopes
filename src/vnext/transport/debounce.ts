@@ -1,4 +1,4 @@
-// src/core/debounce.ts — Combine rapid-fire messages from the same user
+// src/vnext/transport/debounce.ts — Combine rapid-fire messages from the same user
 // into a single prompt. Opt-in feature (default disabled in config).
 
 // ---------------------------------------------------------------------------

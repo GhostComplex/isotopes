@@ -33,8 +33,8 @@ import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
 import type { UsageTracker } from "../../core/usage-tracker.js";
 import { buildSessionKey } from "../../core/session-keys.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../../core/channel-history.js";
-import { DedupeCache } from "../../core/dedupe.js";
-import { InboundDebouncer } from "../../core/debounce.js";
+import { DedupeCache } from "../../vnext/transport/dedupe.js";
+import { InboundDebouncer } from "../../vnext/transport/debounce.js";
 import { SlashCommandHandler } from "../../commands/slash-commands.js";
 
 const log = loggers.discord;
