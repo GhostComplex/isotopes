@@ -1,9 +1,9 @@
-// src/core/bindings.test.ts — Unit tests for binding resolution
+// src/vnext/gateway/bindings.test.ts — Unit tests for binding resolution
 
 import { describe, it, expect } from "vitest";
 import { resolveBinding } from "./bindings.js";
-import type { Binding } from "./types.js";
-import { toBindings } from "../vnext/config.js";
+import type { Binding } from "../../core/types.js";
+import { toBindings } from "../config.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

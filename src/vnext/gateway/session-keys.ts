@@ -1,4 +1,4 @@
-// src/core/session-keys.ts — Shared session key builder
+// src/vnext/gateway/session-keys.ts — Shared session key builder
 // Standardises the session key format across all transports.
 //
 // Format: {transport}:{botId}:{scope}:{scopeId}:{agentId}
