@@ -19,7 +19,7 @@ import {
 } from "../../core/types.js";
 import type { ThreadBindingConfig } from "./types.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
-import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../core/messages.js";
+import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../../agent/runners/pi/messages.js";
 import type { ContextConfigFile } from "../../../config.js";
 import { shouldRespondToMessage } from "../../../gateway/mention.js";
 import { loggers } from "../../../logging/logger.js";

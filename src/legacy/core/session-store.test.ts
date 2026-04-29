@@ -6,7 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import { DefaultSessionStore } from "./session-store.js";
 
-import { userMessage, assistantMessage, messageText } from "./messages.js";
+import { userMessage, assistantMessage, messageText } from "../../agent/runners/pi/messages.js";
 
 // ---------------------------------------------------------------------------
 // Test setup

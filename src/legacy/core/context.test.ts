@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import type { AgentMessage as Message } from "@mariozechner/pi-agent-core";
-import { msgField } from "./messages.js";
+import { msgField } from "../../agent/runners/pi/messages.js";
 import {
   pruneImages,
 } from "./context.js";
