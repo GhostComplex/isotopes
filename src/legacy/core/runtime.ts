@@ -25,7 +25,6 @@ import { HotReloadManager } from "../workspace/index.js";
 import { ApiServer } from "../plugins/http/server.js";
 import { CronScheduler } from "../automation/cron-job.js";
 import { HeartbeatManager } from "../automation/heartbeat.js";
-import { UsageTracker } from "./usage-tracker.js";
 import { PluginManager } from "../plugins/manager.js";
 import { getIsotopesHome } from "../../paths.js";
 import { AgentRuntime } from "../agents/runtime.js";
@@ -46,7 +45,6 @@ export interface Runtime {
   agentManager: DefaultAgentManager;
   agentWorkspaces: Map<string, string>;
   cronScheduler: CronScheduler;
-  usageTracker: UsageTracker;
   pluginManager: PluginManager;
   apiServer: ApiServer;
   shutdown: () => Promise<void>;
@@ -241,7 +239,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   // Cron scheduler
   const cronScheduler = new CronScheduler();
-  const usageTracker = new UsageTracker();
 
   for (const agentFile of config.agents) {
     if (!agentFile.cron?.tasks?.length) continue;
@@ -319,7 +316,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
         agentManager,
         sessionStoreManager,
         config,
-        usageTracker,
         transportContexts,
         isotopesHome: getIsotopesHome(),
         getSessionStoreForAgent: (agentId) =>
@@ -340,7 +336,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     {
       cronScheduler,
       agentManager,
-      usageTracker,
       uiRegistry: pluginManager.getUIRegistry(),
       sessionStoreManager,
       hooks: pluginManager.getHooks(),
@@ -381,7 +376,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     agentManager,
     agentWorkspaces,
     cronScheduler,
-    usageTracker,
     pluginManager,
     apiServer,
     shutdown,

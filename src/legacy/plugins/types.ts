@@ -8,7 +8,6 @@ import type { ToolHandler } from "../core/tools.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { IsotopesConfigFile } from "../../config.js";
-import type { UsageTracker } from "../core/usage-tracker.js";
 import type { LazyTransportContext } from "../tools/react.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 
@@ -84,7 +83,6 @@ export interface TransportFactoryContext {
   agentManager: DefaultAgentManager;
   sessionStoreManager: SessionStoreManager;
   config: IsotopesConfigFile;
-  usageTracker: UsageTracker;
   transportContexts: Map<string, LazyTransportContext>;
   isotopesHome: string;
   getSessionStoreForAgent: (agentId: string) => SessionStore | undefined;
