@@ -13,7 +13,7 @@ import { getMessageContext } from "../transport/context.js";
 import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
 import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
 import { failureTracker } from "../agents/failure-tracker.js";
-import { getAgentEndMeta } from "./messages.js";
+import { getAgentEndMeta } from "../../agent/runners/pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
 const log = createLogger("tools:send-message");
 /** Function that executes a tool call and returns a string result. */

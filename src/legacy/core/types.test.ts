@@ -1,7 +1,7 @@
 // src/core/types.test.ts — Unit tests for message helper functions
 
 import { describe, it, expect } from "vitest";
-import { userMessage, assistantMessage, toolResultMessage, messageText } from "./messages.js";
+import { userMessage, assistantMessage, toolResultMessage, messageText } from "../../agent/runners/pi/messages.js";
 
 describe("userMessage", () => {
   it("creates a user message with string content", () => {

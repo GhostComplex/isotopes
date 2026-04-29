@@ -4,7 +4,7 @@
 
 import type { AgentRuntime } from "../agents/runtime.js";
 import { agentEventBus } from "./agent-event-bus.js";
-import { userMessage, assistantMessage, getAgentEndMeta, getUsage } from "./messages.js";
+import { userMessage, assistantMessage, getAgentEndMeta, getUsage } from "../../agent/runners/pi/messages.js";
 import type { Logger } from "../../logging/logger.js";
 import type { UsageTracker } from "./usage-tracker.js";
 import type { HookRegistry } from "../plugins/hooks.js";

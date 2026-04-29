@@ -12,7 +12,7 @@ import { sendJson, sendError } from "./middleware.js";
 import { createLogger } from "../../../logging/logger.js";
 import { randomUUID } from "node:crypto";
 import { consumeRootRun, cancelRunBySessionId } from "../../core/agent-run.js";
-import { userMessage } from "../../core/messages.js";
+import { userMessage } from "../../../agent/runners/pi/messages.js";
 import { agentEventBus } from "../../core/agent-event-bus.js";
 import type { DefaultSessionStore } from "../../core/session-store.js";
 import type { Session } from "../../core/types.js";
