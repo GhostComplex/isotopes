@@ -22,7 +22,6 @@ import {
   type Tool,
 } from "./types.js";
 import type { ToolRegistry } from "./tools.js";
-import { resolveCompactionConfig } from "./compaction.js";
 import { createLogger } from "../../logging/logger.js";
 import * as path from "node:path";
 
@@ -204,7 +203,7 @@ export class AgentServiceCache {
 
     // Resolve compaction config
     if (agentConfig.compaction && agentConfig.compaction.mode !== "off") {
-      this.compactionConfig = resolveCompactionConfig(agentConfig.compaction);
+      this.compactionConfig = agentConfig.compaction;
       log.info(`Context compaction enabled for agent "${agentConfig.id}" (mode: ${this.compactionConfig.mode})`);
     }
   }
