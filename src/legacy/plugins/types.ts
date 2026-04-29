@@ -3,7 +3,9 @@
 
 import type { Logger } from "../../logging/logger.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { SessionStore, Tool, Transport } from "../core/types.js";
+import type { SessionStore } from "../../sessions/types.js";
+import type { Tool } from "../../tools/types.js";
+import type { Transport } from "../../gateway/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";

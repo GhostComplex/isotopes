@@ -6,17 +6,19 @@ import path from "node:path";
 import YAML from "yaml";
 import type {
   AgentConfig,
-  AgentToolSettings,
+  CompactionConfig,
+  CompactionMode,
+  ProviderConfig,
+} from "./agent/types.js";
+import type { AgentToolSettings } from "./tools/types.js";
+import type {
   Binding,
   BindingPeer,
   ChannelsConfig,
-  CompactionConfig,
-  CompactionMode,
-  CronActionConfig,
   PeerKind,
-  ProviderConfig,
-  SessionConfig,
-} from "./legacy/core/types.js";
+} from "./gateway/types.js";
+import type { SessionConfig } from "./sessions/types.js";
+import type { CronActionConfig } from "./automation/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "./legacy/sandbox/config.js";
 import type { PluginConfigEntry } from "./legacy/plugins/types.js";
 import { createLogger } from "./logging/logger.js";

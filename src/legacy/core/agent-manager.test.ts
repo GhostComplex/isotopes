@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DefaultAgentManager } from "./agent-manager.js";
-import type { AgentConfig } from "./types.js";
+import type { AgentConfig } from "../../agent/types.js";
 import { PiMonoCore } from "./pi-mono.js";
 
 // ---------------------------------------------------------------------------

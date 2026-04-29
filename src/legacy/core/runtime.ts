@@ -309,7 +309,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   // Plugin transports
-  const pluginTransports: import("./types.js").Transport[] = [];
+  const pluginTransports: import("../../gateway/types.js").Transport[] = [];
   for (const [id, factory] of pluginManager.getTransportFactories()) {
     try {
       const transport = await factory({

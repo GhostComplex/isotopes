@@ -4,7 +4,7 @@ import { UIRegistry } from "./ui-registry.js";
 import { ToolPluginRegistry } from "./tool-registry.js";
 import { createPluginApi } from "./api.js";
 import type { PluginManifest, TransportFactory, PluginToolContext } from "./types.js";
-import type { Tool } from "../core/types.js";
+import type { Tool } from "../../tools/types.js";
 import fs from "node:fs";
 
 // ---------------------------------------------------------------------------

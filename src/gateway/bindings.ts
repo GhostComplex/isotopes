@@ -1,7 +1,7 @@
 // src/gateway/bindings.ts — Binding resolution for routing messages to agents
 // Resolves which agent(s) should handle a message based on (channel, accountId, peer).
 
-import type { Binding, BindingPeer } from "../legacy/core/types.js";
+import type { Binding, BindingPeer } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Query — what we're trying to match against

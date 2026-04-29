@@ -6,7 +6,7 @@ import {
   getAgentSessionsDir,
   normalizeAgentId,
 } from "../../paths.js";
-import type { SessionConfig } from "./types.js";
+import type { SessionConfig } from "../../sessions/types.js";
 import { createLogger } from "../../logging/logger.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 

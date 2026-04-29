@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import { consumeRootRun, cancelRunBySessionId } from "../../core/agent-run.js";
 import { userMessage } from "../../../agent/runners/pi/messages.js";
 import type { DefaultSessionStore } from "../../core/session-store.js";
-import type { Session } from "../../core/types.js";
+import type { Session } from "../../../sessions/types.js";
 
 const log = createLogger("api:sessions");
 

@@ -17,7 +17,7 @@ import {
   applyToolPolicy,
   type ToolHandler,
 } from "./tools.js";
-import type { Tool } from "./types.js";
+import type { Tool } from "../../tools/types.js";
 
 describe("ToolRegistry", () => {
   let registry: ToolRegistry;

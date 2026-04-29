@@ -7,7 +7,7 @@ import {
   LazyTransportContext,
   type ReactToolContext,
 } from "./react.js";
-import type { Transport } from "../core/types.js";
+import type { Transport } from "../../gateway/types.js";
 
 function createMockTransport(overrides: Partial<Transport> = {}): Transport {
   return {
