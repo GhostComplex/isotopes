@@ -20,7 +20,7 @@ import {
 import type { ThreadBindingConfig } from "./types.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../core/messages.js";
-import type { ContextConfigFile } from "../../core/config.js";
+import type { ContextConfigFile } from "../../vnext/config.js";
 import { shouldRespondToMessage } from "../../core/mention.js";
 import { loggers } from "../../vnext/logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";

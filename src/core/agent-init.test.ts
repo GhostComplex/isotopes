@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { initializeAgent } from "./agent-init.js";
-import type { AgentConfigFile } from "./config.js";
+import type { AgentConfigFile } from "../vnext/config.js";
 import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";
 import { createMockAgentCache } from "./test-helpers.js";

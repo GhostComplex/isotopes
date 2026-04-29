@@ -7,7 +7,7 @@ import {
   DEFAULT_SPAWN_ALLOWED_TOOLS,
   type SettingSource,
   type SpawnPermissionMode,
-} from "../../core/config.js";
+} from "../../vnext/config.js";
 import type { SendMessageRequest } from "../types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
