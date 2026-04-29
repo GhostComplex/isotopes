@@ -130,7 +130,7 @@ export class SlashCommandHandler {
 
     // Find current agent's model
     const agentConfig = agents.find((a) => a.id === ctx.agentId);
-    const model = agentConfig?.provider?.model ?? "claude-opus-4.5";
+    const model = agentConfig?.model ?? "(default)";
 
     const lines = [
       "**Agent Status**",
@@ -162,21 +162,13 @@ export class SlashCommandHandler {
       // Show current model
       const agents = ctx.agentManager.list();
       const agentConfig = agents.find((a) => a.id === ctx.agentId);
-      const current = agentConfig?.provider?.model ?? "claude-opus-4.5";
+      const current = agentConfig?.model ?? "(default)";
       return { response: `Current model: \`${current}\`` };
     }
 
     try {
-      const agents = ctx.agentManager.list();
-      const agentConfig = agents.find((a) => a.id === ctx.agentId);
-      const currentProvider = agentConfig?.provider;
-
       await ctx.agentManager.update(ctx.agentId, {
-        provider: {
-          ...currentProvider,
-          type: currentProvider?.type ?? "anthropic",
-          model: modelName,
-        },
+        model: modelName,
       });
 
       log.info(`Model switched to ${modelName} for agent ${ctx.agentId} by ${ctx.username}`);

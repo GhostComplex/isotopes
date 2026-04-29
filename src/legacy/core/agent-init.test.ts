@@ -29,7 +29,7 @@ describe("initializeAgent", () => {
   const mockCache = createMockAgentCache();
 
   beforeEach(() => {
-    core = new PiMonoCore();
+    core = new PiMonoCore({ type: "anthropic", defaultModel: "claude-opus-4.5" });
     vi.spyOn(core, "setToolRegistry");
     agentManager = new DefaultAgentManager(core);
     vi.spyOn(agentManager, "create").mockResolvedValue(mockCache);

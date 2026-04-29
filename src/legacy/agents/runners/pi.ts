@@ -72,7 +72,6 @@ export class PiRunner {
       this.core.setToolRegistry(ephAgentId, filteredTools);
       const cache = this.core.createServiceCache({
         id: ephAgentId,
-        provider: leaf.provider,
         compaction: { mode: "off" },
       });
       const sessionManager = SessionManager.inMemory();

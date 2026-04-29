@@ -8,7 +8,6 @@ import type {
   AgentConfig,
   CompactionConfig,
   CompactionMode,
-  ProviderConfig,
 } from "./agent/types.js";
 import type { AgentToolSettings } from "./tools/types.js";
 import type {
@@ -43,12 +42,12 @@ function assertPositiveNumber(value: unknown, label: string): void {
 // Config schema
 // ---------------------------------------------------------------------------
 
-/** Provider configuration in config file */
+/** Provider configuration in config file (single global provider). */
 export interface ProviderConfigFile {
-  type: "openai-proxy" | "anthropic-proxy" | "openai" | "anthropic";
+  type: string;
   baseUrl?: string;
   apiKey?: string;
-  model?: string;
+  defaultModel?: string;
   headers?: Record<string, string>;
 }
 
@@ -83,7 +82,8 @@ export interface AgentConfigFile {
    */
   workspace?: string;
   tools?: AgentToolsConfigFile;
-  provider?: ProviderConfigFile;
+  /** Model id (e.g. "claude-sonnet-4.5"). Falls back to provider.defaultModel. */
+  model?: string;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
   /** Heartbeat configuration (#191) */
@@ -255,7 +255,6 @@ export interface CronJobConfigFile {
 
 /** Agent defaults — shared configuration inherited by all agents unless overridden */
 export interface AgentDefaultsConfigFile {
-  provider?: ProviderConfigFile;
   tools?: AgentToolsConfigFile;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
@@ -546,13 +545,15 @@ export function toAgentConfig(
   globalSandbox?: SandboxConfigFile,
 ): AgentConfig {
   // 3-tier merge: agent > defaults > global (shallow replace per block)
-  const provider = agent.provider ?? agentDefaults?.provider ?? globalProvider;
   const tools = agent.tools ?? agentDefaults?.tools ?? globalTools;
   const agentCompaction = agent.compaction ?? agentDefaults?.compaction ?? globalCompaction;
   // Sandbox: agents-level (defaults > global) is the base; per-agent overlays
   // partial overrides (typically just `mode: "off"`). The merge happens inside
   // resolveSandboxConfigFromFile so per-agent need not repeat docker config.
   const baseSandbox = agentDefaults?.sandbox ?? globalSandbox;
+
+  // Model: per-agent override > global defaultModel
+  const model = agent.model ?? globalProvider?.defaultModel;
 
   const compaction = resolveCompactionConfigFromFile(agentCompaction);
   const sandbox =
@@ -563,7 +564,7 @@ export function toAgentConfig(
   return {
     id: agent.id,
     toolSettings: resolveToolSettings(tools),
-    provider: provider as ProviderConfig | undefined,
+    ...(model ? { model } : {}),
     compaction,
     sandbox,
     heartbeatInterval: agent.heartbeatInterval,

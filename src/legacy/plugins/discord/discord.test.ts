@@ -11,7 +11,7 @@ import { AgentRuntime } from "../../agents/runtime.js";
 import { PiMonoCore } from "../../core/pi-mono.js";
 
 function makeMockRuntime(agentId: string, cache: unknown, sessionStore: SessionStore): AgentRuntime {
-  const rt = new AgentRuntime({ core: new PiMonoCore() });
+  const rt = new AgentRuntime({ core: new PiMonoCore({ type: "anthropic", defaultModel: "claude-opus-4.5" }) });
   rt.registerAgent({
     id: agentId,
     cache: cache as never,
@@ -681,7 +681,7 @@ describe("DiscordTransport", () => {
 
     it("routes /model to command handler", async () => {
       (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "default", provider: { type: "anthropic", model: "claude-sonnet-4" } },
+        { id: "default", model: "claude-sonnet-4" },
       ]);
 
       const transportWithAdmin = new DiscordTransport({

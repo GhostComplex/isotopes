@@ -95,13 +95,13 @@ agents:
   - id: test
 provider:
   type: openai
-  model: \${MODEL:-gpt-4}
+  defaultModel: \${MODEL:-gpt-4}
 `,
       );
 
       const config = await loadConfig(configPath);
 
-      expect(config.provider?.model).toBe("gpt-4");
+      expect(config.provider?.defaultModel).toBe("gpt-4");
     });
 
     it("loads full config with all fields", async () => {
@@ -111,13 +111,11 @@ provider:
         `
 provider:
   type: anthropic
-  model: claude-3-opus
+  defaultModel: claude-3-opus
 
 agents:
   - id: assistant
-    provider:
-      type: openai
-      model: gpt-4o
+    model: gpt-4o
 
 channels:
   discord:
@@ -135,7 +133,7 @@ channels:
       const config = await loadConfig(configPath);
 
       expect(config.provider?.type).toBe("anthropic");
-      expect(config.agents[0].provider?.type).toBe("openai");
+      expect(config.agents[0].model).toBe("gpt-4o");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const discord = config.channels?.discord as any;
       expect(discord?.accounts?.main?.defaultAgentId).toBe("assistant");
@@ -166,18 +164,19 @@ agents:
       await fs.writeFile(
         configPath,
         `
+provider:
+  type: anthropic-proxy
+  baseUrl: https://proxy.example.com
+  defaultModel: claude-sonnet
+
 agents:
   defaults:
-    provider:
-      type: anthropic-proxy
-      baseUrl: https://proxy.example.com
-      model: claude-sonnet
+    compaction:
+      mode: safeguard
   list:
     - id: major
     - id: tachikoma
-      provider:
-        type: openai
-        model: gpt-4o
+      model: claude-opus-4.5
 `,
       );
 
@@ -188,11 +187,11 @@ agents:
       expect(config.agents.length).toBe(2);
       expect(config.agents[0].id).toBe("major");
       expect(config.agents[1].id).toBe("tachikoma");
+      expect(config.agents[1].model).toBe("claude-opus-4.5");
 
       // agentDefaults should be extracted
       expect(config.agentDefaults).toBeDefined();
-      expect(config.agentDefaults?.provider?.type).toBe("anthropic-proxy");
-      expect(config.agentDefaults?.provider?.model).toBe("claude-sonnet");
+      expect(config.agentDefaults?.compaction?.mode).toBe("safeguard");
     });
 
     it("legacy array form still works and agentDefaults is undefined", async () => {
@@ -258,26 +257,27 @@ agents:
       expect(config.id).toBe("test");
     });
 
-    it("uses default provider when agent has none", () => {
+    it("uses defaultModel from global provider when agent has no model", () => {
       const agentFile = { id: "test" };
-      const defaultProvider = { type: "openai" as const, model: "gpt-4" };
+      const defaultProvider = { type: "openai", defaultModel: "gpt-4" };
 
       const config = toAgentConfig(agentFile, undefined, defaultProvider);
 
-      expect(config.provider?.type).toBe("openai");
-      expect(config.provider?.model).toBe("gpt-4");
+      expect(config.model).toBe("gpt-4");
     });
 
-    it("prefers agent provider over default", () => {
-      const agentFile = {
-        id: "test",
-        provider: { type: "anthropic" as const, model: "claude-3" },
-      };
-      const defaultProvider = { type: "openai" as const, model: "gpt-4" };
+    it("prefers per-agent model over provider defaultModel", () => {
+      const agentFile = { id: "test", model: "claude-3" };
+      const defaultProvider = { type: "openai", defaultModel: "gpt-4" };
 
       const config = toAgentConfig(agentFile, undefined, defaultProvider);
 
-      expect(config.provider?.type).toBe("anthropic");
+      expect(config.model).toBe("claude-3");
+    });
+
+    it("model omitted when neither agent.model nor provider.defaultModel set", () => {
+      const config = toAgentConfig({ id: "test" });
+      expect(config.model).toBeUndefined();
     });
 
     it("merges tool settings with defaults", () => {
@@ -328,71 +328,6 @@ agents:
       const config = toAgentConfig(agentFile);
 
       expect(config.compaction).toBeUndefined();
-    });
-
-    it("inherits provider from agentDefaults", () => {
-      const agentFile = { id: "test" };
-      const defaults = { provider: { type: "anthropic-proxy" as const, model: "claude-sonnet" } };
-
-      const config = toAgentConfig(agentFile, defaults);
-
-      expect(config.provider?.type).toBe("anthropic-proxy");
-      expect(config.provider?.model).toBe("claude-sonnet");
-    });
-
-    it("agent provider overrides agentDefaults provider", () => {
-      const agentFile = {
-        id: "test",
-        provider: { type: "openai" as const, model: "gpt-4o" },
-      };
-      const defaults = { provider: { type: "anthropic-proxy" as const, model: "claude-sonnet" } };
-
-      const config = toAgentConfig(agentFile, defaults);
-
-      expect(config.provider?.type).toBe("openai");
-      expect(config.provider?.model).toBe("gpt-4o");
-    });
-
-    it("agentDefaults provider overrides global provider", () => {
-      const agentFile = { id: "test" };
-      const defaults = { provider: { type: "anthropic-proxy" as const, model: "claude-sonnet" } };
-      const globalProvider = { type: "openai" as const, model: "gpt-4" };
-
-      const config = toAgentConfig(agentFile, defaults, globalProvider);
-
-      expect(config.provider?.type).toBe("anthropic-proxy");
-      expect(config.provider?.model).toBe("claude-sonnet");
-    });
-
-    it("falls through to global provider when no agent or defaults provider", () => {
-      const agentFile = { id: "test" };
-      const defaults = { compaction: { mode: "aggressive" } };
-      const globalProvider = { type: "openai" as const, model: "gpt-4" };
-
-      const config = toAgentConfig(agentFile, defaults, globalProvider);
-
-      expect(config.provider?.type).toBe("openai");
-    });
-
-    it("shallow replace: agent provider wins entirely over defaults provider", () => {
-      const agentFile = {
-        id: "test",
-        provider: { type: "openai" as const },  // no model
-      };
-      const defaults = {
-        provider: {
-          type: "anthropic-proxy" as const,
-          baseUrl: "https://proxy.example.com",
-          model: "claude-sonnet",
-        },
-      };
-
-      const config = toAgentConfig(agentFile, defaults);
-
-      // Agent's entire provider block wins — no field-level merge from defaults
-      expect(config.provider?.type).toBe("openai");
-      expect(config.provider?.model).toBeUndefined();
-      expect((config.provider as { baseUrl?: string })?.baseUrl).toBeUndefined();
     });
 
     it("inherits compaction from agentDefaults", () => {

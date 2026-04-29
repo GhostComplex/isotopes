@@ -66,7 +66,10 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   // Initialize core first — the builtin spawn agent backend hosts spawn agents
   // in-process via this same core.
-  const core = new PiMonoCore();
+  if (!config.provider) {
+    throw new Error("config.provider is required (top-level provider config in isotopes.yaml)");
+  }
+  const core = new PiMonoCore(config.provider);
   const agentManager = new DefaultAgentManager(core);
 
   // Single AgentRuntime shared by all transports + the in-agent send_message tool.

@@ -4,15 +4,26 @@ import type { SandboxConfig } from "../legacy/sandbox/config.js";
 import type { Tool, AgentToolSettings } from "../tools/types.js";
 
 // ---------------------------------------------------------------------------
-// Provider config
+// Provider config (single global provider; agents pick model only)
 // ---------------------------------------------------------------------------
 
-/** LLM provider connection configuration (API type, base URL, credentials). */
+/**
+ * LLM provider connection. Configured once at the top of isotopes.yaml.
+ *
+ * - `type` is a pi-ai provider key (e.g. "anthropic", "openai", "amazon-bedrock").
+ *   See pi-ai's `KnownProvider` for the full list. Custom strings are allowed
+ *   if a custom provider plugin registers one.
+ * - `defaultModel` is the model used by agents that don't specify their own.
+ * - `baseUrl` / `headers` cover proxy / gateway scenarios — replaces the old
+ *   `*-proxy` type variants.
+ *
+ * Per-agent overrides are no longer supported — agents pick a model only.
+ */
 export interface ProviderConfig {
-  type: 'openai-proxy' | 'anthropic-proxy' | 'openai' | 'anthropic';
+  type: string;
   baseUrl?: string;
   apiKey?: string;
-  model?: string;
+  defaultModel?: string;
   headers?: Record<string, string>;
 }
 
@@ -25,7 +36,8 @@ export interface AgentConfig {
   id: string;
   tools?: Tool[];
   toolSettings?: AgentToolSettings;
-  provider?: ProviderConfig;
+  /** Model id (e.g. "claude-sonnet-4.5"). Falls back to provider.defaultModel. */
+  model?: string;
   /** Context compaction configuration */
   compaction?: CompactionConfig;
   /** Sandbox execution configuration */
