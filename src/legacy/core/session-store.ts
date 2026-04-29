@@ -14,7 +14,7 @@ import type {
   SessionStore,
   SessionStoreConfig,
   SessionConfig,
-} from "./types.js";
+} from "../../sessions/types.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("session-store");

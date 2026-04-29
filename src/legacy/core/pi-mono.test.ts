@@ -1,6 +1,6 @@
 // src/core/pi-mono.test.ts — Unit tests for PiMonoCore
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AgentConfig } from "./types.js";
+import type { AgentConfig } from "../../agent/types.js";
 
 // ---------------------------------------------------------------------------
 // Mock setup

@@ -5,7 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { createLogger } from "../../logging/logger.js";
-import type { Tool } from "../core/types.js";
+import type { Tool } from "../../tools/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type { SandboxExecutor } from "../sandbox/executor.js";
 import type { SandboxConfig } from "../sandbox/config.js";

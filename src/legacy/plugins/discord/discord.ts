@@ -12,11 +12,9 @@ import {
   type NewsChannel,
   type ThreadChannel,
 } from "discord.js";
-import {
-  type AgentMessage,
-  type SessionStore,
-  type Transport,
-} from "../../core/types.js";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { SessionStore } from "../../../sessions/types.js";
+import type { Transport } from "../../../gateway/types.js";
 import type { ThreadBindingConfig } from "./types.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../../agent/runners/pi/messages.js";

@@ -5,7 +5,7 @@ import { createLogger } from "../../logging/logger.js";
 import type { HookRegistry } from "./hooks.js";
 import type { UIRegistry } from "./ui-registry.js";
 import type { ToolPluginRegistry } from "./tool-registry.js";
-import type { Tool } from "../core/types.js";
+import type { Tool } from "../../tools/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type {
   IsotopesPluginApi,

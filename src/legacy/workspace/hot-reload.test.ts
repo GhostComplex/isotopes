@@ -10,7 +10,7 @@ import {
   IGNORE_PATTERNS,
   type WorkspaceReloadedEvent,
 } from "./hot-reload.js";
-import type { AgentConfig } from "../core/types.js";
+import type { AgentConfig } from "../../agent/types.js";
 import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 

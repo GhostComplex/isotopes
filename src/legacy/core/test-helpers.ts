@@ -3,7 +3,7 @@
 // and SessionStore mocks. Centralise them here.
 
 import { vi } from "vitest";
-import type { SessionStore } from "./types.js";
+import type { SessionStore } from "../../sessions/types.js";
 import type { AgentServiceCache } from "./pi-mono.js";
 import type { DefaultAgentManager } from "./agent-manager.js";
 

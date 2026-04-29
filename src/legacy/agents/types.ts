@@ -1,6 +1,6 @@
 // Public types for the unified AgentRuntime.
 
-import type { ProviderConfig } from "../core/types.js";
+import type { ProviderConfig } from "../../agent/types.js";
 import type { ToolRegistry } from "../core/tools.js";
 import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultSessionStore } from "../core/session-store.js";

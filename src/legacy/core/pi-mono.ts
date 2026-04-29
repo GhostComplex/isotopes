@@ -16,11 +16,8 @@ import {
   type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 
-import {
-  type AgentConfig,
-  type CompactionConfig,
-  type Tool,
-} from "./types.js";
+import type { AgentConfig, CompactionConfig } from "../../agent/types.js";
+import type { Tool } from "../../tools/types.js";
 import type { ToolRegistry } from "./tools.js";
 import { createLogger } from "../../logging/logger.js";
 import * as path from "node:path";

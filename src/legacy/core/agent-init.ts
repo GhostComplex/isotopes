@@ -36,7 +36,7 @@ import { SandboxExecutor, SandboxFs, shouldSandbox, type FsLike } from "../sandb
 import * as nodeFs from "node:fs/promises";
 import { PiMonoCore, type AgentServiceCache } from "./pi-mono.js";
 import type { DefaultAgentManager } from "./agent-manager.js";
-import type { AgentConfig } from "./types.js";
+import type { AgentConfig } from "../../agent/types.js";
 import { createLogger } from "../../logging/logger.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 

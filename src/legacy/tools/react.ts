@@ -1,7 +1,8 @@
 // src/tools/react.ts — message_react tool
 
 import { createLogger } from "../../logging/logger.js";
-import type { Tool, Transport } from "../core/types.js";
+import type { Tool } from "../../tools/types.js";
+import type { Transport } from "../../gateway/types.js";
 import type { ToolHandler } from "../core/tools.js";
 
 const log = createLogger("tools:react");

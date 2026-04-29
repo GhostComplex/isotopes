@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import { resolveBinding } from "./bindings.js";
-import type { Binding } from "../legacy/core/types.js";
+import type { Binding } from "./types.js";
 import { toBindings } from "../config.js";
 
 // ---------------------------------------------------------------------------

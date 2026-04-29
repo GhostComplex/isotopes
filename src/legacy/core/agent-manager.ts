@@ -1,6 +1,6 @@
 // src/core/agent-manager.ts — Agent lifecycle management
 
-import type { AgentConfig } from "./types.js";
+import type { AgentConfig } from "../../agent/types.js";
 import { PiMonoCore, AgentServiceCache } from "./pi-mono.js";
 import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 import {

@@ -1,6 +1,6 @@
 // src/tools/web.ts — Web fetch and search tools
 
-import type { Tool } from "../core/types.js";
+import type { Tool } from "../../tools/types.js";
 import type { ToolHandler } from "../core/tools.js";
 
 // ---------------------------------------------------------------------------

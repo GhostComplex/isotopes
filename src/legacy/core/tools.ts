@@ -2,7 +2,8 @@
 // Manages tool definitions and their handlers.
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentToolSettings, ProviderConfig, Tool } from "./types.js";
+import type { AgentToolSettings, Tool } from "../../tools/types.js";
+import type { ProviderConfig } from "../../agent/types.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import type { FsLike } from "../sandbox/fs-bridge.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";

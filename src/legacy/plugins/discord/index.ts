@@ -2,7 +2,8 @@
 // Registers the Discord transport via the plugin system.
 
 import type { IsotopesPluginApi, TransportFactoryContext } from "../types.js";
-import type { Transport, SessionStore } from "../../core/types.js";
+import type { Transport } from "../../../gateway/types.js";
+import type { SessionStore } from "../../../sessions/types.js";
 import { DiscordTransportManager } from "./discord-manager.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import type { DiscordChannelsConfig } from "./types.js";
