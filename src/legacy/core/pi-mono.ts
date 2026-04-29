@@ -5,7 +5,7 @@
 // the SDK's AgentSession.
 
 import { getModel, type Model, type Api } from "@mariozechner/pi-ai";
-import { truncateToolResultText } from "./tool-result-truncation.js";
+import { truncateToolResultText } from "../../agent/runners/pi/tool-result-truncation.js";
 import {
   type AgentSession,
   AuthStorage,
