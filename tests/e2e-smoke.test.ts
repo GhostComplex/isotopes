@@ -16,9 +16,9 @@ import {
   createEditFileTool,
   createWorkspaceToolsWithGuards,
   applyToolPolicy,
-} from "../src/core/tools.js";
-import { createExecTools } from "../src/tools/exec.js";
-import { createWebFetchTool } from "../src/tools/web.js";
+} from "../src/legacy/core/tools.js";
+import { createExecTools } from "../src/legacy/tools/exec.js";
+import { createWebFetchTool } from "../src/legacy/tools/web.js";
 
 // ---------------------------------------------------------------------------
 // Test workspace setup

@@ -5,21 +5,21 @@ const fs = require("fs");
 const path = require("path");
 
 // --- Plugin manifests ---
-const pluginsDir = path.join(__dirname, "..", "src", "plugins");
+const pluginsDir = path.join(__dirname, "..", "src", "legacy", "plugins");
 
 for (const entry of fs.readdirSync(pluginsDir, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue;
   const manifest = path.join(pluginsDir, entry.name, "isotopes.plugin.json");
   if (!fs.existsSync(manifest)) continue;
 
-  const destDir = path.join(__dirname, "..", "dist", "plugins", entry.name);
+  const destDir = path.join(__dirname, "..", "dist", "legacy", "plugins", entry.name);
   fs.mkdirSync(destDir, { recursive: true });
   fs.copyFileSync(manifest, path.join(destDir, "isotopes.plugin.json"));
 }
 
 // --- Workspace template files ---
-const templateSrc = path.join(__dirname, "..", "src", "workspace", "template-files");
-const templateDest = path.join(__dirname, "..", "dist", "workspace", "template-files");
+const templateSrc = path.join(__dirname, "..", "src", "legacy", "workspace", "template-files");
+const templateDest = path.join(__dirname, "..", "dist", "legacy", "workspace", "template-files");
 
 if (fs.existsSync(templateSrc)) {
   fs.mkdirSync(templateDest, { recursive: true });
