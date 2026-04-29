@@ -1,4 +1,4 @@
-// src/core/mention.ts — Mention detection for message handling
+// src/vnext/gateway/mention.ts — Mention detection for message handling
 // Transport-agnostic: determines whether a bot should respond based on mention rules.
 
 // ---------------------------------------------------------------------------

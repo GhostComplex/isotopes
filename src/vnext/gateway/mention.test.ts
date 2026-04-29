@@ -1,4 +1,4 @@
-// src/core/mention.test.ts — Unit tests for mention detection
+// src/vnext/gateway/mention.test.ts — Unit tests for mention detection
 
 import { describe, it, expect } from "vitest";
 import { shouldRespondToMessage } from "./mention.js";

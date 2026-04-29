@@ -1,7 +1,7 @@
-// src/core/bindings.ts — Binding resolution for routing messages to agents
+// src/vnext/gateway/bindings.ts — Binding resolution for routing messages to agents
 // Resolves which agent(s) should handle a message based on (channel, accountId, peer).
 
-import type { Binding, BindingPeer } from "./types.js";
+import type { Binding, BindingPeer } from "../../core/types.js";
 
 // ---------------------------------------------------------------------------
 // Query — what we're trying to match against

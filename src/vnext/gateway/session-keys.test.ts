@@ -1,4 +1,4 @@
-// src/core/session-keys.test.ts — Unit tests for the shared session key builder
+// src/vnext/gateway/session-keys.test.ts — Unit tests for the shared session key builder
 
 import { describe, it, expect } from "vitest";
 import { buildSessionKey } from "./session-keys.js";
