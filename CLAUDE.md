@@ -11,7 +11,7 @@ Isotopes is a self-hostable AI agent framework for multi-agent collaboration acr
 ```bash
 pnpm install           # Install dependencies (pnpm is canonical, not npm)
 pnpm build             # Compile TypeScript (plain tsc -> dist/)
-pnpm dev               # Run without building (tsx src/cli.ts)
+pnpm dev               # Run without building (tsx src/legacy/cli.ts)
 pnpm lint              # ESLint
 pnpm lint:fix          # ESLint with auto-fix
 pnpm typecheck         # tsc --noEmit
@@ -62,7 +62,7 @@ pnpm test:integration
 - `src/workspace/` — File watcher, hot-reload manager, workspace templates and state.
 - `src/skills/` — Skill discovery, parsing, and prompt injection.
 - `src/subagent/` — Sub-agent management via the Claude Agent SDK, Discord sink for output routing.
-- `src/cli.ts` — CLI entry point. Parses args, dispatches subcommands or runs foreground.
+- `src/legacy/cli.ts` — CLI entry point. Parses args, dispatches subcommands or runs foreground.
 
 ### Key patterns
 - **Pluggable core**: `AgentCore` is an interface; `PiMonoCore` is the default. Swap the LLM backend without touching the rest.
