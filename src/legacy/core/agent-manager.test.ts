@@ -40,7 +40,7 @@ describe("DefaultAgentManager", () => {
 
   beforeEach(() => {
     core = createMockCore();
-    manager = new DefaultAgentManager(core);
+    manager = new DefaultAgentManager();
   });
 
   describe("create", () => {

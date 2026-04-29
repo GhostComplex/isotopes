@@ -8,10 +8,9 @@ import type { RegisteredAgent } from "./types.js";
 function fakeAgent(id: string): RegisteredAgent {
   return {
     id,
-    cache: {} as RegisteredAgent["cache"],
+    config: { id } as RegisteredAgent["config"],
     systemPrompt: "you are " + id,
     sessionStore: {} as RegisteredAgent["sessionStore"],
-    tools: {} as RegisteredAgent["tools"],
     capabilities: { tools: [], canBeAddressed: true },
   };
 }

@@ -352,7 +352,6 @@ describe("SlashCommandHandler", () => {
     it("returns error when no agent cache available", async () => {
       const ctx = createContext({
         sessionId: "session-no-compact",
-        agentCache: undefined,
       });
 
       const result = await handler.execute("/compact", ctx);

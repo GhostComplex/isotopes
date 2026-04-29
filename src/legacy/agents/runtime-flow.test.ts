@@ -11,7 +11,7 @@ import type { AgentSession } from "@mariozechner/pi-coding-agent";
 function fakeAgent(id: string): RegisteredAgent {
   return {
     id,
-    cache: {} as RegisteredAgent["cache"],
+    config: { id } as RegisteredAgent["config"],
     systemPrompt: "you are " + id,
     sessionStore: {
       findByKey: vi.fn(async () => undefined),
@@ -21,7 +21,6 @@ function fakeAgent(id: string): RegisteredAgent {
         lastActiveAt: new Date(),
       })),
     } as unknown as RegisteredAgent["sessionStore"],
-    tools: {} as RegisteredAgent["tools"],
     capabilities: { tools: [], canBeAddressed: true },
   };
 }

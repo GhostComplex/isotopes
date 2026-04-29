@@ -11,10 +11,10 @@ import { AgentRuntime } from "../../agents/runtime.js";
 import { PiMonoCore } from "../../core/pi-mono.js";
 
 function makeMockRuntime(agentId: string, cache: unknown, sessionStore: SessionStore): AgentRuntime {
-  const rt = new AgentRuntime({ core: new PiMonoCore({ type: "anthropic", defaultModel: "claude-opus-4.5" }) });
+  const rt = new AgentRuntime({ globalProvider: { type: "anthropic", defaultModel: "claude-opus-4.5" } });
   rt.registerAgent({
     id: agentId,
-    cache: cache as never,
+    config: { id: agentId } as never,
     systemPrompt: "",
     sessionStore: sessionStore as never,
     tools: { list: () => [] } as never,
