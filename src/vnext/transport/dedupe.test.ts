@@ -1,4 +1,4 @@
-// src/core/dedupe.test.ts — Tests for deduplication cache
+// src/vnext/transport/dedupe.test.ts — Tests for deduplication cache
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { DedupeCache } from "./dedupe.js";
