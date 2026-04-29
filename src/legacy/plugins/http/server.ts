@@ -7,7 +7,6 @@ import { createLogger } from "../../../logging/logger.js";
 import type { CronScheduler } from "../../automation/cron-job.js";
 import type { ConfigReloader } from "../../workspace/config-reloader.js";
 import type { DefaultAgentManager } from "../../core/agent-manager.js";
-import type { UsageTracker } from "../../core/usage-tracker.js";
 import type { SessionStoreManager } from "../../core/session-store-manager.js";
 import {
   applyCors,
@@ -26,7 +25,6 @@ import type { UIRegistry } from "../../plugins/ui-registry.js";
 import "./cron.js";
 import "./config.js";
 import "./logs.js";
-import "./usage.js";
 import "./status.js";
 import "./sessions.js";
 
@@ -60,7 +58,6 @@ export interface ApiServerDeps {
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
   agentManager?: DefaultAgentManager;
-  usageTracker?: UsageTracker;
   uiRegistry?: UIRegistry;
   sessionStoreManager?: SessionStoreManager;
   hooks?: HookRegistry;
@@ -81,7 +78,6 @@ export class ApiServer {
       cronScheduler: deps.cronScheduler,
       configReloader: deps.configReloader,
       agentManager: deps.agentManager,
-      usageTracker: deps.usageTracker,
       sessionStoreManager: deps.sessionStoreManager,
       hooks: deps.hooks,
       agentRuntime: deps.agentRuntime,

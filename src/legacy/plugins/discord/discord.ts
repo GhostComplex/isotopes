@@ -30,7 +30,6 @@ import { agentEventBus } from "../../core/agent-event-bus.js";
 import { isSilentReply } from "../../core/silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
-import type { UsageTracker } from "../../core/usage-tracker.js";
 import { buildSessionKey } from "../../../gateway/session-keys.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../../../gateway/channel-history.js";
 import { DedupeCache } from "../../../gateway/dedupe.js";
@@ -179,7 +178,6 @@ export interface DiscordTransportConfig {
   /** Context management configuration */
   context?: ContextConfigFile;
   /** Usage tracker for per-session/global token accumulation */
-  usageTracker?: UsageTracker;
   /** Discord user IDs allowed to execute slash commands */
   adminUsers?: string[];
   /** Thread control configuration — whether to respond/observe in threads */
@@ -780,7 +778,6 @@ export class DiscordTransport implements Transport {
           content: "",
           ...(cwd ? { cwd } : {}),
           log,
-          ...(this.config.usageTracker ? { usageTracker: this.config.usageTracker } : {}),
           onToolComplete: async () => {
             const pending = this.pendingMessages.get(sessionId);
             if (!pending?.length) return null;

@@ -4,9 +4,8 @@
 
 import type { AgentRuntime } from "../agents/runtime.js";
 import { agentEventBus } from "./agent-event-bus.js";
-import { userMessage, assistantMessage, getAgentEndMeta, getUsage } from "../../agent/runners/pi/messages.js";
+import { userMessage, assistantMessage, getAgentEndMeta } from "../../agent/runners/pi/messages.js";
 import type { Logger } from "../../logging/logger.js";
-import type { UsageTracker } from "./usage-tracker.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import { runWithMessageContext } from "../transport/context.js";
 
@@ -20,7 +19,6 @@ export interface ConsumeRootRunOptions {
   cwd?: string;
   log: Logger;
   hooks?: HookRegistry;
-  usageTracker?: UsageTracker;
   /**
    * Called at the end of every turn. Returning a non-null string causes
    * `runtime.steer(runId, msg)` to inject it before the next turn — used
@@ -38,7 +36,7 @@ export async function consumeRootRun(
   runtime: AgentRuntime,
   opts: ConsumeRootRunOptions,
 ): Promise<ConsumeRootRunResult> {
-  const { to, sessionId, content, cwd, log, hooks, usageTracker, onToolComplete } = opts;
+  const { to, sessionId, content, cwd, log, hooks, onToolComplete } = opts;
 
   if (hooks && content) {
     await hooks.emit("message_received", {
@@ -77,10 +75,6 @@ export async function consumeRootRun(
           } else if (event.type === "tool_execution_end") {
             log.debug(`Tool result: ${event.toolCallId}`);
           } else if (event.type === "turn_end") {
-            const usage = getUsage(event.message);
-            if (usageTracker && usage) {
-              usageTracker.record(sessionId, usage as Parameters<typeof usageTracker.record>[1]);
-            }
             if (onToolComplete && runId) {
               try {
                 const pendingContext = await onToolComplete();

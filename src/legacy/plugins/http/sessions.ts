@@ -193,27 +193,6 @@ addRoute("GET", "/api/sessions/:agentId/:key/messages", async (req, res, deps) =
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/sessions/:agentId/:key/usage — per-session usage stats
-// ---------------------------------------------------------------------------
-
-addRoute("GET", "/api/sessions/:agentId/:key/usage", async (req, res, deps) => {
-  if (!deps.sessionStoreManager) {
-    sendJson(res, 200, { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
-    return;
-  }
-
-  const store = deps.sessionStoreManager.peek(req.params.agentId);
-  if (!store) {
-    sendJson(res, 200, { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
-    return;
-  }
-
-  const resolved = await resolveSessionKey(store, req.params.agentId, req.params.key);
-  const sessionId = resolved?.sessionId ?? "";
-  sendJson(res, 200, deps.usageTracker?.getSession(sessionId) ?? { totalTokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 });
-});
-
-// ---------------------------------------------------------------------------
 // POST /api/sessions/:agentId — create or resume a session
 // ---------------------------------------------------------------------------
 

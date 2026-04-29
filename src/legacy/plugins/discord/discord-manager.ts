@@ -11,7 +11,6 @@ import { getDiscordToken } from "./config.js";
 import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import type { ReplyToMode } from "./reply-directive.js";
-import type { UsageTracker } from "../../core/usage-tracker.js";
 import { createLogger } from "../../../logging/logger.js";
 
 const log = createLogger("discord-manager");
@@ -26,7 +25,6 @@ export interface DiscordSharedConfig {
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   threadBindingManager?: ThreadBindingManager;
-  usageTracker?: UsageTracker;
 }
 
 /** Configuration for the DiscordTransportManager */
@@ -72,7 +70,6 @@ export class DiscordTransportManager {
         threadBindingManager: shared.threadBindingManager,
         allowBots: account.allowBots,
         context: account.context,
-        usageTracker: shared.usageTracker,
         adminUsers: account.adminUsers,
         replyToMode: account.replyToMode,
       });
