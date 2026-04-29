@@ -56,7 +56,7 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
 }
 
 function installStub(rt: AgentRuntime, gen: (req: SendMessageRequest) => AsyncGenerator<AgentEvent>) {
-  (rt as unknown as { builtinRunner: { sendMessage: typeof gen } }).builtinRunner = {
+  (rt as unknown as { piRunner: { sendMessage: typeof gen } }).piRunner = {
     sendMessage: gen as never,
   };
 }

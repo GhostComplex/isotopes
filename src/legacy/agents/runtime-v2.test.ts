@@ -76,9 +76,9 @@ describe("AgentRuntime.sendMessage — validation", () => {
     }))).rejects.toThrow(/leaf sessions are not resumable/);
   });
 
-  it("rejects sendMessage when no builtin runner configured", async () => {
+  it("rejects sendMessage when no pi runner configured", async () => {
     rt.registerAgent(fakeAgent("main"));
-    await expect(consume(rt.sendMessage({ to: "main", content: "hi" }))).rejects.toThrow(/builtin runner not configured/);
+    await expect(consume(rt.sendMessage({ to: "main", content: "hi" }))).rejects.toThrow(/pi runner not configured/);
   });
 });
 

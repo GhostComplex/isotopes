@@ -1,4 +1,4 @@
-// Flow tests for AgentRuntime.sendMessage. Stubs BuiltinRunner via
+// Flow tests for AgentRuntime.sendMessage. Stubs PiRunner via
 // private-field replacement to assert orchestration (onRunStart timing,
 // cancel-reason propagation, abort-on-break, validation error class).
 
@@ -40,7 +40,7 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
   };
 }
 
-interface StubBuiltinRunner {
+interface StubPiRunner {
   sendMessage: (opts: {
     runId: string;
     abort: AbortSignal;
@@ -48,8 +48,8 @@ interface StubBuiltinRunner {
   }) => AsyncGenerator<AgentEvent>;
 }
 
-function installStubRunner(rt: AgentRuntime, runner: StubBuiltinRunner) {
-  (rt as unknown as { builtinRunner: StubBuiltinRunner }).builtinRunner = runner;
+function installStubRunner(rt: AgentRuntime, runner: StubPiRunner) {
+  (rt as unknown as { piRunner: StubPiRunner }).piRunner = runner;
 }
 
 describe("runtime.sendMessage — onRunStart timing", () => {
