@@ -1,4 +1,4 @@
-// src/core/paths.test.ts — Unit tests for paths module
+// src/vnext/paths.test.ts — Unit tests for paths module
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "node:path";

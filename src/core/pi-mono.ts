@@ -23,7 +23,7 @@ import {
 } from "./types.js";
 import type { ToolRegistry } from "./tools.js";
 import { resolveCompactionConfig } from "./compaction.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import * as path from "node:path";
 
 // ---------------------------------------------------------------------------

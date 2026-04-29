@@ -1,6 +1,6 @@
 // src/tools/react.ts — message_react tool
 
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import type { Tool, Transport } from "../core/types.js";
 import type { ToolHandler } from "../core/tools.js";
 

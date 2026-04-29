@@ -1,7 +1,7 @@
 // src/plugins/api.ts — Scoped plugin API factory
 
 import path from "node:path";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import type { HookRegistry } from "./hooks.js";
 import type { UIRegistry } from "./ui-registry.js";
 import type { ToolPluginRegistry } from "./tool-registry.js";

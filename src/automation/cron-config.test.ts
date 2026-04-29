@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { CronScheduler, type CronJob } from "./cron-job.js";
 
 // Suppress log output in tests
-vi.mock("../core/logger.js", () => ({
+vi.mock("../vnext/logging/logger.js", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

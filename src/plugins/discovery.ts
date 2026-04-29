@@ -2,7 +2,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import type { PluginManifest } from "./types.js";
 
 const log = createLogger("plugins:discovery");

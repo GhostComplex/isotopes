@@ -1,5 +1,5 @@
 import type { AgentEvent } from "./types.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 const log = createLogger("event-bus");
 

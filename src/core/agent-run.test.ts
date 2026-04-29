@@ -6,7 +6,7 @@ import { AgentRuntime } from "../agents/runtime.js";
 import type { RegisteredAgent, SendMessageRequest } from "../agents/types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { agentEventBus } from "./agent-event-bus.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 const log = createLogger("test:agent-run");
 

@@ -5,7 +5,7 @@ import { access, constants } from "node:fs/promises";
 import path from "node:path";
 import { addRoute } from "./routes.js";
 import { sendJson, handleRouteError } from "./middleware.js";
-import { getIsotopesHome, getLogsDir } from "../../core/paths.js";
+import { getIsotopesHome, getLogsDir } from "../../vnext/paths.js";
 
 const LOG_CANDIDATES = [
   () => path.join(getLogsDir(), "isotopes.log"),

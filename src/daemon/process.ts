@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 const log = createLogger("daemon:process");
 

@@ -19,7 +19,7 @@ import type {
 } from "./types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "../sandbox/config.js";
 import type { PluginConfigEntry } from "../plugins/types.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 const log = createLogger("config");
 

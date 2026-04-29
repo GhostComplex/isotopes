@@ -3,7 +3,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 
 const log = createLogger("watcher");
 

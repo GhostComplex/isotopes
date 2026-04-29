@@ -5,9 +5,9 @@ import {
   ensureAgentSessionsDir,
   getAgentSessionsDir,
   normalizeAgentId,
-} from "./paths.js";
+} from "../vnext/paths.js";
 import type { SessionConfig } from "./types.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 
 const log = createLogger("session-store-manager");

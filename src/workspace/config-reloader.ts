@@ -1,7 +1,7 @@
 // src/workspace/config-reloader.ts — Auto-reload config on file changes
 // Watches the Isotopes config file and reloads it when modified.
 
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import { loadConfig, type IsotopesConfigFile } from "../core/config.js";
 import { WorkspaceWatcher, type FileChange } from "./watcher.js";
 

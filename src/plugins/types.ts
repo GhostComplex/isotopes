@@ -1,7 +1,7 @@
 // src/plugins/types.ts — Plugin system interfaces
 // Defines the manifest, lifecycle, hooks, and API surface for Isotopes plugins.
 
-import type { Logger } from "../core/logger.js";
+import type { Logger } from "../vnext/logging/logger.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { SessionStore, Tool, Transport } from "../core/types.js";
 import type { ToolHandler } from "../core/tools.js";

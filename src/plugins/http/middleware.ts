@@ -2,7 +2,7 @@
 // CORS, JSON body parsing, error handling, and request logging.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createLogger } from "../../core/logger.js";
+import { createLogger } from "../../vnext/logging/logger.js";
 
 const log = createLogger("api");
 

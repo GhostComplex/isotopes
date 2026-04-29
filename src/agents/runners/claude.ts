@@ -2,7 +2,7 @@
 // see one event taxonomy.
 
 import { query, type Options, type PermissionMode, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { createLogger } from "../../core/logger.js";
+import { createLogger } from "../../vnext/logging/logger.js";
 import {
   DEFAULT_SPAWN_ALLOWED_TOOLS,
   type SettingSource,

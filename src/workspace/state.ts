@@ -3,7 +3,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import { isBrandNewWorkspace } from "./templates.js";
 
 const log = createLogger("workspace:state");

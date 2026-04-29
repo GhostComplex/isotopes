@@ -12,7 +12,7 @@
 
 import { spawn } from "node:child_process";
 import * as nodeFs from "node:fs/promises";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import type { SandboxExecutor } from "./executor.js";
 
 const log = createLogger("sandbox:fs-bridge");

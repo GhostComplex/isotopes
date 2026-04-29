@@ -12,7 +12,7 @@ import path from "node:path";
 import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";
 import { SessionStoreManager } from "./session-store-manager.js";
-import { createLogger } from "./logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import { LazyTransportContext } from "../tools/react.js";
 import { ProcessRegistry } from "../tools/exec.js";
 import { ToolRegistry } from "./tools.js";
@@ -20,14 +20,14 @@ import { ContainerManager, SandboxExecutor } from "../sandbox/index.js";
 import { initializeAgent } from "./agent-init.js";
 import {
   ensureDirectories,
-} from "./paths.js";
+} from "../vnext/paths.js";
 import { HotReloadManager } from "../workspace/index.js";
 import { ApiServer } from "../plugins/http/server.js";
 import { CronScheduler } from "../automation/cron-job.js";
 import { HeartbeatManager } from "../automation/heartbeat.js";
 import { UsageTracker } from "./usage-tracker.js";
 import { PluginManager } from "../plugins/manager.js";
-import { getIsotopesHome } from "./paths.js";
+import { getIsotopesHome } from "../vnext/paths.js";
 import { AgentRuntime } from "../agents/runtime.js";
 import { consumeRootRun } from "./agent-run.js";
 

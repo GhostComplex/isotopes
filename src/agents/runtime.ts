@@ -4,7 +4,7 @@
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
-import { createLogger } from "../core/logger.js";
+import { createLogger } from "../vnext/logging/logger.js";
 import type {
   AgentSessionKind,
   AgentSessionPolicy,
