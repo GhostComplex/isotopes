@@ -16,7 +16,7 @@ import type { ProviderConfig } from "../../agent/types.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import { PiRunner } from "../../agent/runners/pi/runner.js";
 import { createRootPiSession, createLeafPiSession } from "../../agent/runners/pi/session-factory.js";
-import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude.js";
+import { ClaudeRunner, type ClaudeRunnerOptions } from "../../agent/runners/claude/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
