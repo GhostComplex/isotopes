@@ -21,7 +21,7 @@ import {
   loadWorkspaceContext,
   buildSystemPrompt,
   ensureWorkspaceStructure,
-} from "./workspace.js";
+} from "../../agent/workspace.js";
 import { seedWorkspaceTemplates } from "../workspace/templates.js";
 import { reconcileWorkspaceState } from "../workspace/state.js";
 import {
