@@ -467,7 +467,6 @@ export class DiscordTransport implements Transport {
       const sessionStore = this.getSessionStore(agentId);
       const sessionKey = this.getSessionKey(msg, agentId);
       const session = await sessionStore.findByKey(sessionKey);
-      const agent = this.config.agentManager.get(agentId);
 
       const result = await this.commandHandler.execute(content, {
         agentManager: this.config.agentManager,
@@ -498,8 +497,7 @@ export class DiscordTransport implements Transport {
     const agentId = this.resolveAgentId(msg);
     log.debug(`Routing message to agent: ${agentId}`);
 
-    const agent = this.config.agentManager.get(agentId);
-    if (!agent) {
+    if (!this.config.agentManager.get(agentId)) {
       log.warn(`Agent "${agentId}" not found`);
       return;
     }

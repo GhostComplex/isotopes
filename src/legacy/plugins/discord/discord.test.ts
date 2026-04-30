@@ -20,7 +20,6 @@ function makeMockRuntime(agentId: string, cache: unknown, sessionStore: SessionS
   return rt;
 }
 
-const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 type MockChannel = {
   sendTyping: ReturnType<typeof vi.fn>;
@@ -154,7 +153,6 @@ describe("DiscordTransport", () => {
 
   describe("session recovery", () => {
     it("rehydrates prior messages when an existing session is found", async () => {
-      const agent = agentManager.get("default")!;
 
       sessionStore.findByKey = vi.fn().mockResolvedValue({
         id: "session-123",
@@ -248,7 +246,6 @@ describe("DiscordTransport", () => {
       ).handleMessage(msg);
 
       // Agent should have been called (message was processed)
-      const agent = agentManager.get("default")!;
     });
 
     it.skip("TODO(#645): re-add with runtime.sendMessage spy — ignores messages without mention when requireMention=true (default)", async () => {
@@ -273,7 +270,6 @@ describe("DiscordTransport", () => {
       ).handleMessage(msg);
 
       // Agent should NOT have been called
-      const agent = agentManager.get("default")!;
     });
 
     it.skip("TODO(#645): re-add with runtime.sendMessage spy — responds to mention even when requireMention=true", async () => {
@@ -298,7 +294,6 @@ describe("DiscordTransport", () => {
         }
       ).handleMessage(msg);
 
-      const agent = agentManager.get("default")!;
     });
 
     it.skip("TODO(#645): re-add with runtime.sendMessage spy — defaults to requireMention=true when no guilds config provided", async () => {
@@ -313,7 +308,6 @@ describe("DiscordTransport", () => {
         }
       ).handleMessage(msg);
 
-      const agent = agentManager.get("default")!;
     });
   });
 
@@ -578,7 +572,6 @@ describe("DiscordTransport", () => {
       expect(channel.send).toHaveBeenCalledWith(expect.stringContaining("Agent Status"));
 
       // Agent should NOT have been called — command was intercepted
-      const agent = agentManager.get("default")!;
     });
 
     it("routes /reload to command handler", async () => {
@@ -680,7 +673,6 @@ describe("DiscordTransport", () => {
       await (transportWithAdmin as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
 
       // Non-command message should reach the agent
-      const agent = agentManager.get("default")!;
     });
 
     it.skip("TODO(#645): re-add with runtime.sendMessage spy — ignores unknown slash commands and passes them to agent", async () => {
@@ -704,7 +696,6 @@ describe("DiscordTransport", () => {
       await (transportWithAdmin as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
 
       // Unknown commands are not intercepted — isCommand returns false
-      const agent = agentManager.get("default")!;
     });
   });
 
@@ -757,7 +748,6 @@ describe("DiscordTransport", () => {
       await (transportCtx as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
 
       // Agent should NOT have been called
-      const agent = agentManager.get("default")!;
     });
 
     it("injects channel history into user message when bot is triggered", async () => {
@@ -817,11 +807,9 @@ describe("DiscordTransport", () => {
       await handleMessage(msg2);
 
       // Agent should only be called once (second message is a duplicate)
-      const agent = agentManager.get("default")!;
     });
 
     it.skip("TODO(#645): re-add with runtime.sendMessage spy — calls preparePromptMessages instead of raw slice", async () => {
-      const agent = agentManager.get("default")!;
 
       // Provide messages that would be affected by limitHistoryTurns
       sessionStore.getMessages = vi.fn().mockResolvedValue([

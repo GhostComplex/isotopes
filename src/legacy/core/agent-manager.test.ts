@@ -1,6 +1,6 @@
 // src/core/agent-manager.test.ts — Unit tests for DefaultAgentManager
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { DefaultAgentManager } from "./agent-manager.js";
 import type { AgentConfig } from "../../agent/types.js";
 
@@ -8,18 +8,6 @@ import type { AgentConfig } from "../../agent/types.js";
 // Mock setup
 // ---------------------------------------------------------------------------
 
-
-function createMockCache(): AgentConfig {
-  return {
-    createSession: vi.fn(),
-  } as unknown as AgentConfig;
-}
-
-function createMockCore(): never {
-  return {
-    createServiceCache: vi.fn(() => createMockCache()),
-  } as unknown as never;
-}
 
 function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
   return {
@@ -33,11 +21,9 @@ function makeConfig(overrides?: Partial<AgentConfig>): AgentConfig {
 // ---------------------------------------------------------------------------
 
 describe("DefaultAgentManager", () => {
-  let core: never;
   let manager: DefaultAgentManager;
 
   beforeEach(() => {
-    core = createMockCore();
     manager = new DefaultAgentManager();
   });
 
