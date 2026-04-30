@@ -4,7 +4,7 @@
 import { getModel, type Api, type Model } from "@mariozechner/pi-ai";
 import type { ProviderConfig } from "../../types.js";
 
-const DEFAULT_MODEL = "claude-opus-4.5";
+const DEFAULT_MODEL = "claude-opus-4.7";
 
 function cloneModel<TApi extends Api>(
   model: Model<TApi>,
