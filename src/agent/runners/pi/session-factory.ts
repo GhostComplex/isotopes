@@ -56,7 +56,7 @@ function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<A
   };
 }
 
-export interface CreatePiAgentSessionOptions {
+interface CreatePiAgentSessionOptions {
   globalProvider: ProviderConfig;
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
@@ -69,7 +69,7 @@ export interface CreatePiAgentSessionOptions {
   hooks?: HookRegistry;
 }
 
-export async function createPiAgentSession(opts: CreatePiAgentSessionOptions): Promise<AgentSession> {
+async function createPiAgentSession(opts: CreatePiAgentSessionOptions): Promise<AgentSession> {
   const {
     globalProvider, authStorage, modelRegistry,
     agentConfig, tools,

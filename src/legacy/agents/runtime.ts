@@ -17,7 +17,7 @@ import type { Tool } from "../../tools/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import { PiRunner } from "../../agent/runners/pi/runner.js";
-import { createPiAgentSession, createRootPiSession, createLeafPiSession } from "../../agent/runners/pi/session-factory.js";
+import { createRootPiSession, createLeafPiSession } from "../../agent/runners/pi/session-factory.js";
 import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import {
@@ -265,18 +265,16 @@ export class AgentRuntime {
     }
     const agent = this.agents.get(agentId);
     if (!agent) throw new Error(`Unknown agent: ${agentId}`);
-    const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
-    if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
-    const session = await createPiAgentSession({
-      globalProvider: this.piGlobalProvider,
-      authStorage: this.piAuthStorage,
-      modelRegistry: this.piModelRegistry,
-      agentConfig: agent.config,
-      tools: this.getAgentTools(agentId),
-      sessionManager,
-      systemPrompt: agent.systemPrompt,
-      ...(this.hooks ? { hooks: this.hooks } : {}),
-    });
+    const session = await createRootPiSession(
+      {
+        globalProvider: this.piGlobalProvider,
+        authStorage: this.piAuthStorage,
+        modelRegistry: this.piModelRegistry,
+        getAgentTools: (id) => this.getAgentTools(id),
+        ...(this.hooks ? { hooks: this.hooks } : {}),
+      },
+      { agent, sessionId },
+    );
     try {
       const compacted = await session.compact();
       return !!compacted;
