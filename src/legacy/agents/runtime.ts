@@ -122,27 +122,30 @@ export class AgentRuntime {
   private agents = new Map<string, RegisteredAgent>();
   private events = new SessionEventBus();
   private piToolRegistries = new Map<string, Map<string, { tool: Tool; handler: ToolHandler }>>();
+  private piGlobalProvider?: ProviderConfig;
+  private piAuthStorage?: AuthStorage;
+  private piModelRegistry?: ModelRegistry;
+  private hooks?: HookRegistry;
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
     this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
+    if (opts.hooks) this.hooks = opts.hooks;
 
     if (opts.globalProvider) {
       const creds: Record<string, { type: "api_key"; key: string }> = {};
       if (opts.globalProvider.apiKey) {
         creds[opts.globalProvider.type] = { type: "api_key", key: opts.globalProvider.apiKey };
       }
-      const authStorage = AuthStorage.inMemory(creds);
-      const modelRegistry = ModelRegistry.create(authStorage);
+      this.piGlobalProvider = opts.globalProvider;
+      this.piAuthStorage = AuthStorage.inMemory(creds);
+      this.piModelRegistry = ModelRegistry.create(this.piAuthStorage);
       this.piRunner = new PiRunner({
-        globalProvider: opts.globalProvider,
-        authStorage,
-        modelRegistry,
-        getAgentTools: (agentId) => {
-          const map = this.piToolRegistries.get(agentId);
-          return map ? Array.from(map.values()) : [];
-        },
-        ...(opts.hooks ? { hooks: opts.hooks } : {}),
+        globalProvider: this.piGlobalProvider,
+        authStorage: this.piAuthStorage,
+        modelRegistry: this.piModelRegistry,
+        getAgentTools: (agentId) => this.getAgentTools(agentId),
+        ...(this.hooks ? { hooks: this.hooks } : {}),
       });
     }
 
@@ -262,19 +265,23 @@ export class AgentRuntime {
    * there wasn't enough context to compact.
    */
   async compactSession(agentId: string, sessionId: string): Promise<boolean> {
-    if (!this.piRunner) throw new Error("compactSession requires pi runner (globalProvider)");
+    if (!this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
+      throw new Error("compactSession requires pi runner (globalProvider)");
+    }
     const agent = this.agents.get(agentId);
     if (!agent) throw new Error(`Unknown agent: ${agentId}`);
     const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
     if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
     const { createPiAgentSession } = await import("../../agent/runners/pi/session-factory.js");
     const session = await createPiAgentSession({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...((this.piRunner as unknown as { deps: any }).deps),
+      globalProvider: this.piGlobalProvider,
+      authStorage: this.piAuthStorage,
+      modelRegistry: this.piModelRegistry,
       agentConfig: agent.config,
       tools: this.getAgentTools(agentId),
       sessionManager,
       systemPrompt: agent.systemPrompt,
+      ...(this.hooks ? { hooks: this.hooks } : {}),
     });
     try {
       const compacted = await session.compact();
