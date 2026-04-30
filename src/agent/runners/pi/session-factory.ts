@@ -120,13 +120,23 @@ async function createPiAgentSession(opts: CreatePiAgentSessionOptions): Promise<
     authStorage,
     modelRegistry,
     model,
-    tools: [],
+    // SDK reads `tools` as an allowlist. Pass our names so SDK's built-in
+    // `bash` (host shell) doesn't end up active when sandboxed.
+    tools: customTools.map((t) => t.name).filter((n): n is string => typeof n === "string"),
     customTools,
     sessionManager,
     settingsManager,
   });
 
   overrideSessionSystemPrompt(session, systemPrompt);
+
+  // DIAGNOSTIC #647: verify customTools end up in agent.state.tools
+   
+  console.warn("[SESSION DIAG] customTools registered:", customTools.map((t) => t.name));
+   
+  console.warn("[SESSION DIAG] active in agent.state.tools:", session.agent.state.tools.map((t) => t.name));
+   
+  console.warn("[SESSION DIAG] sample param schema (first tool):", JSON.stringify(session.agent.state.tools[0]?.parameters, null, 2));
 
   return session;
 }
