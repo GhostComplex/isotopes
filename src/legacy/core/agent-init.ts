@@ -1,7 +1,6 @@
 // src/core/agent-init.ts — Shared agent initialization logic
 // Used by both CLI (src/legacy/cli.ts) and TUI (src/tui/ChatScreen.tsx).
 
-import { resolveBundledSkillsDir } from "../skills/bundled-dir.js";
 import {
   toAgentConfig,
   type AgentConfigFile,
@@ -17,15 +16,10 @@ import {
   ensureWorkspaceDir,
   resolveExplicitWorkspacePath,
 } from "../../paths.js";
-import {
-  loadWorkspaceContext,
-  buildSystemPrompt,
-  ensureWorkspaceStructure,
-} from "../../agent/workspace.js";
+import { ensureWorkspaceStructure } from "../../agent/workspace.js";
 import { seedWorkspaceTemplates } from "../workspace/templates.js";
 import { reconcileWorkspaceState } from "../workspace/state.js";
 import {
-  buildToolGuardPrompt,
   createWorkspaceToolsWithGuards,
   applyToolPolicy,
 } from "./tools.js";
@@ -33,7 +27,6 @@ import { createReactTools, LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import { SandboxExecutor, SandboxFs, shouldSandbox } from "../sandbox/index.js";
 import * as nodeFs from "node:fs/promises";
-import type { DefaultAgentManager } from "./agent-manager.js";
 import type { AgentConfig } from "../../agent/types.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createLogger } from "../../logging/logger.js";
@@ -60,8 +53,6 @@ export interface InitAgentOptions {
   sandbox?: SandboxConfigFile;
   /** Spawning config */
   spawning?: SpawningConfigFile;
-  /** Agent manager */
-  agentManager: DefaultAgentManager;
   /** Pre-built sandbox executor (optional — no sandbox if omitted) */
   sandboxExecutor?: SandboxExecutor;
   /** Transport context for react tools (optional — skipped if omitted) */
@@ -80,8 +71,6 @@ export interface InitAgentResult {
   tools: AgentTool[];
   processRegistry: ProcessRegistry;
   transportContext?: LazyTransportContext;
-  toolGuardPrompt: string;
-  systemPrompt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +86,6 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     compaction,
     sandbox,
     spawning,
-    agentManager,
     sandboxExecutor,
     transportContext,
   } = opts;
@@ -127,17 +115,12 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   // 5. Ensure workspace directory structure exists (sessions/, memory/)
   await ensureWorkspaceStructure(workspacePath);
 
-  // 6. Load workspace context (SOUL.md, TOOLS.md, MEMORY.md, etc.)
-  const workspaceContext = await loadWorkspaceContext(workspacePath, { bundledPath: resolveBundledSkillsDir() });
-  let systemPrompt = buildSystemPrompt("", workspaceContext);
-  log.debug(`Loaded workspace context for ${agentConfig.id}: systemPrompt=${workspaceContext.systemPromptAdditions.length > 0}, memory=${workspaceContext.memory !== null}`);
-
-  // 7. Create tool array and process registry
+  // 6. Create tool array and process registry
   const tools: AgentTool[] = [];
   const processRegistry = new ProcessRegistry();
   const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];
 
-  // 8. Resolve fs implementation (host vs sandbox)
+  // 7. Resolve fs implementation (host vs sandbox)
   const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
   const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
@@ -151,7 +134,7 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     );
   }
 
-  // 9. Create and register workspace tools
+  // 8. Create and register workspace tools
   const workspaceTools = createWorkspaceToolsWithGuards({
     workspacePath,
     settings: agentConfig.toolSettings,
@@ -165,12 +148,12 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   });
   tools.push(...applyToolPolicy(workspaceTools, agentConfig.toolSettings));
 
-  // 10. Register react tools (transport is bound lazily after transport starts)
+  // 9. Register react tools (transport is bound lazily after transport starts)
   if (transportContext) {
     tools.push(...createReactTools(transportContext));
   }
 
-  // 11. Register exec/process tools
+  // 10. Register exec/process tools
   const execTools = createExecTools({
     cwd: workspacePath,
     registry: processRegistry,
@@ -182,18 +165,10 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   });
   tools.push(...applyToolPolicy(execTools, agentConfig.toolSettings));
 
-  // 12. Build tool guard prompt and append to system prompt
-  const toolGuardPrompt = buildToolGuardPrompt(tools, workspacePath);
-  systemPrompt = [
-    systemPrompt,
-    toolGuardPrompt,
-  ].filter(Boolean).join("\n\n---\n\n");
-
   if (opts.hooks) {
     await opts.hooks.emit("before_agent_start", { agentId: agentConfig.id });
   }
-  await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, initialSystemPrompt: systemPrompt });
-  log.info(`Created agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${tools.length})`);
+  log.info(`Initialized agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${tools.length})`);
 
   return {
     agentConfig,
@@ -201,7 +176,5 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     tools,
     processRegistry,
     transportContext,
-    toolGuardPrompt,
-    systemPrompt,
   };
 }

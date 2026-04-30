@@ -562,6 +562,7 @@ export function toAgentConfig(
 
   return {
     id: agent.id,
+    ...(agent.workspace ? { workspace: agent.workspace } : {}),
     toolSettings: resolveToolSettings(tools),
     ...(model ? { model } : {}),
     compaction,

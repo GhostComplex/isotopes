@@ -1,24 +1,7 @@
 // src/core/test-helpers.ts — Shared test mocks for transport tests
-import type { AgentConfig } from "../../agent/types.js";
-
-// DRY: transport tests need identical AgentManager
-// and SessionStore mocks. Centralise them here.
 
 import { vi } from "vitest";
 import type { SessionStore } from "../../sessions/types.js";
-
-import type { DefaultAgentManager } from "./agent-manager.js";
-
-// TODO(#645): rename / collapse with createMockSession — name says "cache"
-// but the type is `AgentConfig` (cast through `unknown`) and the only useful
-// member is the embedded session. Pre-PR-A this returned an AgentServiceCache.
-export function createMockAgentCache(): AgentConfig {
-  const mockSession = createMockSession();
-  return {
-    createSession: vi.fn().mockResolvedValue(mockSession),
-    _mockSession: mockSession,
-  } as unknown as AgentConfig;
-}
 
 export function createMockSession() {
   let subscriber: ((event: Record<string, unknown>) => void) | null = null;
@@ -49,24 +32,6 @@ export function createMockSession() {
   };
 
   return session;
-}
-
-export function createMockAgentManager(cache?: AgentConfig): DefaultAgentManager {
-  const mockCache = cache ?? createMockAgentCache();
-
-  return {
-    create: vi.fn(),
-    get: vi.fn(() => mockCache),
-    getConfig: vi.fn(() => ({})),
-    getSystemPrompt: vi.fn(() => "test prompt"),
-    getWorkspacePath: vi.fn(() => undefined),
-    list: vi.fn(() => []),
-    update: vi.fn(),
-    delete: vi.fn(),
-    getPrompt: vi.fn(),
-    updatePrompt: vi.fn(),
-    reloadWorkspace: vi.fn(),
-  } as unknown as DefaultAgentManager;
 }
 
 /**

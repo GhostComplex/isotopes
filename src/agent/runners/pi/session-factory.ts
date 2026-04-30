@@ -20,6 +20,7 @@ import type {
   SendMessageRequest,
 } from "../../../legacy/agents/types.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
+import { deriveAgentSystemPrompt } from "../../system-prompt.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -156,7 +157,7 @@ export async function createRootPiSession(
     agentConfig: agent.config,
     tools: deps.getAgentTools(agent.id),
     sessionManager,
-    systemPrompt: agent.systemPrompt,
+    systemPrompt: await deriveAgentSystemPrompt(agent.config),
     ...(cwd ? { cwd } : {}),
     ...(deps.hooks ? { hooks: deps.hooks } : {}),
   });

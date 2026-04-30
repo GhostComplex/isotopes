@@ -4,7 +4,6 @@ import {
   createTimeTool,
   createWorkspaceToolsWithGuards,
   applyToolPolicy,
-  buildToolGuardPrompt,
 } from "./tools.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -80,16 +79,6 @@ describe("createWorkspaceToolsWithGuards", () => {
     const names = tools.map((t) => t.name);
     expect(names).not.toContain("write");
     expect(names).not.toContain("edit");
-  });
-});
-
-describe("buildToolGuardPrompt", () => {
-  it("includes each tool name and description plus workspace path", () => {
-    const tools = [createEchoTool(), createTimeTool()];
-    const prompt = buildToolGuardPrompt(tools, "/tmp/ws");
-    expect(prompt).toContain("echo");
-    expect(prompt).toContain("get_current_time");
-    expect(prompt).toContain("/tmp/ws");
   });
 });
 

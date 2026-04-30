@@ -15,8 +15,7 @@ export type AgentSessionPolicy = "always-new" | "parent-reuse";
 
 export interface RegisteredAgent {
   readonly id: string;
-  readonly config: AgentConfig;
-  readonly systemPrompt: string;
+  config: AgentConfig;
   readonly sessionStore: DefaultSessionStore;
   readonly capabilities: {
     tools: string[];

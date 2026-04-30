@@ -9,7 +9,6 @@ function fakeAgent(id: string): RegisteredAgent {
   return {
     id,
     config: { id } as RegisteredAgent["config"],
-    systemPrompt: "you are " + id,
     sessionStore: {} as RegisteredAgent["sessionStore"],
     capabilities: { tools: [], canBeAddressed: true },
   };

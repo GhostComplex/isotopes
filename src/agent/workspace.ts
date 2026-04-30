@@ -98,17 +98,14 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
 }
 
 /**
- * Build a complete system prompt by combining base prompt with workspace context.
+ * Build a complete system prompt from workspace context.
  */
-export function buildSystemPrompt(
-  basePrompt: string,
-  workspace: WorkspaceContext | null,
-): string {
+export function buildSystemPrompt(workspace: WorkspaceContext | null): string {
   if (!workspace) {
-    return [basePrompt, ASSISTANT_OUTPUT_DIRECTIVES].join("\n\n---\n\n");
+    return ASSISTANT_OUTPUT_DIRECTIVES;
   }
 
-  const parts = [basePrompt];
+  const parts: string[] = [];
 
   // Inject workspace path
   parts.push(`# Workspace\n\nYour working directory is: ${workspace.workspacePath}`);
@@ -142,10 +139,29 @@ export async function ensureWorkspaceStructure(workspacePath: string): Promise<v
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Stat-based identity cache: skip re-reads when (dev, ino, size, mtime) match.
+// Per-call rebuild stays cheap (one stat syscall), edits are detected
+// automatically without a watcher. Mirrors openclaw's pattern.
+const fileCache = new Map<string, { content: string; identity: string }>();
+
 async function readFileIfExists(filePath: string): Promise<string | null> {
+  let stat: Awaited<ReturnType<typeof fs.stat>>;
   try {
-    return await fs.readFile(filePath, "utf-8");
+    stat = await fs.stat(filePath);
   } catch {
+    fileCache.delete(filePath);
+    return null;
+  }
+  const identity = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+  const cached = fileCache.get(filePath);
+  if (cached && cached.identity === identity) return cached.content;
+
+  try {
+    const content = await fs.readFile(filePath, "utf-8");
+    fileCache.set(filePath, { content, identity });
+    return content;
+  } catch {
+    fileCache.delete(filePath);
     return null;
   }
 }

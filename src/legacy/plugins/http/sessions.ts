@@ -13,6 +13,7 @@ import { createLogger } from "../../../logging/logger.js";
 import { randomUUID } from "node:crypto";
 import { consumeRootRun, cancelRunBySessionId } from "../../core/agent-run.js";
 import { userMessage } from "../../../agent/runners/pi/messages.js";
+import { resolveAgentWorkspacePath } from "../../../paths.js";
 import type { DefaultSessionStore } from "../../core/session-store.js";
 import type { Session } from "../../../sessions/types.js";
 
@@ -199,12 +200,12 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
   const body = req.body as { sessionKey?: string } | undefined;
   const agentId = req.params.agentId;
 
-  if (!deps.agentManager) {
-    sendError(res, 503, "Agent manager not available");
+  if (!deps.agentRuntime) {
+    sendError(res, 503, "Agent runtime not available");
     return;
   }
 
-  const agent = deps.agentManager.get(agentId);
+  const agent = deps.agentRuntime.getAgent(agentId)?.config;
   if (!agent) {
     sendError(res, 404, `Agent "${agentId}" not found`);
     return;
@@ -269,12 +270,12 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
     return;
   }
 
-  if (!deps.agentManager) {
-    sendError(res, 503, "Agent manager not available");
+  if (!deps.agentRuntime) {
+    sendError(res, 503, "Agent runtime not available");
     return;
   }
 
-  const cache = deps.agentManager.get(agentId);
+  const cache = deps.agentRuntime.getAgent(agentId)?.config;
   if (!cache) {
     sendError(res, 404, `Agent "${agentId}" not found`);
     return;
@@ -319,7 +320,7 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
   });
 
   try {
-    const cwd = deps.agentManager.getWorkspacePath?.(agentId);
+    const cwd = ((c) => c ? resolveAgentWorkspacePath(c) : undefined)(deps.agentRuntime?.getAgent(agentId)?.config);
 
     const result = await consumeRootRun(deps.agentRuntime, {
       to: agentId,

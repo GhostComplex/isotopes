@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransportManager } from "./discord-manager.js";
-import { createMockAgentManager, createMockSessionStore } from "../../core/test-helpers.js";
+import { createMockSessionStore } from "../../core/test-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mock discord.js (same pattern as discord.test.ts)
@@ -47,7 +47,6 @@ describe("DiscordTransportManager", () => {
   });
 
   it("creates one transport per account and starts all", async () => {
-    const agentManager = createMockAgentManager();
     const sessionStore = createMockSessionStore();
 
     const manager = new DiscordTransportManager({
@@ -55,7 +54,7 @@ describe("DiscordTransportManager", () => {
         major: { token: "tok-major", defaultAgentId: "major" },
         tachikoma: { token: "tok-tachikoma", defaultAgentId: "tachikoma" },
       },
-      shared: { agentManager, sessionStore },
+      shared: { sessionStore },
     });
 
     await manager.start();
@@ -72,7 +71,6 @@ describe("DiscordTransportManager", () => {
   });
 
   it("stops all transports and clears the map", async () => {
-    const agentManager = createMockAgentManager();
     const sessionStore = createMockSessionStore();
 
     const manager = new DiscordTransportManager({
@@ -80,7 +78,7 @@ describe("DiscordTransportManager", () => {
         bot1: { token: "tok-1" },
         bot2: { token: "tok-2" },
       },
-      shared: { agentManager, sessionStore },
+      shared: { sessionStore },
     });
 
     await manager.start();
@@ -95,14 +93,13 @@ describe("DiscordTransportManager", () => {
   });
 
   it("works with a single account (legacy normalized config)", async () => {
-    const agentManager = createMockAgentManager();
     const sessionStore = createMockSessionStore();
 
     const manager = new DiscordTransportManager({
       accounts: {
         default: { token: "tok-legacy", defaultAgentId: "fairy" },
       },
-      shared: { agentManager, sessionStore },
+      shared: { sessionStore },
     });
 
     await manager.start();
@@ -113,7 +110,6 @@ describe("DiscordTransportManager", () => {
   });
 
   it("passes account-specific config to each transport", async () => {
-    const agentManager = createMockAgentManager();
     const sessionStore = createMockSessionStore();
 
     const manager = new DiscordTransportManager({
@@ -130,7 +126,7 @@ describe("DiscordTransportManager", () => {
           dmAccess: { policy: "disabled" },
         },
       },
-      shared: { agentManager, sessionStore },
+      shared: { sessionStore },
     });
 
     await manager.start();
@@ -146,7 +142,6 @@ describe("DiscordTransportManager", () => {
   });
 
   it("getAll returns the full map", async () => {
-    const agentManager = createMockAgentManager();
     const sessionStore = createMockSessionStore();
 
     const manager = new DiscordTransportManager({
@@ -154,7 +149,7 @@ describe("DiscordTransportManager", () => {
         a: { token: "tok-a" },
         b: { token: "tok-b" },
       },
-      shared: { agentManager, sessionStore },
+      shared: { sessionStore },
     });
 
     await manager.start();
