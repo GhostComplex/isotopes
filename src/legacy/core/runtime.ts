@@ -15,7 +15,7 @@ import { LazyTransportContext } from "../tools/react.js";
 import { ProcessRegistry } from "../tools/exec.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { ContainerManager, SandboxExecutor } from "../sandbox/index.js";
-import { initializeAgent } from "./agent-init.js";
+import { initializeAgent } from "../../agent/init.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,

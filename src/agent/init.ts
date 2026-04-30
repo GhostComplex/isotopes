@@ -10,27 +10,27 @@ import {
   type AgentToolsConfigFile,
   type ProviderConfigFile,
   type SpawningConfigFile,
-} from "../../config.js";
+} from "../config.js";
 import {
   ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
   resolveExplicitWorkspacePath,
-} from "../../paths.js";
-import { ensureWorkspaceStructure } from "../../agent/workspace.js";
-import { seedWorkspaceTemplates } from "../workspace/templates.js";
-import { reconcileWorkspaceState } from "../workspace/state.js";
+} from "../paths.js";
+import { ensureWorkspaceStructure } from "./workspace.js";
+import { seedWorkspaceTemplates } from "../legacy/workspace/templates.js";
+import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
 import {
   createWorkspaceToolsWithGuards,
   applyToolPolicy,
-} from "./tools.js";
-import { createReactTools, LazyTransportContext } from "../tools/react.js";
-import { createExecTools, ProcessRegistry } from "../tools/exec.js";
-import { SandboxExecutor, SandboxFs, shouldSandbox } from "../sandbox/index.js";
+} from "../legacy/core/tools.js";
+import { createReactTools, LazyTransportContext } from "../legacy/tools/react.js";
+import { createExecTools, ProcessRegistry } from "../legacy/tools/exec.js";
+import { SandboxExecutor, SandboxFs, shouldSandbox } from "../legacy/sandbox/index.js";
 import * as nodeFs from "node:fs/promises";
-import type { AgentConfig } from "../../agent/types.js";
+import type { AgentConfig } from "./types.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { createLogger } from "../../logging/logger.js";
-import type { HookRegistry } from "../plugins/hooks.js";
+import { createLogger } from "../logging/logger.js";
+import type { HookRegistry } from "../legacy/plugins/hooks.js";
 
 const log = createLogger("agent-init");
 
@@ -62,7 +62,7 @@ export interface InitAgentOptions {
   /** Pre-computed list of spawnable agent IDs from config */
   spawnableAgentIds?: string[];
   /** Unified runtime — wired into the send_message tool. */
-  runtime?: import("../agents/runtime.js").AgentRuntime;
+  runtime?: import("../legacy/agents/runtime.js").AgentRuntime;
 }
 
 export interface InitAgentResult {
