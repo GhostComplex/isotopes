@@ -24,7 +24,7 @@ import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { wrapAgentTool } from "./tool-wrap.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
-const DEFAULT_MODEL = "claude-opus-4.7";
+const DEFAULT_MODEL = "claude-opus-4-7";
 
 const LEAF_DENIED_TOOLS: ReadonlySet<string> = new Set([
   "write_file",
