@@ -298,31 +298,33 @@ describe("SlashCommandHandler", () => {
   // -----------------------------------------------------------------------
 
   describe("/compact", () => {
-    it.skip("TODO(#645): rewrite for runtime.compactSession - triggers compaction and returns stats", async () => {
+    function fakeRuntime(compactSession: (agentId: string, sessionId: string) => Promise<boolean>) {
+      return { compactSession } as unknown as NonNullable<CommandContext["runtime"]>;
+    }
+
+    it("triggers compaction and returns stats when runtime succeeds", async () => {
       const sessionStore = createMockSessionStore();
       (sessionStore.getMessages as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce([1, 2, 3, 4, 5])  // before
-        .mockResolvedValueOnce([1, 2]);          // after
-
+        .mockResolvedValueOnce([1, 2, 3, 4, 5])
+        .mockResolvedValueOnce([1, 2]);
 
       const ctx = createContext({
         sessionStore,
         sessionId: "session-compact",
+        runtime: fakeRuntime(async () => true),
       });
 
       const result = await handler.execute("/compact", ctx);
-
       expect(result.response).toContain("Compacted: 5 → 2 messages");
     });
 
-    it.skip("TODO(#645): rewrite for runtime.compactSession - returns info when nothing to compact", async () => {
-
+    it("returns info when runtime reports nothing to compact", async () => {
       const ctx = createContext({
         sessionId: "session-small",
+        runtime: fakeRuntime(async () => false),
       });
 
       const result = await handler.execute("/compact", ctx);
-
       expect(result.response).toContain("Nothing to compact");
     });
 
@@ -332,24 +334,21 @@ describe("SlashCommandHandler", () => {
       expect(result.response).toContain("No active session to compact");
     });
 
-    it.skip("TODO(#645): rewrite for runtime.compactSession - returns error when no runtime available", async () => {
-      const ctx = createContext({
-        sessionId: "session-no-compact",
-      });
-
+    it("returns error when no runtime configured", async () => {
+      const ctx = createContext({ sessionId: "session-no-runtime" });
       const result = await handler.execute("/compact", ctx);
-
-      expect(result.response).toContain("No agent cache available");
+      expect(result.response).toContain("No runtime available");
     });
 
-    it.skip("TODO(#645): rewrite for runtime.compactSession - reports error on compaction failure", async () => {
-
+    it("reports error when compaction throws", async () => {
       const ctx = createContext({
         sessionId: "session-error",
+        runtime: fakeRuntime(async () => {
+          throw new Error("Model API error");
+        }),
       });
 
       const result = await handler.execute("/compact", ctx);
-
       expect(result.response).toContain("Compaction failed");
       expect(result.response).toContain("Model API error");
     });

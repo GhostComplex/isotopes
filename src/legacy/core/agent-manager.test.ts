@@ -28,13 +28,6 @@ describe("DefaultAgentManager", () => {
   });
 
   describe("create", () => {
-    it.skip("TODO(#645): no longer returns cache - creates and returns an agent instance", async () => {
-      const config = makeConfig();
-      const instance = await manager.create(config);
-
-      expect(instance).toBeDefined();
-    });
-
     it("stores the agent config", async () => {
       const config = makeConfig();
       await manager.create(config);
@@ -55,12 +48,11 @@ describe("DefaultAgentManager", () => {
   });
 
   describe("get", () => {
-    it.skip("TODO(#645): no longer returns cache - returns instance for existing agent", async () => {
+    it("returns the stored config for an existing agent", async () => {
       const config = makeConfig();
-      const created = await manager.create(config);
+      await manager.create(config);
 
-      const retrieved = manager.get("test-agent");
-      expect(retrieved).toBe(created);
+      expect(manager.get("test-agent")).toEqual(config);
     });
 
     it("returns undefined for non-existent agent", () => {
@@ -85,15 +77,11 @@ describe("DefaultAgentManager", () => {
   });
 
   describe("update", () => {
-    it.skip("TODO(#645): no longer returns cache - updates agent config and recreates instance", async () => {
+    it("updates agent config in place", async () => {
       const config = makeConfig();
       await manager.create(config);
 
-      const updated = await manager.update("test-agent", {
-        compaction: { mode: "off" },
-      });
-
-      expect(updated).toBeDefined();
+      await manager.update("test-agent", { compaction: { mode: "off" } });
 
       const configs = manager.list();
       expect(configs[0].compaction).toEqual({ mode: "off" });
