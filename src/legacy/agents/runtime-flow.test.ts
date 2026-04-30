@@ -40,7 +40,7 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
 }
 
 interface StubPiRunner {
-  sendMessage: (opts: {
+  run: (opts: {
     session: AgentSession;
     content: string;
     abort: AbortSignal;
@@ -58,7 +58,7 @@ describe("runtime.sendMessage — onRunStart timing", () => {
     const rt = new AgentRuntime();
     const order: string[] = [];
     installStubRunner(rt, {
-      async *sendMessage() {
+      async *run() {
         order.push("event:start");
         yield buildAgentEnd("done");
       },
@@ -84,7 +84,7 @@ describe("runtime.sendMessage — onRunStart timing", () => {
     let observedRunId: string | undefined;
     let runIdsDuringRun: string[] = [];
     installStubRunner(rt, {
-      async *sendMessage() {
+      async *run() {
         runIdsDuringRun = rt.listRuns().map((r) => r.runId);
         yield buildAgentEnd("ok");
       },
@@ -112,7 +112,7 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
     const pending = new Promise<void>((r) => { pendingResolve = r; });
 
     installStubRunner(rt, {
-      async *sendMessage(opts) {
+      async *run(opts) {
         (rt as unknown as { _ready: () => void })._ready();
         opts.abort.addEventListener("abort", pendingResolve, { once: true });
         await pending;
@@ -150,7 +150,7 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
     const pending = new Promise<void>((r) => { pendingResolve = r; });
 
     installStubRunner(rt, {
-      async *sendMessage(opts) {
+      async *run(opts) {
         opts.abort.addEventListener("abort", pendingResolve, { once: true });
         await pending;
         yield buildAgentEnd("done");
@@ -185,7 +185,7 @@ describe("runtime.sendMessage — abort on consumer early-return", () => {
     const pending = new Promise<void>((r) => { pendingResolve = r; });
 
     installStubRunner(rt, {
-      async *sendMessage(opts) {
+      async *run(opts) {
         opts.abort.addEventListener("abort", () => { abortObserved = true; pendingResolve(); }, { once: true });
         // Yield one event so the consumer can break, then await abort.
         yield { type: "turn_start" } as AgentEvent;

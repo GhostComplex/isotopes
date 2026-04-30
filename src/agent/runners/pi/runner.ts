@@ -13,7 +13,7 @@ function isAgentEvent(e: { type: string }): e is AgentEvent {
 }
 
 export class PiRunner {
-  async *sendMessage(opts: {
+  async *run(opts: {
     session: AgentSession;
     content: string;
     abort: AbortSignal;

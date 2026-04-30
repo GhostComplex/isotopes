@@ -393,7 +393,7 @@ export class AgentRuntime {
         const session = await this.buildPiSession({ kind, agent, sessionId, runId, req });
         handle.session = session;
         log.info("sendMessage runner", { runId, kind, agentId: req.to });
-        yield* this.piRunner!.sendMessage({
+        yield* this.piRunner!.run({
           session,
           content: req.content,
           abort: abort.signal,
