@@ -1,11 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Type } from "typebox";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { HookRegistry } from "./hooks.js";
 import { UIRegistry } from "./ui-registry.js";
 import { ToolPluginRegistry } from "./tool-registry.js";
 import { createPluginApi } from "./api.js";
 import type { PluginManifest, TransportFactory, PluginToolContext } from "./types.js";
-import type { Tool } from "../../tools/types.js";
 import fs from "node:fs";
+
+function fakeTool(name: string): AgentTool {
+  return {
+    name,
+    label: name,
+    description: name,
+    parameters: Type.Object({}),
+    execute: async () => ({ content: [{ type: "text", text: "" }], details: undefined }),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // HookRegistry
@@ -209,8 +220,8 @@ describe("createPluginApi", () => {
 
     });
 
-    const tool: Tool = { name: "my-tool", description: "test", parameters: {} };
-    api.registerTool({ tool, handler: async () => "ok" });
+    const tool = fakeTool("my-tool");
+    api.registerTool(tool);
 
     const ctx: PluginToolContext = { agentId: "a1", workspacePath: "/tmp" };
     expect(toolPluginRegistry.resolve(ctx)).toHaveLength(1);
@@ -233,14 +244,11 @@ describe("createPluginApi", () => {
 
     });
 
-    api.registerTool((ctx) => ({
-      tool: { name: `tool-${ctx.agentId}`, description: "dynamic", parameters: {} },
-      handler: async () => "ok",
-    }));
+    api.registerTool((ctx) => fakeTool(`tool-${ctx.agentId}`));
 
     const result = toolPluginRegistry.resolve({ agentId: "bot1", workspacePath: "/tmp" });
     expect(result).toHaveLength(1);
-    expect(result[0].tool.name).toBe("tool-bot1");
+    expect(result[0].name).toBe("tool-bot1");
 
     for (const fn of cleanup) fn();
     expect(toolPluginRegistry.resolve({ agentId: "bot1", workspacePath: "/tmp" })).toHaveLength(0);
@@ -261,18 +269,14 @@ describe("ToolPluginRegistry", () => {
   });
 
   it("resolves a static tool", () => {
-    const tool: Tool = { name: "echo", description: "echo", parameters: {} };
-    registry.register("p1", () => ({ tool, handler: async () => "ok" }));
+    registry.register("p1", () => fakeTool("echo"));
     const result = registry.resolve(ctx);
     expect(result).toHaveLength(1);
-    expect(result[0].tool.name).toBe("echo");
+    expect(result[0].name).toBe("echo");
   });
 
   it("resolves a factory returning array", () => {
-    registry.register("p1", () => [
-      { tool: { name: "t1", description: "", parameters: {} }, handler: async () => "1" },
-      { tool: { name: "t2", description: "", parameters: {} }, handler: async () => "2" },
-    ]);
+    registry.register("p1", () => [fakeTool("t1"), fakeTool("t2")]);
     expect(registry.resolve(ctx)).toHaveLength(2);
   });
 
@@ -287,22 +291,22 @@ describe("ToolPluginRegistry", () => {
   });
 
   it("detects name conflicts", () => {
-    registry.register("p1", () => ({ tool: { name: "dup", description: "", parameters: {} }, handler: async () => "" }));
-    registry.register("p2", () => ({ tool: { name: "dup", description: "", parameters: {} }, handler: async () => "" }));
+    registry.register("p1", () => fakeTool("dup"));
+    registry.register("p2", () => fakeTool("dup"));
     expect(registry.resolve(ctx)).toHaveLength(1);
   });
 
   it("removes entries by pluginId", () => {
-    registry.register("p1", () => ({ tool: { name: "t1", description: "", parameters: {} }, handler: async () => "" }));
-    registry.register("p2", () => ({ tool: { name: "t2", description: "", parameters: {} }, handler: async () => "" }));
+    registry.register("p1", () => fakeTool("t1"));
+    registry.register("p2", () => fakeTool("t2"));
     registry.remove("p1");
     const result = registry.resolve(ctx);
     expect(result).toHaveLength(1);
-    expect(result[0].tool.name).toBe("t2");
+    expect(result[0].name).toBe("t2");
   });
 
   it("clears all entries", () => {
-    registry.register("p1", () => ({ tool: { name: "t1", description: "", parameters: {} }, handler: async () => "" }));
+    registry.register("p1", () => fakeTool("t1"));
     registry.clear();
     expect(registry.resolve(ctx)).toHaveLength(0);
   });

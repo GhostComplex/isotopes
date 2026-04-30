@@ -2,11 +2,9 @@
 // Defines the manifest, lifecycle, hooks, and API surface for Isotopes plugins.
 
 import type { Logger } from "../../logging/logger.js";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
 import type { SessionStore } from "../../sessions/types.js";
-import type { Tool } from "../../tools/types.js";
 import type { Transport } from "../../gateway/types.js";
-import type { ToolHandler } from "../core/tools.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { IsotopesConfigFile } from "../../config.js";
@@ -104,7 +102,7 @@ export interface PluginToolContext {
 
 export type PluginToolFactory = (
   ctx: PluginToolContext,
-) => { tool: Tool; handler: ToolHandler } | { tool: Tool; handler: ToolHandler }[] | null | undefined;
+) => AgentTool | AgentTool[] | null | undefined;
 
 // ---------------------------------------------------------------------------
 // Plugin API — the object passed to plugin.register()
@@ -113,9 +111,7 @@ export type PluginToolFactory = (
 export interface IsotopesPluginApi {
   registerTransport(id: string, factory: TransportFactory): void;
   registerUI(config: UIPluginConfig): void;
-  registerTool(
-    tool: { tool: Tool; handler: ToolHandler } | PluginToolFactory,
-  ): void;
+  registerTool(tool: AgentTool | PluginToolFactory): void;
   on<H extends HookName>(
     hook: H,
     handler: (payload: HookPayloads[H]) => void | Promise<void>,

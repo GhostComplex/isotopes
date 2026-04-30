@@ -14,7 +14,7 @@ import { SessionStoreManager } from "./session-store-manager.js";
 import { createLogger } from "../../logging/logger.js";
 import { LazyTransportContext } from "../tools/react.js";
 import { ProcessRegistry } from "../tools/exec.js";
-import { ToolRegistry, toolRegistryEntries } from "./tools.js";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { ContainerManager, SandboxExecutor } from "../sandbox/index.js";
 import { initializeAgent } from "./agent-init.js";
 import {
@@ -93,7 +93,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
   const processRegistries = new Map<string, ProcessRegistry>();
-  const toolRegistries = new Map<string, ToolRegistry>();
+  const toolRegistries = new Map<string, AgentTool[]>();
 
   // Build sandbox executor if any agent uses sandboxing
   let sandboxExecutor: SandboxExecutor | undefined;
@@ -148,19 +148,19 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     agentWorkspaces.set(result.agentConfig.id, result.workspacePath);
     transportContexts.set(result.agentConfig.id, transportCtx);
     processRegistries.set(result.agentConfig.id, result.processRegistry);
-    toolRegistries.set(result.agentConfig.id, result.toolRegistry);
+    toolRegistries.set(result.agentConfig.id, result.tools);
 
     // Eagerly init the store so the registered agent owns a live ref.
     const sessionStore = await sessionStoreManager.getOrCreate(result.agentConfig.id);
     // Register per-agent tool entries on the runtime so the pi runner can fetch them.
-    agentRuntime.setAgentTools(result.agentConfig.id, toolRegistryEntries(result.toolRegistry));
+    agentRuntime.setAgentTools(result.agentConfig.id, result.tools);
     agentRuntime.registerAgent({
       id: result.agentConfig.id,
       config: result.agentConfig,
       systemPrompt: result.systemPrompt,
       sessionStore,
       capabilities: {
-        tools: result.toolRegistry.list().map((t) => t.name),
+        tools: result.tools.map((t) => t.name),
         canBeAddressed: true,
       },
       ...(result.agentConfig.sessionPolicy ? { sessionPolicy: result.agentConfig.sessionPolicy } : {}),
@@ -180,20 +180,25 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   // Inject plugin-registered tools into each agent's tool registry
   const toolPluginRegistry = pluginManager.getToolPluginRegistry();
-  for (const [agentId, toolRegistry] of toolRegistries) {
+  for (const [agentId, tools] of toolRegistries) {
     const resolved = toolPluginRegistry.resolve({
       agentId,
       workspacePath: agentWorkspaces.get(agentId)!,
     });
-    for (const { tool, handler } of resolved) {
-      if (toolRegistry.has(tool.name)) {
-        log.warn(`Plugin tool "${tool.name}" conflicts with existing tool for agent "${agentId}" — skipping`);
+    const existingNames = new Set(tools.map((t) => t.name));
+    let injected = 0;
+    for (const t of resolved) {
+      if (existingNames.has(t.name)) {
+        log.warn(`Plugin tool "${t.name}" conflicts with existing tool for agent "${agentId}" — skipping`);
         continue;
       }
-      toolRegistry.register(tool, handler);
+      tools.push(t);
+      existingNames.add(t.name);
+      injected++;
     }
-    if (resolved.length > 0) {
-      log.info(`Injected ${resolved.length} plugin tool(s) into agent "${agentId}"`);
+    if (injected > 0) {
+      agentRuntime.setAgentTools(agentId, tools);
+      log.info(`Injected ${injected} plugin tool(s) into agent "${agentId}"`);
     }
   }
 

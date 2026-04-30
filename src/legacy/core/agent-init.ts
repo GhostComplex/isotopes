@@ -25,17 +25,17 @@ import {
 import { seedWorkspaceTemplates } from "../workspace/templates.js";
 import { reconcileWorkspaceState } from "../workspace/state.js";
 import {
-  ToolRegistry,
   buildToolGuardPrompt,
   createWorkspaceToolsWithGuards,
   applyToolPolicy,
 } from "./tools.js";
 import { createReactTools, LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
-import { SandboxExecutor, SandboxFs, shouldSandbox, type FsLike } from "../sandbox/index.js";
+import { SandboxExecutor, SandboxFs, shouldSandbox } from "../sandbox/index.js";
 import * as nodeFs from "node:fs/promises";
 import type { DefaultAgentManager } from "./agent-manager.js";
 import type { AgentConfig } from "../../agent/types.js";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createLogger } from "../../logging/logger.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 
@@ -77,7 +77,7 @@ export interface InitAgentOptions {
 export interface InitAgentResult {
   agentConfig: AgentConfig;
   workspacePath: string;
-  toolRegistry: ToolRegistry;
+  tools: AgentTool[];
   processRegistry: ProcessRegistry;
   transportContext?: LazyTransportContext;
   toolGuardPrompt: string;
@@ -132,14 +132,14 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   let systemPrompt = buildSystemPrompt("", workspaceContext);
   log.debug(`Loaded workspace context for ${agentConfig.id}: systemPrompt=${workspaceContext.systemPromptAdditions.length > 0}, memory=${workspaceContext.memory !== null}`);
 
-  // 7. Create tool registry and process registry
-  const toolRegistry = new ToolRegistry(agentConfig.id);
+  // 7. Create tool array and process registry
+  const tools: AgentTool[] = [];
   const processRegistry = new ProcessRegistry();
   const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];
 
   // 8. Resolve fs implementation (host vs sandbox)
   const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
-  const fsImpl: FsLike = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
+  const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
   // Spawn agent tools spawn child runners (Claude CLI, builtin) that execute on
   // the host, bypassing the Docker sandbox. Disable them entirely for
@@ -159,20 +159,15 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     codingMode: agentConfig.codingMode,
     fsImpl,
     parentAgentId: agentConfig.id,
-    parentTools: toolRegistry,
+    parentTools: tools,
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
   });
-  const filteredTools = applyToolPolicy(workspaceTools, agentConfig.toolSettings);
-  for (const { tool, handler } of filteredTools) {
-    toolRegistry.register(tool, handler);
-  }
+  tools.push(...applyToolPolicy(workspaceTools, agentConfig.toolSettings));
 
   // 10. Register react tools (transport is bound lazily after transport starts)
   if (transportContext) {
-    for (const { tool, handler } of createReactTools(transportContext)) {
-      toolRegistry.register(tool, handler);
-    }
+    tools.push(...createReactTools(transportContext));
   }
 
   // 11. Register exec/process tools
@@ -185,30 +180,25 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     agentSandboxConfig: agentConfig.sandbox,
     allowedWorkspaces: agentAllowedWorkspaces,
   });
-  const filteredExecTools = applyToolPolicy(execTools, agentConfig.toolSettings);
-  for (const { tool, handler } of filteredExecTools) {
-    toolRegistry.register(tool, handler);
-  }
+  tools.push(...applyToolPolicy(execTools, agentConfig.toolSettings));
 
   // 12. Build tool guard prompt and append to system prompt
-  const toolGuardPrompt = buildToolGuardPrompt(toolRegistry.list(), workspacePath);
+  const toolGuardPrompt = buildToolGuardPrompt(tools, workspacePath);
   systemPrompt = [
     systemPrompt,
     toolGuardPrompt,
   ].filter(Boolean).join("\n\n---\n\n");
 
-  // 13. Wire up tool registry hooks and create agent
   if (opts.hooks) {
-    toolRegistry.setHooks(opts.hooks);
     await opts.hooks.emit("before_agent_start", { agentId: agentConfig.id });
   }
   await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, initialSystemPrompt: systemPrompt });
-  log.info(`Created agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${toolRegistry.list().length})`);
+  log.info(`Created agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${tools.length})`);
 
   return {
     agentConfig,
     workspacePath,
-    toolRegistry,
+    tools,
     processRegistry,
     transportContext,
     toolGuardPrompt,

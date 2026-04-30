@@ -1,12 +1,11 @@
 // src/plugins/api.ts — Scoped plugin API factory
 
 import path from "node:path";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createLogger } from "../../logging/logger.js";
 import type { HookRegistry } from "./hooks.js";
 import type { UIRegistry } from "./ui-registry.js";
 import type { ToolPluginRegistry } from "./tool-registry.js";
-import type { Tool } from "../../tools/types.js";
-import type { ToolHandler } from "../core/tools.js";
 import type {
   IsotopesPluginApi,
   TransportFactory,
@@ -52,9 +51,7 @@ export function createPluginApi(
       log.info(`Registered UI "${config.id}" at ${resolved.mountPath ?? `/ui/${config.id}`}`);
     },
 
-    registerTool(
-      tool: { tool: Tool; handler: ToolHandler } | PluginToolFactory,
-    ): void {
+    registerTool(tool: AgentTool | PluginToolFactory): void {
       const factory: PluginToolFactory =
         typeof tool === "function" ? tool : () => tool;
       deps.toolPluginRegistry.register(manifest.id, factory);

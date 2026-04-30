@@ -1,8 +1,7 @@
 // Public types for the unified AgentRuntime.
 
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { AgentConfig } from "../../agent/types.js";
-import type { Tool } from "../../tools/types.js";
-import type { ToolHandler } from "../core/tools.js";
 import type { DefaultSessionStore } from "../core/session-store.js";
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
@@ -36,9 +35,8 @@ export interface SendMessageRequest {
   cwd?: string;
   timeoutSeconds?: number;
   leafContext?: {
-    /** Tool entries directly — runtime owns per-agent registries; leaf carries
-     * its own filtered subset (parent's tools minus denied for spawn). */
-    tools: Array<{ tool: Tool; handler: ToolHandler }>;
+    /** Parent's filtered tools (parent's tools minus denied for spawn). */
+    tools: AgentTool[];
     extraSystemPrompt?: string;
   };
   /** Fires once after run is registered, before any AgentEvent yields.

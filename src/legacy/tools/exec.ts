@@ -1,12 +1,11 @@
 // src/tools/exec.ts — Shell execution and background process management tools
-// Provides exec (with background mode), process_list, and process_kill tools.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+import { Type, type Static } from "typebox";
 import { createLogger } from "../../logging/logger.js";
-import type { Tool } from "../../tools/types.js";
-import type { ToolHandler } from "../core/tools.js";
 import type { SandboxExecutor } from "../sandbox/executor.js";
 import type { SandboxConfig } from "../sandbox/config.js";
 
@@ -237,15 +236,21 @@ export interface ExecToolOptions {
   allowedWorkspaces?: string[];
 }
 
-/**
- * Create the `exec` tool.
- *
- * Execute shell commands with configurable timeout.
- * Supports `background: true` for long-running processes.
- */
-export function createExecTool(
-  options: ExecToolOptions = {},
-): { tool: Tool; handler: ToolHandler } {
+function jsonResult(value: unknown): AgentToolResult<undefined> {
+  return { content: [{ type: "text", text: JSON.stringify(value) }], details: undefined };
+}
+
+const execSchema = Type.Object({
+  command: Type.String({ description: "The shell command to execute" }),
+  timeout: Type.Optional(Type.Number({
+    description: "Timeout in seconds (default 30, max 300). Ignored for background processes.",
+  })),
+  background: Type.Optional(Type.Boolean({
+    description: "If true, run the command in the background and return a process_id immediately.",
+  })),
+});
+
+export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof execSchema> {
   const { cwd = process.cwd() } = options;
   const registry = options.registry ?? new ProcessRegistry();
   const { sandboxExecutor, agentId, agentSandboxConfig, isMainAgent, allowedWorkspaces } = options;
@@ -255,49 +260,19 @@ export function createExecTool(
        sandboxExecutor.shouldExecuteInSandbox(agentId, isMainAgent ?? false, agentSandboxConfig));
 
   return {
-    tool: {
-      name: "exec",
-      description:
-        "Execute a shell command. Returns stdout, stderr, and exit_code. " +
-        "Set background=true for long-running processes (returns immediately with process_id). " +
-        "Default timeout: 30s, max: 300s.",
-      parameters: {
-        type: "object",
-        properties: {
-          command: {
-            type: "string",
-            description: "The shell command to execute",
-          },
-          timeout: {
-            type: "number",
-            description:
-              "Timeout in seconds (default 30, max 300). Ignored for background processes.",
-          },
-          background: {
-            type: "boolean",
-            description:
-              "If true, run the command in the background and return a process_id immediately.",
-          },
-        },
-        required: ["command"],
-      },
-    },
-    handler: async (args) => {
-      const {
-        command,
-        timeout: timeoutSec,
-        background,
-      } = args as {
-        command: string;
-        timeout?: number;
-        background?: boolean;
-      };
-
+    name: "exec",
+    label: "exec",
+    description:
+      "Execute a shell command. Returns stdout, stderr, and exit_code. " +
+      "Set background=true for long-running processes (returns immediately with process_id). " +
+      "Default timeout: 30s, max: 300s.",
+    parameters: execSchema,
+    execute: async (_id, params: Static<typeof execSchema>) => {
+      const { command, timeout: timeoutSec, background } = params;
       if (!command || command.trim().length === 0) {
-        return JSON.stringify({ error: "Command must not be empty" });
+        return jsonResult({ error: "Command must not be empty" });
       }
 
-      // Background mode — spawn and return immediately
       if (background) {
         let argv: string[] | undefined;
         if (useSandbox()) {
@@ -306,25 +281,15 @@ export function createExecTool(
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             log.warn("Sandbox container creation failed for background exec", { command, error: msg });
-            return JSON.stringify({
-              stdout: "",
-              stderr: `[sandbox error] ${msg}`,
-              exit_code: 1,
+            return jsonResult({
+              stdout: "", stderr: `[sandbox error] ${msg}`, exit_code: 1,
               error: `Sandbox container creation failed: ${msg}`,
             });
           }
         }
-
         const info = registry.spawn(command, cwd, argv ? { argv } : undefined);
-
-        log.info("Background process started", {
-          processId: info.process_id,
-          command,
-          cwd,
-          sandboxed: !!argv,
-        });
-
-        return JSON.stringify({
+        log.info("Background process started", { processId: info.process_id, command, cwd, sandboxed: !!argv });
+        return jsonResult({
           process_id: info.process_id,
           command: info.command,
           status: "running",
@@ -332,13 +297,11 @@ export function createExecTool(
         });
       }
 
-      // Foreground mode — run with timeout
       const timeoutMs = Math.min(
         Math.max((timeoutSec ?? DEFAULT_TIMEOUT_SEC) * 1000, 1000),
         MAX_TIMEOUT_MS,
       );
 
-      // Sandbox foreground path
       if (useSandbox()) {
         try {
           const result = await sandboxExecutor!.execute(
@@ -346,10 +309,8 @@ export function createExecTool(
             ["sh", "-c", command],
             { workspacePath: cwd, timeout: timeoutMs, allowedWorkspaces },
           );
-
           log.info("Command executed (sandbox)", { command, cwd, exitCode: result.exitCode });
-
-          return JSON.stringify({
+          return jsonResult({
             stdout: result.stdout || "",
             stderr: result.stderr || "",
             exit_code: result.exitCode,
@@ -358,18 +319,14 @@ export function createExecTool(
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes("timed out")) {
             log.warn("Command timed out (sandbox)", { command, timeoutMs });
-            return JSON.stringify({
-              stdout: "",
-              stderr: "",
-              exit_code: 124,
+            return jsonResult({
+              stdout: "", stderr: "", exit_code: 124,
               error: `Command timed out after ${timeoutMs / 1000}s`,
             });
           }
           log.warn("Sandbox exec failed", { command, error: msg });
-          return JSON.stringify({
-            stdout: "",
-            stderr: `[sandbox error] ${msg}`,
-            exit_code: 1,
+          return jsonResult({
+            stdout: "", stderr: `[sandbox error] ${msg}`, exit_code: 1,
             error: `Sandbox exec failed: ${msg}`,
           });
         }
@@ -377,44 +334,26 @@ export function createExecTool(
 
       try {
         const { stdout, stderr } = await execAsync(command, {
-          cwd,
-          timeout: timeoutMs,
-          maxBuffer: MAX_OUTPUT_BYTES,
+          cwd, timeout: timeoutMs, maxBuffer: MAX_OUTPUT_BYTES,
         });
-
         log.info("Command executed", { command, cwd, exitCode: 0 });
-
-        return JSON.stringify({
-          stdout: stdout || "",
-          stderr: stderr || "",
-          exit_code: 0,
-        });
+        return jsonResult({ stdout: stdout || "", stderr: stderr || "", exit_code: 0 });
       } catch (error) {
         const err = error as {
-          message?: string;
-          code?: number;
-          signal?: string;
-          stdout?: string;
-          stderr?: string;
+          message?: string; code?: number; signal?: string;
+          stdout?: string; stderr?: string;
         };
-
         if (err.signal === "SIGTERM") {
           log.warn("Command timed out", { command, timeoutMs });
-          return JSON.stringify({
-            stdout: err.stdout || "",
-            stderr: err.stderr || "",
-            exit_code: 124,
+          return jsonResult({
+            stdout: err.stdout || "", stderr: err.stderr || "", exit_code: 124,
             error: `Command timed out after ${timeoutMs / 1000}s`,
           });
         }
-
         const exitCode = typeof err.code === "number" ? err.code : 1;
         log.info("Command failed", { command, exitCode });
-
-        return JSON.stringify({
-          stdout: err.stdout || "",
-          stderr: err.stderr || "",
-          exit_code: exitCode,
+        return jsonResult({
+          stdout: err.stdout || "", stderr: err.stderr || "", exit_code: exitCode,
         });
       }
     },
@@ -425,26 +364,17 @@ export function createExecTool(
 // process_list tool
 // ---------------------------------------------------------------------------
 
-/**
- * Create the `process_list` tool.
- *
- * Lists all background processes started by the agent.
- */
-export function createProcessListTool(
-  registry: ProcessRegistry,
-): { tool: Tool; handler: ToolHandler } {
+const processListSchema = Type.Object({});
+
+export function createProcessListTool(registry: ProcessRegistry): AgentTool<typeof processListSchema> {
   return {
-    tool: {
-      name: "process_list",
-      description:
-        "List all background processes started by the agent. " +
-        "Shows process_id, command, status, start_time, and exit_code.",
-      parameters: {
-        type: "object",
-        properties: {},
-      },
-    },
-    handler: async () => {
+    name: "process_list",
+    label: "process_list",
+    description:
+      "List all background processes started by the agent. " +
+      "Shows process_id, command, status, start_time, and exit_code.",
+    parameters: processListSchema,
+    execute: async () => {
       const processes = registry.list().map((p) => ({
         process_id: p.process_id,
         command: p.command,
@@ -452,10 +382,8 @@ export function createProcessListTool(
         start_time: p.start_time,
         exit_code: p.exit_code,
       }));
-
       log.info("Process list requested", { count: processes.length });
-
-      return JSON.stringify({ processes });
+      return jsonResult({ processes });
     },
   };
 }
@@ -464,56 +392,26 @@ export function createProcessListTool(
 // process_kill tool
 // ---------------------------------------------------------------------------
 
-/**
- * Create the `process_kill` tool.
- *
- * Kills a background process by process_id.
- */
-export function createProcessKillTool(
-  registry: ProcessRegistry,
-): { tool: Tool; handler: ToolHandler } {
+const processKillSchema = Type.Object({
+  process_id: Type.String({ description: "The process_id returned by exec with background=true" }),
+});
+
+export function createProcessKillTool(registry: ProcessRegistry): AgentTool<typeof processKillSchema> {
   return {
-    tool: {
-      name: "process_kill",
-      description:
-        "Kill a background process by its process_id. " +
-        "Returns success or error if the process is not found.",
-      parameters: {
-        type: "object",
-        properties: {
-          process_id: {
-            type: "string",
-            description: "The process_id returned by exec with background=true",
-          },
-        },
-        required: ["process_id"],
-      },
-    },
-    handler: async (args) => {
-      const { process_id } = args as { process_id: string };
-
-      if (!process_id) {
-        return JSON.stringify({ error: "process_id is required" });
-      }
-
+    name: "process_kill",
+    label: "process_kill",
+    description:
+      "Kill a background process by its process_id. " +
+      "Returns success or error if the process is not found.",
+    parameters: processKillSchema,
+    execute: async (_id, { process_id }) => {
+      if (!process_id) return jsonResult({ error: "process_id is required" });
       const info = registry.get(process_id);
-      if (!info) {
-        return JSON.stringify({ error: `Process not found: ${process_id}` });
-      }
-
+      if (!info) return jsonResult({ error: `Process not found: ${process_id}` });
       const wasRunning = info.status === "running";
       registry.kill(process_id);
-
-      log.info("Process killed", {
-        processId: process_id,
-        wasRunning,
-      });
-
-      return JSON.stringify({
-        success: true,
-        process_id,
-        was_running: wasRunning,
-      });
+      log.info("Process killed", { processId: process_id, wasRunning });
+      return jsonResult({ success: true, process_id, was_running: wasRunning });
     },
   };
 }
@@ -522,19 +420,13 @@ export function createProcessKillTool(
 // Factory
 // ---------------------------------------------------------------------------
 
-/**
- * Create all exec/process tools with a shared ProcessRegistry.
- * Returns an array of tool+handler pairs ready for registration.
- */
-export function createExecTools(
-  options: ExecToolOptions = {},
-): { tool: Tool; handler: ToolHandler }[] {
+export function createExecTools(options: ExecToolOptions = {}): AgentTool[] {
   const registry = options.registry ?? new ProcessRegistry();
   const execOptions = { ...options, registry };
-
   return [
     createExecTool(execOptions),
     createProcessListTool(registry),
     createProcessKillTool(registry),
   ];
 }
+

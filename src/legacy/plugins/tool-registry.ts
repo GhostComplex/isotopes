@@ -1,6 +1,6 @@
 // src/plugins/tool-registry.ts — Collects plugin tool registrations and resolves them per-agent
 
-import type { ToolEntry } from "../core/tools.js";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { PluginToolContext, PluginToolFactory } from "./types.js";
 import { createLogger } from "../../logging/logger.js";
 
@@ -18,8 +18,8 @@ export class ToolPluginRegistry {
     this.entries.push({ pluginId, factory });
   }
 
-  resolve(ctx: PluginToolContext): ToolEntry[] {
-    const results: ToolEntry[] = [];
+  resolve(ctx: PluginToolContext): AgentTool[] {
+    const results: AgentTool[] = [];
     const seen = new Set<string>();
 
     for (const entry of this.entries) {
@@ -34,11 +34,11 @@ export class ToolPluginRegistry {
 
       const list = Array.isArray(resolved) ? resolved : [resolved];
       for (const item of list) {
-        if (seen.has(item.tool.name)) {
-          log.error(`Plugin tool name conflict (${entry.pluginId}): ${item.tool.name}`);
+        if (seen.has(item.name)) {
+          log.error(`Plugin tool name conflict (${entry.pluginId}): ${item.name}`);
           continue;
         }
-        seen.add(item.tool.name);
+        seen.add(item.name);
         results.push(item);
       }
     }

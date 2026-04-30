@@ -1,4 +1,5 @@
 import { getModel, type Api, type Model } from "@mariozechner/pi-ai";
+import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
   type AuthStorage,
@@ -12,8 +13,6 @@ import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import type { AgentConfig, ProviderConfig } from "../../types.js";
-import type { Tool } from "../../../tools/types.js";
-import type { ToolHandler } from "../../../legacy/core/tools.js";
 import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
 import { buildSpawnAgentSystemPrompt } from "../../../legacy/agents/builtin/system-prompt.js";
 import type {
@@ -21,13 +20,12 @@ import type {
   SendMessageRequest,
 } from "../../../legacy/agents/types.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
-import { wrapAgentTool } from "./tool-wrap.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
 
 const LEAF_DENIED_TOOLS: ReadonlySet<string> = new Set([
-  "write_file",
+  "write",
   "edit",
   "web_fetch",
   "web_search",
@@ -61,12 +59,36 @@ interface CreatePiAgentSessionOptions {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   agentConfig: AgentConfig;
-  /** Per-agent tool entries — wrapped per call so wrappers can pull per-call ctx. */
-  tools: Array<{ tool: Tool; handler: ToolHandler }>;
+  tools: AgentTool[];
   sessionManager: SessionManager;
   systemPrompt: string;
   cwd?: string;
   hooks?: HookRegistry;
+}
+
+// Promote AgentTool → ToolDefinition (the shape pi-coding-agent customTools wants).
+// AgentTool has no ctx parameter on execute; ToolDefinition does. Inline thin shim.
+function toToolDefinition(t: AgentTool, hooks: HookRegistry | undefined, agentId: string): ToolDefinition {
+  return {
+    name: t.name,
+    label: t.label,
+    description: t.description,
+    parameters: t.parameters,
+    ...(t.prepareArguments ? { prepareArguments: t.prepareArguments } : {}),
+    ...(t.executionMode ? { executionMode: t.executionMode } : {}),
+    execute: async (toolCallId, params, signal, onUpdate, _ctx) => {
+      if (hooks) await hooks.emit("before_tool_call", { agentId, toolName: t.name, args: params });
+      const result = await t.execute(toolCallId, params, signal, onUpdate);
+      if (hooks) {
+        const text = result.content
+          .filter((c: AgentToolResult<unknown>["content"][number]): c is { type: "text"; text: string } => c.type === "text")
+          .map((c: { text: string }) => c.text)
+          .join("\n");
+        await hooks.emit("after_tool_call", { agentId, toolName: t.name, args: params, result: text });
+      }
+      return result;
+    },
+  };
 }
 
 async function createPiAgentSession(opts: CreatePiAgentSessionOptions): Promise<AgentSession> {
@@ -79,9 +101,7 @@ async function createPiAgentSession(opts: CreatePiAgentSessionOptions): Promise<
   const model: Model<Api> = resolveModel(globalProvider, agentConfig.model);
   const agentDir = path.join(ISOTOPES_HOME, "agents", agentConfig.id, "agent");
 
-  const customTools: ToolDefinition[] = tools.map((entry) =>
-    wrapAgentTool(entry, { hooks, agentId: agentConfig.id }),
-  );
+  const customTools: ToolDefinition[] = tools.map((t) => toToolDefinition(t, hooks, agentConfig.id));
 
   const compactionEnabled = !!(agentConfig.compaction && agentConfig.compaction.mode !== "off");
   const compactionSettings = compactionEnabled
@@ -115,7 +135,7 @@ export interface PiSessionDeps {
   globalProvider: ProviderConfig;
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
-  getAgentTools: (agentId: string) => Array<{ tool: Tool; handler: ToolHandler }>;
+  getAgentTools: (agentId: string) => AgentTool[];
   hooks?: HookRegistry;
 }
 
@@ -146,7 +166,7 @@ export async function createLeafPiSession(
 ): Promise<AgentSession> {
   const { leafContext, runId, content } = opts;
   const ephAgentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;
-  const filteredTools = leafContext.tools.filter((entry) => !LEAF_DENIED_TOOLS.has(entry.tool.name));
+  const filteredTools = leafContext.tools.filter((t) => !LEAF_DENIED_TOOLS.has(t.name));
   const systemPrompt = buildSpawnAgentSystemPrompt({
     task: content,
     ...(leafContext.extraSystemPrompt ? { extraSystemPrompt: leafContext.extraSystemPrompt } : {}),
