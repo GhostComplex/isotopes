@@ -9,6 +9,9 @@ import type { SessionStore } from "../../sessions/types.js";
 
 import type { DefaultAgentManager } from "./agent-manager.js";
 
+// TODO(#645): rename / collapse with createMockSession — name says "cache"
+// but the type is `AgentConfig` (cast through `unknown`) and the only useful
+// member is the embedded session. Pre-PR-A this returned an AgentServiceCache.
 export function createMockAgentCache(): AgentConfig {
   const mockSession = createMockSession();
   return {

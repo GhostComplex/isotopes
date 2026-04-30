@@ -42,7 +42,7 @@ describe("DefaultAgentManager", () => {
   });
 
   describe("create", () => {
-    it.skip("TODO(#PR-A): no longer returns cache - creates and returns an agent instance", async () => {
+    it.skip("TODO(#645): no longer returns cache - creates and returns an agent instance", async () => {
       const config = makeConfig();
       const instance = await manager.create(config);
 
@@ -69,7 +69,7 @@ describe("DefaultAgentManager", () => {
   });
 
   describe("get", () => {
-    it.skip("TODO(#PR-A): no longer returns cache - returns instance for existing agent", async () => {
+    it.skip("TODO(#645): no longer returns cache - returns instance for existing agent", async () => {
       const config = makeConfig();
       const created = await manager.create(config);
 
@@ -99,7 +99,7 @@ describe("DefaultAgentManager", () => {
   });
 
   describe("update", () => {
-    it.skip("TODO(#PR-A): no longer returns cache - updates agent config and recreates instance", async () => {
+    it.skip("TODO(#645): no longer returns cache - updates agent config and recreates instance", async () => {
       const config = makeConfig();
       await manager.create(config);
 

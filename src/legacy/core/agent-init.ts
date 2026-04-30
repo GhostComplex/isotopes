@@ -53,7 +53,8 @@ export interface InitAgentOptions {
   /** Provider config */
   provider?: ProviderConfigFile;
   /** Global tool settings */
-  globalTools?: AgentToolsConfigFile;  /** Compaction config */
+  globalTools?: AgentToolsConfigFile;
+  /** Compaction config */
   compaction?: CompactionConfigFile;
   /** Sandbox config */
   sandbox?: SandboxConfigFile;

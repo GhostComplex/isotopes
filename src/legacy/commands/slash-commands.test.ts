@@ -298,7 +298,7 @@ describe("SlashCommandHandler", () => {
   // -----------------------------------------------------------------------
 
   describe("/compact", () => {
-    it.skip("TODO(#PR-A): rewrite for runtime.compactSession - triggers compaction and returns stats", async () => {
+    it.skip("TODO(#645): rewrite for runtime.compactSession - triggers compaction and returns stats", async () => {
       const sessionStore = createMockSessionStore();
       (sessionStore.getMessages as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce([1, 2, 3, 4, 5])  // before
@@ -321,7 +321,7 @@ describe("SlashCommandHandler", () => {
       expect(result.response).toContain("Compacted: 5 → 2 messages");
     });
 
-    it.skip("TODO(#PR-A): rewrite for runtime.compactSession - returns info when nothing to compact", async () => {
+    it.skip("TODO(#645): rewrite for runtime.compactSession - returns info when nothing to compact", async () => {
       const mockSession = {
         compact: vi.fn().mockResolvedValue(false),
         dispose: vi.fn(),
@@ -343,7 +343,7 @@ describe("SlashCommandHandler", () => {
       expect(result.response).toContain("No active session to compact");
     });
 
-    it.skip("TODO(#PR-A): rewrite for runtime.compactSession - returns error when no agent cache available", async () => {
+    it.skip("TODO(#645): rewrite for runtime.compactSession - returns error when no runtime available", async () => {
       const ctx = createContext({
         sessionId: "session-no-compact",
       });
@@ -353,7 +353,7 @@ describe("SlashCommandHandler", () => {
       expect(result.response).toContain("No agent cache available");
     });
 
-    it.skip("TODO(#PR-A): rewrite for runtime.compactSession - reports error on compaction failure", async () => {
+    it.skip("TODO(#645): rewrite for runtime.compactSession - reports error on compaction failure", async () => {
       const mockSession = {
         compact: vi.fn().mockRejectedValue(new Error("Model API error")),
         dispose: vi.fn(),

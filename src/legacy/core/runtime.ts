@@ -14,7 +14,7 @@ import { SessionStoreManager } from "./session-store-manager.js";
 import { createLogger } from "../../logging/logger.js";
 import { LazyTransportContext } from "../tools/react.js";
 import { ProcessRegistry } from "../tools/exec.js";
-import { ToolRegistry } from "./tools.js";
+import { ToolRegistry, toolRegistryEntries } from "./tools.js";
 import { ContainerManager, SandboxExecutor } from "../sandbox/index.js";
 import { initializeAgent } from "./agent-init.js";
 import {
@@ -153,13 +153,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     // Eagerly init the store so the registered agent owns a live ref.
     const sessionStore = await sessionStoreManager.getOrCreate(result.agentConfig.id);
     // Register per-agent tool entries on the runtime so the pi runner can fetch them.
-    agentRuntime.setAgentTools(
-      result.agentConfig.id,
-      result.toolRegistry.list().map((tool) => {
-        const entry = result.toolRegistry.get(tool.name);
-        return { tool, handler: entry!.handler };
-      }),
-    );
+    agentRuntime.setAgentTools(result.agentConfig.id, toolRegistryEntries(result.toolRegistry));
     agentRuntime.registerAgent({
       id: result.agentConfig.id,
       config: result.agentConfig,

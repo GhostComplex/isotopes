@@ -17,6 +17,7 @@ import type { Tool } from "../../tools/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import { PiRunner } from "../../agent/runners/pi/runner.js";
+import { createPiAgentSession } from "../../agent/runners/pi/session-factory.js";
 import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import {
@@ -272,7 +273,6 @@ export class AgentRuntime {
     if (!agent) throw new Error(`Unknown agent: ${agentId}`);
     const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
     if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
-    const { createPiAgentSession } = await import("../../agent/runners/pi/session-factory.js");
     const session = await createPiAgentSession({
       globalProvider: this.piGlobalProvider,
       authStorage: this.piAuthStorage,
