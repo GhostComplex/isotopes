@@ -102,6 +102,20 @@ export class ToolRegistry {
     this.tools.clear();
   }
 }
+
+/**
+ * Snapshot a `ToolRegistry` as a flat `{tool, handler}[]` — the shape
+ * `AgentRuntime.setAgentTools` and `SendMessageRequest.leafContext.tools`
+ * both consume.
+ */
+export function toolRegistryEntries(registry: ToolRegistry): Array<{ tool: Tool; handler: ToolHandler }> {
+  return registry.list().map((tool) => {
+    const entry = registry.get(tool.name);
+    if (!entry) throw new Error(`ToolRegistry inconsistency: list() returned ${tool.name} but get() did not`);
+    return { tool, handler: entry.handler };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Built-in tools
 // ---------------------------------------------------------------------------
@@ -269,7 +283,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): { tool: 
         ...(conversation_id ? { sessionId: conversation_id } : {}),
         ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
         ...(isSubagent && parentTools
-          ? { leafContext: { tools: parentTools } }
+          ? { leafContext: { tools: toolRegistryEntries(parentTools) } }
           : {}),
         onCancel: (reason) => { cancelReason = reason; },
       };

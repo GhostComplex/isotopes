@@ -11,7 +11,6 @@ import {
   type WorkspaceReloadedEvent,
 } from "./hot-reload.js";
 import type { AgentConfig } from "../../agent/types.js";
-import type { AgentServiceCache } from "../core/pi-mono.js";
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 
 // ---------------------------------------------------------------------------
@@ -23,17 +22,17 @@ function createMockDefaultAgentManager(): DefaultAgentManager & { reloadWorkspac
 
   return {
     reloadWorkspaceCalls,
-    async create(config: AgentConfig): Promise<AgentServiceCache> {
-      return { id: config.id } as unknown as AgentServiceCache;
+    async create(config: AgentConfig): Promise<AgentConfig> {
+      return { id: config.id } as unknown as AgentConfig;
     },
-    get(id: string): AgentServiceCache | undefined {
-      return { id } as unknown as AgentServiceCache;
+    get(id: string): AgentConfig | undefined {
+      return { id } as unknown as AgentConfig;
     },
     list(): AgentConfig[] {
       return [];
     },
-    async update(_id: string, _updates: Partial<AgentConfig>): Promise<AgentServiceCache> {
-      return { id: _id } as unknown as AgentServiceCache;
+    async update(_id: string, _updates: Partial<AgentConfig>): Promise<AgentConfig> {
+      return { id: _id } as unknown as AgentConfig;
     },
     async delete(_id: string): Promise<void> {},
     async getPrompt(_id: string): Promise<string> {

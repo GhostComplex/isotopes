@@ -34,7 +34,6 @@ import { createReactTools, LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import { SandboxExecutor, SandboxFs, shouldSandbox, type FsLike } from "../sandbox/index.js";
 import * as nodeFs from "node:fs/promises";
-import { PiMonoCore, type AgentServiceCache } from "./pi-mono.js";
 import type { DefaultAgentManager } from "./agent-manager.js";
 import type { AgentConfig } from "../../agent/types.js";
 import { createLogger } from "../../logging/logger.js";
@@ -61,8 +60,6 @@ export interface InitAgentOptions {
   sandbox?: SandboxConfigFile;
   /** Spawning config */
   spawning?: SpawningConfigFile;
-  /** PiMonoCore implementation */
-  core: PiMonoCore;
   /** Agent manager */
   agentManager: DefaultAgentManager;
   /** Pre-built sandbox executor (optional — no sandbox if omitted) */
@@ -79,7 +76,6 @@ export interface InitAgentOptions {
 
 export interface InitAgentResult {
   agentConfig: AgentConfig;
-  instance: AgentServiceCache;
   workspacePath: string;
   toolRegistry: ToolRegistry;
   processRegistry: ProcessRegistry;
@@ -101,7 +97,6 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     compaction,
     sandbox,
     spawning,
-    core,
     agentManager,
     sandboxExecutor,
     transportContext,
@@ -202,18 +197,16 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
     toolGuardPrompt,
   ].filter(Boolean).join("\n\n---\n\n");
 
-  // 13. Wire up tool registry and create agent
-  core.setToolRegistry(agentConfig.id, toolRegistry);
+  // 13. Wire up tool registry hooks and create agent
   if (opts.hooks) {
     toolRegistry.setHooks(opts.hooks);
     await opts.hooks.emit("before_agent_start", { agentId: agentConfig.id });
   }
-  const instance = await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, initialSystemPrompt: systemPrompt });
+  await agentManager.create(agentConfig, { workspacePath, toolGuardPrompt, initialSystemPrompt: systemPrompt });
   log.info(`Created agent: ${agentConfig.id} (workspace: ${workspacePath}, tools: ${toolRegistry.list().length})`);
 
   return {
     agentConfig,
-    instance,
     workspacePath,
     toolRegistry,
     processRegistry,

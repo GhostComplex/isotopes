@@ -1,18 +1,23 @@
 // src/core/test-helpers.ts — Shared test mocks for transport tests
+import type { AgentConfig } from "../../agent/types.js";
+
 // DRY: transport tests need identical AgentManager
 // and SessionStore mocks. Centralise them here.
 
 import { vi } from "vitest";
 import type { SessionStore } from "../../sessions/types.js";
-import type { AgentServiceCache } from "./pi-mono.js";
+
 import type { DefaultAgentManager } from "./agent-manager.js";
 
-export function createMockAgentCache(): AgentServiceCache {
+// TODO(#645): rename / collapse with createMockSession — name says "cache"
+// but the type is `AgentConfig` (cast through `unknown`) and the only useful
+// member is the embedded session. Pre-PR-A this returned an AgentServiceCache.
+export function createMockAgentCache(): AgentConfig {
   const mockSession = createMockSession();
   return {
     createSession: vi.fn().mockResolvedValue(mockSession),
     _mockSession: mockSession,
-  } as unknown as AgentServiceCache;
+  } as unknown as AgentConfig;
 }
 
 export function createMockSession() {
@@ -46,7 +51,7 @@ export function createMockSession() {
   return session;
 }
 
-export function createMockAgentManager(cache?: AgentServiceCache): DefaultAgentManager {
+export function createMockAgentManager(cache?: AgentConfig): DefaultAgentManager {
   const mockCache = cache ?? createMockAgentCache();
 
   return {

@@ -12,11 +12,19 @@ import type {
   SendMessageRequest,
   RunInfo,
 } from "./types.js";
-import type { PiMonoCore } from "../core/pi-mono.js";
-import { PiRunner } from "./runners/pi.js";
+import type { ProviderConfig } from "../../agent/types.js";
+import type { Tool } from "../../tools/types.js";
+import type { ToolHandler } from "../core/tools.js";
+import type { HookRegistry } from "../plugins/hooks.js";
+import { PiRunner } from "../../agent/runners/pi/runner.js";
+import { createRootPiSession, createLeafPiSession } from "../../agent/runners/pi/session-factory.js";
 import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import {
+  type AgentSession,
+  AuthStorage,
+  ModelRegistry,
+} from "@mariozechner/pi-coding-agent";
 
 const log = createLogger("agents:runtime");
 
@@ -45,10 +53,12 @@ interface RunHandle {
 export interface AgentRuntimeOptions {
   /** Roots within which `cwd` arguments must resolve. Empty = no restriction. */
   allowedWorkspaceRoots?: string[];
-  /** Required to drive any builtin (in-process) agent loops. */
-  core?: PiMonoCore;
+  /** Single global LLM provider — required for the pi runner. */
+  globalProvider?: ProviderConfig;
   /** When supplied, exposes `to: "claude"` as a leaf target via Claude CLI. */
   claude?: ClaudeRunnerOptions;
+  /** Plugin hooks to fire around tool execution. */
+  hooks?: HookRegistry;
 }
 
 /** Caller-fixable input error. Tool handlers should surface as `[error]`
@@ -112,11 +122,28 @@ export class AgentRuntime {
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
   private events = new SessionEventBus();
+  private piToolRegistries = new Map<string, Map<string, { tool: Tool; handler: ToolHandler }>>();
+  private piGlobalProvider?: ProviderConfig;
+  private piAuthStorage?: AuthStorage;
+  private piModelRegistry?: ModelRegistry;
+  private hooks?: HookRegistry;
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
     this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
-    if (opts.core) this.piRunner = new PiRunner(opts.core);
+    if (opts.hooks) this.hooks = opts.hooks;
+
+    if (opts.globalProvider) {
+      const creds: Record<string, { type: "api_key"; key: string }> = {};
+      if (opts.globalProvider.apiKey) {
+        creds[opts.globalProvider.type] = { type: "api_key", key: opts.globalProvider.apiKey };
+      }
+      this.piGlobalProvider = opts.globalProvider;
+      this.piAuthStorage = AuthStorage.inMemory(creds);
+      this.piModelRegistry = ModelRegistry.create(this.piAuthStorage);
+      this.piRunner = new PiRunner();
+    }
+
     if (opts.claude) this.claudeRunner = new ClaudeRunner(opts.claude);
   }
 
@@ -126,6 +153,27 @@ export class AgentRuntime {
 
   hasClaudeRunner(): boolean {
     return this.claudeRunner !== undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Per-agent pi tool registry
+  // ---------------------------------------------------------------------------
+
+  setAgentTools(agentId: string, tools: Iterable<{ tool: Tool; handler: ToolHandler }>): void {
+    const map = new Map<string, { tool: Tool; handler: ToolHandler }>();
+    for (const entry of tools) {
+      map.set(entry.tool.name, entry);
+    }
+    this.piToolRegistries.set(agentId, map);
+  }
+
+  clearAgentTools(agentId: string): void {
+    this.piToolRegistries.delete(agentId);
+  }
+
+  getAgentTools(agentId: string): Array<{ tool: Tool; handler: ToolHandler }> {
+    const map = this.piToolRegistries.get(agentId);
+    return map ? Array.from(map.values()) : [];
   }
 
   // ---------------------------------------------------------------------------
@@ -202,7 +250,37 @@ export class AgentRuntime {
   }
 
   unregisterAgent(id: string): boolean {
+    this.piToolRegistries.delete(id);
     return this.agents.delete(id);
+  }
+
+  /**
+   * Run SDK-side compaction on a specific (agent, sessionId). Used by the
+   * `/compact` slash command. Returns true if compaction ran, false if
+   * there wasn't enough context to compact.
+   */
+  async compactSession(agentId: string, sessionId: string): Promise<boolean> {
+    if (!this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
+      throw new Error("compactSession requires pi runner (globalProvider)");
+    }
+    const agent = this.agents.get(agentId);
+    if (!agent) throw new Error(`Unknown agent: ${agentId}`);
+    const session = await createRootPiSession(
+      {
+        globalProvider: this.piGlobalProvider,
+        authStorage: this.piAuthStorage,
+        modelRegistry: this.piModelRegistry,
+        getAgentTools: (id) => this.getAgentTools(id),
+        ...(this.hooks ? { hooks: this.hooks } : {}),
+      },
+      { agent, sessionId },
+    );
+    try {
+      const compacted = await session.compact();
+      return !!compacted;
+    } finally {
+      session.dispose();
+    }
   }
 
   getAgent(id: string): RegisteredAgent | undefined {
@@ -310,14 +388,13 @@ export class AgentRuntime {
           abort: abort.signal,
         });
       } else {
-        yield* this.piRunner!.sendMessage({
-          request: req,
-          ...(agent ? { agent } : {}),
-          kind,
-          sessionId,
-          runId,
+        const session = await this.buildPiSession({ kind, agent, sessionId, runId, req });
+        handle.session = session;
+        log.info("sendMessage runner", { runId, kind, agentId: req.to });
+        yield* this.piRunner!.run({
+          session,
+          content: req.content,
           abort: abort.signal,
-          onSessionReady: (session) => { handle.session = session; },
         });
       }
     } finally {
@@ -331,6 +408,34 @@ export class AgentRuntime {
       }
       this.runs.delete(runId);
     }
+  }
+
+  private async buildPiSession(opts: {
+    kind: AgentSessionKind;
+    agent?: RegisteredAgent;
+    sessionId: string;
+    runId: string;
+    req: SendMessageRequest;
+  }): Promise<AgentSession> {
+    const piDeps = {
+      globalProvider: this.piGlobalProvider!,
+      authStorage: this.piAuthStorage!,
+      modelRegistry: this.piModelRegistry!,
+      getAgentTools: (id: string) => this.getAgentTools(id),
+      ...(this.hooks ? { hooks: this.hooks } : {}),
+    };
+    if (opts.kind === "root") {
+      return createRootPiSession(piDeps, {
+        agent: opts.agent!,
+        sessionId: opts.sessionId,
+        ...(opts.req.cwd ? { cwd: opts.req.cwd } : {}),
+      });
+    }
+    return createLeafPiSession(piDeps, {
+      leafContext: opts.req.leafContext!,
+      runId: opts.runId,
+      content: opts.req.content,
+    });
   }
 
   // ---------- Lifecycle ----------

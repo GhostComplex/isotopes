@@ -1,0 +1,165 @@
+import { getModel, type Api, type Model } from "@mariozechner/pi-ai";
+import {
+  type AgentSession,
+  type AuthStorage,
+  type ModelRegistry,
+  type ToolDefinition,
+  createAgentSession,
+  SessionManager,
+  SettingsManager,
+} from "@mariozechner/pi-coding-agent";
+import * as path from "node:path";
+import { randomUUID } from "node:crypto";
+
+import type { AgentConfig, ProviderConfig } from "../../types.js";
+import type { Tool } from "../../../tools/types.js";
+import type { ToolHandler } from "../../../legacy/core/tools.js";
+import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
+import { buildSpawnAgentSystemPrompt } from "../../../legacy/agents/builtin/system-prompt.js";
+import type {
+  RegisteredAgent,
+  SendMessageRequest,
+} from "../../../legacy/agents/types.js";
+import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
+import { wrapAgentTool } from "./tool-wrap.js";
+
+const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
+const DEFAULT_MODEL = "claude-opus-4-7";
+
+const LEAF_DENIED_TOOLS: ReadonlySet<string> = new Set([
+  "write_file",
+  "edit",
+  "web_fetch",
+  "web_search",
+  "send_message",
+]);
+
+function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<Api> {
+  const provider = globalProvider.type as Parameters<typeof getModel>[0];
+  const id = modelId ?? globalProvider.defaultModel ?? DEFAULT_MODEL;
+  const model = getModel(provider, id as Parameters<typeof getModel>[1]) as Model<Api> | undefined;
+  if (!model) throw new Error(`Unknown ${provider} model: ${id}`);
+
+  const proxyHeaders: Record<string, string> = { ...(globalProvider.headers ?? {}) };
+  if (globalProvider.baseUrl && globalProvider.apiKey) {
+    proxyHeaders.Authorization ??= `Bearer ${globalProvider.apiKey}`;
+  }
+  const hasProxyHeaders = Object.keys(proxyHeaders).length > 0;
+
+  if (!globalProvider.baseUrl && !hasProxyHeaders) return model;
+
+  return {
+    ...model,
+    id,
+    ...(globalProvider.baseUrl ? { baseUrl: globalProvider.baseUrl } : {}),
+    ...(hasProxyHeaders ? { headers: { ...(model.headers ?? {}), ...proxyHeaders } } : {}),
+  };
+}
+
+interface CreatePiAgentSessionOptions {
+  globalProvider: ProviderConfig;
+  authStorage: AuthStorage;
+  modelRegistry: ModelRegistry;
+  agentConfig: AgentConfig;
+  /** Per-agent tool entries — wrapped per call so wrappers can pull per-call ctx. */
+  tools: Array<{ tool: Tool; handler: ToolHandler }>;
+  sessionManager: SessionManager;
+  systemPrompt: string;
+  cwd?: string;
+  hooks?: HookRegistry;
+}
+
+async function createPiAgentSession(opts: CreatePiAgentSessionOptions): Promise<AgentSession> {
+  const {
+    globalProvider, authStorage, modelRegistry,
+    agentConfig, tools,
+    sessionManager, systemPrompt, cwd, hooks,
+  } = opts;
+
+  const model: Model<Api> = resolveModel(globalProvider, agentConfig.model);
+  const agentDir = path.join(ISOTOPES_HOME, "agents", agentConfig.id, "agent");
+
+  const customTools: ToolDefinition[] = tools.map((entry) =>
+    wrapAgentTool(entry, { hooks, agentId: agentConfig.id }),
+  );
+
+  const compactionEnabled = !!(agentConfig.compaction && agentConfig.compaction.mode !== "off");
+  const compactionSettings = compactionEnabled
+    ? {
+        enabled: true,
+        reserveTokens: agentConfig.compaction?.reserveTokens ?? 20_000,
+        keepRecentTokens: 20_000,
+      }
+    : { enabled: false, reserveTokens: 20_000, keepRecentTokens: 20_000 };
+
+  const settingsManager = SettingsManager.inMemory({ compaction: compactionSettings });
+
+  const { session } = await createAgentSession({
+    cwd: cwd ?? process.cwd(),
+    agentDir,
+    authStorage,
+    modelRegistry,
+    model,
+    tools: [],
+    customTools,
+    sessionManager,
+    settingsManager,
+  });
+
+  overrideSessionSystemPrompt(session, systemPrompt);
+
+  return session;
+}
+
+export interface PiSessionDeps {
+  globalProvider: ProviderConfig;
+  authStorage: AuthStorage;
+  modelRegistry: ModelRegistry;
+  getAgentTools: (agentId: string) => Array<{ tool: Tool; handler: ToolHandler }>;
+  hooks?: HookRegistry;
+}
+
+export async function createRootPiSession(
+  deps: PiSessionDeps,
+  opts: { agent: RegisteredAgent; sessionId: string; cwd?: string },
+): Promise<AgentSession> {
+  const { agent, sessionId, cwd } = opts;
+  const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
+  if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
+
+  return createPiAgentSession({
+    globalProvider: deps.globalProvider,
+    authStorage: deps.authStorage,
+    modelRegistry: deps.modelRegistry,
+    agentConfig: agent.config,
+    tools: deps.getAgentTools(agent.id),
+    sessionManager,
+    systemPrompt: agent.systemPrompt,
+    ...(cwd ? { cwd } : {}),
+    ...(deps.hooks ? { hooks: deps.hooks } : {}),
+  });
+}
+
+export async function createLeafPiSession(
+  deps: PiSessionDeps,
+  opts: { leafContext: NonNullable<SendMessageRequest["leafContext"]>; runId: string; content: string },
+): Promise<AgentSession> {
+  const { leafContext, runId, content } = opts;
+  const ephAgentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;
+  const filteredTools = leafContext.tools.filter((entry) => !LEAF_DENIED_TOOLS.has(entry.tool.name));
+  const systemPrompt = buildSpawnAgentSystemPrompt({
+    task: content,
+    ...(leafContext.extraSystemPrompt ? { extraSystemPrompt: leafContext.extraSystemPrompt } : {}),
+  });
+
+  return createPiAgentSession({
+    globalProvider: deps.globalProvider,
+    authStorage: deps.authStorage,
+    modelRegistry: deps.modelRegistry,
+    agentConfig: { id: ephAgentId, compaction: { mode: "off" } },
+    tools: filteredTools,
+    sessionManager: SessionManager.inMemory(),
+    systemPrompt,
+    ...(deps.hooks ? { hooks: deps.hooks } : {}),
+  });
+}

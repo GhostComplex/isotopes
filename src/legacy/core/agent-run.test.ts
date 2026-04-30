@@ -12,7 +12,7 @@ const log = createLogger("test:agent-run");
 function fakeAgent(id: string): RegisteredAgent {
   return {
     id,
-    cache: {} as RegisteredAgent["cache"],
+    config: { id } as RegisteredAgent["config"],
     systemPrompt: "you are " + id,
     sessionStore: {
       findByKey: vi.fn(async () => undefined),
@@ -22,7 +22,6 @@ function fakeAgent(id: string): RegisteredAgent {
         lastActiveAt: new Date(),
       })),
     } as unknown as RegisteredAgent["sessionStore"],
-    tools: {} as RegisteredAgent["tools"],
     capabilities: { tools: [], canBeAddressed: true },
   };
 }
@@ -55,9 +54,11 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
 }
 
 function installStub(rt: AgentRuntime, gen: (req: SendMessageRequest) => AsyncGenerator<AgentEvent>) {
-  (rt as unknown as { piRunner: { sendMessage: typeof gen } }).piRunner = {
-    sendMessage: gen as never,
+  (rt as unknown as { piRunner: { run: typeof gen } }).piRunner = {
+    run: gen as never,
   };
+  (rt as unknown as { buildPiSession: () => Promise<unknown> }).buildPiSession =
+    async () => ({ dispose: () => {}, abort: () => {} });
 }
 
 describe("consumeRootRun", () => {

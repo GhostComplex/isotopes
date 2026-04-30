@@ -9,13 +9,12 @@ import {
   type IsotopesConfigFile,
 } from "../../config.js";
 import path from "node:path";
-import { PiMonoCore } from "./pi-mono.js";
 import { DefaultAgentManager } from "./agent-manager.js";
 import { SessionStoreManager } from "./session-store-manager.js";
 import { createLogger } from "../../logging/logger.js";
 import { LazyTransportContext } from "../tools/react.js";
 import { ProcessRegistry } from "../tools/exec.js";
-import { ToolRegistry } from "./tools.js";
+import { ToolRegistry, toolRegistryEntries } from "./tools.js";
 import { ContainerManager, SandboxExecutor } from "../sandbox/index.js";
 import { initializeAgent } from "./agent-init.js";
 import {
@@ -64,13 +63,10 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const pluginManager = new PluginManager();
   const sessionStoreManager = new SessionStoreManager({ hooks: pluginManager.getHooks() });
 
-  // Initialize core first — the builtin spawn agent backend hosts spawn agents
-  // in-process via this same core.
   if (!config.provider) {
     throw new Error("config.provider is required (top-level provider config in isotopes.yaml)");
   }
-  const core = new PiMonoCore(config.provider);
-  const agentManager = new DefaultAgentManager(core);
+  const agentManager = new DefaultAgentManager();
 
   // Single AgentRuntime shared by all transports + the in-agent send_message tool.
   const allowedRoots: string[] = [];
@@ -89,7 +85,8 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     : undefined;
   const agentRuntime = new AgentRuntime({
     allowedWorkspaceRoots: allowedRoots,
-    core,
+    globalProvider: config.provider,
+    hooks: pluginManager.getHooks(),
     ...(claudeOpts ? { claude: claudeOpts } : {}),
   });
 
@@ -140,7 +137,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       compaction: config.compaction,
       sandbox: config.sandbox,
       spawning: config.spawning,
-      core,
       agentManager,
       sandboxExecutor,
       transportContext: transportCtx,
@@ -156,12 +152,13 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
     // Eagerly init the store so the registered agent owns a live ref.
     const sessionStore = await sessionStoreManager.getOrCreate(result.agentConfig.id);
+    // Register per-agent tool entries on the runtime so the pi runner can fetch them.
+    agentRuntime.setAgentTools(result.agentConfig.id, toolRegistryEntries(result.toolRegistry));
     agentRuntime.registerAgent({
       id: result.agentConfig.id,
-      cache: result.instance,
+      config: result.agentConfig,
       systemPrompt: result.systemPrompt,
       sessionStore,
-      tools: result.toolRegistry,
       capabilities: {
         tools: result.toolRegistry.list().map((t) => t.name),
         canBeAddressed: true,
