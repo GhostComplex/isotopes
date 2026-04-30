@@ -34,6 +34,10 @@ export class ToolPluginRegistry {
 
       const list = Array.isArray(resolved) ? resolved : [resolved];
       for (const item of list) {
+        if (!item || typeof item.name !== "string" || item.name.length === 0) {
+          log.error(`Plugin tool from "${entry.pluginId}" has no name — skipping`);
+          continue;
+        }
         if (seen.has(item.name)) {
           log.error(`Plugin tool name conflict (${entry.pluginId}): ${item.name}`);
           continue;

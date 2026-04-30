@@ -130,14 +130,6 @@ async function createPiAgentSession(opts: CreatePiAgentSessionOptions): Promise<
 
   overrideSessionSystemPrompt(session, systemPrompt);
 
-  // DIAGNOSTIC #647: verify customTools end up in agent.state.tools
-   
-  console.warn("[SESSION DIAG] customTools registered:", customTools.map((t) => t.name));
-   
-  console.warn("[SESSION DIAG] active in agent.state.tools:", session.agent.state.tools.map((t) => t.name));
-   
-  console.warn("[SESSION DIAG] sample param schema (first tool):", JSON.stringify(session.agent.state.tools[0]?.parameters, null, 2));
-
   return session;
 }
 
