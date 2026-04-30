@@ -1,7 +1,3 @@
-// src/agent/runners/pi/runner.ts — In-process pi-coding-agent runner.
-// Two kinds: root (registered agent's session+SOUL+store) and leaf
-// (ephemeral session, parent's filtered tools).
-
 import { randomUUID } from "node:crypto";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type {

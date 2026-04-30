@@ -1,10 +1,3 @@
-// src/agent/runners/pi/tool-wrap.ts — Per-call wrap an isotopes tool entry
-// into the SDK's ToolDefinition shape, optionally firing hooks around the call.
-//
-// PR A bridge: still adapts the legacy {tool, handler} shape (tool-result
-// returned as string). PR B will migrate to SDK AgentTool directly and
-// simplify this file dramatically (or delete it).
-
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { Tool } from "../../../tools/types.js";
 import type { ToolHandler } from "../../../legacy/core/tools.js";

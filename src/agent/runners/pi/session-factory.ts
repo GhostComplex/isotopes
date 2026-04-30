@@ -1,7 +1,3 @@
-// src/agent/runners/pi/session-factory.ts — Build a pi-coding-agent AgentSession
-// for a given (agent, tools, sessionManager) per turn. Replaces the
-// AgentServiceCache.createSession() method that lived in the deleted pi-mono.ts.
-
 import { getModel, type Api, type Model } from "@mariozechner/pi-ai";
 import {
   type AgentSession,
@@ -84,11 +80,6 @@ export async function createPiAgentSession(opts: CreatePiAgentSessionOptions): P
 
   const settingsManager = SettingsManager.inMemory({ compaction: compactionSettings });
 
-  // We do NOT pass an explicit DefaultResourceLoader: the SDK's built-in default
-  // handles tool/extension wiring fine, and routing the prompt through the loader
-  // couples us to its auto-discovery side effects (e.g. AGENTS.md/CLAUDE.md leak,
-  // issue #590). Patching the session's system prompt after creation keeps prompt
-  // injection isolated from loader behavior.
   const { session } = await createAgentSession({
     cwd: cwd ?? process.cwd(),
     agentDir,
