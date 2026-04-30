@@ -28,28 +28,11 @@ function cloneModel<TApi extends Api>(
   };
 }
 
-function resolveKnownModel(
-  provider: Parameters<typeof getModel>[0],
-  modelId: string,
-): Model<Api> {
-  const model = getModel(provider, modelId as Parameters<typeof getModel>[1]) as Model<Api> | undefined;
-  if (model) return model;
-
-  if (provider === "anthropic") {
-    const dashed = modelId.replace(/(claude-(?:opus|sonnet|haiku)-\d)\.(\d)/g, "$1-$2");
-    if (dashed !== modelId) {
-      const aliased = getModel(provider, dashed as Parameters<typeof getModel>[1]) as Model<Api> | undefined;
-      if (aliased) return aliased;
-    }
-  }
-
-  throw new Error(`Unknown ${provider} model: ${modelId}`);
-}
-
 export function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<Api> {
   const provider = globalProvider.type as Parameters<typeof getModel>[0];
   const id = modelId ?? globalProvider.defaultModel ?? DEFAULT_MODEL;
-  const model = resolveKnownModel(provider, id);
+  const model = getModel(provider, id as Parameters<typeof getModel>[1]) as Model<Api> | undefined;
+  if (!model) throw new Error(`Unknown ${provider} model: ${id}`);
 
   const proxyHeaders: Record<string, string> = { ...(globalProvider.headers ?? {}) };
   // baseUrl + apiKey together → stamp Authorization (old "*-proxy" behavior)
