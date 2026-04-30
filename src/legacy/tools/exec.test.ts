@@ -364,8 +364,6 @@ describe("process_kill tool", () => {
     registry.clear();
   });
 
-  it.skip("TODO(#645): re-enable after parameter schema introspection",  () => { });
-
   it("kills a running process", async () => {
     const info = registry.spawn("sleep 60", process.cwd());
     const tool = createProcessKillTool(registry);
