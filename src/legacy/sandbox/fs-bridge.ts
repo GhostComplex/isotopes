@@ -1,12 +1,8 @@
 // src/sandbox/fs-bridge.ts — Sandbox-routed filesystem bridge
 //
-// Tools depend on the FsLike type. node:fs/promises naturally satisfies it;
-// SandboxFs is shaped to match. The choice of which implementation to use is
-// made once in cli.ts based on the agent's sandbox config — tools never branch
-// on host vs. sandbox.
-//
-// Reads pass through to the host because the workspace bind mount makes
-// container writes immediately visible on the host. Writes are routed through
+// SandboxFs implements the subset of node:fs/promises used by SDK FS tools
+// (read/write/edit/ls). Reads pass through to host fs (workspace bind mount
+// makes container writes visible on host). Writes are routed through
 // `docker exec` so they land inside the container's mount view, subject to
 // the OS-level mount boundary rather than purely JS path validation.
 
@@ -16,23 +12,6 @@ import { createLogger } from "../../logging/logger.js";
 import type { SandboxExecutor } from "./executor.js";
 
 const log = createLogger("sandbox:fs-bridge");
-
-// ---------------------------------------------------------------------------
-// FsLike
-// ---------------------------------------------------------------------------
-
-/**
- * The subset of node:fs/promises that workspace tools use.
- *
- * node:fs/promises naturally satisfies this; SandboxFs is shaped to match.
- * Tools depend only on this type, not on either concrete implementation, so
- * adding a new fs-write tool cannot accidentally bypass the sandbox — there
- * is no other write path available to a tool author.
- */
-export type FsLike = Pick<
-  typeof nodeFs,
-  "readFile" | "writeFile" | "mkdir" | "unlink" | "rename" | "stat" | "readdir"
->;
 
 // ---------------------------------------------------------------------------
 // FsError
@@ -80,7 +59,7 @@ export function mapStderrToCode(stderr: string): FsErrorCode {
  * (and any allowedWorkspaces) at the same path inside the container, so no
  * translation is required.
  */
-export class SandboxFs implements FsLike {
+export class SandboxFs {
   constructor(
     private executor: SandboxExecutor,
     private agentId: string,
@@ -90,20 +69,20 @@ export class SandboxFs implements FsLike {
   // Reads — passthrough to host fs.
   // -------------------------------------------------------------------------
 
-  readFile: FsLike["readFile"] = ((...args: Parameters<FsLike["readFile"]>) =>
-    nodeFs.readFile(...args)) as FsLike["readFile"];
+  readFile: typeof nodeFs.readFile = ((...args: Parameters<typeof nodeFs.readFile>) =>
+    nodeFs.readFile(...args)) as typeof nodeFs.readFile;
 
-  readdir: FsLike["readdir"] = ((...args: Parameters<FsLike["readdir"]>) =>
-    nodeFs.readdir(...args)) as FsLike["readdir"];
+  readdir: typeof nodeFs.readdir = ((...args: Parameters<typeof nodeFs.readdir>) =>
+    nodeFs.readdir(...args)) as typeof nodeFs.readdir;
 
-  stat: FsLike["stat"] = ((...args: Parameters<FsLike["stat"]>) =>
-    nodeFs.stat(...args)) as FsLike["stat"];
+  stat: typeof nodeFs.stat = ((...args: Parameters<typeof nodeFs.stat>) =>
+    nodeFs.stat(...args)) as typeof nodeFs.stat;
 
   // -------------------------------------------------------------------------
   // Writes — routed through `docker exec`.
   // -------------------------------------------------------------------------
 
-  writeFile: FsLike["writeFile"] = (async (
+  writeFile: typeof nodeFs.writeFile = (async (
     file: string,
     data: unknown,
   ): Promise<void> => {
@@ -111,12 +90,10 @@ export class SandboxFs implements FsLike {
       throw new FsError("EUNKNOWN", "SandboxFs.writeFile only supports string paths");
     }
     const buf = toWritePayload(data);
-    // Content via stdin avoids ARG_MAX and shell-quoting bugs. Pipe as Buffer
-    // (no encoding) so binary data round-trips intact.
     await this.execWithStdin(["sh", "-c", `cat > ${shQuote(file)}`], buf, `writeFile ${file}`);
-  }) as FsLike["writeFile"];
+  }) as typeof nodeFs.writeFile;
 
-  mkdir: FsLike["mkdir"] = (async (
+  mkdir: typeof nodeFs.mkdir = (async (
     dirPath: string,
     options?: { recursive?: boolean } | number,
   ): Promise<undefined> => {
@@ -127,16 +104,16 @@ export class SandboxFs implements FsLike {
     const cmd = recursive ? `mkdir -p ${shQuote(dirPath)}` : `mkdir ${shQuote(dirPath)}`;
     await this.exec(["sh", "-c", cmd], `mkdir ${dirPath}`);
     return undefined;
-  }) as FsLike["mkdir"];
+  }) as typeof nodeFs.mkdir;
 
-  unlink: FsLike["unlink"] = (async (filePath: string): Promise<void> => {
+  unlink: typeof nodeFs.unlink = (async (filePath: string): Promise<void> => {
     if (typeof filePath !== "string") {
       throw new FsError("EUNKNOWN", "SandboxFs.unlink only supports string paths");
     }
     await this.exec(["sh", "-c", `rm -- ${shQuote(filePath)}`], `unlink ${filePath}`);
-  }) as FsLike["unlink"];
+  }) as typeof nodeFs.unlink;
 
-  rename: FsLike["rename"] = (async (
+  rename: typeof nodeFs.rename = (async (
     oldPath: string,
     newPath: string,
   ): Promise<void> => {
@@ -147,7 +124,7 @@ export class SandboxFs implements FsLike {
       ["sh", "-c", `mv -- ${shQuote(oldPath)} ${shQuote(newPath)}`],
       `rename ${oldPath} -> ${newPath}`,
     );
-  }) as FsLike["rename"];
+  }) as typeof nodeFs.rename;
 
   // -------------------------------------------------------------------------
   // Internals
