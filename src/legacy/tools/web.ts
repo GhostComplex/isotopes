@@ -1,7 +1,11 @@
 // src/tools/web.ts — Web fetch and search tools
 
-import type { Tool } from "../../tools/types.js";
-import type { ToolHandler } from "../core/tools.js";
+import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+import { Type } from "typebox";
+
+function textResult(text: string): AgentToolResult<undefined> {
+  return { content: [{ type: "text", text }], details: undefined };
+}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -123,46 +127,26 @@ function htmlToText(html: string): string {
   return text;
 }
 
-/**
- * Create web_fetch tool.
- */
-export function createWebFetchTool(): { tool: Tool; handler: ToolHandler } {
+const webFetchSchema = Type.Object({
+  url: Type.String({ description: "The URL to fetch" }),
+});
+
+export function createWebFetchTool(): AgentTool<typeof webFetchSchema> {
   return {
-    tool: {
-      name: "web_fetch",
-      description:
-        "Fetch and read the content of a web page. Converts HTML to readable text. Use to read documentation, articles, or any URL directly.",
-      parameters: {
-        type: "object",
-        properties: {
-          url: {
-            type: "string",
-            description: "The URL to fetch",
-          },
-        },
-        required: ["url"],
-      },
-    },
-    handler: async (args) => {
-      const { url } = args as { url: string };
-
-      if (!url || url.trim().length === 0) {
-        return "[error] URL cannot be empty";
-      }
-
-      // Basic URL validation
-      try {
-        new URL(url);
-      } catch {
-        return `[error] Invalid URL: ${url}`;
-      }
-
+    name: "web_fetch",
+    label: "web_fetch",
+    description:
+      "Fetch and read the content of a web page. Converts HTML to readable text. Use to read documentation, articles, or any URL directly.",
+    parameters: webFetchSchema,
+    execute: async (_id, { url }) => {
+      if (!url || url.trim().length === 0) return textResult("[error] URL cannot be empty");
+      try { new URL(url); } catch { return textResult(`[error] Invalid URL: ${url}`); }
       try {
         const content = await fetchAndConvert(url);
-        return `Content from ${url}:\n\n${content}`;
+        return textResult(`Content from ${url}:\n\n${content}`);
       } catch (error) {
         const err = error instanceof Error ? error.message : String(error);
-        return `[error] Failed to fetch: ${err}`;
+        return textResult(`[error] Failed to fetch: ${err}`);
       }
     },
   };
@@ -223,84 +207,42 @@ export function parseDuckDuckGoResults(html: string, count: number): SearchResul
   return results;
 }
 
-/**
- * Create web_search tool using DuckDuckGo HTML scraping.
- */
-export function createWebSearchTool(): { tool: Tool; handler: ToolHandler } {
+const webSearchSchema = Type.Object({
+  query: Type.String({ description: "Search query" }),
+  count: Type.Optional(Type.Number({ description: "Number of results (1-10, default 5)" })),
+  region: Type.Optional(Type.String({ description: "Region code (e.g., 'us-en', 'uk-en')" })),
+});
+
+export function createWebSearchTool(): AgentTool<typeof webSearchSchema> {
   return {
-    tool: {
-      name: "web_search",
-      description:
-        "Search the web using DuckDuckGo. Returns titles, URLs, and snippets.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: {
-            type: "string",
-            description: "Search query",
-          },
-          count: {
-            type: "number",
-            description: "Number of results (1-10, default 5)",
-          },
-          region: {
-            type: "string",
-            description: "Region code (e.g., 'us-en', 'uk-en')",
-          },
-        },
-        required: ["query"],
-      },
-    },
-    handler: async (args) => {
-      const { query, count: rawCount, region } = args as {
-        query: string;
-        count?: number;
-        region?: string;
-      };
-
-      if (!query || query.trim().length === 0) {
-        return "[error] Search query cannot be empty";
-      }
-
+    name: "web_search",
+    label: "web_search",
+    description: "Search the web using DuckDuckGo. Returns titles, URLs, and snippets.",
+    parameters: webSearchSchema,
+    execute: async (_id, { query, count: rawCount, region }) => {
+      if (!query || query.trim().length === 0) return textResult("[error] Search query cannot be empty");
       const count = Math.max(1, Math.min(10, rawCount ?? 5));
-
       const params = new URLSearchParams({ q: query });
-      if (region) {
-        params.set("kl", region);
-      }
-
+      if (region) params.set("kl", region);
       const url = `https://html.duckduckgo.com/html/?${params.toString()}`;
-
       try {
         const response = await fetch(url, {
           method: "GET",
-          headers: {
-            "User-Agent": USER_AGENT,
-            Accept: "text/html",
-          },
+          headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
           signal: AbortSignal.timeout(REQUEST_TIMEOUT),
           redirect: "follow",
         });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const html = await response.text();
         const results = parseDuckDuckGoResults(html, count);
-
-        if (results.length === 0) {
-          return `No results found for "${query}"`;
-        }
-
+        if (results.length === 0) return textResult(`No results found for "${query}"`);
         const formatted = results
           .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
           .join("\n\n");
-
-        return `Search results for "${query}":\n\n${formatted}`;
+        return textResult(`Search results for "${query}":\n\n${formatted}`);
       } catch (error) {
         const err = error instanceof Error ? error.message : String(error);
-        return `[error] Search failed: ${err}`;
+        return textResult(`[error] Search failed: ${err}`);
       }
     },
   };

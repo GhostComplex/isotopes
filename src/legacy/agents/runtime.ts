@@ -13,13 +13,11 @@ import type {
   RunInfo,
 } from "./types.js";
 import type { ProviderConfig } from "../../agent/types.js";
-import type { Tool } from "../../tools/types.js";
-import type { ToolHandler } from "../core/tools.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import { PiRunner } from "../../agent/runners/pi/runner.js";
 import { createRootPiSession, createLeafPiSession } from "../../agent/runners/pi/session-factory.js";
 import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude.js";
-import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
   AuthStorage,
@@ -122,7 +120,7 @@ export class AgentRuntime {
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
   private events = new SessionEventBus();
-  private piToolRegistries = new Map<string, Map<string, { tool: Tool; handler: ToolHandler }>>();
+  private piToolRegistries = new Map<string, Map<string, AgentTool>>();
   private piGlobalProvider?: ProviderConfig;
   private piAuthStorage?: AuthStorage;
   private piModelRegistry?: ModelRegistry;
@@ -159,10 +157,10 @@ export class AgentRuntime {
   // Per-agent pi tool registry
   // ---------------------------------------------------------------------------
 
-  setAgentTools(agentId: string, tools: Iterable<{ tool: Tool; handler: ToolHandler }>): void {
-    const map = new Map<string, { tool: Tool; handler: ToolHandler }>();
-    for (const entry of tools) {
-      map.set(entry.tool.name, entry);
+  setAgentTools(agentId: string, tools: Iterable<AgentTool>): void {
+    const map = new Map<string, AgentTool>();
+    for (const t of tools) {
+      map.set(t.name, t);
     }
     this.piToolRegistries.set(agentId, map);
   }
@@ -171,7 +169,7 @@ export class AgentRuntime {
     this.piToolRegistries.delete(agentId);
   }
 
-  getAgentTools(agentId: string): Array<{ tool: Tool; handler: ToolHandler }> {
+  getAgentTools(agentId: string): AgentTool[] {
     const map = this.piToolRegistries.get(agentId);
     return map ? Array.from(map.values()) : [];
   }

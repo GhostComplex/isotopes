@@ -1,7 +1,7 @@
 // src/agent/types.ts — Agent-layer types (config, runtime contract)
 
 import type { SandboxConfig } from "../legacy/sandbox/config.js";
-import type { Tool, AgentToolSettings } from "../tools/types.js";
+import type { AgentToolSettings } from "../tools/types.js";
 
 // ---------------------------------------------------------------------------
 // Provider config (single global provider; agents pick model only)
@@ -24,7 +24,6 @@ export interface ProviderConfig {
 /** Complete configuration needed to create an agent instance. */
 export interface AgentConfig {
   id: string;
-  tools?: Tool[];
   toolSettings?: AgentToolSettings;
   model?: string;
   /** Context compaction configuration */
@@ -37,7 +36,7 @@ export interface AgentConfig {
   heartbeatPrompt?: string;
   /**
    * Coding mode controls how the agent handles code modifications:
-   * - 'send-message': Force all code changes through send_message (removes write_file, edit)
+   * - 'send-message': Force all code changes through send_message (removes write/edit)
    * - 'direct': Agent can modify files directly (default behavior)
    * - 'auto': Agent chooses based on task complexity (default)
    */

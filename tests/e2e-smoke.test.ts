@@ -1,189 +1,110 @@
 // tests/e2e-smoke.test.ts — E2E smoke test for agent tools (#246)
 //
-// Verifies that all core tools (read, edit, exec, web_fetch, sessions_list)
-// work correctly when wired through ToolRegistry, mirroring cli.ts setup.
-// Also tests tool policy deny behavior and NO_REPLY suppression.
-//
-// Run: pnpm vitest tests/e2e-smoke.test.ts
+// Verifies that core tools work when wired through createWorkspaceToolsWithGuards,
+// mirroring agent-init setup. Also tests tool policy and NO_REPLY suppression.
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import {
-  ToolRegistry,
-  createReadFileTool,
-  createEditFileTool,
   createWorkspaceToolsWithGuards,
   applyToolPolicy,
 } from "../src/legacy/core/tools.js";
 import { createExecTools } from "../src/legacy/tools/exec.js";
 import { createWebFetchTool } from "../src/legacy/tools/web.js";
 
-// ---------------------------------------------------------------------------
-// Test workspace setup
-// ---------------------------------------------------------------------------
+async function callTool(tool: AgentTool, args: unknown): Promise<string> {
+  const result: AgentToolResult<unknown> = await tool.execute("test-call", args as never);
+  const block = result.content.find((c) => c.type === "text") as { text: string } | undefined;
+  return block?.text ?? "";
+}
+
+function findTool(tools: AgentTool[], name: string): AgentTool {
+  const t = tools.find((x) => x.name === name);
+  if (!t) throw new Error(`Tool not found: ${name}`);
+  return t;
+}
 
 let tmpDir: string;
 
 beforeAll(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-e2e-"));
-  await fs.writeFile(
-    path.join(tmpDir, "SOUL.md"),
-    "# Test Agent\nYou are a test agent.\n",
-  );
-  await fs.writeFile(
-    path.join(tmpDir, "MEMORY.md"),
-    "# Memory\n- remembered item\n",
-  );
-  await fs.writeFile(
-    path.join(tmpDir, "hello.txt"),
-    "Hello, world!\n",
-  );
+  await fs.writeFile(path.join(tmpDir, "SOUL.md"), "# Test Agent\nYou are a test agent.\n");
+  await fs.writeFile(path.join(tmpDir, "MEMORY.md"), "# Memory\n- remembered item\n");
+  await fs.writeFile(path.join(tmpDir, "hello.txt"), "Hello, world!\n");
 });
 
 afterAll(async () => {
-  if (tmpDir) {
-    await fs.rm(tmpDir, { recursive: true, force: true });
-  }
+  if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true });
 });
-
-// ---------------------------------------------------------------------------
-// 1. Workspace context loads
-// ---------------------------------------------------------------------------
 
 describe("workspace context", () => {
   it("SOUL.md and MEMORY.md exist in temp workspace", async () => {
     const soul = await fs.readFile(path.join(tmpDir, "SOUL.md"), "utf-8");
     expect(soul).toContain("# Test Agent");
-
     const memory = await fs.readFile(path.join(tmpDir, "MEMORY.md"), "utf-8");
     expect(memory).toContain("remembered item");
   });
 });
 
-// ---------------------------------------------------------------------------
-// 2. read_file tool
-// ---------------------------------------------------------------------------
-
-describe("read_file tool", () => {
+describe("read tool (SDK)", () => {
   it("reads a file from the workspace", async () => {
-    const registry = new ToolRegistry("test");
-    const { tool, handler } = createReadFileTool({ workspacePath: tmpDir });
-    registry.register(tool, handler);
-
-    const result = await registry.execute("read_file", { path: "hello.txt" });
-    expect(result).toBe("Hello, world!\n");
-  });
-
-  it("returns error for nonexistent file", async () => {
-    const registry = new ToolRegistry("test");
-    const { tool, handler } = createReadFileTool({ workspacePath: tmpDir });
-    registry.register(tool, handler);
-
-    const result = await registry.execute("read_file", { path: "nope.txt" });
-    expect(result).toContain("[error]");
-    expect(result).toContain("not found");
+    const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
+    const result = await callTool(findTool(tools, "read"), { path: "hello.txt" });
+    expect(result).toContain("Hello, world!");
   });
 });
 
-// ---------------------------------------------------------------------------
-// 3. edit tool
-// ---------------------------------------------------------------------------
-
-describe("edit tool", () => {
+describe("edit tool (SDK)", () => {
   it("modifies file content via search-and-replace", async () => {
-    // Create a file to edit
     const editFile = path.join(tmpDir, "editable.txt");
     await fs.writeFile(editFile, "foo bar baz\n");
 
-    const registry = new ToolRegistry("test");
-    const { tool, handler } = createEditFileTool({ workspacePath: tmpDir });
-    registry.register(tool, handler);
-
-    const result = await registry.execute("edit", {
-      path: "editable.txt",
-      old_text: "bar",
-      new_text: "qux",
+    const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
+    await callTool(findTool(tools, "edit"), {
+      path: editFile,
+      edits: [{ oldText: "bar", newText: "qux" }],
     });
-    const parsed = JSON.parse(result);
-    expect(parsed.success).toBe(true);
-
     const updated = await fs.readFile(editFile, "utf-8");
     expect(updated).toBe("foo qux baz\n");
   });
 });
 
-// ---------------------------------------------------------------------------
-// 4. exec tool
-// ---------------------------------------------------------------------------
-
 describe("exec tool", () => {
   it("runs a shell command and returns stdout", async () => {
-    const registry = new ToolRegistry("test");
-    const execTools = createExecTools({ cwd: tmpDir });
-    for (const { tool, handler } of execTools) {
-      registry.register(tool, handler);
-    }
-
-    const result = await registry.execute("exec", { command: "echo hello" });
-    const parsed = JSON.parse(result);
-    expect(parsed.exit_code).toBe(0);
-    expect(parsed.stdout.trim()).toBe("hello");
+    const tools = createExecTools({ cwd: tmpDir });
+    const result = JSON.parse(await callTool(findTool(tools, "exec"), { command: "echo hello" }));
+    expect(result.exit_code).toBe(0);
+    expect(result.stdout.trim()).toBe("hello");
   });
 
   it("reports non-zero exit codes", async () => {
-    const registry = new ToolRegistry("test");
-    const execTools = createExecTools({ cwd: tmpDir });
-    for (const { tool, handler } of execTools) {
-      registry.register(tool, handler);
-    }
-
-    const result = await registry.execute("exec", { command: "exit 42" });
-    const parsed = JSON.parse(result);
-    expect(parsed.exit_code).not.toBe(0);
+    const tools = createExecTools({ cwd: tmpDir });
+    const result = JSON.parse(await callTool(findTool(tools, "exec"), { command: "exit 42" }));
+    expect(result.exit_code).not.toBe(0);
   });
 });
 
-// ---------------------------------------------------------------------------
-// 5. web_fetch tool
-// ---------------------------------------------------------------------------
-
 describe("web_fetch tool", () => {
   it("fetches a URL and returns content", async () => {
-    const registry = new ToolRegistry("test");
-    const { tool, handler } = createWebFetchTool();
-    registry.register(tool, handler);
-
-    const result = await registry.execute("web_fetch", {
-      url: "https://httpbin.org/get",
-    });
+    const tool = createWebFetchTool();
+    const result = await callTool(tool, { url: "https://httpbin.org/get" });
     expect(result).toContain("httpbin.org");
   }, 30_000);
 
   it("returns error for invalid URL", async () => {
-    const registry = new ToolRegistry("test");
-    const { tool, handler } = createWebFetchTool();
-    registry.register(tool, handler);
-
-    const result = await registry.execute("web_fetch", { url: "not-a-url" });
+    const tool = createWebFetchTool();
+    const result = await callTool(tool, { url: "not-a-url" });
     expect(result).toContain("[error]");
   });
 });
 
-// ---------------------------------------------------------------------------
-// 7. NO_REPLY / HEARTBEAT_OK suppression
-// ---------------------------------------------------------------------------
-
 describe("NO_REPLY suppression", () => {
   it("detects NO_REPLY content for suppression", () => {
-    // NO_REPLY is a convention where the agent's text output is exactly
-    // "NO_REPLY" — the transport layer should suppress it. We verify the
-    // pattern-matching logic transports use.
     const noReplyPatterns = ["NO_REPLY", "HEARTBEAT_OK"];
-    const shouldSuppress = (text: string) =>
-      noReplyPatterns.some((p) => text.trim() === p);
-
+    const shouldSuppress = (text: string) => noReplyPatterns.some((p) => text.trim() === p);
     expect(shouldSuppress("NO_REPLY")).toBe(true);
     expect(shouldSuppress("HEARTBEAT_OK")).toBe(true);
     expect(shouldSuppress("  NO_REPLY  ")).toBe(true);
@@ -193,112 +114,69 @@ describe("NO_REPLY suppression", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 8. Tool policy deny
-// ---------------------------------------------------------------------------
-
 describe("tool policy deny", () => {
-  it("removes denied tools from the registry", () => {
+  it("removes denied tools", () => {
     const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
-    const filtered = applyToolPolicy(tools, { deny: ["read_file"] });
-
-    const names = filtered.map((t) => t.tool.name);
-    expect(names).not.toContain("read_file");
-    expect(names).toContain("write_file");
+    const filtered = applyToolPolicy(tools, { deny: ["read"] });
+    const names = filtered.map((t) => t.name);
+    expect(names).not.toContain("read");
+    expect(names).toContain("write");
     expect(names).toContain("edit");
   });
 
-  it("denied tool cannot be executed", async () => {
-    const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
-    const filtered = applyToolPolicy(tools, { deny: ["read_file"] });
-
-    const registry = new ToolRegistry("test");
-    for (const { tool, handler } of filtered) {
-      registry.register(tool, handler);
-    }
-
-    expect(registry.has("read_file")).toBe(false);
-    await expect(registry.execute("read_file", { path: "test.txt" }))
-      .rejects.toThrow('Tool "read_file" not found');
-  });
-
-  it("exec tool denied via policy is not executable", async () => {
+  it("exec tool denied via policy is not present", () => {
     const execTools = createExecTools({ cwd: tmpDir });
     const filtered = applyToolPolicy(execTools, { deny: ["exec"] });
-
-    const registry = new ToolRegistry("test");
-    for (const { tool, handler } of filtered) {
-      registry.register(tool, handler);
-    }
-
-    expect(registry.has("exec")).toBe(false);
-    // process_list and process_kill should still be available
-    expect(registry.has("process_list")).toBe(true);
-    expect(registry.has("process_kill")).toBe(true);
+    const names = filtered.map((t) => t.name);
+    expect(names).not.toContain("exec");
+    expect(names).toContain("process_list");
+    expect(names).toContain("process_kill");
   });
 
   it("allow list restricts to only specified tools", () => {
     const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
-    const filtered = applyToolPolicy(tools, { allow: ["read_file", "edit"] });
-
-    const names = filtered.map((t) => t.tool.name);
-    expect(names).toEqual(["read_file", "edit"]);
+    const filtered = applyToolPolicy(tools, { allow: ["read", "edit"] });
+    expect(filtered.map((t) => t.name).sort()).toEqual(["edit", "read"]);
   });
 
   it("deny takes precedence over allow", () => {
     const tools = createWorkspaceToolsWithGuards({ workspacePath: tmpDir });
     const filtered = applyToolPolicy(tools, {
-      allow: ["read_file", "edit"],
+      allow: ["read", "edit"],
       deny: ["edit"],
     });
-
-    const names = filtered.map((t) => t.tool.name);
-    expect(names).toContain("read_file");
+    const names = filtered.map((t) => t.name);
+    expect(names).toContain("read");
     expect(names).not.toContain("edit");
   });
 });
 
-// ---------------------------------------------------------------------------
-// 9. Full tool registry wiring (mirrors cli.ts)
-// ---------------------------------------------------------------------------
-
 describe("full tool wiring", () => {
   it("registers all core tools without conflict", async () => {
-    const registry = new ToolRegistry("test");
-
-    // Workspace tools (read, write, edit, list_dir, time)
     const workspaceTools = createWorkspaceToolsWithGuards({
       workspacePath: tmpDir,
       settings: { web: true },
     });
-    for (const { tool, handler } of workspaceTools) {
-      registry.register(tool, handler);
-    }
-
-    // Exec tools (exec, process_list, process_kill) — registered separately like cli.ts
     const execTools = createExecTools({ cwd: tmpDir });
-    for (const { tool, handler } of execTools) {
-      registry.register(tool, handler);
-    }
+    const all = [...workspaceTools, ...execTools];
+    const names = new Set(all.map((t) => t.name));
 
-    // Verify key tools are registered
-    expect(registry.has("read_file")).toBe(true);
-    expect(registry.has("write_file")).toBe(true);
-    expect(registry.has("edit")).toBe(true);
-    expect(registry.has("list_dir")).toBe(true);
-    expect(registry.has("exec")).toBe(true);
-    expect(registry.has("web_fetch")).toBe(true);
-    expect(registry.has("web_search")).toBe(true);
-    expect(registry.has("get_current_time")).toBe(true);
-    expect(registry.has("process_list")).toBe(true);
-    expect(registry.has("process_kill")).toBe(true);
+    expect(names.has("read")).toBe(true);
+    expect(names.has("write")).toBe(true);
+    expect(names.has("edit")).toBe(true);
+    expect(names.has("ls")).toBe(true);
+    expect(names.has("exec")).toBe(true);
+    expect(names.has("web_fetch")).toBe(true);
+    expect(names.has("web_search")).toBe(true);
+    expect(names.has("get_current_time")).toBe(true);
+    expect(names.has("process_list")).toBe(true);
+    expect(names.has("process_kill")).toBe(true);
 
-    // Smoke: execute a few tools through the unified registry
-    const readResult = await registry.execute("read_file", { path: "SOUL.md" });
+    // Smoke: execute a couple of tools end-to-end
+    const readResult = await callTool(findTool(all, "read"), { path: "SOUL.md" });
     expect(readResult).toContain("# Test Agent");
 
-    const execResult = await registry.execute("exec", { command: "echo smoke" });
-    const execParsed = JSON.parse(execResult);
-    expect(execParsed.stdout.trim()).toBe("smoke");
+    const execResult = JSON.parse(await callTool(findTool(all, "exec"), { command: "echo smoke" }));
+    expect(execResult.stdout.trim()).toBe("smoke");
   });
 });

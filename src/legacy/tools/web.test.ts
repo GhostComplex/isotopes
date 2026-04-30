@@ -3,6 +3,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createWebFetchTool, createWebSearchTool, parseDuckDuckGoResults } from "./web.js";
 
+import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+
+async function callTool(tool: AgentTool, args: unknown): Promise<string> {
+  const result: AgentToolResult<unknown> = await tool.execute("test-call", args as never);
+  const block = result.content.find((c) => c.type === "text") as { text: string } | undefined;
+  return block?.text ?? "";
+}
+
+
 describe("web tools", () => {
   let originalFetch: typeof global.fetch;
 
@@ -17,22 +26,22 @@ describe("web tools", () => {
 
   describe("createWebFetchTool", () => {
     it("returns tool with correct schema", () => {
-      const { tool } = createWebFetchTool();
+      const tool = createWebFetchTool();
       expect(tool.name).toBe("web_fetch");
       expect(tool.description).toContain("web page");
       expect(tool.parameters.required).toContain("url");
     });
 
     it("returns error for empty URL", async () => {
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "" });
       expect(result).toContain("[error]");
       expect(result).toContain("empty");
     });
 
     it("returns error for invalid URL", async () => {
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "not-a-url" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "not-a-url" });
       expect(result).toContain("[error]");
       expect(result).toContain("Invalid URL");
     });
@@ -60,8 +69,8 @@ describe("web tools", () => {
         text: () => Promise.resolve(mockHtml),
       });
 
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "https://example.com/page" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "https://example.com/page" });
 
       expect(result).toContain("Test Page");
       expect(result).toContain("Main Heading");
@@ -78,8 +87,8 @@ describe("web tools", () => {
         text: () => Promise.resolve('{"key": "value"}'),
       });
 
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "https://api.example.com/data" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "https://api.example.com/data" });
 
       expect(result).toContain('{"key": "value"}');
     });
@@ -91,8 +100,8 @@ describe("web tools", () => {
         statusText: "Not Found",
       });
 
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "https://example.com/missing" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "https://example.com/missing" });
 
       expect(result).toContain("[error]");
       expect(result).toContain("404");
@@ -101,8 +110,8 @@ describe("web tools", () => {
     it("handles network error", async () => {
       global.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
 
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "https://example.com" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "https://example.com" });
 
       expect(result).toContain("[error]");
       expect(result).toContain("Connection refused");
@@ -118,8 +127,8 @@ describe("web tools", () => {
         text: () => Promise.resolve(mockHtml),
       });
 
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "https://example.com" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "https://example.com" });
 
       expect(result).toContain("[Content truncated");
       expect(result.length).toBeLessThan(100000);
@@ -145,8 +154,8 @@ describe("web tools", () => {
         text: () => Promise.resolve(mockHtml),
       });
 
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "https://example.com" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "https://example.com" });
 
       expect(result).toContain("Article Title");
       expect(result).toContain("Article content");
@@ -169,8 +178,8 @@ describe("web tools", () => {
         text: () => Promise.resolve(mockHtml),
       });
 
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "https://example.com" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "https://example.com" });
 
       expect(result).toContain("• Item 1");
       expect(result).toContain("• Item 2");
@@ -190,8 +199,8 @@ describe("web tools", () => {
         text: () => Promise.resolve(mockHtml),
       });
 
-      const { handler } = createWebFetchTool();
-      const result = await handler({ url: "https://example.com" });
+      const tool = createWebFetchTool();
+      const result = await callTool(tool, { url: "https://example.com" });
 
       expect(result).toContain("Less than: <");
       expect(result).toContain("Greater than: >");
@@ -305,7 +314,7 @@ describe("web tools", () => {
 
   describe("createWebSearchTool", () => {
     it("returns tool with correct schema", () => {
-      const { tool } = createWebSearchTool();
+      const tool = createWebSearchTool();
       expect(tool.name).toBe("web_search");
       expect(tool.description).toContain("DuckDuckGo");
       expect(tool.parameters.required).toContain("query");
@@ -315,8 +324,8 @@ describe("web tools", () => {
     });
 
     it("returns error for empty query", async () => {
-      const { handler } = createWebSearchTool();
-      const result = await handler({ query: "" });
+      const tool = createWebSearchTool();
+      const result = await callTool(tool, { query: "" });
       expect(result).toContain("[error]");
       expect(result).toContain("empty");
     });
@@ -340,8 +349,8 @@ describe("web tools", () => {
         text: () => Promise.resolve(mockHtml),
       });
 
-      const { handler } = createWebSearchTool();
-      const result = await handler({ query: "test search" });
+      const tool = createWebSearchTool();
+      const result = await callTool(tool, { query: "test search" });
 
       expect(result).toContain("Search results");
       expect(result).toContain("Example Result");
@@ -361,8 +370,8 @@ describe("web tools", () => {
         text: () => Promise.resolve("<html></html>"),
       });
 
-      const { handler } = createWebSearchTool();
-      await handler({ query: "test", region: "us-en" });
+      const tool = createWebSearchTool();
+      await callTool(tool, { query: "test", region: "us-en" });
 
       const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(fetchCall[0]).toContain("kl=us-en");
@@ -383,8 +392,8 @@ describe("web tools", () => {
         text: () => Promise.resolve(mockHtml),
       });
 
-      const { handler } = createWebSearchTool();
-      const result = await handler({ query: "test", count: 2 });
+      const tool = createWebSearchTool();
+      const result = await callTool(tool, { query: "test", count: 2 });
 
       // Should only show 2 results
       expect(result).toContain("1. R1");
@@ -398,8 +407,8 @@ describe("web tools", () => {
         text: () => Promise.resolve("<html><body>No results</body></html>"),
       });
 
-      const { handler } = createWebSearchTool();
-      const result = await handler({ query: "xyznonexistent" });
+      const tool = createWebSearchTool();
+      const result = await callTool(tool, { query: "xyznonexistent" });
 
       expect(result).toContain("No results found");
     });
@@ -411,8 +420,8 @@ describe("web tools", () => {
         statusText: "Service Unavailable",
       });
 
-      const { handler } = createWebSearchTool();
-      const result = await handler({ query: "test" });
+      const tool = createWebSearchTool();
+      const result = await callTool(tool, { query: "test" });
 
       expect(result).toContain("[error]");
       expect(result).toContain("503");
@@ -421,8 +430,8 @@ describe("web tools", () => {
     it("handles network error", async () => {
       global.fetch = vi.fn().mockRejectedValue(new Error("Network timeout"));
 
-      const { handler } = createWebSearchTool();
-      const result = await handler({ query: "test" });
+      const tool = createWebSearchTool();
+      const result = await callTool(tool, { query: "test" });
 
       expect(result).toContain("[error]");
       expect(result).toContain("Network timeout");
