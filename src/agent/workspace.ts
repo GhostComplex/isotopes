@@ -1,10 +1,27 @@
-// src/core/workspace.ts — Workspace file loading and management
+// src/agent/workspace.ts — Workspace file loading and management
 // Handles SOUL.md, MEMORY.md, TOOLS.md, and other workspace files.
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { SkillLoader } from "../skills/index.js";
-import { buildAssistantOutputDirectives } from "./assistant-output-directives.js";
+import { SkillLoader } from "../legacy/skills/index.js";
+
+const ASSISTANT_OUTPUT_DIRECTIVES = `# Assistant Output Directives
+
+When you reply on a chat surface, you may include the following inline tags
+in your message to request delivery metadata. Tags are stripped from the
+user-visible text and are only honored on channels that support the
+underlying feature; channels without support silently ignore them.
+
+- \`[[reply_to_current]]\` — render this message as a native reply to the
+  message that triggered the current turn. Prefer this form.
+- \`[[reply_to: <message-id>]]\` — render this message as a native reply to
+  a specific message id. Use only when the id was explicitly given to you
+  (by the user or by a tool result).
+
+Place the tag at the start of your response, before any other text.
+Whitespace inside the brackets is allowed. Tags are channel-agnostic — each
+transport (Discord, etc.) renders them in the platform's native
+reply / quote primitive where available.`;
 
 /** Standard workspace files that contribute to system prompt */
 export const WORKSPACE_FILES = [
@@ -87,10 +104,8 @@ export function buildSystemPrompt(
   basePrompt: string,
   workspace: WorkspaceContext | null,
 ): string {
-  const directives = buildAssistantOutputDirectives();
-
   if (!workspace) {
-    return [basePrompt, directives].join("\n\n---\n\n");
+    return [basePrompt, ASSISTANT_OUTPUT_DIRECTIVES].join("\n\n---\n\n");
   }
 
   const parts = [basePrompt];
@@ -110,7 +125,7 @@ export function buildSystemPrompt(
     parts.push("# Memory\n\n" + workspace.memory);
   }
 
-  parts.push(directives);
+  parts.push(ASSISTANT_OUTPUT_DIRECTIVES);
 
   return parts.join("\n\n---\n\n");
 }

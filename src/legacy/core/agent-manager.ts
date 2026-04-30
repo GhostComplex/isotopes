@@ -7,7 +7,7 @@ import {
   ensureWorkspaceStructure,
   loadWorkspaceContext,
   type WorkspaceContext,
-} from "./workspace.js";
+} from "../../agent/workspace.js";
 
 /** Options for creating an agent with workspace awareness. */
 export interface AgentCreateOptions {
