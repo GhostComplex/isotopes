@@ -11,7 +11,6 @@ import {
   type WorkspaceReloadedEvent,
 } from "./hot-reload.js";
 import type { AgentConfig } from "../../agent/types.js";
-
 import type { DefaultAgentManager } from "../core/agent-manager.js";
 
 // ---------------------------------------------------------------------------
