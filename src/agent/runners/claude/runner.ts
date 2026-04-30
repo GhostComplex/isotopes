@@ -56,14 +56,14 @@ export class ClaudeRunner {
 
   /** `request.cwd` is required; Claude CLI manages its own session state
    * so conversational continuity across calls is out of scope. */
-  async *sendMessage(opts: {
+  async *run(opts: {
     request: SendMessageRequest;
     runId: string;
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {
     const { request, runId, abort } = opts;
     if (!request.cwd) {
-      throw new Error("ClaudeRunner.sendMessage: request.cwd is required");
+      throw new Error("ClaudeRunner.run: request.cwd is required");
     }
 
     const sdkAbort = new AbortController();
@@ -82,7 +82,7 @@ export class ClaudeRunner {
     if (this.defaultModel) sdkOptions.model = this.defaultModel;
     if (this.defaultMaxTurns !== undefined) sdkOptions.maxTurns = this.defaultMaxTurns;
 
-    log.info("ClaudeRunner.sendMessage", { runId, cwd: request.cwd });
+    log.info("ClaudeRunner.run", { runId, cwd: request.cwd });
 
     const toolNameById = new Map<string, string>();
     let assistantText = "";
