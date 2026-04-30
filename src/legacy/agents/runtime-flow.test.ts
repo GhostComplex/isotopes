@@ -41,14 +41,16 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
 
 interface StubPiRunner {
   sendMessage: (opts: {
-    runId: string;
+    session: AgentSession;
+    content: string;
     abort: AbortSignal;
-    onSessionReady?: (s: AgentSession) => void;
   }) => AsyncGenerator<AgentEvent>;
 }
 
 function installStubRunner(rt: AgentRuntime, runner: StubPiRunner) {
   (rt as unknown as { piRunner: StubPiRunner }).piRunner = runner;
+  (rt as unknown as { buildPiSession: () => Promise<AgentSession> }).buildPiSession =
+    async () => ({ dispose: () => {}, abort: () => {} } as unknown as AgentSession);
 }
 
 describe("runtime.sendMessage — onRunStart timing", () => {

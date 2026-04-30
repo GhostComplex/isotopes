@@ -17,7 +17,7 @@ import type { Tool } from "../../tools/types.js";
 import type { ToolHandler } from "../core/tools.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import { PiRunner } from "../../agent/runners/pi/runner.js";
-import { createPiAgentSession } from "../../agent/runners/pi/session-factory.js";
+import { createPiAgentSession, createRootPiSession, createLeafPiSession } from "../../agent/runners/pi/session-factory.js";
 import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import {
@@ -141,13 +141,7 @@ export class AgentRuntime {
       this.piGlobalProvider = opts.globalProvider;
       this.piAuthStorage = AuthStorage.inMemory(creds);
       this.piModelRegistry = ModelRegistry.create(this.piAuthStorage);
-      this.piRunner = new PiRunner({
-        globalProvider: this.piGlobalProvider,
-        authStorage: this.piAuthStorage,
-        modelRegistry: this.piModelRegistry,
-        getAgentTools: (agentId) => this.getAgentTools(agentId),
-        ...(this.hooks ? { hooks: this.hooks } : {}),
-      });
+      this.piRunner = new PiRunner();
     }
 
     if (opts.claude) this.claudeRunner = new ClaudeRunner(opts.claude);
@@ -396,14 +390,13 @@ export class AgentRuntime {
           abort: abort.signal,
         });
       } else {
+        const session = await this.buildPiSession({ kind, agent, sessionId, runId, req });
+        handle.session = session;
+        log.info("sendMessage runner", { runId, kind, agentId: req.to });
         yield* this.piRunner!.sendMessage({
-          request: req,
-          ...(agent ? { agent } : {}),
-          kind,
-          sessionId,
-          runId,
+          session,
+          content: req.content,
           abort: abort.signal,
-          onSessionReady: (session) => { handle.session = session; },
         });
       }
     } finally {
@@ -417,6 +410,34 @@ export class AgentRuntime {
       }
       this.runs.delete(runId);
     }
+  }
+
+  private async buildPiSession(opts: {
+    kind: AgentSessionKind;
+    agent?: RegisteredAgent;
+    sessionId: string;
+    runId: string;
+    req: SendMessageRequest;
+  }): Promise<AgentSession> {
+    const piDeps = {
+      globalProvider: this.piGlobalProvider!,
+      authStorage: this.piAuthStorage!,
+      modelRegistry: this.piModelRegistry!,
+      getAgentTools: (id: string) => this.getAgentTools(id),
+      ...(this.hooks ? { hooks: this.hooks } : {}),
+    };
+    if (opts.kind === "root") {
+      return createRootPiSession(piDeps, {
+        agent: opts.agent!,
+        sessionId: opts.sessionId,
+        ...(opts.req.cwd ? { cwd: opts.req.cwd } : {}),
+      });
+    }
+    return createLeafPiSession(piDeps, {
+      leafContext: opts.req.leafContext!,
+      runId: opts.runId,
+      content: opts.req.content,
+    });
   }
 
   // ---------- Lifecycle ----------

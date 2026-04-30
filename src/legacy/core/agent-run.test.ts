@@ -57,6 +57,8 @@ function installStub(rt: AgentRuntime, gen: (req: SendMessageRequest) => AsyncGe
   (rt as unknown as { piRunner: { sendMessage: typeof gen } }).piRunner = {
     sendMessage: gen as never,
   };
+  (rt as unknown as { buildPiSession: () => Promise<unknown> }).buildPiSession =
+    async () => ({ dispose: () => {}, abort: () => {} });
 }
 
 describe("consumeRootRun", () => {
