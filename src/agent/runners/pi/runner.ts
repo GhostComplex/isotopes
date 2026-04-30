@@ -1,16 +1,5 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { AgentSession, AgentSessionEvent } from "@mariozechner/pi-coding-agent";
-
-const AGENT_EVENT_TYPES = new Set([
-  "agent_start", "agent_end",
-  "turn_start", "turn_end",
-  "message_start", "message_update", "message_end",
-  "tool_execution_start", "tool_execution_update", "tool_execution_end",
-]);
-
-function isAgentEvent(e: { type: string }): e is AgentEvent {
-  return AGENT_EVENT_TYPES.has(e.type);
-}
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
 export class PiRunner {
   async *run(opts: {
@@ -41,8 +30,9 @@ async function* streamSessionAgentEvents(
   const queue: QueueItem[] = [];
   let resolve: (() => void) | null = null;
 
-  const unsub = session.subscribe((event: AgentSessionEvent) => {
-    if (!isAgentEvent(event)) return;
+  // Forward every session event as AgentEvent — consumers switch on `type`
+  // and ignore unknown variants (queue_update, compaction_*, auto_retry_*).
+  const unsub = session.subscribe((event) => {
     queue.push(event as AgentEvent);
     if (resolve) { resolve(); resolve = null; }
   });
