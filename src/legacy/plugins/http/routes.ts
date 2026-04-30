@@ -4,7 +4,6 @@ import type { ServerResponse } from "node:http";
 
 import type { CronScheduler } from "../../automation/cron-job.js";
 import type { ConfigReloader } from "../../workspace/config-reloader.js";
-import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import type { SessionStoreManager } from "../../core/session-store-manager.js";
 import type { HookRegistry } from "../../plugins/hooks.js";
 import type { AgentRuntime } from "../../agents/runtime.js";
@@ -18,7 +17,6 @@ import type { ApiRequest } from "./middleware.js";
 export interface RouteDeps {
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
-  agentManager?: DefaultAgentManager;
   sessionStoreManager?: SessionStoreManager;
   hooks?: HookRegistry;
   agentRuntime?: AgentRuntime;

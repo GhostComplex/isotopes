@@ -9,7 +9,6 @@ import {
   type IsotopesConfigFile,
 } from "../../config.js";
 import path from "node:path";
-import { DefaultAgentManager } from "./agent-manager.js";
 import { SessionStoreManager } from "./session-store-manager.js";
 import { createLogger } from "../../logging/logger.js";
 import { LazyTransportContext } from "../tools/react.js";
@@ -19,8 +18,9 @@ import { ContainerManager, SandboxExecutor } from "../sandbox/index.js";
 import { initializeAgent } from "./agent-init.js";
 import {
   ensureDirectories,
+  resolveAgentWorkspacePath,
 } from "../../paths.js";
-import { HotReloadManager } from "../workspace/index.js";
+
 import { ApiServer } from "../plugins/http/server.js";
 import { CronScheduler } from "../automation/cron-job.js";
 import { HeartbeatManager } from "../automation/heartbeat.js";
@@ -41,7 +41,7 @@ export interface RuntimeOptions {
 }
 
 export interface Runtime {
-  agentManager: DefaultAgentManager;
+  agentRuntime: AgentRuntime;
   agentWorkspaces: Map<string, string>;
   cronScheduler: CronScheduler;
   pluginManager: PluginManager;
@@ -66,7 +66,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   if (!config.provider) {
     throw new Error("config.provider is required (top-level provider config in isotopes.yaml)");
   }
-  const agentManager = new DefaultAgentManager();
 
   // Single AgentRuntime shared by all transports + the in-agent send_message tool.
   const allowedRoots: string[] = [];
@@ -137,7 +136,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       compaction: config.compaction,
       sandbox: config.sandbox,
       spawning: config.spawning,
-      agentManager,
       sandboxExecutor,
       transportContext: transportCtx,
       hooks: pluginManager.getHooks(),
@@ -157,7 +155,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     agentRuntime.registerAgent({
       id: result.agentConfig.id,
       config: result.agentConfig,
-      systemPrompt: result.systemPrompt,
       sessionStore,
       capabilities: {
         tools: result.tools.map((t) => t.name),
@@ -166,9 +163,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       ...(result.agentConfig.sessionPolicy ? { sessionPolicy: result.agentConfig.sessionPolicy } : {}),
     });
   }
-
-  // Hot-reload workspace files
-  const hotReload = new HotReloadManager(agentManager, { enabled: true, debounceMs: 500 });
 
   // Discover and load plugins (PluginManager created earlier for hooks)
   const pluginDirs = [
@@ -202,14 +196,9 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     }
   }
 
-  for (const [agentId, workspacePath] of agentWorkspaces) {
-    hotReload.register(agentId, workspacePath);
-  }
-  hotReload.onReload((event) => {
-    log.info(`Hot-reload: workspace reloaded for "${event.agentId}" (${event.changedFiles.join(", ")})`);
-  });
-  hotReload.start();
-  log.info(`Hot-reload enabled for ${config.agents.length} agent(s)`);
+  // Workspace files (SOUL.md / MEMORY.md / TOOLS.md / skills) are now loaded
+  // per-call via stat-cache in agent/workspace.ts — no watcher needed. Edits
+  // are picked up on the next message automatically.
 
   // Heartbeat managers
   const heartbeatManagers: HeartbeatManager[] = [];
@@ -230,7 +219,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
           to: agentId,
           sessionId: session.id,
           content: prompt,
-          ...(agentManager.getWorkspacePath(agentId) ? { cwd: agentManager.getWorkspacePath(agentId) } : {}),
+          ...((c) => c ? { cwd: resolveAgentWorkspacePath(c) } : {})(agentRuntime.getAgent(agentId)?.config),
           log,
         });
         return result.responseText;
@@ -299,7 +288,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
         to: job.agentId,
         sessionId: session.id,
         content: prompt,
-        ...(agentManager.getWorkspacePath(job.agentId) ? { cwd: agentManager.getWorkspacePath(job.agentId) } : {}),
+        ...((c) => c ? { cwd: resolveAgentWorkspacePath(c) } : {})(agentRuntime.getAgent(job.agentId)?.config),
         log,
       });
       log.info(`Cron "${job.name}" completed (${result.responseText.length} chars)`);
@@ -318,7 +307,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   for (const [id, factory] of pluginManager.getTransportFactories()) {
     try {
       const transport = await factory({
-        agentManager,
         sessionStoreManager,
         config,
         transportContexts,
@@ -340,7 +328,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     { port: apiPort ?? 2712 },
     {
       cronScheduler,
-      agentManager,
       uiRegistry: pluginManager.getUIRegistry(),
       sessionStoreManager,
       hooks: pluginManager.getHooks(),
@@ -356,7 +343,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info("Shutting down...");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
-    hotReload.stop();
     for (const t of pluginTransports) {
       try { await t.stop(); } catch { /* ignore */ }
     }
@@ -378,7 +364,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   };
 
   return {
-    agentManager,
+    agentRuntime,
     agentWorkspaces,
     cronScheduler,
     pluginManager,

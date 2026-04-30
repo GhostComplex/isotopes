@@ -20,6 +20,7 @@ import type {
   SendMessageRequest,
 } from "../../../legacy/agents/types.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
+import { deriveAgentSystemPrompt } from "../../system-prompt.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -149,14 +150,16 @@ export async function createRootPiSession(
   const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
+  const tools = deps.getAgentTools(agent.id);
+  const systemPrompt = await deriveAgentSystemPrompt(agent.config, tools);
   return createPiAgentSession({
     globalProvider: deps.globalProvider,
     authStorage: deps.authStorage,
     modelRegistry: deps.modelRegistry,
     agentConfig: agent.config,
-    tools: deps.getAgentTools(agent.id),
+    tools,
     sessionManager,
-    systemPrompt: agent.systemPrompt,
+    systemPrompt,
     ...(cwd ? { cwd } : {}),
     ...(deps.hooks ? { hooks: deps.hooks } : {}),
   });

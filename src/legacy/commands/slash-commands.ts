@@ -2,7 +2,6 @@
 // Parses and dispatches /status, /reload, /model commands from chat messages.
 
 import type { SessionStore } from "../../sessions/types.js";
-import type { DefaultAgentManager } from "../core/agent-manager.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import { createLogger } from "../../logging/logger.js";
 import { failureTracker } from "../agents/failure-tracker.js";
@@ -17,7 +16,8 @@ export interface ParsedCommand {
 
 /** Context passed to command handlers */
 export interface CommandContext {
-  agentManager: DefaultAgentManager;
+  /** Unified runtime — used for agent registry lookups and command dispatch. */
+  agentRuntime: AgentRuntime;
   sessionStore: SessionStore;
   /** The agent ID this message was routed to */
   agentId: string;
@@ -125,7 +125,7 @@ export class SlashCommandHandler {
     const uptimeMs = Date.now() - this.startTime;
     const uptime = formatUptime(uptimeMs);
 
-    const agents = ctx.agentManager.list();
+    const agents = ctx.agentRuntime.listAgents().map((a) => a.config);
     const sessions = await ctx.sessionStore.list();
 
     // Find current agent's model
@@ -145,31 +145,32 @@ export class SlashCommandHandler {
   }
 
   private async handleReload(ctx: CommandContext): Promise<CommandResult> {
-    try {
-      await ctx.agentManager.reloadWorkspace(ctx.agentId);
-      log.info(`Workspace reloaded for agent ${ctx.agentId} by ${ctx.username}`);
-      return { response: `✅ Workspace reloaded for agent \`${ctx.agentId}\`.` };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      log.error(`Reload failed for agent ${ctx.agentId}: ${msg}`);
-      return { response: `❌ Reload failed: ${msg}` };
+    // Workspace files (SOUL.md / MEMORY.md / etc.) are now reloaded
+    // automatically per-message via stat-cache in agent/workspace.ts.
+    // /reload is a no-op kept for backward UX (acknowledges the request).
+    if (!ctx.agentRuntime.getAgent(ctx.agentId)) {
+      return { response: `❌ Agent \`${ctx.agentId}\` not found.` };
     }
+    log.info(`/reload acknowledged for agent ${ctx.agentId} by ${ctx.username}`);
+    return {
+      response: `✅ Workspace files are reloaded automatically — no action needed for \`${ctx.agentId}\`.`,
+    };
   }
 
   private async handleModel(ctx: CommandContext, args: string): Promise<CommandResult> {
     const modelName = args.trim();
+    const agent = ctx.agentRuntime.getAgent(ctx.agentId);
+    if (!agent) {
+      return { response: `❌ Agent \`${ctx.agentId}\` not found.` };
+    }
     if (!modelName) {
       // Show current model
-      const agents = ctx.agentManager.list();
-      const agentConfig = agents.find((a) => a.id === ctx.agentId);
-      const current = agentConfig?.model ?? "(default)";
+      const current = agent.config.model ?? "(default)";
       return { response: `Current model: \`${current}\`` };
     }
 
     try {
-      await ctx.agentManager.update(ctx.agentId, {
-        model: modelName,
-      });
+      agent.config.model = modelName;
 
       log.info(`Model switched to ${modelName} for agent ${ctx.agentId} by ${ctx.username}`);
       return { response: `✅ Model switched to \`${modelName}\` for agent \`${ctx.agentId}\`.` };

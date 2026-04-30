@@ -43,7 +43,6 @@ export default {
       const discordManager = new DiscordTransportManager({
         accounts,
         shared: {
-          agentManager: ctx.agentManager,
           agentRuntime: ctx.agentRuntime,
           sessionStore: defaultSessionStore,
           sessionStoreForAgent: (agentId) =>

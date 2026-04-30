@@ -201,21 +201,19 @@ Use this skill to search the web.
   });
 
   describe("buildSystemPrompt", () => {
-    it("returns base prompt with directives when no workspace", () => {
-      const result = buildSystemPrompt("Base prompt", null);
-      expect(result).toContain("Base prompt");
+    it("returns just directives when no workspace", () => {
+      const result = buildSystemPrompt(null);
       expect(result).toContain("# Assistant Output Directives");
       expect(result).toContain("[[reply_to_current]]");
     });
 
-    it("combines base prompt with workspace context", async () => {
+    it("includes workspace context", async () => {
       await fs.writeFile(path.join(tempDir, "SOUL.md"), "Soul");
       await fs.writeFile(path.join(tempDir, "MEMORY.md"), "Memory");
 
       const ctx = await loadWorkspaceContext(tempDir);
-      const result = buildSystemPrompt("Base prompt", ctx);
+      const result = buildSystemPrompt(ctx);
 
-      expect(result).toContain("Base prompt");
       expect(result).toContain("Workspace Context");
       expect(result).toContain("Soul");
       expect(result).toContain("Memory");
@@ -226,22 +224,21 @@ Use this skill to search the web.
       await fs.writeFile(path.join(tempDir, "MEMORY.md"), "Memory content");
 
       const ctx = await loadWorkspaceContext(tempDir);
-      const result = buildSystemPrompt("Base prompt", ctx);
+      const result = buildSystemPrompt(ctx);
 
-      // Sections should be separated by "---"
+      // workspace path + workspace context + memory + directives
       const sections = result.split("\n\n---\n\n");
-      expect(sections.length).toBe(5); // base + workspace path + workspace context + memory + directives
-      expect(sections[0]).toBe("Base prompt");
-      expect(sections[1]).toContain("# Workspace");
-      expect(sections[1]).toContain("Your working directory is:");
-      expect(sections[2]).toContain("# Workspace Context");
-      expect(sections[3]).toContain("# Memory");
-      expect(sections[4]).toContain("# Assistant Output Directives");
+      expect(sections.length).toBe(4);
+      expect(sections[0]).toContain("# Workspace");
+      expect(sections[0]).toContain("Your working directory is:");
+      expect(sections[1]).toContain("# Workspace Context");
+      expect(sections[2]).toContain("# Memory");
+      expect(sections[3]).toContain("# Assistant Output Directives");
     });
 
     it("always includes assistant output directives section", async () => {
       const ctx = await loadWorkspaceContext(tempDir);
-      const result = buildSystemPrompt("Base prompt", ctx);
+      const result = buildSystemPrompt(ctx);
 
       expect(result).toContain("# Assistant Output Directives");
       expect(result).toContain("[[reply_to_current]]");
@@ -250,9 +247,8 @@ Use this skill to search the web.
 
     it("includes workspace path even when no workspace files exist", async () => {
       const ctx = await loadWorkspaceContext(tempDir);
-      const result = buildSystemPrompt("Base prompt", ctx);
+      const result = buildSystemPrompt(ctx);
 
-      // No workspace files → still has workspace path section
       expect(result).toContain("Your working directory is:");
       expect(result).not.toContain("# Workspace Context");
     });
@@ -261,20 +257,20 @@ Use this skill to search the web.
       await fs.writeFile(path.join(tempDir, "SOUL.md"), "Soul content");
 
       const ctx = await loadWorkspaceContext(tempDir);
-      const result = buildSystemPrompt("Base prompt", ctx);
+      const result = buildSystemPrompt(ctx);
 
       expect(result).toContain("Workspace Context");
       expect(result).toContain("Soul content");
       expect(result).not.toContain("# Memory");
     });
 
-    it("works with empty base prompt and workspace files", async () => {
+    it("works with workspace files", async () => {
       await fs.writeFile(path.join(tempDir, "SOUL.md"), "You are Major.");
       await fs.writeFile(path.join(tempDir, "TOOLS.md"), "Use shell for commands.");
       await fs.writeFile(path.join(tempDir, "MEMORY.md"), "Previously discussed X.");
 
       const ctx = await loadWorkspaceContext(tempDir);
-      const result = buildSystemPrompt("", ctx);
+      const result = buildSystemPrompt(ctx);
 
       expect(result).toContain("You are Major.");
       expect(result).toContain("Use shell for commands.");
@@ -283,7 +279,7 @@ Use this skill to search the web.
 
     it("includes skills in system prompt when skills exist", async () => {
       await fs.writeFile(path.join(tempDir, "SOUL.md"), "Soul");
-      
+
       // Create a skill
       const skillDir = path.join(tempDir, "skills", "git-helper");
       await fs.mkdir(skillDir, { recursive: true });
@@ -299,7 +295,7 @@ description: Help with git operations
       );
 
       const ctx = await loadWorkspaceContext(tempDir);
-      const result = buildSystemPrompt("Base prompt", ctx);
+      const result = buildSystemPrompt(ctx);
 
       expect(result).toContain("git-helper");
       expect(result).toContain("Help with git operations");

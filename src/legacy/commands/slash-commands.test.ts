@@ -2,11 +2,31 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SlashCommandHandler, type CommandContext } from "./slash-commands.js";
-import { createMockAgentManager, createMockSessionStore } from "../core/test-helpers.js";
+import { createMockSessionStore } from "../core/test-helpers.js";
+import type { AgentRuntime } from "../agents/runtime.js";
+import type { AgentConfig } from "../../agent/types.js";
+
+interface FakeAgent {
+  id: string;
+  config: AgentConfig;
+}
+
+function fakeAgentRuntime(opts?: {
+  agents?: FakeAgent[];
+  compactSession?: (agentId: string, sessionId: string) => Promise<boolean>;
+}): AgentRuntime {
+  const agents = new Map<string, FakeAgent>();
+  for (const a of opts?.agents ?? []) agents.set(a.id, a);
+  return {
+    getAgent: (id: string) => agents.get(id),
+    listAgents: () => Array.from(agents.values()),
+    ...(opts?.compactSession ? { compactSession: opts.compactSession } : {}),
+  } as unknown as AgentRuntime;
+}
 
 function createContext(overrides?: Partial<CommandContext>): CommandContext {
   return {
-    agentManager: createMockAgentManager(),
+    agentRuntime: fakeAgentRuntime({ agents: [{ id: "agent-1", config: { id: "agent-1" } }] }),
     sessionStore: createMockSessionStore(),
     agentId: "agent-1",
     userId: "admin-123",
@@ -108,18 +128,18 @@ describe("SlashCommandHandler", () => {
 
   describe("/status", () => {
     it("returns uptime, model, agent, and session info", async () => {
-      const agentManager = createMockAgentManager();
-      (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", model: "claude-sonnet-4" },
-      ]);
-
       const sessionStore = createMockSessionStore();
       (sessionStore.list as ReturnType<typeof vi.fn>).mockResolvedValue([
         { id: "s1", agentId: "agent-1", lastActiveAt: new Date() },
         { id: "s2", agentId: "agent-1", lastActiveAt: new Date() },
       ]);
 
-      const ctx = createContext({ agentManager, sessionStore });
+      const ctx = createContext({
+        agentRuntime: fakeAgentRuntime({
+          agents: [{ id: "agent-1", config: { id: "agent-1", model: "claude-sonnet-4" } }],
+        }),
+        sessionStore,
+      });
       const result = await handler.execute("/status", ctx);
 
       expect(result.response).toContain("Agent Status");
@@ -129,12 +149,7 @@ describe("SlashCommandHandler", () => {
     });
 
     it("shows default model when no provider configured", async () => {
-      const agentManager = createMockAgentManager();
-      (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1" },
-      ]);
-
-      const ctx = createContext({ agentManager });
+      const ctx = createContext();
       const result = await handler.execute("/status", ctx);
       expect(result.response).toContain("(default)");
     });
@@ -145,28 +160,18 @@ describe("SlashCommandHandler", () => {
   // -----------------------------------------------------------------------
 
   describe("/reload", () => {
-    it("calls reloadWorkspace and reports success", async () => {
-      const agentManager = createMockAgentManager();
-      (agentManager.reloadWorkspace as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-
-      const ctx = createContext({ agentManager });
+    it("acknowledges the reload (workspace files reload automatically per-call)", async () => {
+      const ctx = createContext();
       const result = await handler.execute("/reload", ctx);
-
-      expect(agentManager.reloadWorkspace).toHaveBeenCalledWith("agent-1");
-      expect(result.response).toContain("Workspace reloaded");
+      expect(result.response).toContain("reloaded automatically");
     });
 
-    it("reports errors on reload failure", async () => {
-      const agentManager = createMockAgentManager();
-      (agentManager.reloadWorkspace as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new Error("No workspace path"),
-      );
-
-      const ctx = createContext({ agentManager });
+    it("reports error when agent does not exist", async () => {
+      const ctx = createContext({
+        agentRuntime: fakeAgentRuntime({ agents: [] }),
+      });
       const result = await handler.execute("/reload", ctx);
-
-      expect(result.response).toContain("Reload failed");
-      expect(result.response).toContain("No workspace path");
+      expect(result.response).toContain("not found");
     });
   });
 
@@ -176,12 +181,11 @@ describe("SlashCommandHandler", () => {
 
   describe("/model", () => {
     it("shows current model when no args given", async () => {
-      const agentManager = createMockAgentManager();
-      (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", model: "claude-sonnet-4" },
-      ]);
-
-      const ctx = createContext({ agentManager });
+      const ctx = createContext({
+        agentRuntime: fakeAgentRuntime({
+          agents: [{ id: "agent-1", config: { id: "agent-1", model: "claude-sonnet-4" } }],
+        }),
+      });
       const result = await handler.execute("/model", ctx);
 
       expect(result.response).toContain("Current model");
@@ -189,35 +193,23 @@ describe("SlashCommandHandler", () => {
     });
 
     it("switches model on agent", async () => {
-      const agentManager = createMockAgentManager();
-      (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1", model: "claude-opus-4.5" },
-      ]);
-      (agentManager.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
-
-      const ctx = createContext({ agentManager });
+      const agent = { id: "agent-1", config: { id: "agent-1", model: "claude-opus-4-5" } };
+      const ctx = createContext({
+        agentRuntime: fakeAgentRuntime({ agents: [agent] }),
+      });
       const result = await handler.execute("/model claude-sonnet-4", ctx);
 
-      expect(agentManager.update).toHaveBeenCalledWith("agent-1", {
-        model: "claude-sonnet-4",
-      });
+      expect(agent.config.model).toBe("claude-sonnet-4");
       expect(result.response).toContain("Model switched");
       expect(result.response).toContain("claude-sonnet-4");
     });
 
-    it("reports errors on invalid model", async () => {
-      const agentManager = createMockAgentManager();
-      (agentManager.list as ReturnType<typeof vi.fn>).mockReturnValue([
-        { id: "agent-1" },
-      ]);
-      (agentManager.update as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new Error("Unknown anthropic model: fake-model"),
-      );
-
-      const ctx = createContext({ agentManager });
+    it("reports error when agent does not exist", async () => {
+      const ctx = createContext({
+        agentRuntime: fakeAgentRuntime({ agents: [] }),
+      });
       const result = await handler.execute("/model fake-model", ctx);
-
-      expect(result.response).toContain("Model switch failed");
+      expect(result.response).toContain("not found");
     });
   });
 

@@ -16,7 +16,7 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { SessionStore } from "../../../sessions/types.js";
 import type { Transport } from "../../../gateway/types.js";
 import type { ThreadBindingConfig } from "./types.js";
-import type { DefaultAgentManager } from "../../core/agent-manager.js";
+import { resolveAgentWorkspacePath } from "../../../paths.js";
 import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../../agent/runners/pi/messages.js";
 import type { ContextConfigFile } from "../../../config.js";
 import { shouldRespondToMessage } from "../../../gateway/mention.js";
@@ -137,7 +137,6 @@ export class SegmentedStreamBuffer {
 export interface DiscordTransportConfig {
   /** Discord bot token from Developer Portal */
   token: string;
-  agentManager: DefaultAgentManager;
   /**
    * Unified runtime. When provided, the transport drives the agent loop via
    * `runtime.sendMessage` (the #568 path). When omitted, falls back to the
@@ -468,15 +467,19 @@ export class DiscordTransport implements Transport {
       const sessionKey = this.getSessionKey(msg, agentId);
       const session = await sessionStore.findByKey(sessionKey);
 
+      if (!this.config.agentRuntime) {
+        await (msg.channel as SendableChannel).send("⚠️ Slash commands require AgentRuntime — not configured.");
+        return;
+      }
       const result = await this.commandHandler.execute(content, {
-        agentManager: this.config.agentManager,
+        agentRuntime: this.config.agentRuntime,
         sessionStore,
         agentId,
         userId: msg.author.id,
         username: msg.author.username,
         sessionId: session?.id,
         sessionKey,
-        ...(this.config.agentRuntime ? { runtime: this.config.agentRuntime } : {}),
+        runtime: this.config.agentRuntime,
       });
       await (msg.channel as SendableChannel).send(result.response);
       return;
@@ -497,7 +500,7 @@ export class DiscordTransport implements Transport {
     const agentId = this.resolveAgentId(msg);
     log.debug(`Routing message to agent: ${agentId}`);
 
-    if (!this.config.agentManager.get(agentId)) {
+    if (!this.config.agentRuntime?.getAgent(agentId)) {
       log.warn(`Agent "${agentId}" not found`);
       return;
     }
@@ -545,9 +548,10 @@ export class DiscordTransport implements Transport {
       : mkUserMsg(contentWithMeta, msg.createdTimestamp);
     await sessionStore.addMessage(session.id, userMsg);
 
-    // 9. Run agent via runtime.sendMessage (system prompt comes from the
-    // registered agent in the runtime, not from agentManager).
-    const cwd = this.config.agentManager.getWorkspacePath(agentId);
+    // 9. Run agent via runtime.sendMessage (system prompt is derived per-call
+    // from the registered agent's config + workspace).
+    const agentConfig = this.config.agentRuntime?.getAgent(agentId)?.config;
+    const cwd = agentConfig ? resolveAgentWorkspacePath(agentConfig) : undefined;
     await this.runAgentAndRespond(agentId, session.id, sessionStore, cwd, msg.channel as SendableChannel, msg.id);
   }
 

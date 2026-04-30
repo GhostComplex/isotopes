@@ -24,6 +24,8 @@ export interface ProviderConfig {
 /** Complete configuration needed to create an agent instance. */
 export interface AgentConfig {
   id: string;
+  /** Explicit workspace directory (#214). When omitted, defaults to ${ISOTOPES_HOME}/workspace-${id}. */
+  workspace?: string;
   toolSettings?: AgentToolSettings;
   model?: string;
   /** Context compaction configuration */

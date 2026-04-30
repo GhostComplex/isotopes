@@ -13,7 +13,6 @@ function fakeAgent(id: string): RegisteredAgent {
   return {
     id,
     config: { id } as RegisteredAgent["config"],
-    systemPrompt: "you are " + id,
     sessionStore: {
       findByKey: vi.fn(async () => undefined),
       create: vi.fn(async (_aid: string, opts?: { key?: string }) => ({

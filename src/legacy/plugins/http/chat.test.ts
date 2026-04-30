@@ -4,8 +4,22 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
 import { CronScheduler } from "../../automation/cron-job.js";
-import { createMockAgentManager } from "../../core/test-helpers.js";
 import { SessionStoreManager } from "../../core/session-store-manager.js";
+import { AgentRuntime } from "../../agents/runtime.js";
+import { createMockSessionStore } from "../../core/test-helpers.js";
+
+const MOCK_AGENT_ID = "mock";
+
+function makeRuntime(): AgentRuntime {
+  const rt = new AgentRuntime({ globalProvider: { type: "anthropic", defaultModel: "claude-opus-4-5" } });
+  rt.registerAgent({
+    id: MOCK_AGENT_ID,
+    config: { id: MOCK_AGENT_ID },
+    sessionStore: createMockSessionStore() as never,
+    capabilities: { tools: [], canBeAddressed: true },
+  });
+  return rt;
+}
 
 function request(
   port: number,
@@ -53,15 +67,13 @@ function request(
 
 describe("POST /api/sessions/:agentId — sessionKey", () => {
   let server: ApiServer;
-  let agentManager: ReturnType<typeof createMockAgentManager>;
   let sessionStoreManager: SessionStoreManager;
 
   beforeEach(async () => {
-    agentManager = createMockAgentManager();
     sessionStoreManager = new SessionStoreManager();
     server = new ApiServer(
       { port: 0 },
-      { cronScheduler: new CronScheduler(), agentManager, sessionStoreManager },
+      { cronScheduler: new CronScheduler(), agentRuntime: makeRuntime(), sessionStoreManager },
     );
     await server.start();
   });
@@ -77,7 +89,7 @@ describe("POST /api/sessions/:agentId — sessionKey", () => {
   }
 
   function agentId(): string {
-    return agentManager.list()[0]?.id ?? "mock";
+    return MOCK_AGENT_ID;
   }
 
   it("creates a new session without sessionKey (default path)", async () => {

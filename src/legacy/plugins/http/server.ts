@@ -6,7 +6,6 @@ import path from "node:path";
 import { createLogger } from "../../../logging/logger.js";
 import type { CronScheduler } from "../../automation/cron-job.js";
 import type { ConfigReloader } from "../../workspace/config-reloader.js";
-import type { DefaultAgentManager } from "../../core/agent-manager.js";
 import type { SessionStoreManager } from "../../core/session-store-manager.js";
 import {
   applyCors,
@@ -57,7 +56,6 @@ export interface ApiServerConfig {
 export interface ApiServerDeps {
   cronScheduler: CronScheduler;
   configReloader?: ConfigReloader;
-  agentManager?: DefaultAgentManager;
   uiRegistry?: UIRegistry;
   sessionStoreManager?: SessionStoreManager;
   hooks?: HookRegistry;
@@ -77,7 +75,6 @@ export class ApiServer {
     this.deps = {
       cronScheduler: deps.cronScheduler,
       configReloader: deps.configReloader,
-      agentManager: deps.agentManager,
       sessionStoreManager: deps.sessionStoreManager,
       hooks: deps.hooks,
       agentRuntime: deps.agentRuntime,
