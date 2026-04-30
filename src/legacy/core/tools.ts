@@ -276,20 +276,6 @@ function createFsTools(workspacePath: string, fsImpl: FsImpl): AgentTool[] {
 }
 
 // ---------------------------------------------------------------------------
-// System prompt — list available tools to the LLM
-// ---------------------------------------------------------------------------
-
-export function buildToolGuardPrompt(tools: AgentTool[], workspacePath: string): string {
-  return [
-    "# Tooling",
-    "Only the following tools are available in this runtime:",
-    ...tools.map((t) => `- ${t.name}: ${t.description}`),
-    "",
-    `Workspace path: ${workspacePath}`,
-  ].join("\n");
-}
-
-// ---------------------------------------------------------------------------
 // Tool policy — per-agent allow/deny filtering
 // ---------------------------------------------------------------------------
 

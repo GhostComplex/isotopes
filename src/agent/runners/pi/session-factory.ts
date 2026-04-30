@@ -151,7 +151,7 @@ export async function createRootPiSession(
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
   const tools = deps.getAgentTools(agent.id);
-  const systemPrompt = await deriveAgentSystemPrompt(agent.config, tools);
+  const systemPrompt = await deriveAgentSystemPrompt(agent.config);
   return createPiAgentSession({
     globalProvider: deps.globalProvider,
     authStorage: deps.authStorage,
