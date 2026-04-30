@@ -2,7 +2,7 @@
 // for a given (agent, tools, sessionManager) per turn. Replaces the
 // AgentServiceCache.createSession() method that lived in the deleted pi-mono.ts.
 
-import type { Api, Model } from "@mariozechner/pi-ai";
+import { getModel, type Api, type Model } from "@mariozechner/pi-ai";
 import {
   type AgentSession,
   type AuthStorage,
@@ -18,11 +18,33 @@ import type { AgentConfig, ProviderConfig } from "../../types.js";
 import type { Tool } from "../../../tools/types.js";
 import type { ToolHandler } from "../../../legacy/core/tools.js";
 import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
-import { resolveModel } from "./model-resolution.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { wrapAgentTool } from "./tool-wrap.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
+const DEFAULT_MODEL = "claude-opus-4.7";
+
+function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<Api> {
+  const provider = globalProvider.type as Parameters<typeof getModel>[0];
+  const id = modelId ?? globalProvider.defaultModel ?? DEFAULT_MODEL;
+  const model = getModel(provider, id as Parameters<typeof getModel>[1]) as Model<Api> | undefined;
+  if (!model) throw new Error(`Unknown ${provider} model: ${id}`);
+
+  const proxyHeaders: Record<string, string> = { ...(globalProvider.headers ?? {}) };
+  if (globalProvider.baseUrl && globalProvider.apiKey) {
+    proxyHeaders.Authorization ??= `Bearer ${globalProvider.apiKey}`;
+  }
+  const hasProxyHeaders = Object.keys(proxyHeaders).length > 0;
+
+  if (!globalProvider.baseUrl && !hasProxyHeaders) return model;
+
+  return {
+    ...model,
+    id,
+    ...(globalProvider.baseUrl ? { baseUrl: globalProvider.baseUrl } : {}),
+    ...(hasProxyHeaders ? { headers: { ...(model.headers ?? {}), ...proxyHeaders } } : {}),
+  };
+}
 
 export interface CreatePiAgentSessionOptions {
   globalProvider: ProviderConfig;
