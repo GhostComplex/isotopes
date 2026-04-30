@@ -6,28 +6,6 @@ import type { ProviderConfig } from "../../types.js";
 
 const DEFAULT_MODEL = "claude-opus-4.7";
 
-function cloneModel<TApi extends Api>(
-  model: Model<TApi>,
-  overrides: Partial<Pick<Model<TApi>, "id" | "name" | "baseUrl" | "headers">>,
-): Model<TApi> {
-  return {
-    id: overrides.id ?? model.id,
-    name: overrides.name ?? model.name,
-    api: model.api,
-    provider: model.provider,
-    baseUrl: overrides.baseUrl ?? model.baseUrl,
-    reasoning: model.reasoning,
-    input: [...model.input],
-    cost: { ...model.cost },
-    contextWindow: model.contextWindow,
-    maxTokens: model.maxTokens,
-    ...((model.headers || overrides.headers)
-      ? { headers: { ...(model.headers ?? {}), ...(overrides.headers ?? {}) } }
-      : {}),
-    ...(model.compat ? { compat: model.compat } : {}),
-  };
-}
-
 export function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<Api> {
   const provider = globalProvider.type as Parameters<typeof getModel>[0];
   const id = modelId ?? globalProvider.defaultModel ?? DEFAULT_MODEL;
@@ -35,17 +13,17 @@ export function resolveModel(globalProvider: ProviderConfig, modelId?: string): 
   if (!model) throw new Error(`Unknown ${provider} model: ${id}`);
 
   const proxyHeaders: Record<string, string> = { ...(globalProvider.headers ?? {}) };
-  // baseUrl + apiKey together → stamp Authorization (old "*-proxy" behavior)
   if (globalProvider.baseUrl && globalProvider.apiKey) {
     proxyHeaders.Authorization ??= `Bearer ${globalProvider.apiKey}`;
   }
-  const headers = Object.keys(proxyHeaders).length > 0
-    ? { ...(model.headers ?? {}), ...proxyHeaders }
-    : undefined;
+  const hasProxyHeaders = Object.keys(proxyHeaders).length > 0;
 
-  if (globalProvider.baseUrl || headers) {
-    return cloneModel(model, { id, baseUrl: globalProvider.baseUrl, headers });
-  }
+  if (!globalProvider.baseUrl && !hasProxyHeaders) return model;
 
-  return model;
+  return {
+    ...model,
+    id,
+    ...(globalProvider.baseUrl ? { baseUrl: globalProvider.baseUrl } : {}),
+    ...(hasProxyHeaders ? { headers: { ...(model.headers ?? {}), ...proxyHeaders } } : {}),
+  };
 }
