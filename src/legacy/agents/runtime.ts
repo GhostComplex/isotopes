@@ -380,7 +380,7 @@ export class AgentRuntime {
 
     try {
       if (isClaude) {
-        yield* this.claudeRunner!.sendMessage({
+        yield* this.claudeRunner!.run({
           request: req,
           runId,
           abort: abort.signal,
