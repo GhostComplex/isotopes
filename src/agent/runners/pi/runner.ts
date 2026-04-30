@@ -30,8 +30,6 @@ async function* streamSessionAgentEvents(
   const queue: QueueItem[] = [];
   let resolve: (() => void) | null = null;
 
-  // Forward every session event as AgentEvent — consumers switch on `type`
-  // and ignore unknown variants (queue_update, compaction_*, auto_retry_*).
   const unsub = session.subscribe((event) => {
     queue.push(event as AgentEvent);
     if (resolve) { resolve(); resolve = null; }
