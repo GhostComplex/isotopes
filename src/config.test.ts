@@ -147,7 +147,7 @@ channels:
         `
 tools:
   allow:
-    - read_file
+    - read
 
 agents:
   - id: assistant
@@ -283,13 +283,13 @@ agents:
     it("merges tool settings with defaults", () => {
       const agentFile = {
         id: "test",
-        tools: { allow: ["read_file"] },
+        tools: { allow: ["read"] },
       };
       const config = toAgentConfig(agentFile, undefined, undefined, {
         deny: ["exec"],
       });
 
-      expect(config.toolSettings?.allow).toEqual(["read_file"]);
+      expect(config.toolSettings?.allow).toEqual(["read"]);
     });
 
     it("includes compaction config from agent-level", () => {
@@ -341,11 +341,11 @@ agents:
 
     it("inherits tools from agentDefaults", () => {
       const agentFile = { id: "test" };
-      const defaults = { tools: { allow: ["read_file"] } };
+      const defaults = { tools: { allow: ["read"] } };
 
       const config = toAgentConfig(agentFile, defaults);
 
-      expect(config.toolSettings?.allow).toEqual(["read_file"]);
+      expect(config.toolSettings?.allow).toEqual(["read"]);
     });
   });
 
@@ -360,37 +360,37 @@ agents:
     it("lets agent settings override global defaults", () => {
       expect(
         resolveToolSettings(
-          { allow: ["read_file"] },
-          { allow: ["write_file"] },
+          { allow: ["read"] },
+          { allow: ["write"] },
         ),
       ).toEqual({
-        allow: ["read_file"],
+        allow: ["read"],
         deny: undefined,
       });
     });
 
     it("passes through allow list from agent config", () => {
-      const result = resolveToolSettings({ allow: ["read_file", "list_dir"] });
-      expect(result.allow).toEqual(["read_file", "list_dir"]);
+      const result = resolveToolSettings({ allow: ["read", "ls"] });
+      expect(result.allow).toEqual(["read", "ls"]);
     });
 
     it("passes through deny list from agent config", () => {
-      const result = resolveToolSettings({ deny: ["shell", "write_file"] });
-      expect(result.deny).toEqual(["shell", "write_file"]);
+      const result = resolveToolSettings({ deny: ["shell", "write"] });
+      expect(result.deny).toEqual(["shell", "write"]);
     });
 
     it("agent allow overrides default allow", () => {
       const result = resolveToolSettings(
-        { allow: ["read_file"] },
-        { allow: ["read_file", "shell"] },
+        { allow: ["read"] },
+        { allow: ["read", "shell"] },
       );
-      expect(result.allow).toEqual(["read_file"]);
+      expect(result.allow).toEqual(["read"]);
     });
 
     it("agent deny overrides default deny", () => {
       const result = resolveToolSettings(
         { deny: ["shell"] },
-        { deny: ["shell", "write_file"] },
+        { deny: ["shell", "write"] },
       );
       expect(result.deny).toEqual(["shell"]);
     });
@@ -398,9 +398,9 @@ agents:
     it("falls back to default allow when agent has none", () => {
       const result = resolveToolSettings(
         {},
-        { allow: ["read_file"] },
+        { allow: ["read"] },
       );
-      expect(result.allow).toEqual(["read_file"]);
+      expect(result.allow).toEqual(["read"]);
     });
 
     it("falls back to default deny when agent has none", () => {

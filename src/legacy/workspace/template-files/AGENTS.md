@@ -8,9 +8,9 @@ If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out w
 
 ## Session Startup
 
-Your workspace files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, this `AGENTS.md`, `BOOTSTRAP.md`) and your memory (`MEMORY.md` plus today's and yesterday's `memory/YYYY-MM-DD.md` notes) are **already loaded above** under `# Workspace Context` and `# Memory`. Don't re-read them with `read_file` — that wastes tokens and adds latency. Just use what's there.
+Your workspace files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, this `AGENTS.md`, `BOOTSTRAP.md`) and your memory (`MEMORY.md` plus today's and yesterday's `memory/YYYY-MM-DD.md` notes) are **already loaded above** under `# Workspace Context` and `# Memory`. Don't re-read them with `read` — that wastes tokens and adds latency. Just use what's there.
 
-Only reach for `read_file` when you need an older daily note, a skill file, or anything else not already in your context.
+Only reach for `read` when you need an older daily note, a skill file, or anything else not already in your context.
 
 ## Memory
 

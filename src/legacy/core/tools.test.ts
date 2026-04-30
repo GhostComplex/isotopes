@@ -78,7 +78,7 @@ describe("createWorkspaceToolsWithGuards", () => {
       codingMode: "send-message",
     });
     const names = tools.map((t) => t.name);
-    expect(names).not.toContain("write_file");
+    expect(names).not.toContain("write");
     expect(names).not.toContain("edit");
   });
 });

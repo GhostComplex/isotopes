@@ -97,7 +97,7 @@ export interface AgentConfigFile {
   heartbeatPrompt?: string;
   /**
    * Coding mode controls how the agent handles code modifications:
-   * - 'send-message': Force all code through send_message (removes write_file, edit)
+   * - 'send-message': Force all code through send_message (removes write, edit)
    * - 'direct': Agent can modify files directly
    * - 'auto': Agent chooses (default)
    */

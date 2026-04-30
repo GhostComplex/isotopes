@@ -103,10 +103,11 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
   const targets = allowedAgents ?? computedTargets;
 
   const schema = Type.Object({
-    to: Type.String({
-      description: `Target agent id. Options: ${targets.join(", ")}.`,
-      enum: targets,
-    } as never),
+    to: targets.length > 0
+      ? Type.Union(targets.map((t) => Type.Literal(t)), {
+          description: `Target agent id. Options: ${targets.join(", ")}.`,
+        })
+      : Type.String({ description: "Target agent id (no targets configured)." }),
     content: Type.String({ description: "Message content to deliver as the user-role turn." }),
     working_directory: Type.Optional(Type.String({
       description:
@@ -320,7 +321,7 @@ export interface CreateWorkspaceToolsOptions {
   settings?: AgentToolSettings;
   /** Register the `send_message` tool. Requires `runtime` + `parentAgentId`. */
   sendMessageEnabled?: boolean;
-  /** "send-message" excludes write_file/edit (caller delegates code edits). */
+  /** "send-message" excludes write/edit (caller delegates code edits). */
   codingMode?: "send-message" | "direct" | "auto";
   fsImpl?: FsImpl;
   parentAgentId?: string;
