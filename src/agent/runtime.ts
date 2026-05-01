@@ -18,6 +18,7 @@ import type { ProviderConfig } from "./types.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import { PiRunner } from "./runners/pi/runner.js";
 import { createRootPiSession } from "./runners/pi/session-factory.js";
+import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude/runner.js";
 import { SubagentRunner } from "./runners/subagent.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
@@ -72,8 +73,11 @@ interface RunHandle {
 export interface AgentRuntimeOptions {
   /** Roots within which `cwd` arguments must resolve. Empty = no restriction. */
   allowedWorkspaceRoots?: string[];
-  /** Single global LLM provider — required for the pi runner. */
+  /** Single global LLM provider — required for the pi runner (and the
+   * built-in subagent runner that wraps it). */
   globalProvider?: ProviderConfig;
+  /** When supplied, registers the claude leaf runner under "claude". */
+  claude?: ClaudeRunnerOptions;
   /** Plugin hooks to fire around tool execution. */
   hooks?: HookRegistry;
 }
@@ -183,6 +187,10 @@ export class AgentRuntime {
           ...(this.hooks ? { hooks: this.hooks } : {}),
         },
       }));
+    }
+
+    if (opts.claude) {
+      this.registerRunner("claude", new ClaudeRunner(opts.claude));
     }
   }
 
