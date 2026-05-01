@@ -1,22 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { AgentRuntime, LEAF_CONCURRENCY_CAP } from "./runtime.js";
+import {
+  AgentRuntime,
+  MAX_DEPTH,
+  MAX_CHILDREN_PER_PARENT,
+  type Runner,
+} from "./runtime.js";
 import type { RegisteredAgent } from "./types.js";
 import { RunValidationError } from "./types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
 function fakeAgent(id: string): RegisteredAgent {
   return {
     id,
     config: { id } as RegisteredAgent["config"],
-    sessionStore: {
-      findByKey: vi.fn(async () => undefined),
-      create: vi.fn(async (_aid: string, opts?: { key?: string }) => ({
-        id: opts?.key ?? "stub-session",
-        agentId: _aid,
-        lastActiveAt: new Date(),
-      })),
-    } as unknown as RegisteredAgent["sessionStore"],
+    sessionStore: {} as RegisteredAgent["sessionStore"],
     capabilities: { tools: [], canBeAddressed: true },
   };
 }
@@ -48,18 +45,13 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
   };
 }
 
-interface StubPiRunner {
-  run: (opts: {
-    session: AgentSession;
-    content: string;
-    abort: AbortSignal;
-  }) => AsyncGenerator<AgentEvent>;
-}
-
-function installStubRunner(rt: AgentRuntime, runner: StubPiRunner) {
-  (rt as unknown as { piRunner: StubPiRunner }).piRunner = runner;
-  (rt as unknown as { buildRootPiSession: () => Promise<AgentSession> }).buildRootPiSession =
-    async () => ({ dispose: () => {}, abort: () => {} } as unknown as AgentSession);
+/** Minimal Runner stub for dispatch-level tests. Override per test. */
+function stubRunner(overrides: Partial<Runner> = {}): Runner {
+  return {
+    resolveSessionId: (_req, runId) => `stub:${runId}`,
+    async *run() {},
+    ...overrides,
+  };
 }
 
 async function consume(gen: AsyncGenerator<unknown>): Promise<void> {
@@ -70,41 +62,44 @@ describe("AgentRuntime — agent registry", () => {
   let rt: AgentRuntime;
   beforeEach(() => { rt = new AgentRuntime(); });
 
-  it("registers and retrieves agents", () => {
+  it("registerRunner with agent metadata is reachable via getAgent / listAgents", () => {
     const a = fakeAgent("main");
-    rt.registerAgent(a);
+    rt.registerRunner("main", stubRunner(), { agent: a });
     expect(rt.getAgent("main")).toBe(a);
     expect(rt.listAgents()).toEqual([a]);
   });
 
-  it("rejects duplicate registration", () => {
-    rt.registerAgent(fakeAgent("main"));
-    expect(() => rt.registerAgent(fakeAgent("main"))).toThrow(/already registered/);
+  it("registerRunner without agent metadata is invisible to getAgent", () => {
+    rt.registerRunner("worker", stubRunner());
+    expect(rt.getAgent("worker")).toBeUndefined();
+    expect(rt.listAgents()).toEqual([]);
   });
 
-  it("rejects agent name already in use by a runner", () => {
-    rt.registerRunner("custom", { run: async function* () {} });
-    expect(() => rt.registerAgent(fakeAgent("custom"))).toThrow(/name in use by runner/);
+  it("rejects duplicate registration under the same name", () => {
+    rt.registerRunner("main", stubRunner(), { agent: fakeAgent("main") });
+    expect(() => rt.registerRunner("main", stubRunner())).toThrow(/Already registered/);
   });
 
-  it("unregisters", () => {
-    rt.registerAgent(fakeAgent("main"));
+  it("unregisterAgent removes the entry and tools", () => {
+    rt.registerRunner("main", stubRunner(), { agent: fakeAgent("main") });
     expect(rt.unregisterAgent("main")).toBe(true);
     expect(rt.getAgent("main")).toBeUndefined();
     expect(rt.unregisterAgent("ghost")).toBe(false);
   });
 });
 
-describe("AgentRuntime.sendMessage — validation", () => {
+describe("AgentRuntime.run — validation", () => {
   let rt: AgentRuntime;
   beforeEach(() => {
     rt = new AgentRuntime();
-    // Stub the subagent runner so validation tests don't need full pi infra.
+    // Stub the subagent runner so tests don't need full pi infra.
     rt.registerRunner("subagent", {
+      resolveSessionId: (_req, runId) => `subagent:${runId}`,
       validateRequest(req) {
         if (!req.leafContext) throw new RunValidationError("subagent: leafContext is required");
+        if (req.sessionId) throw new RunValidationError("subagent: sessions are not resumable; omit sessionId");
       },
-      run: async function* () {},
+      async *run() {},
     });
   });
 
@@ -116,18 +111,13 @@ describe("AgentRuntime.sendMessage — validation", () => {
     await expect(consume(rt.run({ to: "subagent", content: "hi" }))).rejects.toThrow(/leafContext is required/);
   });
 
-  it("rejects sessionId on leaf target", async () => {
+  it("rejects sessionId on a runner that doesn't support resume", async () => {
     await expect(consume(rt.run({
       to: "subagent",
       content: "hi",
       sessionId: "x",
       leafContext: {} as never,
-    }))).rejects.toThrow(/leaf sessions are not resumable/);
-  });
-
-  it("rejects sendMessage when no pi runner configured", async () => {
-    rt.registerAgent(fakeAgent("main"));
-    await expect(consume(rt.run({ to: "main", content: "hi" }))).rejects.toThrow(/pi runner not configured/);
+    }))).rejects.toThrow(/sessions are not resumable/);
   });
 
   it("Unknown agent throws RunValidationError", async () => {
@@ -141,6 +131,77 @@ describe("AgentRuntime.sendMessage — validation", () => {
   });
 });
 
+describe("AgentRuntime.run — depth + sibling limits", () => {
+  it("rejects when spawn-tree depth would exceed MAX_DEPTH", async () => {
+    const rt = new AgentRuntime();
+    // Stub a runner that does nothing — we drive depth via parentSessionId.
+    rt.registerRunner("worker", stubRunner({
+      resolveSessionId: (_req) => "stub-session-1",
+    }));
+    // Manually plant a deep parent chain by injecting a fake run handle at depth = MAX_DEPTH.
+    (rt as unknown as { runs: Map<string, { sessionId: string; depth: number; parentSessionId?: string }> }).runs.set("fake", {
+      sessionId: "deep-parent",
+      depth: MAX_DEPTH,
+    });
+    await expect(consume(rt.run({
+      to: "worker",
+      content: "hi",
+      parentSessionId: "deep-parent",
+    }))).rejects.toThrow(/Max spawn depth reached/);
+  });
+
+  it("rejects when sibling count would exceed MAX_CHILDREN_PER_PARENT", async () => {
+    const rt = new AgentRuntime();
+    rt.registerRunner("worker", stubRunner());
+    const runs = (rt as unknown as { runs: Map<string, { sessionId: string; depth: number; parentSessionId?: string }> }).runs;
+    // Plant MAX_CHILDREN_PER_PARENT siblings sharing the same parentSessionId.
+    for (let i = 0; i < MAX_CHILDREN_PER_PARENT; i++) {
+      runs.set(`sib-${i}`, { sessionId: `sib-${i}`, depth: 2, parentSessionId: "shared-parent" });
+    }
+    await expect(consume(rt.run({
+      to: "worker",
+      content: "hi",
+      parentSessionId: "shared-parent",
+    }))).rejects.toThrow(/Max concurrent children/);
+  });
+
+  it("top-level run lands at depth 1", async () => {
+    const rt = new AgentRuntime();
+    let observedDepth: number | undefined;
+    rt.registerRunner("worker", stubRunner({
+      async *run() {
+        observedDepth = rt.listRuns()[0]?.depth;
+        yield buildAgentEnd("done");
+      },
+    }));
+    for await (const _ of rt.run({ to: "worker", content: "hi" })) { void _; }
+    expect(observedDepth).toBe(1);
+  });
+
+  it("nested run inherits parent.depth + 1", async () => {
+    const rt = new AgentRuntime();
+    // Fake a parent run sitting at depth 2 with sessionId "parent-1".
+    (rt as unknown as { runs: Map<string, { sessionId: string; depth: number }> }).runs.set("parent-run", {
+      sessionId: "parent-1",
+      depth: 2,
+    });
+    let observedDepth: number | undefined;
+    rt.registerRunner("worker", stubRunner({
+      async *run() {
+        // Find the new run by agentId (planted parent has no agentId).
+        observedDepth = rt.listRuns().find((r) => r.agentId === "worker")?.depth;
+        yield buildAgentEnd("done");
+      },
+    }));
+    for await (const _ of rt.run({
+      to: "worker",
+      content: "hi",
+      parentSessionId: "parent-1",
+    })) { void _; }
+    expect(observedDepth).toBe(3);
+  });
+});
+
 describe("AgentRuntime — listRuns / getStatus", () => {
   it("returns empty before any run", () => {
     const rt = new AgentRuntime();
@@ -149,23 +210,23 @@ describe("AgentRuntime — listRuns / getStatus", () => {
   });
 });
 
-describe("AgentRuntime — leaf concurrency cap constant", () => {
-  it("exports cap of 5", () => {
-    expect(LEAF_CONCURRENCY_CAP).toBe(5);
+describe("AgentRuntime — depth/breadth limit constants", () => {
+  it("MAX_DEPTH = 5, MAX_CHILDREN_PER_PARENT = 5", () => {
+    expect(MAX_DEPTH).toBe(5);
+    expect(MAX_CHILDREN_PER_PARENT).toBe(5);
   });
 });
 
-describe("runtime.sendMessage — onRunStart timing", () => {
+describe("runtime.run — onRunStart timing", () => {
   it("fires onRunStart before any AgentEvent is yielded", async () => {
     const rt = new AgentRuntime();
     const order: string[] = [];
-    installStubRunner(rt, {
+    rt.registerRunner("main", stubRunner({
       async *run() {
         order.push("event:start");
         yield buildAgentEnd("done");
       },
-    });
-    rt.registerAgent(fakeAgent("main"));
+    }), { agent: fakeAgent("main") });
 
     const events: AgentEvent[] = [];
     for await (const ev of rt.run({
@@ -185,13 +246,12 @@ describe("runtime.sendMessage — onRunStart timing", () => {
     const rt = new AgentRuntime();
     let observedRunId: string | undefined;
     let runIdsDuringRun: string[] = [];
-    installStubRunner(rt, {
+    rt.registerRunner("main", stubRunner({
       async *run() {
         runIdsDuringRun = rt.listRuns().map((r) => r.runId);
         yield buildAgentEnd("ok");
       },
-    });
-    rt.registerAgent(fakeAgent("main"));
+    }), { agent: fakeAgent("main") });
 
     for await (const _ev of rt.run({
       to: "main",
@@ -208,19 +268,19 @@ describe("runtime.sendMessage — onRunStart timing", () => {
 describe("runtime.cancel — reason propagates to onCancel", () => {
   it("user cancel → onCancel fires with reason", async () => {
     const rt = new AgentRuntime();
-    const startedReady = new Promise<void>((resolve) => { (rt as unknown as { _ready: () => void })._ready = resolve; });
     let pendingResolve: () => void = () => {};
     const pending = new Promise<void>((r) => { pendingResolve = r; });
+    let runStarted: () => void = () => {};
+    const started = new Promise<void>((r) => { runStarted = r; });
 
-    installStubRunner(rt, {
+    rt.registerRunner("main", stubRunner({
       async *run(opts) {
-        (rt as unknown as { _ready: () => void })._ready();
+        runStarted();
         opts.abort.addEventListener("abort", pendingResolve, { once: true });
         await pending;
         yield buildAgentEnd("aborted", "stop");
       },
-    });
-    rt.registerAgent(fakeAgent("main"));
+    }), { agent: fakeAgent("main") });
 
     const onCancel = vi.fn();
     let runId: string | undefined;
@@ -231,11 +291,9 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
       onCancel,
     });
 
-    const drain = (async () => {
-      for await (const _ev of stream) { void _ev; }
-    })();
+    const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
 
-    await startedReady;
+    await started;
     expect(runId).toBeDefined();
     rt.cancel(runId!, { reason: "user" });
     await drain;
@@ -249,14 +307,13 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
     let pendingResolve: () => void = () => {};
     const pending = new Promise<void>((r) => { pendingResolve = r; });
 
-    installStubRunner(rt, {
+    rt.registerRunner("main", stubRunner({
       async *run(opts) {
         opts.abort.addEventListener("abort", pendingResolve, { once: true });
         await pending;
         yield buildAgentEnd("done");
       },
-    });
-    rt.registerAgent(fakeAgent("main"));
+    }), { agent: fakeAgent("main") });
 
     const onCancel = vi.fn();
     let runId: string | undefined;
@@ -276,22 +333,21 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
   });
 });
 
-describe("runtime.sendMessage — abort on consumer early-return", () => {
+describe("runtime.run — abort on consumer early-return", () => {
   it("aborts the inner runner when caller breaks out of the for-await", async () => {
     const rt = new AgentRuntime();
     let abortObserved: boolean | undefined;
     let pendingResolve: () => void = () => {};
     const pending = new Promise<void>((r) => { pendingResolve = r; });
 
-    installStubRunner(rt, {
+    rt.registerRunner("main", stubRunner({
       async *run(opts) {
         opts.abort.addEventListener("abort", () => { abortObserved = true; pendingResolve(); }, { once: true });
         yield { type: "turn_start" } as AgentEvent;
         await pending;
         yield buildAgentEnd("late");
       },
-    });
-    rt.registerAgent(fakeAgent("main"));
+    }), { agent: fakeAgent("main") });
 
     let count = 0;
     for await (const ev of rt.run({ to: "main", content: "hi" })) {

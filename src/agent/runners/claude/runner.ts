@@ -9,13 +9,19 @@ import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-a
 const log = createLogger("agents:runner:claude");
 
 export class ClaudeRunner {
+  resolveSessionId(_req: RunRequest, runId: string): string {
+    return `claude:${runId}`;
+  }
+
   validateRequest(req: RunRequest): void {
     if (!req.cwd) throw new RunValidationError("claude: cwd is required");
+    if (req.sessionId) throw new RunValidationError("claude: sessions are not resumable; omit sessionId");
   }
 
   async *run(opts: {
     request: RunRequest;
     runId: string;
+    sessionId: string;
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {
     const { request, runId, abort } = opts;

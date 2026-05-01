@@ -12,15 +12,23 @@ export interface SubagentRunnerOptions {
 export class SubagentRunner {
   constructor(private opts: SubagentRunnerOptions) {}
 
+  resolveSessionId(_req: RunRequest, runId: string): string {
+    return `subagent:${runId}`;
+  }
+
   validateRequest(req: RunRequest): void {
     if (!req.leafContext) {
       throw new RunValidationError("subagent: leafContext is required");
+    }
+    if (req.sessionId) {
+      throw new RunValidationError("subagent: sessions are not resumable; omit sessionId");
     }
   }
 
   async *run(opts: {
     request: RunRequest;
     runId: string;
+    sessionId: string;
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {
     const { request, runId, abort } = opts;

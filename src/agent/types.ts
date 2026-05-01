@@ -40,8 +40,6 @@ export interface CompactionConfig {
 
 
 
-export type AgentSessionKind = "root" | "leaf";
-
 /** "always-new": fresh session per send_message call.
  *  "parent-reuse": same `(caller, parentSessionId)` reuses one target
  *  session across calls; falls back to fresh when no parentSessionId. */
@@ -83,9 +81,10 @@ export interface RunRequest {
 export interface RunInfo {
   runId: string;
   agentId: string;
-  kind: AgentSessionKind;
   sessionId: string;
   startedAt: number;
+  /** Spawn-tree depth: 1 = top-level (no parent), 2 = first child, etc. */
+  depth: number;
   parentSessionId?: string;
 }
 

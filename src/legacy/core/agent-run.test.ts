@@ -2,28 +2,11 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { consumeRootRun, cancelRunBySessionId } from "./agent-run.js";
-import { AgentRuntime } from "../../agent/runtime.js";
-import type { RegisteredAgent, RunRequest } from "../../agent/types.js";
+import { AgentRuntime, type Runner } from "../../agent/runtime.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("test:agent-run");
-
-function fakeAgent(id: string): RegisteredAgent {
-  return {
-    id,
-    config: { id } as RegisteredAgent["config"],
-    sessionStore: {
-      findByKey: vi.fn(async () => undefined),
-      create: vi.fn(async (_aid: string, opts?: { key?: string }) => ({
-        id: opts?.key ?? "stub-session",
-        agentId: _aid,
-        lastActiveAt: new Date(),
-      })),
-    } as unknown as RegisteredAgent["sessionStore"],
-    capabilities: { tools: [], canBeAddressed: true },
-  };
-}
 
 function buildTextDelta(delta: string): AgentEvent {
   return {
@@ -52,23 +35,23 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
   };
 }
 
-function installStub(rt: AgentRuntime, gen: (req: RunRequest) => AsyncGenerator<AgentEvent>) {
-  (rt as unknown as { piRunner: { run: typeof gen } }).piRunner = {
-    run: gen as never,
+function stubRunner(
+  gen: (opts: { request: import("../../agent/types.js").RunRequest; abort: AbortSignal }) => AsyncGenerator<AgentEvent>,
+): Runner {
+  return {
+    resolveSessionId: (req) => req.sessionId ?? "stub-session",
+    async *run(opts) { yield* gen({ request: opts.request, abort: opts.abort }); },
   };
-  (rt as unknown as { buildRootPiSession: () => Promise<unknown> }).buildRootPiSession =
-    async () => ({ dispose: () => {}, abort: () => {} });
 }
 
 describe("consumeRootRun", () => {
   it("accumulates text_delta into responseText", async () => {
     const rt = new AgentRuntime();
-    rt.registerAgent(fakeAgent("main"));
-    installStub(rt, async function* () {
+    rt.registerRunner("main", stubRunner(async function* () {
       yield buildTextDelta("Hello, ");
       yield buildTextDelta("world!");
       yield buildAgentEnd("Hello, world!");
-    });
+    }));
 
     const result = await consumeRootRun(rt, {
       to: "main",
@@ -83,10 +66,9 @@ describe("consumeRootRun", () => {
 
   it("surfaces agent_end stopReason=error as errorMessage", async () => {
     const rt = new AgentRuntime();
-    rt.registerAgent(fakeAgent("main"));
-    installStub(rt, async function* () {
+    rt.registerRunner("main", stubRunner(async function* () {
       yield buildAgentEnd("", "error", "boom");
-    });
+    }));
 
     const result = await consumeRootRun(rt, {
       to: "main",
@@ -100,12 +82,10 @@ describe("consumeRootRun", () => {
 
   it("captures runId via onRunStart (not by scanning listRuns)", async () => {
     const rt = new AgentRuntime();
-    rt.registerAgent(fakeAgent("main"));
+    rt.registerRunner("main", stubRunner(async function* () { yield buildAgentEnd("ok"); }));
     let scanCount = 0;
     const origList = rt.listRuns.bind(rt);
     rt.listRuns = (() => { scanCount++; return origList(); }) as typeof rt.listRuns;
-
-    installStub(rt, async function* () { yield buildAgentEnd("ok"); });
 
     await consumeRootRun(rt, {
       to: "main",
@@ -120,11 +100,10 @@ describe("consumeRootRun", () => {
 
   it("emits every AgentEvent to runtime.on(sessionId)", async () => {
     const rt = new AgentRuntime();
-    rt.registerAgent(fakeAgent("main"));
-    installStub(rt, async function* () {
+    rt.registerRunner("main", stubRunner(async function* () {
       yield buildTextDelta("hi");
       yield buildAgentEnd("hi");
-    });
+    }));
 
     const seen: AgentEvent["type"][] = [];
     const unsub = rt.on("s4", (e) => seen.push(e.type));
@@ -139,17 +118,15 @@ describe("consumeRootRun", () => {
 
   it("calls onToolComplete on turn_end and forwards drained text via runtime.steer", async () => {
     const rt = new AgentRuntime();
-    rt.registerAgent(fakeAgent("main"));
-    const steerSpy = vi.spyOn(rt, "steer").mockResolvedValue();
-
-    installStub(rt, async function* () {
+    rt.registerRunner("main", stubRunner(async function* () {
       yield {
         type: "turn_end",
         message: { role: "assistant" } as never,
         toolResults: [],
       } as AgentEvent;
       yield buildAgentEnd("done");
-    });
+    }));
+    const steerSpy = vi.spyOn(rt, "steer").mockResolvedValue();
 
     let calls = 0;
     await consumeRootRun(rt, {
@@ -171,19 +148,16 @@ describe("consumeRootRun", () => {
 describe("cancelRunBySessionId", () => {
   it("cancels with explicit reason (default 'user')", async () => {
     const rt = new AgentRuntime();
-    rt.registerAgent(fakeAgent("main"));
-
     let pendingResolve: () => void = () => {};
     const pending = new Promise<void>((r) => { pendingResolve = r; });
-    let cancelReason: string | undefined;
 
-    installStub(rt, async function* (req) {
-      req.onCancel = (reason) => { cancelReason = reason; };
+    rt.registerRunner("main", stubRunner(async function* (opts) {
       pendingResolve();
-      await new Promise<void>((r) => req.cwd ? r() : setTimeout(r, 100));
+      await new Promise<void>((r) => opts.abort.addEventListener("abort", () => r(), { once: true }));
       yield buildAgentEnd("done");
-    });
+    }));
 
+    let cancelReason: string | undefined;
     const drain = (async () => {
       for await (const _ of rt.run({
         to: "main",
