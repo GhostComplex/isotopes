@@ -16,7 +16,7 @@ import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import { createReactTools, type LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import type { AgentRuntime } from "../../agent/runtime.js";
-import { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID, RunValidationError } from "../../agent/runtime.js";
+import { SUBAGENT_AGENT_ID, RunValidationError } from "../../agent/runtime.js";
 import type { RunRequest } from "../../agent/types.js";
 import { getMessageContext } from "../transport/context.js";
 import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
@@ -26,7 +26,7 @@ import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("tools");
 
-export { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID };
+export { SUBAGENT_AGENT_ID };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,7 +97,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
   const { runtime, parentAgentId, workspacePath, parentTools, allowedAgents, spawnableAgentIds } = options;
   const computedTargets: string[] = [];
   if (parentTools) computedTargets.push(SUBAGENT_AGENT_ID);
-  if (runtime.hasClaudeRunner()) computedTargets.push(CLAUDE_AGENT_ID);
+  for (const name of runtime.runnerNames()) computedTargets.push(name);
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
       if (id !== parentAgentId && !computedTargets.includes(id)) computedTargets.push(id);
@@ -148,7 +148,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`);
       }
       const isSubagent = to === SUBAGENT_AGENT_ID;
-      const isClaude = to === CLAUDE_AGENT_ID;
+      const isLeafRunner = runtime.hasRunner(to);
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
@@ -222,7 +222,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         return textResult(`[send_message failed] ${errorMessage}`);
       }
       const trimmed = assistantText.trim();
-      return textResult(trimmed.length > 0 ? trimmed : (isClaude ? "[claude completed with no output]" : "[no reply]"));
+      return textResult(trimmed.length > 0 ? trimmed : (isLeafRunner ? `[${to} completed with no output]` : "[no reply]"));
     },
   };
 }

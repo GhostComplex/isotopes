@@ -108,9 +108,9 @@ describe("AgentRuntime.sendMessage — validation", () => {
     await expect(consume(rt.run({ to: "ghost", content: "hi" }))).rejects.toThrow(/Unknown agent/);
   });
 
-  it("rejects claude target when no claude runner is configured", async () => {
+  it("rejects unregistered runner name", async () => {
     await expect(consume(rt.run({ to: "claude", content: "hi", cwd: "/tmp" })))
-      .rejects.toThrow(/claude runner not configured/);
+      .rejects.toThrow(/Unknown agent: claude/);
   });
 
   it("rejects subagent target without leafContext", async () => {
@@ -141,7 +141,7 @@ describe("AgentRuntime.sendMessage — validation", () => {
     await expect(gen.next()).rejects.toBeInstanceOf(RunValidationError);
   });
 
-  it("claude without runner throws RunValidationError", async () => {
+  it("unregistered runner name throws RunValidationError", async () => {
     const gen = rt.run({ to: "claude", content: "hi", cwd: "/tmp" });
     await expect(gen.next()).rejects.toBeInstanceOf(RunValidationError);
   });

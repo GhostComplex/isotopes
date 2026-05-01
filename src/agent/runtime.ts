@@ -17,7 +17,7 @@ import type { ProviderConfig } from "./types.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import { PiRunner } from "./runners/pi/runner.js";
 import { createRootPiSession, createLeafPiSession } from "./runners/pi/session-factory.js";
-import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude/runner.js";
+import { ClaudeRunner } from "./runners/claude/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -53,8 +53,7 @@ const log = createLogger("agents:runtime");
 // Reserved magic ids — cannot be registered as named agents. See #613 for
 // the policy decision on whether `claude` should be conditionally reserved.
 export const SUBAGENT_AGENT_ID = "subagent";
-export const CLAUDE_AGENT_ID = "claude";
-export const RESERVED_AGENT_IDS: ReadonlySet<string> = new Set([SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID]);
+export const RESERVED_AGENT_IDS: ReadonlySet<string> = new Set([SUBAGENT_AGENT_ID]);
 
 export const LEAF_CONCURRENCY_CAP = 5;
 export const LEAF_DEFAULT_TIMEOUT_SEC = 900;
@@ -76,8 +75,6 @@ export interface AgentRuntimeOptions {
   allowedWorkspaceRoots?: string[];
   /** Single global LLM provider — required for the pi runner. */
   globalProvider?: ProviderConfig;
-  /** When supplied, exposes `to: "claude"` as a leaf target via Claude CLI. */
-  claude?: ClaudeRunnerOptions;
   /** Plugin hooks to fire around tool execution. */
   hooks?: HookRegistry;
 }
@@ -158,7 +155,7 @@ class SessionEventBus {
 export class AgentRuntime {
   private allowedRoots: string[];
   private piRunner?: PiRunner;
-  private claudeRunner?: ClaudeRunner;
+  private leafRunners = new Map<string, ClaudeRunner>();
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
   private events = new SessionEventBus();
@@ -183,16 +180,34 @@ export class AgentRuntime {
       this.piModelRegistry = ModelRegistry.create(this.piAuthStorage);
       this.piRunner = new PiRunner();
     }
-
-    if (opts.claude) this.claudeRunner = new ClaudeRunner(opts.claude);
   }
 
   hasPiRunner(): boolean {
     return this.piRunner !== undefined;
   }
 
-  hasClaudeRunner(): boolean {
-    return this.claudeRunner !== undefined;
+  /** Register a leaf runner under a magic name (e.g. "claude"). The name
+   * becomes reserved — registerAgent will reject it. */
+  registerRunner(name: string, runner: ClaudeRunner): void {
+    if (name === SUBAGENT_AGENT_ID) {
+      throw new Error(`Cannot register runner with reserved name: ${name}`);
+    }
+    if (this.agents.has(name)) {
+      throw new Error(`Cannot register runner — name in use as agent: ${name}`);
+    }
+    if (this.leafRunners.has(name)) {
+      throw new Error(`Runner already registered: ${name}`);
+    }
+    this.leafRunners.set(name, runner);
+  }
+
+  hasRunner(name: string): boolean {
+    return this.leafRunners.has(name);
+  }
+
+  /** Names of all registered leaf runners (for tools advertising targets). */
+  runnerNames(): string[] {
+    return Array.from(this.leafRunners.keys());
   }
 
 
@@ -266,6 +281,9 @@ export class AgentRuntime {
   registerAgent(agent: RegisteredAgent): void {
     if (RESERVED_AGENT_IDS.has(agent.id)) {
       throw new Error(`Cannot register agent with reserved magic id: ${agent.id}`);
+    }
+    if (this.leafRunners.has(agent.id)) {
+      throw new Error(`Cannot register agent — name in use by runner: ${agent.id}`);
     }
     if (this.agents.has(agent.id)) throw new Error(`Agent already registered: ${agent.id}`);
     this.agents.set(agent.id, agent);
@@ -387,28 +405,26 @@ export class AgentRuntime {
     return [...this.agents.values()];
   }
 
-  /** `to`: "subagent" (leaf, needs leafContext) | "claude" (leaf, needs cwd)
-   * | registered-id (root). Yields SDK AgentEvent. */
+  /** `to`: "subagent" (leaf, needs leafContext) | a registered runner name
+   * (e.g. "claude", leaf, needs cwd) | registered-id (root). Yields SDK
+   * AgentEvent. */
   async *run(req: RunRequest): AsyncGenerator<AgentEvent> {
     const isSubagent = req.to === SUBAGENT_AGENT_ID;
-    const isClaude = req.to === CLAUDE_AGENT_ID;
-    const isLeaf = isSubagent || isClaude;
+    const leafRunner = this.leafRunners.get(req.to);
+    const isLeaf = isSubagent || leafRunner !== undefined;
     const agent = isLeaf ? undefined : this.agents.get(req.to);
     if (!isLeaf && !agent) throw new RunValidationError(`Unknown agent: ${req.to}`);
     if (isSubagent && !req.leafContext) {
       throw new RunValidationError('run: leafContext is required when to === "subagent"');
     }
-    if (isClaude && !this.claudeRunner) {
-      throw new RunValidationError('run: claude runner not configured (pass `claude` option to AgentRuntime)');
-    }
-    if (isClaude && !req.cwd) {
-      throw new RunValidationError('run: cwd is required when to === "claude"');
+    if (leafRunner && !req.cwd) {
+      throw new RunValidationError(`run: cwd is required when to === "${req.to}"`);
     }
     if (isLeaf && req.sessionId) {
       throw new RunValidationError("run: leaf sessions are not resumable; omit sessionId");
     }
-    if (!isClaude && !this.piRunner) {
-      throw new RunValidationError("AgentRuntime: pi runner not configured (pass `core` to constructor)");
+    if (!leafRunner && !this.piRunner) {
+      throw new RunValidationError("AgentRuntime: pi runner not configured (pass `globalProvider` to constructor)");
     }
     if (req.cwd) {
       try { this.validateCwd(req.cwd); }
@@ -428,8 +444,8 @@ export class AgentRuntime {
     let sessionId: string;
     if (req.sessionId) {
       sessionId = req.sessionId;
-    } else if (isClaude) {
-      sessionId = `${CLAUDE_AGENT_ID}:${runId}`;
+    } else if (leafRunner) {
+      sessionId = `${req.to}:${runId}`;
     } else if (isSubagent) {
       sessionId = `${SUBAGENT_AGENT_ID}:${runId}`;
     } else {
@@ -468,7 +484,7 @@ export class AgentRuntime {
       timeoutHandle.unref();
     }
 
-    log.info("sendMessage", { runId, agentId: req.to, kind, sessionId });
+    log.info("run", { runId, agentId: req.to, kind, sessionId });
 
     try {
       req.onRunStart?.(runId);
@@ -477,8 +493,8 @@ export class AgentRuntime {
     }
 
     try {
-      if (isClaude) {
-        yield* this.claudeRunner!.run({
+      if (leafRunner) {
+        yield* leafRunner.run({
           request: req,
           runId,
           abort: abort.signal,
@@ -486,7 +502,7 @@ export class AgentRuntime {
       } else {
         const session = await this.buildPiSession({ kind, agent, sessionId, runId, req });
         handle.session = session;
-        log.info("sendMessage runner", { runId, kind, agentId: req.to });
+        log.info("run runner", { runId, kind, agentId: req.to });
         yield* this.piRunner!.run({
           session,
           content: req.content,
