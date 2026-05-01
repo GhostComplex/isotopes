@@ -1,7 +1,6 @@
 import {
   toAgentConfig,
   resolveSandboxConfigFromFile,
-  type AgentConfigFile,
   type IsotopesConfigFile,
 } from "./config.js";
 import path from "node:path";
@@ -21,7 +20,7 @@ import { CronScheduler } from "./legacy/automation/cron-job.js";
 import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
 import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
-import { AgentRuntime, BUILTIN_RUNNER_IDS } from "./agent/runtime.js";
+import { AgentRuntime, type LeafRunner } from "./agent/runtime.js";
 import { ClaudeRunner } from "./agent/runners/claude/runner.js";
 import { consumeRootRun } from "./legacy/core/agent-run.js";
 
@@ -64,38 +63,21 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     hooks: pluginManager.getHooks(),
   });
 
-  // Split out built-in runner entries (claude / subagent) — they live in
-  // agents[] alongside user agents but follow a different registration
-  // path (they don't have workspace / tools / sessions of their own).
-  const builtinOverrides = new Map<string, { enabled: boolean; spawnable: boolean }>();
-  const userAgents: AgentConfigFile[] = [];
-  for (const a of config.agents) {
-    if (BUILTIN_RUNNER_IDS.has(a.id)) {
-      builtinOverrides.set(a.id, {
-        enabled: a.enabled ?? true,
-        spawnable: a.spawnable ?? true,
-      });
-    } else {
-      userAgents.push(a);
-    }
-  }
-  // Implicit defaults for built-ins not listed in yaml.
-  for (const id of BUILTIN_RUNNER_IDS) {
-    if (!builtinOverrides.has(id)) builtinOverrides.set(id, { enabled: true, spawnable: true });
-  }
-  if (builtinOverrides.get("subagent")?.enabled && agentRuntime.hasPiRunner()) {
-    agentRuntime.registerRunner(
-      "subagent",
-      agentRuntime.createSubagentRunner(),
-      { spawnable: builtinOverrides.get("subagent")!.spawnable },
-    );
-  }
-  if (builtinOverrides.get("claude")?.enabled) {
-    agentRuntime.registerRunner(
-      "claude",
-      new ClaudeRunner(),
-      { spawnable: builtinOverrides.get("claude")!.spawnable },
-    );
+  // Built-in runners live in agents[] alongside user agents but follow a
+  // different registration path (no workspace / tools / sessions of their
+  // own). Listed here as the single source of truth.
+  const builtinRunners: Array<{ id: string; build: () => LeafRunner | null }> = [
+    { id: "subagent", build: () => agentRuntime.hasPiRunner() ? agentRuntime.createSubagentRunner() : null },
+    { id: "claude",   build: () => new ClaudeRunner() },
+  ];
+  const builtinIds = new Set(builtinRunners.map((b) => b.id));
+  const userAgents = config.agents.filter((a) => !builtinIds.has(a.id));
+  for (const builtin of builtinRunners) {
+    const override = config.agents.find((a) => a.id === builtin.id);
+    if (override?.enabled === false) continue;
+    const runner = builtin.build();
+    if (!runner) continue;
+    agentRuntime.registerRunner(builtin.id, runner, { spawnable: override?.spawnable ?? true });
   }
 
   const agentWorkspaces = new Map<string, string>();

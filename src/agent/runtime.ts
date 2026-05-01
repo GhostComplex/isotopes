@@ -134,7 +134,7 @@ class SessionEventBus {
   }
 }
 
-interface LeafRunner {
+export interface LeafRunner {
   validateRequest?(req: RunRequest): void;
   run(opts: { request: RunRequest; runId: string; abort: AbortSignal }): AsyncGenerator<AgentEvent>;
 }
@@ -143,8 +143,6 @@ interface LeafRunnerEntry {
   runner: LeafRunner;
   spawnable: boolean;
 }
-
-export const BUILTIN_RUNNER_IDS: ReadonlySet<string> = new Set(["subagent", "claude"]);
 
 export class AgentRuntime {
   private allowedRoots: string[];
