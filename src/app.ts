@@ -1,6 +1,5 @@
-// src/core/runtime.ts — Isotopes application runtime
-// Orchestrates agents, transports, cron, heartbeat, API server, and graceful shutdown.
-// Entry points (CLI foreground, daemon, TUI) call `createRuntime()` to wire everything up.
+// Application bootstrapper: orchestrates AgentRuntime, transports, cron,
+// heartbeat, API server, and graceful shutdown.
 
 import {
   toAgentConfig,
@@ -30,10 +29,6 @@ import { consumeRootRun } from "./legacy/core/agent-run.js";
 
 const log = createLogger("runtime");
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export interface RuntimeOptions {
   config: IsotopesConfigFile;
   apiPort?: number;
@@ -48,17 +43,12 @@ export interface Runtime {
   shutdown: () => Promise<void>;
 }
 
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
 export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const { config, apiPort } = opts;
 
   await ensureDirectories();
 
-  // SessionStoreManager backs both main-agent transcripts and spawn agent runs.
-  // Plugin system — initialize early so hooks are available during agent init.
+  // Plugins must come up first so hooks are wired before any agent boots.
   const pluginManager = new PluginManager();
   const sessionStoreManager = new SessionStoreManager({ hooks: pluginManager.getHooks() });
 
@@ -66,7 +56,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     throw new Error("config.provider is required (top-level provider config in isotopes.yaml)");
   }
 
-  // Single AgentRuntime shared by all transports + the in-agent send_message tool.
   const allowedRoots: string[] = [];
   for (const a of config.agents) {
     if (a.allowedWorkspaces?.length) allowedRoots.push(...a.allowedWorkspaces);
@@ -93,7 +82,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const processRegistries = new Map<string, ProcessRegistry>();
   const toolRegistries = new Map<string, AgentTool[]>();
 
-  // Build sandbox executor if any agent uses sandboxing
   let sandboxExecutor: SandboxExecutor | undefined;
   const baseSandboxFile = config.agentDefaults?.sandbox ?? config.sandbox;
   const resolvedAgentConfigs = config.agents.map((a) =>
@@ -117,12 +105,10 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Sandbox executor initialized (image: ${dockerConfig.image})`);
   }
 
-  // Pre-compute spawnable agent IDs from config (before agent init loop)
   const spawnableAgentIds = config.agents
     .filter((a) => a.spawnable === true)
     .map((a) => a.id);
 
-  // Create agents
   for (const agentFile of config.agents) {
     const transportCtx = new LazyTransportContext();
     const sessionStore = await sessionStoreManager.getOrCreate(agentFile.id);
@@ -146,7 +132,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     toolRegistries.set(result.agent.id, result.tools);
   }
 
-  // Discover and load plugins (PluginManager created earlier for hooks)
   const pluginDirs = [
     path.join(import.meta.dirname, "../plugins"),
     path.join(getIsotopesHome(), "plugins"),
@@ -154,7 +139,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   ];
   await pluginManager.discoverAndLoad(pluginDirs, config.plugins);
 
-  // Inject plugin-registered tools into each agent's tool registry
   const toolPluginRegistry = pluginManager.getToolPluginRegistry();
   for (const [agentId, tools] of toolRegistries) {
     const resolved = toolPluginRegistry.resolve({
@@ -178,11 +162,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     }
   }
 
-  // Workspace files (SOUL.md / MEMORY.md / TOOLS.md / skills) are now loaded
-  // per-call via stat-cache in agent/workspace.ts — no watcher needed. Edits
-  // are picked up on the next message automatically.
-
-  // Heartbeat managers
   const heartbeatManagers: HeartbeatManager[] = [];
   for (const agentFile of config.agents) {
     if (!agentFile.heartbeat?.enabled) continue;
@@ -213,7 +192,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Heartbeat enabled for "${agentFile.id}" (every ${agentFile.heartbeat.intervalSeconds ?? 300}s)`);
   }
 
-  // Cron scheduler
   const cronScheduler = new CronScheduler();
 
   for (const agentFile of config.agents) {
@@ -284,7 +262,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron scheduler started with ${cronScheduler.listJobs().length} job(s)`);
   }
 
-  // Plugin transports
   const pluginTransports: import("./gateway/types.js").Transport[] = [];
   for (const [id, factory] of pluginManager.getTransportFactories()) {
     try {
@@ -305,7 +282,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     }
   }
 
-  // API server
   const apiServer = new ApiServer(
     { port: apiPort ?? 2712 },
     {
@@ -320,7 +296,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   log.info("Runtime started");
 
-  // Shutdown handler
   const shutdown = async () => {
     log.info("Shutting down...");
     cronScheduler.stop();

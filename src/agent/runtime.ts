@@ -50,9 +50,8 @@ import type { DefaultSessionStore } from "../legacy/core/session-store.js";
 
 const log = createLogger("agents:runtime");
 
-// Magic ids — reserved (cannot be registered as named agents). See #613
-// for the policy decision on whether `claude` should be conditionally
-// reserved when no ClaudeRunner is configured.
+// Reserved magic ids — cannot be registered as named agents. See #613 for
+// the policy decision on whether `claude` should be conditionally reserved.
 export const SUBAGENT_AGENT_ID = "subagent";
 export const CLAUDE_AGENT_ID = "claude";
 export const RESERVED_AGENT_IDS: ReadonlySet<string> = new Set([SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID]);
@@ -115,11 +114,8 @@ export class SendMessageValidationError extends Error {
   }
 }
 
-/**
- * Per-session listener registry: a thin pub/sub keyed by sessionId.
- * Owned by AgentRuntime as a private field; not exported because callers
- * should subscribe via runtime.on / runtime.endSession.
- */
+/** Per-session pub/sub keyed by sessionId. Private to AgentRuntime —
+ * subscribe via runtime.on / endSession. */
 class SessionEventBus {
   private listeners = new Map<string, Set<(event: AgentEvent) => void>>();
 
@@ -199,9 +195,6 @@ export class AgentRuntime {
     return this.claudeRunner !== undefined;
   }
 
-  // ---------------------------------------------------------------------------
-  // Per-agent pi tool registry
-  // ---------------------------------------------------------------------------
 
   setAgentTools(agentId: string, tools: Iterable<AgentTool>): void {
     const map = new Map<string, AgentTool>();
@@ -220,40 +213,27 @@ export class AgentRuntime {
     return map ? Array.from(map.values()) : [];
   }
 
-  // ---------------------------------------------------------------------------
-  // Per-session event subscription — facade over SessionEventBus (defined above)
-  // ---------------------------------------------------------------------------
 
-  /** Subscribe to events for a session. Returns an unsubscribe function. */
   on(sessionId: string, listener: (event: AgentEvent) => void): () => void {
     return this.events.on(sessionId, listener);
   }
 
-  /**
-   * @internal Called by agent-run.ts to fan out events from the runner loop.
-   * External callers should subscribe via on(), not emit. Listener errors are
-   * logged and isolated.
-   */
+  /** @internal Called by run-adapter to fan out events. External callers
+   * should subscribe via on(), not emit. */
   emitSessionEvent(sessionId: string, event: AgentEvent): void {
     this.events.emit(sessionId, event);
   }
 
   /**
-   * Remove all listeners for a session and free the underlying entry.
-   * Intended for the session's owner to call in a `finally` block.
-   *
-   * **Single-owner assumption**: the bus assumes one logical flow per
-   * sessionId at a time. If a session ever has multiple concurrent owners
-   * (e.g. HTTP retry overlap, Discord reconnect mid-run), calling
-   * endSession from one owner will tear down the other's subscription
-   * too. The unsubscribe handle returned by `on()` is per-listener and
-   * always safe; `endSession` is the bigger hammer.
+   * Drop all listeners for a session. Single-owner: if a session ever
+   * has multiple concurrent owners (HTTP retry overlap, Discord
+   * reconnect mid-run), this tears down their subscriptions too. Use
+   * the per-listener unsubscribe handle from on() if that matters.
    */
   endSession(sessionId: string): void {
     this.events.endSession(sessionId);
   }
 
-  /** Number of active listeners for a session (mainly for tests / diagnostics). */
   sessionListenerCount(sessionId: string): number {
     return this.events.listenerCount(sessionId);
   }
@@ -282,7 +262,6 @@ export class AgentRuntime {
     }
   }
 
-  // ---------- Agent registry ----------
 
   registerAgent(agent: RegisteredAgent): void {
     if (RESERVED_AGENT_IDS.has(agent.id)) {
@@ -298,10 +277,7 @@ export class AgentRuntime {
     return this.agents.delete(id);
   }
 
-  /**
-   * One-stop agent setup: prepares workspace, builds tools, registers in
-   * the runtime.
-   */
+  /** Workspace prep + tool creation + registry insert in one call. */
   async addAgent(opts: AddAgentOptions): Promise<AddAgentResult> {
     const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox,
       spawning, sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
@@ -377,11 +353,8 @@ export class AgentRuntime {
     };
   }
 
-  /**
-   * Run SDK-side compaction on a specific (agent, sessionId). Used by the
-   * `/compact` slash command. Returns true if compaction ran, false if
-   * there wasn't enough context to compact.
-   */
+  /** SDK-side compaction (used by /compact). Returns false if context is
+   * too small to bother compacting. */
   async compactSession(agentId: string, sessionId: string): Promise<boolean> {
     if (!this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
       throw new Error("compactSession requires pi runner (globalProvider)");
@@ -561,7 +534,6 @@ export class AgentRuntime {
     });
   }
 
-  // ---------- Lifecycle ----------
 
   cancel(runId: string, opts?: { reason?: string }): boolean {
     const handle = this.runs.get(runId);

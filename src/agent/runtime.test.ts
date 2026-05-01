@@ -9,10 +9,6 @@ import type { RegisteredAgent } from "./types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
-
 function fakeAgent(id: string): RegisteredAgent {
   return {
     id,
@@ -74,10 +70,6 @@ async function consume(gen: AsyncGenerator<unknown>): Promise<void> {
   for await (const _ev of gen) { void _ev; }
 }
 
-// ---------------------------------------------------------------------------
-// Registry
-// ---------------------------------------------------------------------------
-
 describe("AgentRuntime — agent registry", () => {
   let rt: AgentRuntime;
   beforeEach(() => { rt = new AgentRuntime(); });
@@ -107,10 +99,6 @@ describe("AgentRuntime — agent registry", () => {
     expect(rt.unregisterAgent("ghost")).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
 
 describe("AgentRuntime.sendMessage — validation", () => {
   let rt: AgentRuntime;
@@ -159,10 +147,6 @@ describe("AgentRuntime.sendMessage — validation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Run tracking
-// ---------------------------------------------------------------------------
-
 describe("AgentRuntime — listRuns / getStatus", () => {
   it("returns empty before any run", () => {
     const rt = new AgentRuntime();
@@ -176,10 +160,6 @@ describe("AgentRuntime — leaf concurrency cap constant", () => {
     expect(LEAF_CONCURRENCY_CAP).toBe(5);
   });
 });
-
-// ---------------------------------------------------------------------------
-// sendMessage flow — onRunStart timing
-// ---------------------------------------------------------------------------
 
 describe("runtime.sendMessage — onRunStart timing", () => {
   it("fires onRunStart before any AgentEvent is yielded", async () => {
@@ -230,10 +210,6 @@ describe("runtime.sendMessage — onRunStart timing", () => {
     expect(rt.listRuns()).toEqual([]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// cancel — reason propagation
-// ---------------------------------------------------------------------------
 
 describe("runtime.cancel — reason propagates to onCancel", () => {
   it("user cancel → onCancel fires with reason", async () => {
@@ -306,10 +282,6 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Abort on consumer early-return
-// ---------------------------------------------------------------------------
-
 describe("runtime.sendMessage — abort on consumer early-return", () => {
   it("aborts the inner runner when caller breaks out of the for-await", async () => {
     const rt = new AgentRuntime();
@@ -337,10 +309,6 @@ describe("runtime.sendMessage — abort on consumer early-return", () => {
     expect(rt.listRuns()).toEqual([]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Per-session event subscription
-// ---------------------------------------------------------------------------
 
 describe("AgentRuntime session event subscription", () => {
   it("delivers events to a subscribed listener", () => {
