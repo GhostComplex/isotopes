@@ -10,7 +10,11 @@ import {
 import { Type } from "typebox";
 import type { AgentToolSettings } from "../../tools/types.js";
 import type { SandboxFs } from "../sandbox/fs-bridge.js";
+import type { SandboxExecutor } from "../sandbox/executor.js";
+import type { SandboxConfig } from "../sandbox/config.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
+import { createReactTools, type LazyTransportContext } from "../tools/react.js";
+import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID, SendMessageValidationError } from "../agents/runtime.js";
 import type { SendMessageRequest } from "../agents/types.js";
@@ -352,5 +356,53 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   if (codingMode === "send-message") {
     tools = tools.filter((t) => !FILE_WRITING_TOOLS.includes(t.name));
   }
+  return tools;
+}
+
+// ---------------------------------------------------------------------------
+// createAgentTools — unified entry point used by agent-init.
+// Bundles workspace + react + exec into one factory so the caller doesn't
+// have to assemble three separate clusters with three separate dep shapes.
+// ---------------------------------------------------------------------------
+
+export interface CreateAgentToolsOptions extends CreateWorkspaceToolsOptions {
+  /** Discord/transport context for `message_react`. Omit to skip react tools. */
+  transportContext?: LazyTransportContext;
+  /** Background process registry for exec tools. */
+  processRegistry: ProcessRegistry;
+  /** Sandbox executor (omitted for non-sandboxed agents). */
+  sandboxExecutor?: SandboxExecutor;
+  /** Resolved sandbox config for this agent. */
+  agentSandboxConfig?: SandboxConfig;
+  /** Workspaces this agent may access via exec. */
+  allowedWorkspaces?: string[];
+  /** Agent id (used by exec for sandbox routing). */
+  agentId: string;
+}
+
+export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
+  const tools: AgentTool[] = [];
+  // Workspace tools first — send_message inside captures the `tools` array by
+  // reference so its `leafContext.tools` sees the fully populated set when the
+  // tool is later invoked (push mutates in place, the ref doesn't change).
+  tools.push(...applyToolPolicy(
+    createWorkspaceToolsWithGuards({ ...opts, parentTools: tools }),
+    opts.settings,
+  ));
+  if (opts.transportContext) {
+    tools.push(...createReactTools(opts.transportContext));
+  }
+  tools.push(...applyToolPolicy(
+    createExecTools({
+      cwd: opts.workspacePath,
+      registry: opts.processRegistry,
+      sandboxExecutor: opts.sandboxExecutor,
+      agentId: opts.agentId,
+      isMainAgent: false,
+      agentSandboxConfig: opts.agentSandboxConfig,
+      allowedWorkspaces: opts.allowedWorkspaces ?? [],
+    }),
+    opts.settings,
+  ));
   return tools;
 }
