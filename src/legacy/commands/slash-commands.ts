@@ -4,7 +4,6 @@
 import type { SessionStore } from "../../sessions/types.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import { createLogger } from "../../logging/logger.js";
-import { failureTracker } from "../agents/failure-tracker.js";
 
 const log = createLogger("commands");
 
@@ -188,7 +187,6 @@ export class SlashCommandHandler {
 
     try {
       await ctx.sessionStore.clearMessages(ctx.sessionId);
-      failureTracker.clearSession(ctx.sessionId);
 
       log.info(`Session reset by ${ctx.username} (${ctx.userId})`);
       return { response: "✅ Session reset. Starting fresh." };

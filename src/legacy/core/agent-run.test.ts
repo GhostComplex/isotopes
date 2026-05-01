@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { consumeRootRun, cancelRunBySessionId } from "./agent-run.js";
 import { AgentRuntime } from "../agents/runtime.js";
-import type { RegisteredAgent, SendMessageRequest } from "../agents/types.js";
+import type { RegisteredAgent, SendMessageRequest } from "../../agent/runtime/types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { createLogger } from "../../logging/logger.js";
 

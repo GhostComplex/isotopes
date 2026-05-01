@@ -8,7 +8,7 @@ import {
   type SettingSource,
   type SpawnPermissionMode,
 } from "../../../config.js";
-import type { SendMessageRequest } from "../../../legacy/agents/types.js";
+import type { SendMessageRequest } from "../../runtime/types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-ai";

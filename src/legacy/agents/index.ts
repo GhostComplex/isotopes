@@ -6,7 +6,7 @@ export type {
   RegisteredAgent,
   SendMessageRequest,
   RunInfo,
-} from "./types.js";
+} from "../../agent/runtime/types.js";
 
 export {
   AgentRuntime,
@@ -15,6 +15,3 @@ export {
   RESERVED_AGENT_IDS,
 } from "./runtime.js";
 export type { AgentRuntimeOptions } from "./runtime.js";
-
-export { FailureTracker, failureTracker } from "./failure-tracker.js";
-export type { BlockCheck } from "./failure-tracker.js";
