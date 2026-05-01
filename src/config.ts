@@ -212,16 +212,6 @@ export interface ClaudeSpawningConfigFile {
 export interface SpawningConfigFile {
   /** Whether spawning is enabled. Default: false */
   enabled?: boolean;
-  /** Default timeout in seconds for spawn agent runs */
-  timeout?: number;
-  /** Default maximum turns per spawn agent run */
-  maxTurns?: number;
-  /** Maximum agent nesting depth. Default: 1 (spawned agents cannot spawn further) */
-  maxDepth?: number;
-  /** Whether to create Discord threads for spawn agent output. Default: true */
-  useThread?: boolean;
-  /** Whether to show tool call details in Discord. Default: true */
-  showToolCalls?: boolean;
   /** Claude Agent SDK runner configuration */
   claude?: ClaudeSpawningConfigFile;
 }
@@ -235,11 +225,6 @@ export interface ResolvedClaudeSpawningConfig {
 
 /** Resolved spawning configuration with defaults applied */
 export interface ResolvedSpawningConfig {
-  timeout?: number;
-  maxTurns?: number;
-  maxDepth?: number;
-  useThread: boolean;
-  showToolCalls: boolean;
   claude: ResolvedClaudeSpawningConfig;
 }
 
@@ -387,11 +372,6 @@ export function resolveSpawningConfig(
   }
 
   return {
-    timeout: spawningConfig?.timeout,
-    maxTurns: spawningConfig?.maxTurns,
-    maxDepth: spawningConfig?.maxDepth,
-    useThread: spawningConfig?.useThread ?? true,
-    showToolCalls: spawningConfig?.showToolCalls ?? true,
     claude: {
       permissionMode,
       allowedTools,
