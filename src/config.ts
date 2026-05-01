@@ -91,10 +91,6 @@ export interface AgentConfigFile {
   cron?: { tasks: CronTaskConfigFile[] };
   /** Additional workspace paths allowed for spawned agent cwd */
   allowedWorkspaces?: string[];
-  /** Heartbeat interval in milliseconds (0 = disabled). */
-  heartbeatInterval?: number;
-  /** Custom heartbeat prompt (overrides the default). */
-  heartbeatPrompt?: string;
   /** Whether this agent can be spawned by other agents via send_message. Default: false */
   spawnable?: boolean;
   /** How this agent treats incoming a2a `send_message` calls when no
@@ -455,8 +451,6 @@ export function toAgentConfig(
     ...(model ? { model } : {}),
     compaction,
     sandbox,
-    heartbeatInterval: agent.heartbeatInterval,
-    heartbeatPrompt: agent.heartbeatPrompt,
     spawnable: agent.spawnable,
     sessionPolicy: agent.sessionPolicy,
   };

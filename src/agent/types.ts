@@ -21,10 +21,6 @@ export interface AgentConfig {
   model?: string;
   compaction?: CompactionConfig;
   sandbox?: SandboxConfig;
-  /** Heartbeat interval in milliseconds (0 or undefined = disabled) */
-  heartbeatInterval?: number;
-  /** Overrides the default heartbeat prompt. */
-  heartbeatPrompt?: string;
   /** Default false. */
   spawnable?: boolean;
   /** Defaults to "parent-reuse". */
