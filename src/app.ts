@@ -136,7 +136,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   const pluginDirs = [
-    path.join(import.meta.dirname, "../plugins"),
+    path.join(import.meta.dirname, "legacy/plugins"),
     path.join(getIsotopesHome(), "plugins"),
     ...[...agentWorkspaces.values()].map((w) => path.join(w, "plugins")),
   ];
