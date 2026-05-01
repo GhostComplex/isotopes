@@ -134,20 +134,20 @@ class SessionEventBus {
   }
 }
 
-export interface LeafRunner {
+export interface Runner {
   validateRequest?(req: RunRequest): void;
   run(opts: { request: RunRequest; runId: string; abort: AbortSignal }): AsyncGenerator<AgentEvent>;
 }
 
-interface LeafRunnerEntry {
-  runner: LeafRunner;
+interface RunnerEntry {
+  runner: Runner;
   spawnable: boolean;
 }
 
 export class AgentRuntime {
   private allowedRoots: string[];
   private piRunner?: PiRunner;
-  private leafRunners = new Map<string, LeafRunnerEntry>();
+  private runners = new Map<string, RunnerEntry>();
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
   private events = new SessionEventBus();
@@ -198,29 +198,29 @@ export class AgentRuntime {
 
   /** Register a leaf runner under a magic name (e.g. "claude"). The name
    * becomes reserved — registerAgent will reject it. */
-  registerRunner(name: string, runner: LeafRunner, opts: { spawnable?: boolean } = {}): void {
+  registerRunner(name: string, runner: Runner, opts: { spawnable?: boolean } = {}): void {
     if (this.agents.has(name)) {
       throw new Error(`Cannot register runner — name in use as agent: ${name}`);
     }
-    if (this.leafRunners.has(name)) {
+    if (this.runners.has(name)) {
       throw new Error(`Runner already registered: ${name}`);
     }
-    this.leafRunners.set(name, { runner, spawnable: opts.spawnable ?? true });
+    this.runners.set(name, { runner, spawnable: opts.spawnable ?? true });
   }
 
   hasRunner(name: string): boolean {
-    return this.leafRunners.has(name);
+    return this.runners.has(name);
   }
 
   /** Names of registered leaf runners. */
   runnerNames(): string[] {
-    return Array.from(this.leafRunners.keys());
+    return Array.from(this.runners.keys());
   }
 
   /** Names of leaf runners advertised to other agents in send_message. */
   spawnableRunnerNames(): string[] {
     const out: string[] = [];
-    for (const [name, entry] of this.leafRunners) {
+    for (const [name, entry] of this.runners) {
       if (entry.spawnable) out.push(name);
     }
     return out;
@@ -295,7 +295,7 @@ export class AgentRuntime {
 
 
   registerAgent(agent: RegisteredAgent): void {
-    if (this.leafRunners.has(agent.id)) {
+    if (this.runners.has(agent.id)) {
       throw new Error(`Cannot register agent — name in use by runner: ${agent.id}`);
     }
     if (this.agents.has(agent.id)) throw new Error(`Agent already registered: ${agent.id}`);
@@ -420,18 +420,18 @@ export class AgentRuntime {
 
   /** `to`: a registered runner name (leaf) | a registered agent id (root). */
   async *run(req: RunRequest): AsyncGenerator<AgentEvent> {
-    const leafEntry = this.leafRunners.get(req.to);
-    const leafRunner = leafEntry?.runner;
-    const isLeaf = leafRunner !== undefined;
+    const leafEntry = this.runners.get(req.to);
+    const runner = leafEntry?.runner;
+    const isLeaf = runner !== undefined;
     const agent = isLeaf ? undefined : this.agents.get(req.to);
     if (!isLeaf && !agent) throw new RunValidationError(`Unknown agent: ${req.to}`);
     if (isLeaf && req.sessionId) {
       throw new RunValidationError("run: leaf sessions are not resumable; omit sessionId");
     }
-    if (!leafRunner && !this.piRunner) {
+    if (!runner && !this.piRunner) {
       throw new RunValidationError("AgentRuntime: pi runner not configured (pass `globalProvider` to constructor)");
     }
-    leafRunner?.validateRequest?.(req);
+    runner?.validateRequest?.(req);
     if (req.cwd) {
       try { this.validateCwd(req.cwd); }
       catch (err) { throw new RunValidationError(err instanceof Error ? err.message : String(err)); }
@@ -450,7 +450,7 @@ export class AgentRuntime {
     let sessionId: string;
     if (req.sessionId) {
       sessionId = req.sessionId;
-    } else if (leafRunner) {
+    } else if (runner) {
       sessionId = `${req.to}:${runId}`;
     } else {
       const policy: AgentSessionPolicy = agent!.sessionPolicy ?? "parent-reuse";
@@ -497,8 +497,8 @@ export class AgentRuntime {
     }
 
     try {
-      if (leafRunner) {
-        yield* leafRunner.run({
+      if (runner) {
+        yield* runner.run({
           request: req,
           runId,
           abort: abort.signal,

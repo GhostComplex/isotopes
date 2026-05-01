@@ -20,7 +20,7 @@ import { CronScheduler } from "./legacy/automation/cron-job.js";
 import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
 import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
-import { AgentRuntime, type LeafRunner } from "./agent/runtime.js";
+import { AgentRuntime, type Runner } from "./agent/runtime.js";
 import { ClaudeRunner } from "./agent/runners/claude/runner.js";
 import { consumeRootRun } from "./legacy/core/agent-run.js";
 
@@ -66,7 +66,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   // Built-in runners live in agents[] alongside user agents but follow a
   // different registration path (no workspace / tools / sessions of their
   // own). Listed here as the single source of truth.
-  const builtinRunners: Array<{ id: string; build: () => LeafRunner | null }> = [
+  const builtinRunners: Array<{ id: string; build: () => Runner | null }> = [
     { id: "subagent", build: () => agentRuntime.hasPiRunner() ? agentRuntime.createSubagentRunner() : null },
     { id: "claude",   build: () => new ClaudeRunner() },
   ];

@@ -150,7 +150,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`);
       }
       const isSubagent = to === "subagent";
-      const isLeafRunner = runtime.hasRunner(to);
+      const isRunner = runtime.hasRunner(to);
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
@@ -224,7 +224,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         return textResult(`[send_message failed] ${errorMessage}`);
       }
       const trimmed = assistantText.trim();
-      return textResult(trimmed.length > 0 ? trimmed : (isLeafRunner ? `[${to} completed with no output]` : "[no reply]"));
+      return textResult(trimmed.length > 0 ? trimmed : (isRunner ? `[${to} completed with no output]` : "[no reply]"));
     },
   };
 }
