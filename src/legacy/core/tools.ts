@@ -16,8 +16,8 @@ import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import { createReactTools, type LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import type { AgentRuntime } from "../../agent/runtime.js";
-import { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID, SendMessageValidationError } from "../../agent/runtime.js";
-import type { SendMessageRequest } from "../../agent/types.js";
+import { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID, RunValidationError } from "../../agent/runtime.js";
+import type { RunRequest } from "../../agent/types.js";
 import { getMessageContext } from "../transport/context.js";
 import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
 import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
@@ -155,7 +155,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
       const ctx = getMessageContext();
 
       let cancelReason: string | undefined;
-      const req: SendMessageRequest = {
+      const req: RunRequest = {
         to,
         content,
         cwd,
@@ -183,7 +183,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
       let assistantText = "";
       let errorMessage: string | null = null;
       try {
-        for await (const event of runtime.sendMessage(req)) {
+        for await (const event of runtime.run(req)) {
           if (sink) await sink.sendEvent(event);
           if (event.type === "message_update") {
             const ame = event.assistantMessageEvent;
@@ -197,7 +197,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (err instanceof SendMessageValidationError) {
+        if (err instanceof RunValidationError) {
           if (sink) await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
           return textResult(`[error] ${msg}`);
         }

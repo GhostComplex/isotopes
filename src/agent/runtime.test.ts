@@ -3,7 +3,7 @@ import {
   AgentRuntime,
   RESERVED_AGENT_IDS,
   LEAF_CONCURRENCY_CAP,
-  SendMessageValidationError,
+  RunValidationError,
 } from "./runtime.js";
 import type { RegisteredAgent } from "./types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
@@ -105,20 +105,20 @@ describe("AgentRuntime.sendMessage — validation", () => {
   beforeEach(() => { rt = new AgentRuntime(); });
 
   it("rejects unknown agent id", async () => {
-    await expect(consume(rt.sendMessage({ to: "ghost", content: "hi" }))).rejects.toThrow(/Unknown agent/);
+    await expect(consume(rt.run({ to: "ghost", content: "hi" }))).rejects.toThrow(/Unknown agent/);
   });
 
   it("rejects claude target when no claude runner is configured", async () => {
-    await expect(consume(rt.sendMessage({ to: "claude", content: "hi", cwd: "/tmp" })))
+    await expect(consume(rt.run({ to: "claude", content: "hi", cwd: "/tmp" })))
       .rejects.toThrow(/claude runner not configured/);
   });
 
   it("rejects subagent target without leafContext", async () => {
-    await expect(consume(rt.sendMessage({ to: "subagent", content: "hi" }))).rejects.toThrow(/leafContext is required/);
+    await expect(consume(rt.run({ to: "subagent", content: "hi" }))).rejects.toThrow(/leafContext is required/);
   });
 
   it("rejects sessionId on subagent target", async () => {
-    await expect(consume(rt.sendMessage({
+    await expect(consume(rt.run({
       to: "subagent",
       content: "hi",
       sessionId: "x",
@@ -128,22 +128,22 @@ describe("AgentRuntime.sendMessage — validation", () => {
 
   it("rejects sendMessage when no pi runner configured", async () => {
     rt.registerAgent(fakeAgent("main"));
-    await expect(consume(rt.sendMessage({ to: "main", content: "hi" }))).rejects.toThrow(/pi runner not configured/);
+    await expect(consume(rt.run({ to: "main", content: "hi" }))).rejects.toThrow(/pi runner not configured/);
   });
 
-  it("Unknown agent throws SendMessageValidationError", async () => {
-    const gen = rt.sendMessage({ to: "ghost", content: "hi" });
-    await expect(gen.next()).rejects.toBeInstanceOf(SendMessageValidationError);
+  it("Unknown agent throws RunValidationError", async () => {
+    const gen = rt.run({ to: "ghost", content: "hi" });
+    await expect(gen.next()).rejects.toBeInstanceOf(RunValidationError);
   });
 
-  it("subagent without leafContext throws SendMessageValidationError", async () => {
-    const gen = rt.sendMessage({ to: "subagent", content: "hi" });
-    await expect(gen.next()).rejects.toBeInstanceOf(SendMessageValidationError);
+  it("subagent without leafContext throws RunValidationError", async () => {
+    const gen = rt.run({ to: "subagent", content: "hi" });
+    await expect(gen.next()).rejects.toBeInstanceOf(RunValidationError);
   });
 
-  it("claude without runner throws SendMessageValidationError", async () => {
-    const gen = rt.sendMessage({ to: "claude", content: "hi", cwd: "/tmp" });
-    await expect(gen.next()).rejects.toBeInstanceOf(SendMessageValidationError);
+  it("claude without runner throws RunValidationError", async () => {
+    const gen = rt.run({ to: "claude", content: "hi", cwd: "/tmp" });
+    await expect(gen.next()).rejects.toBeInstanceOf(RunValidationError);
   });
 });
 
@@ -174,7 +174,7 @@ describe("runtime.sendMessage — onRunStart timing", () => {
     rt.registerAgent(fakeAgent("main"));
 
     const events: AgentEvent[] = [];
-    for await (const ev of rt.sendMessage({
+    for await (const ev of rt.run({
       to: "main",
       content: "hi",
       onRunStart: (rid) => order.push(`onRunStart:${rid.slice(0, 4)}`),
@@ -199,7 +199,7 @@ describe("runtime.sendMessage — onRunStart timing", () => {
     });
     rt.registerAgent(fakeAgent("main"));
 
-    for await (const _ev of rt.sendMessage({
+    for await (const _ev of rt.run({
       to: "main",
       content: "hi",
       onRunStart: (rid) => { observedRunId = rid; },
@@ -230,7 +230,7 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
 
     const onCancel = vi.fn();
     let runId: string | undefined;
-    const stream = rt.sendMessage({
+    const stream = rt.run({
       to: "main",
       content: "long",
       onRunStart: (rid) => { runId = rid; },
@@ -266,7 +266,7 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
 
     const onCancel = vi.fn();
     let runId: string | undefined;
-    const stream = rt.sendMessage({
+    const stream = rt.run({
       to: "main",
       content: "x",
       onRunStart: (rid) => { runId = rid; },
@@ -300,7 +300,7 @@ describe("runtime.sendMessage — abort on consumer early-return", () => {
     rt.registerAgent(fakeAgent("main"));
 
     let count = 0;
-    for await (const ev of rt.sendMessage({ to: "main", content: "hi" })) {
+    for await (const ev of rt.run({ to: "main", content: "hi" })) {
       void ev;
       count++;
       if (count === 1) break;

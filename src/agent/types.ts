@@ -69,7 +69,7 @@ export interface CompactionConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime contract — RegisteredAgent / SendMessageRequest / RunInfo
+// Runtime contract — RegisteredAgent / RunRequest / RunInfo
 // ---------------------------------------------------------------------------
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
@@ -93,7 +93,7 @@ export interface RegisteredAgent {
   readonly sessionPolicy?: AgentSessionPolicy;
 }
 
-export interface SendMessageRequest {
+export interface RunRequest {
   to: string;
   sessionId?: string;
   content: string;

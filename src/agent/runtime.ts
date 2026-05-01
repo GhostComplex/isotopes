@@ -10,7 +10,7 @@ import type {
   AgentSessionKind,
   AgentSessionPolicy,
   RegisteredAgent,
-  SendMessageRequest,
+  RunRequest,
   RunInfo,
 } from "./types.js";
 import type { ProviderConfig } from "./types.js";
@@ -106,11 +106,11 @@ export interface AddAgentResult {
 
 /** Caller-fixable input error. Tool handlers should surface as `[error]`
  * instead of `[failed]` so the LLM doesn't retry. */
-export class SendMessageValidationError extends Error {
+export class RunValidationError extends Error {
   readonly isValidationError = true;
   constructor(message: string) {
     super(message);
-    this.name = "SendMessageValidationError";
+    this.name = "RunValidationError";
   }
 }
 
@@ -389,37 +389,37 @@ export class AgentRuntime {
 
   /** `to`: "subagent" (leaf, needs leafContext) | "claude" (leaf, needs cwd)
    * | registered-id (root). Yields SDK AgentEvent. */
-  async *sendMessage(req: SendMessageRequest): AsyncGenerator<AgentEvent> {
+  async *run(req: RunRequest): AsyncGenerator<AgentEvent> {
     const isSubagent = req.to === SUBAGENT_AGENT_ID;
     const isClaude = req.to === CLAUDE_AGENT_ID;
     const isLeaf = isSubagent || isClaude;
     const agent = isLeaf ? undefined : this.agents.get(req.to);
-    if (!isLeaf && !agent) throw new SendMessageValidationError(`Unknown agent: ${req.to}`);
+    if (!isLeaf && !agent) throw new RunValidationError(`Unknown agent: ${req.to}`);
     if (isSubagent && !req.leafContext) {
-      throw new SendMessageValidationError('sendMessage: leafContext is required when to === "subagent"');
+      throw new RunValidationError('run: leafContext is required when to === "subagent"');
     }
     if (isClaude && !this.claudeRunner) {
-      throw new SendMessageValidationError('sendMessage: claude runner not configured (pass `claude` option to AgentRuntime)');
+      throw new RunValidationError('run: claude runner not configured (pass `claude` option to AgentRuntime)');
     }
     if (isClaude && !req.cwd) {
-      throw new SendMessageValidationError('sendMessage: cwd is required when to === "claude"');
+      throw new RunValidationError('run: cwd is required when to === "claude"');
     }
     if (isLeaf && req.sessionId) {
-      throw new SendMessageValidationError("sendMessage: leaf sessions are not resumable; omit sessionId");
+      throw new RunValidationError("run: leaf sessions are not resumable; omit sessionId");
     }
     if (!isClaude && !this.piRunner) {
-      throw new SendMessageValidationError("AgentRuntime: pi runner not configured (pass `core` to constructor)");
+      throw new RunValidationError("AgentRuntime: pi runner not configured (pass `core` to constructor)");
     }
     if (req.cwd) {
       try { this.validateCwd(req.cwd); }
-      catch (err) { throw new SendMessageValidationError(err instanceof Error ? err.message : String(err)); }
+      catch (err) { throw new RunValidationError(err instanceof Error ? err.message : String(err)); }
     }
 
     const kind: AgentSessionKind = isLeaf ? "leaf" : "root";
     if (kind === "leaf") {
       const leafCount = [...this.runs.values()].filter((r) => r.kind === "leaf").length;
       if (leafCount >= LEAF_CONCURRENCY_CAP) {
-        throw new SendMessageValidationError(`Max concurrent leaf runs reached (${LEAF_CONCURRENCY_CAP})`);
+        throw new RunValidationError(`Max concurrent leaf runs reached (${LEAF_CONCURRENCY_CAP})`);
       }
     }
 
@@ -511,7 +511,7 @@ export class AgentRuntime {
     agent?: RegisteredAgent;
     sessionId: string;
     runId: string;
-    req: SendMessageRequest;
+    req: RunRequest;
   }): Promise<AgentSession> {
     const piDeps = {
       globalProvider: this.piGlobalProvider!,

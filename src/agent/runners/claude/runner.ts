@@ -8,7 +8,7 @@ import {
   type SettingSource,
   type SpawnPermissionMode,
 } from "../../../config.js";
-import type { SendMessageRequest } from "../../types.js";
+import type { RunRequest } from "../../types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-ai";
@@ -57,7 +57,7 @@ export class ClaudeRunner {
   /** `request.cwd` is required; Claude CLI manages its own session state
    * so conversational continuity across calls is out of scope. */
   async *run(opts: {
-    request: SendMessageRequest;
+    request: RunRequest;
     runId: string;
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {

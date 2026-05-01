@@ -84,7 +84,7 @@ export interface TransportFactoryContext {
   transportContexts: Map<string, LazyTransportContext>;
   isotopesHome: string;
   getSessionStoreForAgent: (agentId: string) => SessionStore | undefined;
-  /** Unified runtime — for transports that drive agents via sendMessage. */
+  /** Unified runtime — for transports that drive agents via runtime.run. */
   agentRuntime: AgentRuntime;
 }
 

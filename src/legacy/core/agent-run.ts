@@ -50,7 +50,7 @@ export async function consumeRootRun(
   let runId: string | undefined;
 
   try {
-    const stream = runtime.sendMessage({
+    const stream = runtime.run({
       to,
       sessionId,
       content,
@@ -97,7 +97,7 @@ export async function consumeRootRun(
     );
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
-    log.error(`runtime.sendMessage threw: ${errorMessage}`);
+    log.error(`runtime.run threw: ${errorMessage}`);
   }
 
   if (hooks && responseText) {

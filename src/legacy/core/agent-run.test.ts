@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { consumeRootRun, cancelRunBySessionId } from "./agent-run.js";
 import { AgentRuntime } from "../../agent/runtime.js";
-import type { RegisteredAgent, SendMessageRequest } from "../../agent/types.js";
+import type { RegisteredAgent, RunRequest } from "../../agent/types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { createLogger } from "../../logging/logger.js";
 
@@ -52,7 +52,7 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
   };
 }
 
-function installStub(rt: AgentRuntime, gen: (req: SendMessageRequest) => AsyncGenerator<AgentEvent>) {
+function installStub(rt: AgentRuntime, gen: (req: RunRequest) => AsyncGenerator<AgentEvent>) {
   (rt as unknown as { piRunner: { run: typeof gen } }).piRunner = {
     run: gen as never,
   };
@@ -185,7 +185,7 @@ describe("cancelRunBySessionId", () => {
     });
 
     const drain = (async () => {
-      for await (const _ of rt.sendMessage({
+      for await (const _ of rt.run({
         to: "main",
         sessionId: "s6",
         content: "x",
