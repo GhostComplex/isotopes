@@ -10,7 +10,11 @@ import {
 import { Type } from "typebox";
 import type { AgentToolSettings } from "../../tools/types.js";
 import type { SandboxFs } from "../sandbox/fs-bridge.js";
+import type { SandboxExecutor } from "../sandbox/executor.js";
+import type { SandboxConfig } from "../sandbox/config.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
+import { createReactTools, type LazyTransportContext } from "../tools/react.js";
+import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID, SendMessageValidationError } from "../agents/runtime.js";
 import type { SendMessageRequest } from "../agents/types.js";
@@ -352,5 +356,40 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   if (codingMode === "send-message") {
     tools = tools.filter((t) => !FILE_WRITING_TOOLS.includes(t.name));
   }
+  return tools;
+}
+
+export interface CreateAgentToolsOptions extends Omit<CreateWorkspaceToolsOptions, "parentTools"> {
+  transportContext?: LazyTransportContext;
+  processRegistry: ProcessRegistry;
+  sandboxExecutor?: SandboxExecutor;
+  agentSandboxConfig?: SandboxConfig;
+  allowedWorkspaces?: string[];
+  agentId: string;
+}
+
+export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
+  const tools: AgentTool[] = [];
+  // send_message captures `tools` by reference; later push() calls populate it
+  // before the tool is invoked.
+  tools.push(...applyToolPolicy(
+    createWorkspaceToolsWithGuards({ ...opts, parentTools: tools }),
+    opts.settings,
+  ));
+  if (opts.transportContext) {
+    tools.push(...createReactTools(opts.transportContext));
+  }
+  tools.push(...applyToolPolicy(
+    createExecTools({
+      cwd: opts.workspacePath,
+      registry: opts.processRegistry,
+      sandboxExecutor: opts.sandboxExecutor,
+      agentId: opts.agentId,
+      isMainAgent: false,
+      agentSandboxConfig: opts.agentSandboxConfig,
+      allowedWorkspaces: opts.allowedWorkspaces ?? [],
+    }),
+    opts.settings,
+  ));
   return tools;
 }

@@ -10,27 +10,24 @@ import {
   type AgentToolsConfigFile,
   type ProviderConfigFile,
   type SpawningConfigFile,
-} from "../../config.js";
+} from "../config.js";
 import {
   ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
   resolveExplicitWorkspacePath,
-} from "../../paths.js";
-import { ensureWorkspaceStructure } from "../../agent/workspace.js";
-import { seedWorkspaceTemplates } from "../workspace/templates.js";
-import { reconcileWorkspaceState } from "../workspace/state.js";
-import {
-  createWorkspaceToolsWithGuards,
-  applyToolPolicy,
-} from "./tools.js";
-import { createReactTools, LazyTransportContext } from "../tools/react.js";
-import { createExecTools, ProcessRegistry } from "../tools/exec.js";
-import { SandboxExecutor, SandboxFs, shouldSandbox } from "../sandbox/index.js";
+} from "../paths.js";
+import { ensureWorkspaceStructure } from "./workspace.js";
+import { seedWorkspaceTemplates } from "../legacy/workspace/templates.js";
+import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
+import { createAgentTools } from "../legacy/core/tools.js";
+import { LazyTransportContext } from "../legacy/tools/react.js";
+import { ProcessRegistry } from "../legacy/tools/exec.js";
+import { SandboxExecutor, SandboxFs, shouldSandbox } from "../legacy/sandbox/index.js";
 import * as nodeFs from "node:fs/promises";
-import type { AgentConfig } from "../../agent/types.js";
+import type { AgentConfig } from "./types.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { createLogger } from "../../logging/logger.js";
-import type { HookRegistry } from "../plugins/hooks.js";
+import { createLogger } from "../logging/logger.js";
+import type { HookRegistry } from "../legacy/plugins/hooks.js";
 
 const log = createLogger("agent-init");
 
@@ -62,7 +59,7 @@ export interface InitAgentOptions {
   /** Pre-computed list of spawnable agent IDs from config */
   spawnableAgentIds?: string[];
   /** Unified runtime — wired into the send_message tool. */
-  runtime?: import("../agents/runtime.js").AgentRuntime;
+  runtime?: import("../legacy/agents/runtime.js").AgentRuntime;
 }
 
 export interface InitAgentResult {
@@ -115,55 +112,35 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   // 5. Ensure workspace directory structure exists (sessions/, memory/)
   await ensureWorkspaceStructure(workspacePath);
 
-  // 6. Create tool array and process registry
-  const tools: AgentTool[] = [];
-  const processRegistry = new ProcessRegistry();
-  const agentAllowedWorkspaces = agentFile.allowedWorkspaces ?? [];
-
-  // 7. Resolve fs implementation (host vs sandbox)
   const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
   const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
-  // Spawn agent tools spawn child runners (Claude CLI, builtin) that execute on
-  // the host, bypassing the Docker sandbox. Disable them entirely for
-  // sandboxed agents — see issue #440.
+  // Spawn tools run host-side child processes that bypass docker — disable for
+  // sandboxed agents (#440).
   const spawningEnabled = spawning?.enabled === true && !isSandboxed;
   if (spawning?.enabled === true && isSandboxed) {
     log.warn(
-      `Spawning tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined. Use \`docker exec\` with a custom image to run a coding CLI inside the sandbox.`,
+      `Spawning tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`,
     );
   }
 
-  // 8. Create and register workspace tools
-  const workspaceTools = createWorkspaceToolsWithGuards({
+  const processRegistry = new ProcessRegistry();
+  const tools: AgentTool[] = createAgentTools({
     workspacePath,
     settings: agentConfig.toolSettings,
     sendMessageEnabled: spawningEnabled,
     codingMode: agentConfig.codingMode,
     fsImpl,
     parentAgentId: agentConfig.id,
-    parentTools: tools,
+    agentId: agentConfig.id,
+    processRegistry,
+    sandboxExecutor,
+    agentSandboxConfig: agentConfig.sandbox,
+    allowedWorkspaces: agentFile.allowedWorkspaces ?? [],
+    transportContext,
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
   });
-  tools.push(...applyToolPolicy(workspaceTools, agentConfig.toolSettings));
-
-  // 9. Register react tools (transport is bound lazily after transport starts)
-  if (transportContext) {
-    tools.push(...createReactTools(transportContext));
-  }
-
-  // 10. Register exec/process tools
-  const execTools = createExecTools({
-    cwd: workspacePath,
-    registry: processRegistry,
-    sandboxExecutor,
-    agentId: agentConfig.id,
-    isMainAgent: false,
-    agentSandboxConfig: agentConfig.sandbox,
-    allowedWorkspaces: agentAllowedWorkspaces,
-  });
-  tools.push(...applyToolPolicy(execTools, agentConfig.toolSettings));
 
   if (opts.hooks) {
     await opts.hooks.emit("before_agent_start", { agentId: agentConfig.id });
