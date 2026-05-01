@@ -4,6 +4,7 @@
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
+import * as nodeFs from "node:fs/promises";
 import { createLogger } from "../../logging/logger.js";
 import type {
   AgentSessionKind,
@@ -23,6 +24,29 @@ import {
   AuthStorage,
   ModelRegistry,
 } from "@mariozechner/pi-coding-agent";
+import {
+  toAgentConfig,
+  type AgentConfigFile,
+  type AgentDefaultsConfigFile,
+  type CompactionConfigFile,
+  type SandboxConfigFile,
+  type AgentToolsConfigFile,
+  type ProviderConfigFile,
+  type SpawningConfigFile,
+} from "../../config.js";
+import {
+  ensureExplicitWorkspaceDir,
+  ensureWorkspaceDir,
+  resolveExplicitWorkspacePath,
+} from "../../paths.js";
+import { ensureWorkspaceStructure } from "../../agent/workspace.js";
+import { seedWorkspaceTemplates } from "../workspace/templates.js";
+import { reconcileWorkspaceState } from "../workspace/state.js";
+import { createAgentTools } from "../core/tools.js";
+import { LazyTransportContext } from "../tools/react.js";
+import { ProcessRegistry } from "../tools/exec.js";
+import { SandboxExecutor, SandboxFs, shouldSandbox } from "../sandbox/index.js";
+import type { DefaultSessionStore } from "../core/session-store.js";
 
 const log = createLogger("agents:runtime");
 
@@ -57,6 +81,28 @@ export interface AgentRuntimeOptions {
   claude?: ClaudeRunnerOptions;
   /** Plugin hooks to fire around tool execution. */
   hooks?: HookRegistry;
+}
+
+export interface AddAgentOptions {
+  agentFile: AgentConfigFile;
+  agentDefaults?: AgentDefaultsConfigFile;
+  provider?: ProviderConfigFile;
+  globalTools?: AgentToolsConfigFile;
+  compaction?: CompactionConfigFile;
+  sandbox?: SandboxConfigFile;
+  spawning?: SpawningConfigFile;
+  sandboxExecutor?: SandboxExecutor;
+  transportContext?: LazyTransportContext;
+  spawnableAgentIds?: string[];
+  sessionStore: DefaultSessionStore;
+}
+
+export interface AddAgentResult {
+  agent: RegisteredAgent;
+  workspacePath: string;
+  tools: AgentTool[];
+  processRegistry: ProcessRegistry;
+  transportContext?: LazyTransportContext;
 }
 
 /** Caller-fixable input error. Tool handlers should surface as `[error]`
@@ -250,6 +296,85 @@ export class AgentRuntime {
   unregisterAgent(id: string): boolean {
     this.piToolRegistries.delete(id);
     return this.agents.delete(id);
+  }
+
+  /**
+   * One-stop agent setup: prepares workspace, builds tools, registers in
+   * the runtime.
+   */
+  async addAgent(opts: AddAgentOptions): Promise<AddAgentResult> {
+    const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox,
+      spawning, sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
+
+    const agentConfig = toAgentConfig(agentFile, agentDefaults, provider, globalTools, compaction, sandbox);
+
+    let workspacePath: string;
+    if (agentFile.workspace) {
+      const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
+      workspacePath = await ensureExplicitWorkspaceDir(resolved);
+      log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
+    } else {
+      workspacePath = await ensureWorkspaceDir(agentConfig.id);
+    }
+
+    const seededFiles = await seedWorkspaceTemplates(workspacePath);
+    if (seededFiles.length > 0) {
+      log.info(`Seeded ${seededFiles.length} template file(s) for ${agentConfig.id}: ${seededFiles.join(", ")}`);
+    }
+
+    await reconcileWorkspaceState(workspacePath);
+    await ensureWorkspaceStructure(workspacePath);
+
+    const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
+    const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
+
+    const spawningEnabled = spawning?.enabled === true && !isSandboxed;
+    if (spawning?.enabled === true && isSandboxed) {
+      log.warn(`Spawning tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
+    }
+
+    const processRegistry = new ProcessRegistry();
+    const tools: AgentTool[] = createAgentTools({
+      workspacePath,
+      settings: agentConfig.toolSettings,
+      sendMessageEnabled: spawningEnabled,
+      codingMode: agentConfig.codingMode,
+      fsImpl,
+      parentAgentId: agentConfig.id,
+      agentId: agentConfig.id,
+      processRegistry,
+      sandboxExecutor,
+      agentSandboxConfig: agentConfig.sandbox,
+      allowedWorkspaces: agentFile.allowedWorkspaces ?? [],
+      transportContext,
+      runtime: this,
+      ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
+    });
+
+    if (this.hooks) {
+      await this.hooks.emit("before_agent_start", { agentId: agentConfig.id });
+    }
+
+    const agent: RegisteredAgent = {
+      id: agentConfig.id,
+      config: agentConfig,
+      sessionStore,
+      capabilities: { tools: tools.map((t) => t.name), canBeAddressed: true },
+      ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
+    };
+
+    this.setAgentTools(agent.id, tools);
+    this.registerAgent(agent);
+
+    log.info(`Added agent: ${agent.id} (workspace: ${workspacePath}, tools: ${tools.length})`);
+
+    return {
+      agent,
+      workspacePath,
+      processRegistry,
+      tools,
+      ...(transportContext ? { transportContext } : {}),
+    };
   }
 
   /**

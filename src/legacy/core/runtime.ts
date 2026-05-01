@@ -15,7 +15,6 @@ import { LazyTransportContext } from "../tools/react.js";
 import { ProcessRegistry } from "../tools/exec.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { ContainerManager, SandboxExecutor } from "../sandbox/index.js";
-import { initializeAgent } from "../../agent/init.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
@@ -124,11 +123,10 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     .map((a) => a.id);
 
   // Create agents
-  for (let agentIdx = 0; agentIdx < config.agents.length; agentIdx++) {
-    const agentFile = config.agents[agentIdx];
+  for (const agentFile of config.agents) {
     const transportCtx = new LazyTransportContext();
-
-    const result = await initializeAgent({
+    const sessionStore = await sessionStoreManager.getOrCreate(agentFile.id);
+    const result = await agentRuntime.addAgent({
       agentFile,
       agentDefaults: config.agentDefaults,
       provider: config.provider,
@@ -138,30 +136,14 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       spawning: config.spawning,
       sandboxExecutor,
       transportContext: transportCtx,
-      hooks: pluginManager.getHooks(),
       spawnableAgentIds,
-      runtime: agentRuntime,
-    });
-
-    agentWorkspaces.set(result.agentConfig.id, result.workspacePath);
-    transportContexts.set(result.agentConfig.id, transportCtx);
-    processRegistries.set(result.agentConfig.id, result.processRegistry);
-    toolRegistries.set(result.agentConfig.id, result.tools);
-
-    // Eagerly init the store so the registered agent owns a live ref.
-    const sessionStore = await sessionStoreManager.getOrCreate(result.agentConfig.id);
-    // Register per-agent tool entries on the runtime so the pi runner can fetch them.
-    agentRuntime.setAgentTools(result.agentConfig.id, result.tools);
-    agentRuntime.registerAgent({
-      id: result.agentConfig.id,
-      config: result.agentConfig,
       sessionStore,
-      capabilities: {
-        tools: result.tools.map((t) => t.name),
-        canBeAddressed: true,
-      },
-      ...(result.agentConfig.sessionPolicy ? { sessionPolicy: result.agentConfig.sessionPolicy } : {}),
     });
+
+    agentWorkspaces.set(result.agent.id, result.workspacePath);
+    transportContexts.set(result.agent.id, transportCtx);
+    processRegistries.set(result.agent.id, result.processRegistry);
+    toolRegistries.set(result.agent.id, result.tools);
   }
 
   // Discover and load plugins (PluginManager created earlier for hooks)
