@@ -17,11 +17,11 @@ import { createReactTools, type LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID, SendMessageValidationError } from "../agents/runtime.js";
-import type { SendMessageRequest } from "../agents/types.js";
+import type { SendMessageRequest } from "../../agent/runtime/types.js";
 import { getMessageContext } from "../transport/context.js";
 import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
 import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
-import { failureTracker } from "../agents/failure-tracker.js";
+import { failureTracker } from "../../agent/runtime/failure-tracker.js";
 import { getAgentEndMeta } from "../../agent/runners/pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
 

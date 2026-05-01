@@ -4,7 +4,7 @@
 import type { SessionStore } from "../../sessions/types.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import { createLogger } from "../../logging/logger.js";
-import { failureTracker } from "../agents/failure-tracker.js";
+import { failureTracker } from "../../agent/runtime/failure-tracker.js";
 
 const log = createLogger("commands");
 

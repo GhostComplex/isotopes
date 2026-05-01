@@ -18,7 +18,7 @@ import { buildSpawnAgentSystemPrompt } from "../../../legacy/agents/builtin/syst
 import type {
   RegisteredAgent,
   SendMessageRequest,
-} from "../../../legacy/agents/types.js";
+} from "../../runtime/types.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { deriveAgentSystemPrompt } from "../../system-prompt.js";
 

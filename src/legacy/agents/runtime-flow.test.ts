@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { AgentRuntime, SendMessageValidationError } from "./runtime.js";
-import type { RegisteredAgent } from "./types.js";
+import type { RegisteredAgent } from "../../agent/runtime/types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 

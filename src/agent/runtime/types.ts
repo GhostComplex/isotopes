@@ -1,8 +1,8 @@
 // Public types for the unified AgentRuntime.
 
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import type { AgentConfig } from "../../agent/types.js";
-import type { DefaultSessionStore } from "../core/session-store.js";
+import type { AgentConfig } from "../types.js";
+import type { DefaultSessionStore } from "../../legacy/core/session-store.js";
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
 

@@ -11,7 +11,7 @@ import type {
   RegisteredAgent,
   SendMessageRequest,
   RunInfo,
-} from "./types.js";
+} from "../../agent/runtime/types.js";
 import type { ProviderConfig } from "../../agent/types.js";
 import type { HookRegistry } from "../plugins/hooks.js";
 import { PiRunner } from "../../agent/runners/pi/runner.js";
