@@ -19,7 +19,6 @@ export class ClaudeRunner {
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {
     const { request, runId, abort } = opts;
-    if (!request.cwd) throw new RunValidationError("claude: cwd is required");
 
     const sdkAbort = new AbortController();
     const onAbort = () => sdkAbort.abort();
