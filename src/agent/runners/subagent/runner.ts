@@ -1,8 +1,8 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { RunRequest } from "../types.js";
-import { RunValidationError } from "../types.js";
-import type { PiRunner } from "./pi/runner.js";
-import { createLeafPiSession, type PiSessionDeps } from "./pi/session-factory.js";
+import type { RunRequest } from "../../types.js";
+import { RunValidationError } from "../../types.js";
+import type { PiRunner } from "../pi/runner.js";
+import { createLeafPiSession, type PiSessionDeps } from "../pi/session-factory.js";
 
 export interface SubagentRunnerOptions {
   piRunner: PiRunner;

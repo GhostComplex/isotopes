@@ -15,7 +15,7 @@ import type { ProviderConfig } from "./types.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import { PiRunner } from "./runners/pi/runner.js";
 import { createRootPiSession } from "./runners/pi/session-factory.js";
-import { SubagentRunner } from "./runners/subagent.js";
+import { SubagentRunner } from "./runners/subagent/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
