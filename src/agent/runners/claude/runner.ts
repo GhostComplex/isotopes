@@ -4,8 +4,7 @@
 import { query, type Options, type PermissionMode, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createLogger } from "../../../logging/logger.js";
 import {
-  DEFAULT_SPAWN_ALLOWED_TOOLS,
-  type SettingSource,
+  type ResolvedClaudeSpawningConfig,
   type SpawnPermissionMode,
 } from "../../../config.js";
 import type { RunRequest } from "../../types.js";
@@ -16,15 +15,10 @@ import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-a
 
 const log = createLogger("agents:runner:claude");
 
-export interface ClaudeRunnerOptions {
-  permissionMode?: SpawnPermissionMode;
-  allowedTools?: string[];
-  settingSources?: SettingSource[];
-  /** Default model when the request doesn't pin one. */
-  model?: string;
-  /** Default per-call max turns. */
-  maxTurns?: number;
-}
+/** Pulls the live claude config slice from wherever the host stores it.
+ * Returning undefined means "claude is not configured" — runner refuses
+ * to run. The getter is invoked per-call so config can change at runtime. */
+export type ClaudeConfigGetter = () => ResolvedClaudeSpawningConfig | undefined;
 
 function translatePermissionMode(
   mode: SpawnPermissionMode,
@@ -41,23 +35,12 @@ function translatePermissionMode(
 }
 
 export class ClaudeRunner {
-  private readonly permissionMode: SpawnPermissionMode;
-  private readonly allowedTools: string[];
-  private readonly settingSources: SettingSource[];
-  private readonly defaultModel?: string;
-  private readonly defaultMaxTurns?: number;
+  constructor(private readonly getConfig: ClaudeConfigGetter) {}
 
-  constructor(options?: ClaudeRunnerOptions) {
-    this.permissionMode = options?.permissionMode ?? "allowlist";
-    this.allowedTools = options?.allowedTools ?? [...DEFAULT_SPAWN_ALLOWED_TOOLS];
-    this.settingSources = options?.settingSources ?? ["user"];
-    if (options?.model) this.defaultModel = options.model;
-    if (options?.maxTurns !== undefined) this.defaultMaxTurns = options.maxTurns;
-  }
-
-  /** `request.cwd` is required; Claude CLI manages its own session state
-   * so conversational continuity across calls is out of scope. */
   validateRequest(req: RunRequest): void {
+    if (!this.getConfig()) {
+      throw new RunValidationError("claude: not configured");
+    }
     if (!req.cwd) throw new RunValidationError("claude: cwd is required");
   }
 
@@ -67,25 +50,23 @@ export class ClaudeRunner {
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {
     const { request, runId, abort } = opts;
-    if (!request.cwd) {
-      throw new Error("ClaudeRunner.run: request.cwd is required");
-    }
+    const cfg = this.getConfig();
+    if (!cfg) throw new RunValidationError("claude: not configured");
+    if (!request.cwd) throw new RunValidationError("claude: cwd is required");
 
     const sdkAbort = new AbortController();
     const onAbort = () => sdkAbort.abort();
     abort.addEventListener("abort", onAbort, { once: true });
     if (abort.aborted) sdkAbort.abort();
 
-    const translated = translatePermissionMode(this.permissionMode, this.allowedTools);
+    const translated = translatePermissionMode(cfg.permissionMode, cfg.allowedTools);
     const sdkOptions: Options = {
       cwd: request.cwd,
       abortController: sdkAbort,
       permissionMode: translated.permissionMode,
-      settingSources: this.settingSources,
+      settingSources: cfg.settingSources ?? ["user"],
     };
     if (translated.allowedTools) sdkOptions.allowedTools = translated.allowedTools;
-    if (this.defaultModel) sdkOptions.model = this.defaultModel;
-    if (this.defaultMaxTurns !== undefined) sdkOptions.maxTurns = this.defaultMaxTurns;
 
     log.info("ClaudeRunner.run", { runId, cwd: request.cwd });
 

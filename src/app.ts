@@ -25,6 +25,7 @@ import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
 import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
 import { AgentRuntime } from "./agent/runtime.js";
+import { ClaudeRunner } from "./agent/runners/claude/runner.js";
 import { consumeRootRun } from "./legacy/core/agent-run.js";
 
 const log = createLogger("runtime");
@@ -60,22 +61,18 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   for (const a of config.agents) {
     if (a.allowedWorkspaces?.length) allowedRoots.push(...a.allowedWorkspaces);
   }
-  const claudeOpts = config.spawning?.enabled
-    ? (() => {
-        const s = resolveSpawningConfig(config.spawning!);
-        return {
-          permissionMode: s.claude.permissionMode,
-          ...(s.claude.allowedTools ? { allowedTools: s.claude.allowedTools } : {}),
-          ...(s.claude.settingSources ? { settingSources: s.claude.settingSources } : {}),
-        };
-      })()
-    : undefined;
   const agentRuntime = new AgentRuntime({
     allowedWorkspaceRoots: allowedRoots,
     globalProvider: config.provider,
     hooks: pluginManager.getHooks(),
-    ...(claudeOpts ? { claude: claudeOpts } : {}),
   });
+
+  // Bundled non-default runners — registered here so runtime stays
+  // unaware of their config schema.
+  if (config.spawning?.enabled) {
+    const resolved = resolveSpawningConfig(config.spawning);
+    agentRuntime.registerRunner("claude", new ClaudeRunner(() => resolved.claude));
+  }
 
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
