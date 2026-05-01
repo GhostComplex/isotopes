@@ -15,6 +15,3 @@ export {
   RESERVED_AGENT_IDS,
 } from "./runtime.js";
 export type { AgentRuntimeOptions } from "./runtime.js";
-
-export { FailureTracker, failureTracker } from "../../agent/runtime/failure-tracker.js";
-export type { BlockCheck } from "../../agent/runtime/failure-tracker.js";

@@ -21,7 +21,6 @@ import type { SendMessageRequest } from "../../agent/runtime/types.js";
 import { getMessageContext } from "../transport/context.js";
 import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
 import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
-import { failureTracker } from "../../agent/runtime/failure-tracker.js";
 import { getAgentEndMeta } from "../../agent/runners/pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
 
@@ -154,16 +153,6 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
       const ctx = getMessageContext();
-      const callerSessionId = ctx?.parentSessionId;
-
-      if (callerSessionId) {
-        const block = failureTracker.shouldBlock(callerSessionId, content);
-        if (block.blocked) {
-          log.warn("send_message blocked", { from: parentAgentId, to, reason: block.reason });
-          return textResult(`[blocked] ${block.reason}`);
-        }
-        failureTracker.recordSpawn(callerSessionId);
-      }
 
       let cancelReason: string | undefined;
       const req: SendMessageRequest = {
@@ -213,12 +202,10 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
           return textResult(`[error] ${msg}`);
         }
         if (sink) await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
-        if (callerSessionId) failureTracker.recordFailure(callerSessionId, content, msg);
         return textResult(`[send_message failed] ${msg}`);
       }
 
       if (cancelReason === "user") {
-        if (callerSessionId) failureTracker.recordCancel(callerSessionId, content);
         if (sink) await sink.finish({ success: false, error: "cancelled by user", durationMs: Date.now() - startedAt });
         return textResult(`[send_message cancelled by user — do not retry this same request]`);
       }
@@ -232,7 +219,6 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         });
       }
       if (errorMessage) {
-        if (callerSessionId) failureTracker.recordFailure(callerSessionId, content, errorMessage);
         return textResult(`[send_message failed] ${errorMessage}`);
       }
       const trimmed = assistantText.trim();
