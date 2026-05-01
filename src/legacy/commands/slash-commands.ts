@@ -2,7 +2,7 @@
 // Parses and dispatches /status, /reload, /model commands from chat messages.
 
 import type { SessionStore } from "../../sessions/types.js";
-import type { AgentRuntime } from "../agents/runtime.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("commands");

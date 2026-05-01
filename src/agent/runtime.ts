@@ -5,19 +5,19 @@ import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
 import * as nodeFs from "node:fs/promises";
-import { createLogger } from "../../logging/logger.js";
+import { createLogger } from "../logging/logger.js";
 import type {
   AgentSessionKind,
   AgentSessionPolicy,
   RegisteredAgent,
   SendMessageRequest,
   RunInfo,
-} from "../../agent/runtime/types.js";
-import type { ProviderConfig } from "../../agent/types.js";
-import type { HookRegistry } from "../plugins/hooks.js";
-import { PiRunner } from "../../agent/runners/pi/runner.js";
-import { createRootPiSession, createLeafPiSession } from "../../agent/runners/pi/session-factory.js";
-import { ClaudeRunner, type ClaudeRunnerOptions } from "../../agent/runners/claude/runner.js";
+} from "./types.js";
+import type { ProviderConfig } from "./types.js";
+import type { HookRegistry } from "../legacy/plugins/hooks.js";
+import { PiRunner } from "./runners/pi/runner.js";
+import { createRootPiSession, createLeafPiSession } from "./runners/pi/session-factory.js";
+import { ClaudeRunner, type ClaudeRunnerOptions } from "./runners/claude/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -33,20 +33,20 @@ import {
   type AgentToolsConfigFile,
   type ProviderConfigFile,
   type SpawningConfigFile,
-} from "../../config.js";
+} from "../config.js";
 import {
   ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
   resolveExplicitWorkspacePath,
-} from "../../paths.js";
-import { ensureWorkspaceStructure } from "../../agent/workspace.js";
-import { seedWorkspaceTemplates } from "../workspace/templates.js";
-import { reconcileWorkspaceState } from "../workspace/state.js";
-import { createAgentTools } from "../core/tools.js";
-import { LazyTransportContext } from "../tools/react.js";
-import { ProcessRegistry } from "../tools/exec.js";
-import { SandboxExecutor, SandboxFs, shouldSandbox } from "../sandbox/index.js";
-import type { DefaultSessionStore } from "../core/session-store.js";
+} from "../paths.js";
+import { ensureWorkspaceStructure } from "./workspace.js";
+import { seedWorkspaceTemplates } from "../legacy/workspace/templates.js";
+import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
+import { createAgentTools } from "../legacy/core/tools.js";
+import { LazyTransportContext } from "../legacy/tools/react.js";
+import { ProcessRegistry } from "../legacy/tools/exec.js";
+import { SandboxExecutor, SandboxFs, shouldSandbox } from "../legacy/sandbox/index.js";
+import type { DefaultSessionStore } from "../legacy/core/session-store.js";
 
 const log = createLogger("agents:runtime");
 

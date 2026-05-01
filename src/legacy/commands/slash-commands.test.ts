@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SlashCommandHandler, type CommandContext } from "./slash-commands.js";
 import { createMockSessionStore } from "../core/test-helpers.js";
-import type { AgentRuntime } from "../agents/runtime.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
 import type { AgentConfig } from "../../agent/types.js";
 
 interface FakeAgent {

@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { AgentRuntime, RESERVED_AGENT_IDS, LEAF_CONCURRENCY_CAP } from "./runtime.js";
-import type { RegisteredAgent } from "../../agent/runtime/types.js";
+import type { RegisteredAgent } from "./types.js";
 
 function fakeAgent(id: string): RegisteredAgent {
   return {

@@ -5,7 +5,7 @@ import http from "node:http";
 import { ApiServer } from "./server.js";
 import { CronScheduler } from "../../automation/cron-job.js";
 import { SessionStoreManager } from "../../core/session-store-manager.js";
-import { AgentRuntime } from "../../agents/runtime.js";
+import { AgentRuntime } from "../../../agent/runtime.js";
 import { createMockSessionStore } from "../../core/test-helpers.js";
 
 const MOCK_AGENT_ID = "mock";

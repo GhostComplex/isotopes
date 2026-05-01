@@ -143,7 +143,7 @@ export interface DiscordTransportConfig {
    * legacy `runAgentLoop` (kept temporarily for unit tests that pre-date the
    * runtime; will be removed once those tests are migrated).
    */
-  agentRuntime?: import("../../agents/runtime.js").AgentRuntime;
+  agentRuntime?: import("../../../agent/runtime.js").AgentRuntime;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   /** Default agent ID to use when no @mention routing */

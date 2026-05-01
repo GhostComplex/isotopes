@@ -7,26 +7,26 @@ import {
   resolveSpawningConfig,
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
-} from "../../config.js";
+} from "./config.js";
 import path from "node:path";
-import { SessionStoreManager } from "./session-store-manager.js";
-import { createLogger } from "../../logging/logger.js";
-import { LazyTransportContext } from "../tools/react.js";
-import { ProcessRegistry } from "../tools/exec.js";
+import { SessionStoreManager } from "./legacy/core/session-store-manager.js";
+import { createLogger } from "./logging/logger.js";
+import { LazyTransportContext } from "./legacy/tools/react.js";
+import { ProcessRegistry } from "./legacy/tools/exec.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { ContainerManager, SandboxExecutor } from "../sandbox/index.js";
+import { ContainerManager, SandboxExecutor } from "./legacy/sandbox/index.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
-} from "../../paths.js";
+} from "./paths.js";
 
-import { ApiServer } from "../plugins/http/server.js";
-import { CronScheduler } from "../automation/cron-job.js";
-import { HeartbeatManager } from "../automation/heartbeat.js";
-import { PluginManager } from "../plugins/manager.js";
-import { getIsotopesHome } from "../../paths.js";
-import { AgentRuntime } from "../agents/runtime.js";
-import { consumeRootRun } from "./agent-run.js";
+import { ApiServer } from "./legacy/plugins/http/server.js";
+import { CronScheduler } from "./legacy/automation/cron-job.js";
+import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
+import { PluginManager } from "./legacy/plugins/manager.js";
+import { getIsotopesHome } from "./paths.js";
+import { AgentRuntime } from "./agent/runtime.js";
+import { consumeRootRun } from "./legacy/core/agent-run.js";
 
 const log = createLogger("runtime");
 
@@ -285,7 +285,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   // Plugin transports
-  const pluginTransports: import("../../gateway/types.js").Transport[] = [];
+  const pluginTransports: import("./gateway/types.js").Transport[] = [];
   for (const [id, factory] of pluginManager.getTransportFactories()) {
     try {
       const transport = await factory({
