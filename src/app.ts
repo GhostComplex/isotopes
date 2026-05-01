@@ -70,7 +70,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const userAgents = config.agents.filter((a) => !builtinIds.has(a.id));
 
   const subagentOverride = config.agents.find((a) => a.id === "subagent");
-  if (subagentOverride?.enabled !== false && agentRuntime.hasPiRunner()) {
+  if (subagentOverride?.enabled !== false && agentRuntime.hasPiInfra()) {
     agentRuntime.registerBuiltinAgent({
       id: "subagent",
       tools: createReadOnlyTools(process.cwd()) as AgentTool[],

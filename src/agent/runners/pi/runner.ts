@@ -1,31 +1,17 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
-export class PiRunner {
-  async *run(opts: {
-    session: AgentSession;
-    content: string;
-    abort: AbortSignal;
-  }): AsyncGenerator<AgentEvent> {
-    const { session, content, abort } = opts;
-
-    const onAbort = () => session.abort();
-    abort.addEventListener("abort", onAbort, { once: true });
-    if (abort.aborted) session.abort();
-
-    try {
-      yield* streamSessionAgentEvents(session, content);
-    } finally {
-      abort.removeEventListener("abort", onAbort);
-      session.dispose();
-    }
-  }
-}
-
-async function* streamSessionAgentEvents(
+/** Drive a pi-coding-agent session for one prompt and yield its events.
+ * Caller owns session lifecycle (creation + dispose). */
+export async function* streamPiSession(
   session: AgentSession,
   content: string,
-): AsyncGenerator<AgentEvent, void, void> {
+  abort: AbortSignal,
+): AsyncGenerator<AgentEvent> {
+  const onAbort = () => session.abort();
+  abort.addEventListener("abort", onAbort, { once: true });
+  if (abort.aborted) session.abort();
+
   type QueueItem = AgentEvent | { type: "__error__"; error: unknown };
   const queue: QueueItem[] = [];
   let resolve: (() => void) | null = null;
@@ -55,5 +41,6 @@ async function* streamSessionAgentEvents(
     }
   } finally {
     unsub();
+    abort.removeEventListener("abort", onAbort);
   }
 }

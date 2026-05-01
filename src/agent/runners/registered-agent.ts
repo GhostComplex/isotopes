@@ -1,12 +1,11 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { randomUUID } from "node:crypto";
 import type { RegisteredAgent, RunRequest } from "../types.js";
-import type { PiRunner } from "./pi/runner.js";
+import { streamPiSession } from "./pi/runner.js";
 import { createRootPiSession, type PiSessionDeps } from "./pi/session-factory.js";
 
 export interface RegisteredAgentRunnerOptions {
   agent: RegisteredAgent;
-  piRunner: PiRunner;
   piDeps: PiSessionDeps;
 }
 
@@ -48,7 +47,7 @@ export class RegisteredAgentRunner {
       ...(request.cwd ? { cwd: request.cwd } : {}),
     });
     try {
-      yield* this.opts.piRunner.run({ session, content: request.content, abort });
+      yield* streamPiSession(session, request.content, abort);
     } finally {
       session.dispose();
     }

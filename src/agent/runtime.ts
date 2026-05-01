@@ -11,7 +11,6 @@ import type {
 import { RunValidationError } from "./types.js";
 import type { ProviderConfig } from "./types.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
-import { PiRunner } from "./runners/pi/runner.js";
 import type { PiSessionDeps } from "./runners/pi/session-factory.js";
 import { RegisteredAgentRunner } from "./runners/registered-agent.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
@@ -160,7 +159,6 @@ interface Entry {
 
 export class AgentRuntime {
   private allowedRoots: string[];
-  private piRunner?: PiRunner;
   private entries = new Map<string, Entry>();
   private runs = new Map<string, RunHandle>();
   private toolRegistries = new Map<string, Map<string, AgentTool>>();
@@ -183,12 +181,13 @@ export class AgentRuntime {
       this.piGlobalProvider = opts.globalProvider;
       this.piAuthStorage = AuthStorage.inMemory(creds);
       this.piModelRegistry = ModelRegistry.create(this.piAuthStorage);
-      this.piRunner = new PiRunner();
     }
   }
 
-  hasPiRunner(): boolean {
-    return this.piRunner !== undefined;
+  /** True when LLM provider infra is configured (required for pi-backed agents
+   * including the built-in subagent helper). */
+  hasPiInfra(): boolean {
+    return this.piGlobalProvider !== undefined;
   }
 
   /** Register a synthetic agent (no workspace, in-memory session) backed by
@@ -207,24 +206,13 @@ export class AgentRuntime {
       ...(opts.sessionPolicy ? { sessionPolicy: opts.sessionPolicy } : {}),
     };
     this.setAgentTools(opts.id, opts.tools);
-    const runner = new RegisteredAgentRunner({
-      agent,
-      piRunner: this.requirePiRunner(),
-      piDeps: this.piDeps(),
-    });
+    const runner = new RegisteredAgentRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(opts.id, runner, { spawnable: opts.spawnable ?? true, agent });
-  }
-
-  private requirePiRunner(): PiRunner {
-    if (!this.piRunner) {
-      throw new Error("pi runner not configured (pass globalProvider to AgentRuntime)");
-    }
-    return this.piRunner;
   }
 
   private piDeps(): PiSessionDeps {
     if (!this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
-      throw new Error("pi runner not configured (pass globalProvider to AgentRuntime)");
+      throw new Error("pi infra not configured (pass globalProvider to AgentRuntime)");
     }
     return {
       globalProvider: this.piGlobalProvider,
@@ -396,11 +384,7 @@ export class AgentRuntime {
     };
 
     this.setAgentTools(agent.id, tools);
-    const runner = new RegisteredAgentRunner({
-      agent,
-      piRunner: this.requirePiRunner(),
-      piDeps: this.piDeps(),
-    });
+    const runner = new RegisteredAgentRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(agent.id, runner, {
       spawnable: agentConfig.spawnable === true,
       agent,
