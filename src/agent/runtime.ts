@@ -1,6 +1,3 @@
-// AgentRuntime: single execution verb (sendMessage), agent registry,
-// push-model steer, run lifecycle.
-
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -50,9 +47,6 @@ import { SandboxExecutor, SandboxFs, shouldSandbox } from "../legacy/sandbox/ind
 import type { DefaultSessionStore } from "../legacy/core/session-store.js";
 
 const log = createLogger("agents:runtime");
-
-// "subagent" is conventionally the built-in helper runner, auto-registered
-// when pi infrastructure is available. Inlined as a string elsewhere.
 
 export const LEAF_CONCURRENCY_CAP = 5;
 export const LEAF_DEFAULT_TIMEOUT_SEC = 900;
@@ -404,8 +398,7 @@ export class AgentRuntime {
     return [...this.agents.values()];
   }
 
-  /** `to`: a registered runner name (leaf) | a registered agent id (root).
-   * Yields SDK AgentEvent. */
+  /** `to`: a registered runner name (leaf) | a registered agent id (root). */
   async *run(req: RunRequest): AsyncGenerator<AgentEvent> {
     const leafRunner = this.leafRunners.get(req.to);
     const isLeaf = leafRunner !== undefined;

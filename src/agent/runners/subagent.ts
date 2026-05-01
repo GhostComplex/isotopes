@@ -1,7 +1,3 @@
-// Built-in leaf runner: ephemeral helper that uses the pi runner with
-// caller-provided tools. Registered automatically when the runtime has
-// pi infrastructure.
-
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { RunRequest } from "../types.js";
 import { RunValidationError } from "../types.js";

@@ -1,6 +1,3 @@
-// Claude CLI leaf runner. Translates SDKMessage → AgentEvent so callers
-// see one event taxonomy.
-
 import { query, type Options, type PermissionMode, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createLogger } from "../../../logging/logger.js";
 import {
@@ -15,9 +12,6 @@ import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-a
 
 const log = createLogger("agents:runner:claude");
 
-/** Pulls the live claude config slice from wherever the host stores it.
- * Returning undefined means "claude is not configured" — runner refuses
- * to run. The getter is invoked per-call so config can change at runtime. */
 export type ClaudeConfigGetter = () => ResolvedClaudeSpawningConfig | undefined;
 
 function translatePermissionMode(
@@ -108,9 +102,6 @@ export class ClaudeRunner {
   }
 }
 
-// ---------------------------------------------------------------------------
-// SDKMessage → intermediate translator (cheap step before AgentEvent shaping)
-// ---------------------------------------------------------------------------
 
 type Translated =
   | { kind: "text"; text: string }
@@ -172,9 +163,8 @@ function translateSdkMessage(msg: SDKMessage, toolNameById: Map<string, string>)
   return out;
 }
 
-// AgentEvent constructors. SDK-internal fields (partial, usage, provider,
-// model) are type-asserted because consumeRootRun + send_message tool only
-// read delta / messages — keeping the rest constructed would just lie.
+// SDK-internal fields (partial, usage, provider, model) are type-asserted
+// because consumeRootRun + send_message tool only read delta / messages.
 
 function buildAssistantMessage(text: string, extras: { stopReason?: string; errorMessage?: string } = {}): AgentMessage {
   return {

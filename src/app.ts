@@ -1,6 +1,3 @@
-// Application bootstrapper: orchestrates AgentRuntime, transports, cron,
-// heartbeat, API server, and graceful shutdown.
-
 import {
   toAgentConfig,
   resolveSpawningConfig,
@@ -67,8 +64,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     hooks: pluginManager.getHooks(),
   });
 
-  // Bundled non-default runners — registered here so runtime stays
-  // unaware of their config schema.
   if (config.spawning?.enabled) {
     const resolved = resolveSpawningConfig(config.spawning);
     agentRuntime.registerRunner("claude", new ClaudeRunner(() => resolved.claude));

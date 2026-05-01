@@ -1,13 +1,7 @@
-// src/agent/types.ts — Agent-layer types (config, runtime contract)
-
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { SandboxConfig } from "../legacy/sandbox/config.js";
 import type { AgentToolSettings } from "../tools/types.js";
 import type { DefaultSessionStore } from "../legacy/core/session-store.js";
-
-// ---------------------------------------------------------------------------
-// Provider config (single global provider; agents pick model only)
-// ---------------------------------------------------------------------------
 
 export type ProviderType = "anthropic" | "openai" | "github-copilot";
 
@@ -19,46 +13,32 @@ export interface ProviderConfig {
   headers?: Record<string, string>;
 }
 
-// ---------------------------------------------------------------------------
-// Agent config
-// ---------------------------------------------------------------------------
-
-/** Complete configuration needed to create an agent instance. */
 export interface AgentConfig {
   id: string;
-  /** Explicit workspace directory (#214). When omitted, defaults to ${ISOTOPES_HOME}/workspace-${id}. */
+  /** Defaults to ${ISOTOPES_HOME}/workspace-${id} (#214). */
   workspace?: string;
   toolSettings?: AgentToolSettings;
   model?: string;
-  /** Context compaction configuration */
   compaction?: CompactionConfig;
-  /** Sandbox execution configuration */
   sandbox?: SandboxConfig;
   /** Heartbeat interval in milliseconds (0 or undefined = disabled) */
   heartbeatInterval?: number;
-  /** Custom heartbeat prompt (overrides the default) */
+  /** Overrides the default heartbeat prompt. */
   heartbeatPrompt?: string;
   /**
-   * Coding mode controls how the agent handles code modifications:
-   * - 'send-message': Force all code changes through send_message (removes write/edit)
-   * - 'direct': Agent can modify files directly (default behavior)
-   * - 'auto': Agent chooses based on task complexity (default)
+   * - 'send-message': force code changes through send_message (removes write/edit)
+   * - 'direct': agent edits files directly
+   * - 'auto' (default): agent picks based on task
    */
   codingMode?: "send-message" | "direct" | "auto";
-  /** Whether this agent can be spawned by other agents. Default: false */
+  /** Default false. */
   spawnable?: boolean;
-  /** "parent-reuse" (default) | "always-new". See AgentSessionPolicy. */
+  /** Defaults to "parent-reuse". */
   sessionPolicy?: "always-new" | "parent-reuse";
 }
 
-// ---------------------------------------------------------------------------
-// Compaction
-// ---------------------------------------------------------------------------
-
-/** Compaction mode for managing context window size */
 export type CompactionMode = 'off' | 'safeguard' | 'aggressive';
 
-/** Configuration for context compaction */
 export interface CompactionConfig {
   mode: CompactionMode;
   contextWindow?: number;
@@ -68,9 +48,6 @@ export interface CompactionConfig {
   reserveTokens?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Runtime contract — RegisteredAgent / RunRequest / RunInfo
-// ---------------------------------------------------------------------------
 
 export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
 
