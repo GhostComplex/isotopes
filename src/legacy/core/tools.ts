@@ -95,7 +95,7 @@ export interface SendMessageToolOptions {
 export function createSendMessageTool(options: SendMessageToolOptions): AgentTool {
   const { runtime, parentAgentId, workspacePath, parentTools, allowedAgents, spawnableAgentIds } = options;
   const computedTargets: string[] = [];
-  for (const name of runtime.runnerNames()) {
+  for (const name of runtime.spawnableRunnerNames()) {
     // subagent needs caller-provided tools; skip if caller has none.
     if (name === "subagent" && !parentTools) continue;
     computedTargets.push(name);

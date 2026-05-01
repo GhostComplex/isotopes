@@ -1,6 +1,7 @@
 import {
   toAgentConfig,
   resolveSandboxConfigFromFile,
+  type AgentConfigFile,
   type IsotopesConfigFile,
 } from "./config.js";
 import path from "node:path";
@@ -20,7 +21,7 @@ import { CronScheduler } from "./legacy/automation/cron-job.js";
 import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
 import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
-import { AgentRuntime } from "./agent/runtime.js";
+import { AgentRuntime, BUILTIN_RUNNER_IDS } from "./agent/runtime.js";
 import { ClaudeRunner } from "./agent/runners/claude/runner.js";
 import { consumeRootRun } from "./legacy/core/agent-run.js";
 
@@ -63,8 +64,38 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     hooks: pluginManager.getHooks(),
   });
 
-  if (config.claude?.enabled !== false) {
-    agentRuntime.registerRunner("claude", new ClaudeRunner());
+  // Split out built-in runner entries (claude / subagent) — they live in
+  // agents[] alongside user agents but follow a different registration
+  // path (they don't have workspace / tools / sessions of their own).
+  const builtinOverrides = new Map<string, { enabled: boolean; spawnable: boolean }>();
+  const userAgents: AgentConfigFile[] = [];
+  for (const a of config.agents) {
+    if (BUILTIN_RUNNER_IDS.has(a.id)) {
+      builtinOverrides.set(a.id, {
+        enabled: a.enabled ?? true,
+        spawnable: a.spawnable ?? true,
+      });
+    } else {
+      userAgents.push(a);
+    }
+  }
+  // Implicit defaults for built-ins not listed in yaml.
+  for (const id of BUILTIN_RUNNER_IDS) {
+    if (!builtinOverrides.has(id)) builtinOverrides.set(id, { enabled: true, spawnable: true });
+  }
+  if (builtinOverrides.get("subagent")?.enabled && agentRuntime.hasPiRunner()) {
+    agentRuntime.registerRunner(
+      "subagent",
+      agentRuntime.createSubagentRunner(),
+      { spawnable: builtinOverrides.get("subagent")!.spawnable },
+    );
+  }
+  if (builtinOverrides.get("claude")?.enabled) {
+    agentRuntime.registerRunner(
+      "claude",
+      new ClaudeRunner(),
+      { spawnable: builtinOverrides.get("claude")!.spawnable },
+    );
   }
 
   const agentWorkspaces = new Map<string, string>();
@@ -95,11 +126,12 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Sandbox executor initialized (image: ${dockerConfig.image})`);
   }
 
-  const spawnableAgentIds = config.agents
+  const spawnableAgentIds = userAgents
     .filter((a) => a.spawnable === true)
     .map((a) => a.id);
 
-  for (const agentFile of config.agents) {
+  for (const agentFile of userAgents) {
+    if (agentFile.enabled === false) continue;
     const transportCtx = new LazyTransportContext();
     const sessionStore = await sessionStoreManager.getOrCreate(agentFile.id);
     const result = await agentRuntime.addAgent({
@@ -152,7 +184,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   const heartbeatManagers: HeartbeatManager[] = [];
-  for (const agentFile of config.agents) {
+  for (const agentFile of userAgents) {
     if (!agentFile.heartbeat?.enabled) continue;
     const workspacePath = agentWorkspaces.get(agentFile.id);
     if (!workspacePath) continue;
@@ -183,7 +215,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   const cronScheduler = new CronScheduler();
 
-  for (const agentFile of config.agents) {
+  for (const agentFile of userAgents) {
     if (!agentFile.cron?.tasks?.length) continue;
     for (const task of agentFile.cron.tasks) {
       cronScheduler.register({

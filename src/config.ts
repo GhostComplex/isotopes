@@ -73,6 +73,8 @@ export interface CronTaskConfigFile {
 /** Agent configuration in config file */
 export interface AgentConfigFile {
   id: string;
+  /** When false, the agent is skipped at boot. Default true. */
+  enabled?: boolean;
   /**
    * Explicit workspace directory for this agent (#214).
    * Absolute paths are used as-is; relative paths resolve from ISOTOPES_HOME.
@@ -182,11 +184,6 @@ export interface ContextConfigFile {
   };
 }
 
-/** Toggle the bundled Claude CLI runner. Default: enabled. */
-export interface ClaudeConfigFile {
-  enabled?: boolean;
-}
-
 /** Cron job configuration in config file */
 export interface CronJobConfigFile {
   name: string;
@@ -215,8 +212,6 @@ export interface IsotopesConfigFileRaw {
   sandbox?: SandboxConfigFile;
   /** Session management (TTL, cleanup) */
   session?: SessionConfig;
-  /** Toggle the bundled Claude CLI runner. Default: enabled. */
-  claude?: ClaudeConfigFile;
   /** Agent definitions — array form or object with defaults + list */
   agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[] };
   /** Agent ↔ Channel bindings */

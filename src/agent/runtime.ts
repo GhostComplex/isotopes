@@ -139,10 +139,17 @@ interface LeafRunner {
   run(opts: { request: RunRequest; runId: string; abort: AbortSignal }): AsyncGenerator<AgentEvent>;
 }
 
+interface LeafRunnerEntry {
+  runner: LeafRunner;
+  spawnable: boolean;
+}
+
+export const BUILTIN_RUNNER_IDS: ReadonlySet<string> = new Set(["subagent", "claude"]);
+
 export class AgentRuntime {
   private allowedRoots: string[];
   private piRunner?: PiRunner;
-  private leafRunners = new Map<string, LeafRunner>();
+  private leafRunners = new Map<string, LeafRunnerEntry>();
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
   private events = new SessionEventBus();
@@ -166,16 +173,6 @@ export class AgentRuntime {
       this.piAuthStorage = AuthStorage.inMemory(creds);
       this.piModelRegistry = ModelRegistry.create(this.piAuthStorage);
       this.piRunner = new PiRunner();
-      this.registerRunner("subagent", new SubagentRunner({
-        piRunner: this.piRunner,
-        piDeps: {
-          globalProvider: this.piGlobalProvider,
-          authStorage: this.piAuthStorage,
-          modelRegistry: this.piModelRegistry,
-          getAgentTools: (id) => this.getAgentTools(id),
-          ...(this.hooks ? { hooks: this.hooks } : {}),
-        },
-      }));
     }
   }
 
@@ -183,25 +180,52 @@ export class AgentRuntime {
     return this.piRunner !== undefined;
   }
 
+  /** Builds the in-process pi-leaf SubagentRunner using runtime's pi infra.
+   * Throws if pi is not configured. Caller registers it via registerRunner. */
+  createSubagentRunner(): SubagentRunner {
+    if (!this.piRunner || !this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
+      throw new Error("createSubagentRunner: pi runner not configured (pass globalProvider to AgentRuntime)");
+    }
+    return new SubagentRunner({
+      piRunner: this.piRunner,
+      piDeps: {
+        globalProvider: this.piGlobalProvider,
+        authStorage: this.piAuthStorage,
+        modelRegistry: this.piModelRegistry,
+        getAgentTools: (id) => this.getAgentTools(id),
+        ...(this.hooks ? { hooks: this.hooks } : {}),
+      },
+    });
+  }
+
   /** Register a leaf runner under a magic name (e.g. "claude"). The name
    * becomes reserved — registerAgent will reject it. */
-  registerRunner(name: string, runner: LeafRunner): void {
+  registerRunner(name: string, runner: LeafRunner, opts: { spawnable?: boolean } = {}): void {
     if (this.agents.has(name)) {
       throw new Error(`Cannot register runner — name in use as agent: ${name}`);
     }
     if (this.leafRunners.has(name)) {
       throw new Error(`Runner already registered: ${name}`);
     }
-    this.leafRunners.set(name, runner);
+    this.leafRunners.set(name, { runner, spawnable: opts.spawnable ?? true });
   }
 
   hasRunner(name: string): boolean {
     return this.leafRunners.has(name);
   }
 
-  /** Names of all registered leaf runners (for tools advertising targets). */
+  /** Names of registered leaf runners. */
   runnerNames(): string[] {
     return Array.from(this.leafRunners.keys());
+  }
+
+  /** Names of leaf runners advertised to other agents in send_message. */
+  spawnableRunnerNames(): string[] {
+    const out: string[] = [];
+    for (const [name, entry] of this.leafRunners) {
+      if (entry.spawnable) out.push(name);
+    }
+    return out;
   }
 
 
@@ -398,7 +422,8 @@ export class AgentRuntime {
 
   /** `to`: a registered runner name (leaf) | a registered agent id (root). */
   async *run(req: RunRequest): AsyncGenerator<AgentEvent> {
-    const leafRunner = this.leafRunners.get(req.to);
+    const leafEntry = this.leafRunners.get(req.to);
+    const leafRunner = leafEntry?.runner;
     const isLeaf = leafRunner !== undefined;
     const agent = isLeaf ? undefined : this.agents.get(req.to);
     if (!isLeaf && !agent) throw new RunValidationError(`Unknown agent: ${req.to}`);

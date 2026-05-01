@@ -159,10 +159,13 @@ channels:
 #         id: "1480866703880487034"
 
 # =============================================================================
-# Claude CLI runner — toggles the bundled `claude` leaf runner. Default: on.
+# Built-in runners (claude / subagent) live alongside user agents — both are
+# enabled and spawnable by default. Override only if you need to opt out.
 # =============================================================================
-# claude:
-#   enabled: false                # opt out
+# - id: claude
+#   enabled: false
+# - id: subagent
+#   spawnable: false
 
 # =============================================================================
 # CRON — channel-level scheduled jobs (per-agent cron lives under agents.<id>.cron)

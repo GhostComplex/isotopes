@@ -28,17 +28,16 @@ function renderProvider(answers: InitAnswers): string {
 const TOOLS = `tools: {}
 `;
 
-const AGENTS = `agents:
+function renderAgents(answers: InitAnswers): string {
+  const main = `agents:
   - id: main
 `;
-
-const CLAUDE_DISABLED = `claude:
-  enabled: false
+  if (answers.claude === "skip") {
+    return `${main}  - id: claude
+    enabled: false
 `;
-
-function renderClaude(answers: InitAnswers): string {
-  // Default is enabled, so omit the block when "enabled".
-  return answers.claude === "skip" ? CLAUDE_DISABLED : "";
+  }
+  return main;
 }
 
 function renderChannels(answers: InitAnswers): string {
@@ -95,7 +94,7 @@ ${dmBlock}${groupBlock}        threadBindings:
 }
 
 export function renderConfig(answers: InitAnswers): string {
-  return [HEADER, renderProvider(answers), TOOLS, AGENTS, renderClaude(answers), renderChannels(answers)]
+  return [HEADER, renderProvider(answers), TOOLS, renderAgents(answers), renderChannels(answers)]
     .filter((s) => s.length > 0)
     .join("\n");
 }
