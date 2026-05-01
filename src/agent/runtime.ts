@@ -14,7 +14,6 @@ import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import { PiRunner } from "./runners/pi/runner.js";
 import type { PiSessionDeps } from "./runners/pi/session-factory.js";
 import { RegisteredAgentRunner } from "./runners/registered-agent.js";
-import { SubagentRunner } from "./runners/subagent/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -192,10 +191,28 @@ export class AgentRuntime {
     return this.piRunner !== undefined;
   }
 
-  /** Build the in-process pi-leaf SubagentRunner using runtime's pi infra.
-   * Throws if pi is not configured. Caller registers it via registerRunner. */
-  createSubagentRunner(): SubagentRunner {
-    return new SubagentRunner({ piRunner: this.requirePiRunner(), piDeps: this.piDeps() });
+  /** Register a synthetic agent (no workspace, in-memory session) backed by
+   * a fixed tool set. Used by app.ts for built-in helpers like "subagent". */
+  registerBuiltinAgent(opts: {
+    id: string;
+    tools: AgentTool[];
+    spawnable?: boolean;
+    sessionPolicy?: "always-new" | "parent-reuse";
+  }): void {
+    const config: import("./types.js").AgentConfig = { id: opts.id };
+    const agent: RegisteredAgent = {
+      id: opts.id,
+      config,
+      capabilities: { tools: opts.tools.map((t) => t.name), canBeAddressed: true },
+      ...(opts.sessionPolicy ? { sessionPolicy: opts.sessionPolicy } : {}),
+    };
+    this.setAgentTools(opts.id, opts.tools);
+    const runner = new RegisteredAgentRunner({
+      agent,
+      piRunner: this.requirePiRunner(),
+      piDeps: this.piDeps(),
+    });
+    this.registerRunner(opts.id, runner, { spawnable: opts.spawnable ?? true, agent });
   }
 
   private requirePiRunner(): PiRunner {

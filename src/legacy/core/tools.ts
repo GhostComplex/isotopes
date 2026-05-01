@@ -87,19 +87,13 @@ export interface SendMessageToolOptions {
   runtime: AgentRuntime;
   parentAgentId: string;
   workspacePath: string;
-  parentTools?: AgentTool[];
   allowedAgents?: string[];
   spawnableAgentIds?: string[];
 }
 
 export function createSendMessageTool(options: SendMessageToolOptions): AgentTool {
-  const { runtime, parentAgentId, workspacePath, parentTools, allowedAgents, spawnableAgentIds } = options;
-  const computedTargets: string[] = [];
-  for (const name of runtime.spawnableRunnerNames()) {
-    // subagent needs caller-provided tools; skip if caller has none.
-    if (name === "subagent" && !parentTools) continue;
-    computedTargets.push(name);
-  }
+  const { runtime, parentAgentId, workspacePath, allowedAgents, spawnableAgentIds } = options;
+  const computedTargets: string[] = [...runtime.spawnableRunnerNames()];
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
       if (id !== parentAgentId && !computedTargets.includes(id)) computedTargets.push(id);
@@ -149,7 +143,6 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
       if (!targets.includes(to)) {
         return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`);
       }
-      const isSubagent = to === "subagent";
       const isRunner = runtime.hasRunner(to);
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)
@@ -164,7 +157,6 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         from: { agentId: parentAgentId },
         ...(conversation_id ? { sessionId: conversation_id } : {}),
         ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
-        ...(isSubagent && parentTools ? { leafContext: { tools: parentTools } } : {}),
         onCancel: (reason) => { cancelReason = reason; },
       };
       log.info("send_message", { from: parentAgentId, to, cwd, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
@@ -298,8 +290,6 @@ export interface CreateWorkspaceToolsOptions {
   sendMessageEnabled?: boolean;
   fsImpl?: FsImpl;
   parentAgentId?: string;
-  /** Caller's tool list — filtered + lent to leaf sessions. */
-  parentTools?: AgentTool[];
   /** Unified runtime — required when sendMessageEnabled is true. */
   runtime?: AgentRuntime;
   /** Pre-computed list of registered agent ids the LLM can address. */
@@ -313,7 +303,6 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
     sendMessageEnabled = false,
     fsImpl = nodeFs,
     parentAgentId,
-    parentTools,
     runtime,
     spawnableAgentIds,
   } = options;
@@ -327,7 +316,6 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
       runtime,
       parentAgentId,
       workspacePath,
-      ...(parentTools ? { parentTools } : {}),
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
     }));
   }
@@ -338,7 +326,7 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   return tools;
 }
 
-export interface CreateAgentToolsOptions extends Omit<CreateWorkspaceToolsOptions, "parentTools"> {
+export interface CreateAgentToolsOptions extends CreateWorkspaceToolsOptions {
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
   sandboxExecutor?: SandboxExecutor;
@@ -349,10 +337,8 @@ export interface CreateAgentToolsOptions extends Omit<CreateWorkspaceToolsOption
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   const tools: AgentTool[] = [];
-  // send_message captures `tools` by reference; later push() calls populate it
-  // before the tool is invoked.
   tools.push(...applyToolPolicy(
-    createWorkspaceToolsWithGuards({ ...opts, parentTools: tools }),
+    createWorkspaceToolsWithGuards(opts),
     opts.settings,
   ));
   if (opts.transportContext) {

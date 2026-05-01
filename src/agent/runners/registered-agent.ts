@@ -10,22 +10,28 @@ export interface RegisteredAgentRunnerOptions {
   piDeps: PiSessionDeps;
 }
 
-/** Runner for registered isotopes agents. Uses store-backed session
- * (resumable across calls; parent-reuse / always-new policy). */
+/** Runner for registered isotopes agents (and built-in synthetic ones).
+ * Uses store-backed session when agent.sessionStore is present; falls
+ * back to ephemeral in-memory session otherwise. */
 export class RegisteredAgentRunner {
   constructor(private opts: RegisteredAgentRunnerOptions) {}
 
-  async resolveSessionId(req: RunRequest): Promise<string> {
+  async resolveSessionId(req: RunRequest, runId: string): Promise<string> {
     if (req.sessionId) return req.sessionId;
+    const store = this.opts.agent.sessionStore;
+    if (!store) {
+      // No persistent store → ephemeral synthetic id per call.
+      return `${this.opts.agent.id}:${runId}`;
+    }
     const policy = this.opts.agent.sessionPolicy ?? "parent-reuse";
     const fromId = req.from?.agentId ?? "transport";
     const suffix = policy === "parent-reuse" && req.parentSessionId
       ? req.parentSessionId
       : randomUUID();
     const sessionKey = `peer:${fromId}:${suffix}`;
-    const existing = await this.opts.agent.sessionStore.findByKey(sessionKey);
+    const existing = await store.findByKey(sessionKey);
     if (existing) return existing.id;
-    const created = await this.opts.agent.sessionStore.create(this.opts.agent.id, { key: sessionKey });
+    const created = await store.create(this.opts.agent.id, { key: sessionKey });
     return created.id;
   }
 

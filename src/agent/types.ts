@@ -1,4 +1,3 @@
-import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { SandboxConfig } from "../legacy/sandbox/config.js";
 import type { AgentToolSettings } from "../tools/types.js";
 import type { DefaultSessionStore } from "../legacy/core/session-store.js";
@@ -48,7 +47,10 @@ export type AgentSessionPolicy = "always-new" | "parent-reuse";
 export interface RegisteredAgent {
   readonly id: string;
   config: AgentConfig;
-  readonly sessionStore: DefaultSessionStore;
+  /** Persistent session storage. Absent → runner uses an in-memory
+   * SessionManager; combined with sessionPolicy="always-new", the agent
+   * has no continuity across calls. */
+  readonly sessionStore?: DefaultSessionStore;
   readonly capabilities: {
     tools: string[];
     canBeAddressed: boolean;
@@ -65,11 +67,6 @@ export interface RunRequest {
   parentSessionId?: string;
   cwd?: string;
   timeoutSeconds?: number;
-  leafContext?: {
-    /** Parent's filtered tools (parent's tools minus denied for spawn). */
-    tools: AgentTool[];
-    extraSystemPrompt?: string;
-  };
   /** Fires once after run is registered, before any AgentEvent yields.
    * Use to wire side-channel UI (Discord thread, audit) by runId. */
   onRunStart?: (runId: string) => void;

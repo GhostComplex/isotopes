@@ -10,28 +10,15 @@ import {
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
 
 import type { AgentConfig, ProviderConfig } from "../../types.js";
 import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
-import { buildSpawnAgentSystemPrompt } from "../../../legacy/agents/builtin/system-prompt.js";
-import type {
-  RegisteredAgent,
-  RunRequest,
-} from "../../types.js";
+import type { RegisteredAgent } from "../../types.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { deriveAgentSystemPrompt } from "../../system-prompt.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
-
-const LEAF_DENIED_TOOLS: ReadonlySet<string> = new Set([
-  "write",
-  "edit",
-  "web_fetch",
-  "web_search",
-  "send_message",
-]);
 
 function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<Api> {
   const provider = globalProvider.type as Parameters<typeof getModel>[0];
@@ -147,7 +134,9 @@ export async function createRootPiSession(
   opts: { agent: RegisteredAgent; sessionId: string; cwd?: string },
 ): Promise<AgentSession> {
   const { agent, sessionId, cwd } = opts;
-  const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
+  const sessionManager = agent.sessionStore
+    ? await agent.sessionStore.getSessionManager(sessionId)
+    : SessionManager.inMemory();
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
   return createPiAgentSession({
@@ -159,30 +148,6 @@ export async function createRootPiSession(
     sessionManager,
     systemPrompt: await deriveAgentSystemPrompt(agent.config),
     ...(cwd ? { cwd } : {}),
-    ...(deps.hooks ? { hooks: deps.hooks } : {}),
-  });
-}
-
-export async function createLeafPiSession(
-  deps: PiSessionDeps,
-  opts: { leafContext: NonNullable<RunRequest["leafContext"]>; runId: string; content: string },
-): Promise<AgentSession> {
-  const { leafContext, runId, content } = opts;
-  const ephAgentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;
-  const filteredTools = leafContext.tools.filter((t) => !LEAF_DENIED_TOOLS.has(t.name));
-  const systemPrompt = buildSpawnAgentSystemPrompt({
-    task: content,
-    ...(leafContext.extraSystemPrompt ? { extraSystemPrompt: leafContext.extraSystemPrompt } : {}),
-  });
-
-  return createPiAgentSession({
-    globalProvider: deps.globalProvider,
-    authStorage: deps.authStorage,
-    modelRegistry: deps.modelRegistry,
-    agentConfig: { id: ephAgentId, compaction: { mode: "off" } },
-    tools: filteredTools,
-    sessionManager: SessionManager.inMemory(),
-    systemPrompt,
     ...(deps.hooks ? { hooks: deps.hooks } : {}),
   });
 }

@@ -92,12 +92,11 @@ describe("AgentRuntime.run — validation", () => {
   let rt: AgentRuntime;
   beforeEach(() => {
     rt = new AgentRuntime();
-    // Stub the subagent runner so tests don't need full pi infra.
-    rt.registerRunner("subagent", {
-      resolveSessionId: (_req, runId) => `subagent:${runId}`,
+    // Stub a runner that rejects sessionId (mimics subagent / claude).
+    rt.registerRunner("ephemeral-only", {
+      resolveSessionId: (_req, runId) => `ephemeral:${runId}`,
       validateRequest(req) {
-        if (!req.leafContext) throw new RunValidationError("subagent: leafContext is required");
-        if (req.sessionId) throw new RunValidationError("subagent: sessions are not resumable; omit sessionId");
+        if (req.sessionId) throw new RunValidationError("ephemeral-only: sessions are not resumable; omit sessionId");
       },
       async *run() {},
     });
@@ -107,16 +106,11 @@ describe("AgentRuntime.run — validation", () => {
     await expect(consume(rt.run({ to: "ghost", content: "hi" }))).rejects.toThrow(/Unknown agent/);
   });
 
-  it("rejects subagent target without leafContext", async () => {
-    await expect(consume(rt.run({ to: "subagent", content: "hi" }))).rejects.toThrow(/leafContext is required/);
-  });
-
   it("rejects sessionId on a runner that doesn't support resume", async () => {
     await expect(consume(rt.run({
-      to: "subagent",
+      to: "ephemeral-only",
       content: "hi",
       sessionId: "x",
-      leafContext: {} as never,
     }))).rejects.toThrow(/sessions are not resumable/);
   });
 
@@ -125,10 +119,6 @@ describe("AgentRuntime.run — validation", () => {
     await expect(gen.next()).rejects.toBeInstanceOf(RunValidationError);
   });
 
-  it("subagent without leafContext throws RunValidationError", async () => {
-    const gen = rt.run({ to: "subagent", content: "hi" });
-    await expect(gen.next()).rejects.toBeInstanceOf(RunValidationError);
-  });
 });
 
 describe("AgentRuntime.run — depth + sibling limits", () => {
