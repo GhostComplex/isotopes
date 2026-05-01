@@ -65,8 +65,7 @@ interface RunHandle {
 export interface AgentRuntimeOptions {
   /** Roots within which `cwd` arguments must resolve. Empty = no restriction. */
   allowedWorkspaceRoots?: string[];
-  /** Single global LLM provider — required for the pi runner (and the
-   * built-in subagent runner that wraps it). */
+  /** Default LLM provider. */
   globalProvider?: ProviderConfig;
   /** Plugin hooks to fire around tool execution. */
   hooks?: HookRegistry;
