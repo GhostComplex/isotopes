@@ -2,7 +2,7 @@
 // Parses and dispatches /status, /reload, /model commands from chat messages.
 
 import type { SessionStore } from "../../sessions/types.js";
-import type { AgentRuntime } from "../agents/runtime.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("commands");
@@ -28,8 +28,6 @@ export interface CommandContext {
   sessionId?: string;
   /** Current session key (if available) */
   sessionKey?: string;
-  /** Runtime — used by /compact to drive SDK compaction. */
-  runtime?: AgentRuntime;
 }
 
 /** Result of executing a slash command */
@@ -113,8 +111,6 @@ export class SlashCommandHandler {
       case "new":
       case "reset":
         return this.handleNew(ctx);
-      case "compact":
-        return this.handleCompact(ctx, parsed.args);
       default:
         return { response: `Unknown command: /${parsed.name}` };
     }
@@ -196,38 +192,10 @@ export class SlashCommandHandler {
       return { response: `❌ Reset failed: ${msg}` };
     }
   }
-
-  private async handleCompact(ctx: CommandContext, _instructions: string): Promise<CommandResult> {
-    if (!ctx.sessionId) {
-      return { response: "ℹ️ No active session to compact." };
-    }
-
-    if (!ctx.runtime) {
-      return { response: "❌ No runtime available for compaction." };
-    }
-
-    try {
-      const messagesBefore = (await ctx.sessionStore.getMessages(ctx.sessionId)).length;
-
-      const compacted = await ctx.runtime.compactSession(ctx.agentId, ctx.sessionId);
-      if (!compacted) {
-        return { response: "ℹ️ Nothing to compact (context too small)." };
-      }
-
-      const messagesAfter = (await ctx.sessionStore.getMessages(ctx.sessionId)).length;
-
-      return {
-        response: `✅ Compacted: ${messagesBefore} → ${messagesAfter} messages`,
-      };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { response: `❌ Compaction failed: ${msg}` };
-    }
-  }
 }
 
 /** Set of known command names for isCommand() filtering */
-const KNOWN_COMMANDS = new Set(["status", "reload", "model", "new", "reset", "compact"]);
+const KNOWN_COMMANDS = new Set(["status", "reload", "model", "new", "reset"]);
 
 /** Format milliseconds as a human-readable uptime string */
 function formatUptime(ms: number): string {

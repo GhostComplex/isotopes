@@ -9,7 +9,7 @@ import fs from "node:fs/promises";
 import { VERSION } from "./version.js";
 import { loadConfig } from "../config.js";
 import { logger } from "../logging/logger.js";
-import { createRuntime } from "./core/runtime.js";
+import { createRuntime } from "../app.js";
 import {
   getConfigPath,
   getIsotopesHome,

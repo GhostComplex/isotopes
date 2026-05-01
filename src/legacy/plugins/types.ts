@@ -8,7 +8,7 @@ import type { Transport } from "../../gateway/types.js";
 import type { SessionStoreManager } from "../core/session-store-manager.js";
 import type { IsotopesConfigFile } from "../../config.js";
 import type { LazyTransportContext } from "../tools/react.js";
-import type { AgentRuntime } from "../agents/runtime.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
 
 // ---------------------------------------------------------------------------
 // Plugin manifest (isotopes.plugin.json)
@@ -84,7 +84,7 @@ export interface TransportFactoryContext {
   transportContexts: Map<string, LazyTransportContext>;
   isotopesHome: string;
   getSessionStoreForAgent: (agentId: string) => SessionStore | undefined;
-  /** Unified runtime — for transports that drive agents via sendMessage. */
+  /** Unified runtime — for transports that drive agents via runtime.run. */
   agentRuntime: AgentRuntime;
 }
 

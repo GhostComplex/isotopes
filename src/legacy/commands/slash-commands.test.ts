@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SlashCommandHandler, type CommandContext } from "./slash-commands.js";
 import { createMockSessionStore } from "../core/test-helpers.js";
-import type { AgentRuntime } from "../agents/runtime.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
 import type { AgentConfig } from "../../agent/types.js";
 
 interface FakeAgent {
@@ -13,14 +13,12 @@ interface FakeAgent {
 
 function fakeAgentRuntime(opts?: {
   agents?: FakeAgent[];
-  compactSession?: (agentId: string, sessionId: string) => Promise<boolean>;
 }): AgentRuntime {
   const agents = new Map<string, FakeAgent>();
   for (const a of opts?.agents ?? []) agents.set(a.id, a);
   return {
     getAgent: (id: string) => agents.get(id),
     listAgents: () => Array.from(agents.values()),
-    ...(opts?.compactSession ? { compactSession: opts.compactSession } : {}),
   } as unknown as AgentRuntime;
 }
 
@@ -282,67 +280,6 @@ describe("SlashCommandHandler", () => {
 
       expect(result.response).toContain("Reset failed");
       expect(result.response).toContain("Session not found");
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // /compact
-  // -----------------------------------------------------------------------
-
-  describe("/compact", () => {
-    function fakeRuntime(compactSession: (agentId: string, sessionId: string) => Promise<boolean>) {
-      return { compactSession } as unknown as NonNullable<CommandContext["runtime"]>;
-    }
-
-    it("triggers compaction and returns stats when runtime succeeds", async () => {
-      const sessionStore = createMockSessionStore();
-      (sessionStore.getMessages as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce([1, 2, 3, 4, 5])
-        .mockResolvedValueOnce([1, 2]);
-
-      const ctx = createContext({
-        sessionStore,
-        sessionId: "session-compact",
-        runtime: fakeRuntime(async () => true),
-      });
-
-      const result = await handler.execute("/compact", ctx);
-      expect(result.response).toContain("Compacted: 5 → 2 messages");
-    });
-
-    it("returns info when runtime reports nothing to compact", async () => {
-      const ctx = createContext({
-        sessionId: "session-small",
-        runtime: fakeRuntime(async () => false),
-      });
-
-      const result = await handler.execute("/compact", ctx);
-      expect(result.response).toContain("Nothing to compact");
-    });
-
-    it("returns info when no active session", async () => {
-      const ctx = createContext({ sessionId: undefined });
-      const result = await handler.execute("/compact", ctx);
-      expect(result.response).toContain("No active session to compact");
-    });
-
-    it("returns error when no runtime configured", async () => {
-      const ctx = createContext({ sessionId: "session-no-runtime" });
-      const result = await handler.execute("/compact", ctx);
-      expect(result.response).toContain("No runtime available");
-    });
-
-    it("reports error when compaction throws", async () => {
-      const ctx = createContext({
-        sessionId: "session-error",
-        runtime: fakeRuntime(async () => {
-          throw new Error("Model API error");
-        }),
-      });
-
-      const result = await handler.execute("/compact", ctx);
-      expect(result.response).toContain("Compaction failed");
-      expect(result.response).toContain("Model API error");
     });
   });
 

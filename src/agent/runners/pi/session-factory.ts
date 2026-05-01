@@ -17,8 +17,8 @@ import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
 import { buildSpawnAgentSystemPrompt } from "../../../legacy/agents/builtin/system-prompt.js";
 import type {
   RegisteredAgent,
-  SendMessageRequest,
-} from "../../runtime/types.js";
+  RunRequest,
+} from "../../types.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { deriveAgentSystemPrompt } from "../../system-prompt.js";
 
@@ -165,7 +165,7 @@ export async function createRootPiSession(
 
 export async function createLeafPiSession(
   deps: PiSessionDeps,
-  opts: { leafContext: NonNullable<SendMessageRequest["leafContext"]>; runId: string; content: string },
+  opts: { leafContext: NonNullable<RunRequest["leafContext"]>; runId: string; content: string },
 ): Promise<AgentSession> {
   const { leafContext, runId, content } = opts;
   const ephAgentId = `agent-builtin-${runId}-${randomUUID().slice(0, 8)}`;

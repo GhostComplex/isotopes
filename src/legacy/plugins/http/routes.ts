@@ -6,7 +6,7 @@ import type { CronScheduler } from "../../automation/cron-job.js";
 import type { ConfigReloader } from "../../workspace/config-reloader.js";
 import type { SessionStoreManager } from "../../core/session-store-manager.js";
 import type { HookRegistry } from "../../plugins/hooks.js";
-import type { AgentRuntime } from "../../agents/runtime.js";
+import type { AgentRuntime } from "../../../agent/runtime.js";
 import type { ApiRequest } from "./middleware.js";
 
 // ---------------------------------------------------------------------------

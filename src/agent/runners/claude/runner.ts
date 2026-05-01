@@ -1,86 +1,37 @@
-// Claude CLI leaf runner. Translates SDKMessage → AgentEvent so callers
-// see one event taxonomy.
-
-import { query, type Options, type PermissionMode, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createLogger } from "../../../logging/logger.js";
-import {
-  DEFAULT_SPAWN_ALLOWED_TOOLS,
-  type SettingSource,
-  type SpawnPermissionMode,
-} from "../../../config.js";
-import type { SendMessageRequest } from "../../runtime/types.js";
+import type { RunRequest } from "../../types.js";
+import { RunValidationError } from "../../types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-ai";
 
 const log = createLogger("agents:runner:claude");
 
-export interface ClaudeRunnerOptions {
-  permissionMode?: SpawnPermissionMode;
-  allowedTools?: string[];
-  settingSources?: SettingSource[];
-  /** Default model when the request doesn't pin one. */
-  model?: string;
-  /** Default per-call max turns. */
-  maxTurns?: number;
-}
-
-function translatePermissionMode(
-  mode: SpawnPermissionMode,
-  allowedTools: string[],
-): { permissionMode: PermissionMode; allowedTools?: string[] } {
-  switch (mode) {
-    case "skip":
-      return { permissionMode: "bypassPermissions" };
-    case "allowlist":
-      return { permissionMode: "default", allowedTools };
-    case "default":
-      return { permissionMode: "default" };
-  }
-}
-
 export class ClaudeRunner {
-  private readonly permissionMode: SpawnPermissionMode;
-  private readonly allowedTools: string[];
-  private readonly settingSources: SettingSource[];
-  private readonly defaultModel?: string;
-  private readonly defaultMaxTurns?: number;
-
-  constructor(options?: ClaudeRunnerOptions) {
-    this.permissionMode = options?.permissionMode ?? "allowlist";
-    this.allowedTools = options?.allowedTools ?? [...DEFAULT_SPAWN_ALLOWED_TOOLS];
-    this.settingSources = options?.settingSources ?? ["user"];
-    if (options?.model) this.defaultModel = options.model;
-    if (options?.maxTurns !== undefined) this.defaultMaxTurns = options.maxTurns;
+  validateRequest(req: RunRequest): void {
+    if (!req.cwd) throw new RunValidationError("claude: cwd is required");
   }
 
-  /** `request.cwd` is required; Claude CLI manages its own session state
-   * so conversational continuity across calls is out of scope. */
   async *run(opts: {
-    request: SendMessageRequest;
+    request: RunRequest;
     runId: string;
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {
     const { request, runId, abort } = opts;
-    if (!request.cwd) {
-      throw new Error("ClaudeRunner.run: request.cwd is required");
-    }
+    if (!request.cwd) throw new RunValidationError("claude: cwd is required");
 
     const sdkAbort = new AbortController();
     const onAbort = () => sdkAbort.abort();
     abort.addEventListener("abort", onAbort, { once: true });
     if (abort.aborted) sdkAbort.abort();
 
-    const translated = translatePermissionMode(this.permissionMode, this.allowedTools);
     const sdkOptions: Options = {
       cwd: request.cwd,
       abortController: sdkAbort,
-      permissionMode: translated.permissionMode,
-      settingSources: this.settingSources,
+      permissionMode: "bypassPermissions",
+      settingSources: ["user"],
     };
-    if (translated.allowedTools) sdkOptions.allowedTools = translated.allowedTools;
-    if (this.defaultModel) sdkOptions.model = this.defaultModel;
-    if (this.defaultMaxTurns !== undefined) sdkOptions.maxTurns = this.defaultMaxTurns;
 
     log.info("ClaudeRunner.run", { runId, cwd: request.cwd });
 
@@ -122,9 +73,6 @@ export class ClaudeRunner {
   }
 }
 
-// ---------------------------------------------------------------------------
-// SDKMessage → intermediate translator (cheap step before AgentEvent shaping)
-// ---------------------------------------------------------------------------
 
 type Translated =
   | { kind: "text"; text: string }
@@ -186,9 +134,8 @@ function translateSdkMessage(msg: SDKMessage, toolNameById: Map<string, string>)
   return out;
 }
 
-// AgentEvent constructors. SDK-internal fields (partial, usage, provider,
-// model) are type-asserted because consumeRootRun + send_message tool only
-// read delta / messages — keeping the rest constructed would just lie.
+// SDK-internal fields (partial, usage, provider, model) are type-asserted
+// because consumeRootRun + send_message tool only read delta / messages.
 
 function buildAssistantMessage(text: string, extras: { stopReason?: string; errorMessage?: string } = {}): AgentMessage {
   return {

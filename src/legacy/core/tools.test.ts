@@ -70,16 +70,6 @@ describe("createWorkspaceToolsWithGuards", () => {
     expect(names).toContain("web_fetch");
     expect(names).toContain("web_search");
   });
-
-  it("excludes write/edit when codingMode is send-message", () => {
-    const tools = createWorkspaceToolsWithGuards({
-      workspacePath: "/tmp/ws",
-      codingMode: "send-message",
-    });
-    const names = tools.map((t) => t.name);
-    expect(names).not.toContain("write");
-    expect(names).not.toContain("edit");
-  });
 });
 
 describe("applyToolPolicy", () => {

@@ -1,23 +1,21 @@
-// AgentRuntime: single execution verb (sendMessage), agent registry,
-// push-model steer, run lifecycle.
-
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
 import * as nodeFs from "node:fs/promises";
-import { createLogger } from "../../logging/logger.js";
+import { createLogger } from "../logging/logger.js";
 import type {
   AgentSessionKind,
   AgentSessionPolicy,
   RegisteredAgent,
-  SendMessageRequest,
+  RunRequest,
   RunInfo,
-} from "../../agent/runtime/types.js";
-import type { ProviderConfig } from "../../agent/types.js";
-import type { HookRegistry } from "../plugins/hooks.js";
-import { PiRunner } from "../../agent/runners/pi/runner.js";
-import { createRootPiSession, createLeafPiSession } from "../../agent/runners/pi/session-factory.js";
-import { ClaudeRunner, type ClaudeRunnerOptions } from "../../agent/runners/claude/runner.js";
+} from "./types.js";
+import { RunValidationError } from "./types.js";
+import type { ProviderConfig } from "./types.js";
+import type { HookRegistry } from "../legacy/plugins/hooks.js";
+import { PiRunner } from "./runners/pi/runner.js";
+import { createRootPiSession } from "./runners/pi/session-factory.js";
+import { SubagentRunner } from "./runners/subagent/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -32,30 +30,22 @@ import {
   type SandboxConfigFile,
   type AgentToolsConfigFile,
   type ProviderConfigFile,
-  type SpawningConfigFile,
-} from "../../config.js";
+} from "../config.js";
 import {
   ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
   resolveExplicitWorkspacePath,
-} from "../../paths.js";
-import { ensureWorkspaceStructure } from "../../agent/workspace.js";
-import { seedWorkspaceTemplates } from "../workspace/templates.js";
-import { reconcileWorkspaceState } from "../workspace/state.js";
-import { createAgentTools } from "../core/tools.js";
-import { LazyTransportContext } from "../tools/react.js";
-import { ProcessRegistry } from "../tools/exec.js";
-import { SandboxExecutor, SandboxFs, shouldSandbox } from "../sandbox/index.js";
-import type { DefaultSessionStore } from "../core/session-store.js";
+} from "../paths.js";
+import { ensureWorkspaceStructure } from "./workspace.js";
+import { seedWorkspaceTemplates } from "../legacy/workspace/templates.js";
+import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
+import { createAgentTools } from "../legacy/core/tools.js";
+import { LazyTransportContext } from "../legacy/tools/react.js";
+import { ProcessRegistry } from "../legacy/tools/exec.js";
+import { SandboxExecutor, SandboxFs, shouldSandbox } from "../legacy/sandbox/index.js";
+import type { DefaultSessionStore } from "../legacy/core/session-store.js";
 
 const log = createLogger("agents:runtime");
-
-// Magic ids — reserved (cannot be registered as named agents). See #613
-// for the policy decision on whether `claude` should be conditionally
-// reserved when no ClaudeRunner is configured.
-export const SUBAGENT_AGENT_ID = "subagent";
-export const CLAUDE_AGENT_ID = "claude";
-export const RESERVED_AGENT_IDS: ReadonlySet<string> = new Set([SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID]);
 
 export const LEAF_CONCURRENCY_CAP = 5;
 export const LEAF_DEFAULT_TIMEOUT_SEC = 900;
@@ -75,10 +65,8 @@ interface RunHandle {
 export interface AgentRuntimeOptions {
   /** Roots within which `cwd` arguments must resolve. Empty = no restriction. */
   allowedWorkspaceRoots?: string[];
-  /** Single global LLM provider — required for the pi runner. */
+  /** Default LLM provider. */
   globalProvider?: ProviderConfig;
-  /** When supplied, exposes `to: "claude"` as a leaf target via Claude CLI. */
-  claude?: ClaudeRunnerOptions;
   /** Plugin hooks to fire around tool execution. */
   hooks?: HookRegistry;
 }
@@ -90,7 +78,6 @@ export interface AddAgentOptions {
   globalTools?: AgentToolsConfigFile;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
-  spawning?: SpawningConfigFile;
   sandboxExecutor?: SandboxExecutor;
   transportContext?: LazyTransportContext;
   spawnableAgentIds?: string[];
@@ -105,21 +92,8 @@ export interface AddAgentResult {
   transportContext?: LazyTransportContext;
 }
 
-/** Caller-fixable input error. Tool handlers should surface as `[error]`
- * instead of `[failed]` so the LLM doesn't retry. */
-export class SendMessageValidationError extends Error {
-  readonly isValidationError = true;
-  constructor(message: string) {
-    super(message);
-    this.name = "SendMessageValidationError";
-  }
-}
-
-/**
- * Per-session listener registry: a thin pub/sub keyed by sessionId.
- * Owned by AgentRuntime as a private field; not exported because callers
- * should subscribe via runtime.on / runtime.endSession.
- */
+/** Per-session pub/sub keyed by sessionId. Private to AgentRuntime —
+ * subscribe via runtime.on / endSession. */
 class SessionEventBus {
   private listeners = new Map<string, Set<(event: AgentEvent) => void>>();
 
@@ -159,10 +133,20 @@ class SessionEventBus {
   }
 }
 
+export interface Runner {
+  validateRequest?(req: RunRequest): void;
+  run(opts: { request: RunRequest; runId: string; abort: AbortSignal }): AsyncGenerator<AgentEvent>;
+}
+
+interface RunnerEntry {
+  runner: Runner;
+  spawnable: boolean;
+}
+
 export class AgentRuntime {
   private allowedRoots: string[];
   private piRunner?: PiRunner;
-  private claudeRunner?: ClaudeRunner;
+  private runners = new Map<string, RunnerEntry>();
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
   private events = new SessionEventBus();
@@ -187,21 +171,60 @@ export class AgentRuntime {
       this.piModelRegistry = ModelRegistry.create(this.piAuthStorage);
       this.piRunner = new PiRunner();
     }
-
-    if (opts.claude) this.claudeRunner = new ClaudeRunner(opts.claude);
   }
 
   hasPiRunner(): boolean {
     return this.piRunner !== undefined;
   }
 
-  hasClaudeRunner(): boolean {
-    return this.claudeRunner !== undefined;
+  /** Builds the in-process pi-leaf SubagentRunner using runtime's pi infra.
+   * Throws if pi is not configured. Caller registers it via registerRunner. */
+  createSubagentRunner(): SubagentRunner {
+    if (!this.piRunner || !this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
+      throw new Error("createSubagentRunner: pi runner not configured (pass globalProvider to AgentRuntime)");
+    }
+    return new SubagentRunner({
+      piRunner: this.piRunner,
+      piDeps: {
+        globalProvider: this.piGlobalProvider,
+        authStorage: this.piAuthStorage,
+        modelRegistry: this.piModelRegistry,
+        getAgentTools: (id) => this.getAgentTools(id),
+        ...(this.hooks ? { hooks: this.hooks } : {}),
+      },
+    });
   }
 
-  // ---------------------------------------------------------------------------
-  // Per-agent pi tool registry
-  // ---------------------------------------------------------------------------
+  /** Register a leaf runner under a magic name (e.g. "claude"). The name
+   * becomes reserved — registerAgent will reject it. */
+  registerRunner(name: string, runner: Runner, opts: { spawnable?: boolean } = {}): void {
+    if (this.agents.has(name)) {
+      throw new Error(`Cannot register runner — name in use as agent: ${name}`);
+    }
+    if (this.runners.has(name)) {
+      throw new Error(`Runner already registered: ${name}`);
+    }
+    this.runners.set(name, { runner, spawnable: opts.spawnable ?? true });
+  }
+
+  hasRunner(name: string): boolean {
+    return this.runners.has(name);
+  }
+
+  /** Names of registered leaf runners. */
+  runnerNames(): string[] {
+    return Array.from(this.runners.keys());
+  }
+
+  /** Names of leaf runners advertised to other agents in send_message. */
+  spawnableRunnerNames(): string[] {
+    const out: string[] = [];
+    for (const [name, entry] of this.runners) {
+      if (entry.spawnable) out.push(name);
+    }
+    return out;
+  }
+
 
   setAgentTools(agentId: string, tools: Iterable<AgentTool>): void {
     const map = new Map<string, AgentTool>();
@@ -220,40 +243,27 @@ export class AgentRuntime {
     return map ? Array.from(map.values()) : [];
   }
 
-  // ---------------------------------------------------------------------------
-  // Per-session event subscription — facade over SessionEventBus (defined above)
-  // ---------------------------------------------------------------------------
 
-  /** Subscribe to events for a session. Returns an unsubscribe function. */
   on(sessionId: string, listener: (event: AgentEvent) => void): () => void {
     return this.events.on(sessionId, listener);
   }
 
-  /**
-   * @internal Called by agent-run.ts to fan out events from the runner loop.
-   * External callers should subscribe via on(), not emit. Listener errors are
-   * logged and isolated.
-   */
+  /** @internal Called by run-adapter to fan out events. External callers
+   * should subscribe via on(), not emit. */
   emitSessionEvent(sessionId: string, event: AgentEvent): void {
     this.events.emit(sessionId, event);
   }
 
   /**
-   * Remove all listeners for a session and free the underlying entry.
-   * Intended for the session's owner to call in a `finally` block.
-   *
-   * **Single-owner assumption**: the bus assumes one logical flow per
-   * sessionId at a time. If a session ever has multiple concurrent owners
-   * (e.g. HTTP retry overlap, Discord reconnect mid-run), calling
-   * endSession from one owner will tear down the other's subscription
-   * too. The unsubscribe handle returned by `on()` is per-listener and
-   * always safe; `endSession` is the bigger hammer.
+   * Drop all listeners for a session. Single-owner: if a session ever
+   * has multiple concurrent owners (HTTP retry overlap, Discord
+   * reconnect mid-run), this tears down their subscriptions too. Use
+   * the per-listener unsubscribe handle from on() if that matters.
    */
   endSession(sessionId: string): void {
     this.events.endSession(sessionId);
   }
 
-  /** Number of active listeners for a session (mainly for tests / diagnostics). */
   sessionListenerCount(sessionId: string): number {
     return this.events.listenerCount(sessionId);
   }
@@ -282,11 +292,10 @@ export class AgentRuntime {
     }
   }
 
-  // ---------- Agent registry ----------
 
   registerAgent(agent: RegisteredAgent): void {
-    if (RESERVED_AGENT_IDS.has(agent.id)) {
-      throw new Error(`Cannot register agent with reserved magic id: ${agent.id}`);
+    if (this.runners.has(agent.id)) {
+      throw new Error(`Cannot register agent — name in use by runner: ${agent.id}`);
     }
     if (this.agents.has(agent.id)) throw new Error(`Agent already registered: ${agent.id}`);
     this.agents.set(agent.id, agent);
@@ -298,13 +307,10 @@ export class AgentRuntime {
     return this.agents.delete(id);
   }
 
-  /**
-   * One-stop agent setup: prepares workspace, builds tools, registers in
-   * the runtime.
-   */
+  /** Workspace prep + tool creation + registry insert in one call. */
   async addAgent(opts: AddAgentOptions): Promise<AddAgentResult> {
     const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox,
-      spawning, sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
+      sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
 
     const agentConfig = toAgentConfig(agentFile, agentDefaults, provider, globalTools, compaction, sandbox);
 
@@ -328,17 +334,17 @@ export class AgentRuntime {
     const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
     const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
-    const spawningEnabled = spawning?.enabled === true && !isSandboxed;
-    if (spawning?.enabled === true && isSandboxed) {
-      log.warn(`Spawning tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
+    // send_message tool spawns host-side child runners that bypass docker.
+    const sendMessageEnabled = !isSandboxed;
+    if (isSandboxed) {
+      log.warn(`send_message tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
     }
 
     const processRegistry = new ProcessRegistry();
     const tools: AgentTool[] = createAgentTools({
       workspacePath,
       settings: agentConfig.toolSettings,
-      sendMessageEnabled: spawningEnabled,
-      codingMode: agentConfig.codingMode,
+      sendMessageEnabled,
       fsImpl,
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,
@@ -377,35 +383,6 @@ export class AgentRuntime {
     };
   }
 
-  /**
-   * Run SDK-side compaction on a specific (agent, sessionId). Used by the
-   * `/compact` slash command. Returns true if compaction ran, false if
-   * there wasn't enough context to compact.
-   */
-  async compactSession(agentId: string, sessionId: string): Promise<boolean> {
-    if (!this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
-      throw new Error("compactSession requires pi runner (globalProvider)");
-    }
-    const agent = this.agents.get(agentId);
-    if (!agent) throw new Error(`Unknown agent: ${agentId}`);
-    const session = await createRootPiSession(
-      {
-        globalProvider: this.piGlobalProvider,
-        authStorage: this.piAuthStorage,
-        modelRegistry: this.piModelRegistry,
-        getAgentTools: (id) => this.getAgentTools(id),
-        ...(this.hooks ? { hooks: this.hooks } : {}),
-      },
-      { agent, sessionId },
-    );
-    try {
-      const compacted = await session.compact();
-      return !!compacted;
-    } finally {
-      session.dispose();
-    }
-  }
-
   getAgent(id: string): RegisteredAgent | undefined {
     return this.agents.get(id);
   }
@@ -414,39 +391,30 @@ export class AgentRuntime {
     return [...this.agents.values()];
   }
 
-  /** `to`: "subagent" (leaf, needs leafContext) | "claude" (leaf, needs cwd)
-   * | registered-id (root). Yields SDK AgentEvent. */
-  async *sendMessage(req: SendMessageRequest): AsyncGenerator<AgentEvent> {
-    const isSubagent = req.to === SUBAGENT_AGENT_ID;
-    const isClaude = req.to === CLAUDE_AGENT_ID;
-    const isLeaf = isSubagent || isClaude;
+  /** `to`: a registered runner name (leaf) | a registered agent id (root). */
+  async *run(req: RunRequest): AsyncGenerator<AgentEvent> {
+    const leafEntry = this.runners.get(req.to);
+    const runner = leafEntry?.runner;
+    const isLeaf = runner !== undefined;
     const agent = isLeaf ? undefined : this.agents.get(req.to);
-    if (!isLeaf && !agent) throw new SendMessageValidationError(`Unknown agent: ${req.to}`);
-    if (isSubagent && !req.leafContext) {
-      throw new SendMessageValidationError('sendMessage: leafContext is required when to === "subagent"');
-    }
-    if (isClaude && !this.claudeRunner) {
-      throw new SendMessageValidationError('sendMessage: claude runner not configured (pass `claude` option to AgentRuntime)');
-    }
-    if (isClaude && !req.cwd) {
-      throw new SendMessageValidationError('sendMessage: cwd is required when to === "claude"');
-    }
+    if (!isLeaf && !agent) throw new RunValidationError(`Unknown agent: ${req.to}`);
     if (isLeaf && req.sessionId) {
-      throw new SendMessageValidationError("sendMessage: leaf sessions are not resumable; omit sessionId");
+      throw new RunValidationError("run: leaf sessions are not resumable; omit sessionId");
     }
-    if (!isClaude && !this.piRunner) {
-      throw new SendMessageValidationError("AgentRuntime: pi runner not configured (pass `core` to constructor)");
+    if (!runner && !this.piRunner) {
+      throw new RunValidationError("AgentRuntime: pi runner not configured (pass `globalProvider` to constructor)");
     }
+    runner?.validateRequest?.(req);
     if (req.cwd) {
       try { this.validateCwd(req.cwd); }
-      catch (err) { throw new SendMessageValidationError(err instanceof Error ? err.message : String(err)); }
+      catch (err) { throw new RunValidationError(err instanceof Error ? err.message : String(err)); }
     }
 
     const kind: AgentSessionKind = isLeaf ? "leaf" : "root";
     if (kind === "leaf") {
       const leafCount = [...this.runs.values()].filter((r) => r.kind === "leaf").length;
       if (leafCount >= LEAF_CONCURRENCY_CAP) {
-        throw new SendMessageValidationError(`Max concurrent leaf runs reached (${LEAF_CONCURRENCY_CAP})`);
+        throw new RunValidationError(`Max concurrent leaf runs reached (${LEAF_CONCURRENCY_CAP})`);
       }
     }
 
@@ -455,10 +423,8 @@ export class AgentRuntime {
     let sessionId: string;
     if (req.sessionId) {
       sessionId = req.sessionId;
-    } else if (isClaude) {
-      sessionId = `${CLAUDE_AGENT_ID}:${runId}`;
-    } else if (isSubagent) {
-      sessionId = `${SUBAGENT_AGENT_ID}:${runId}`;
+    } else if (runner) {
+      sessionId = `${req.to}:${runId}`;
     } else {
       const policy: AgentSessionPolicy = agent!.sessionPolicy ?? "parent-reuse";
       const fromId = req.from?.agentId ?? "transport";
@@ -495,7 +461,7 @@ export class AgentRuntime {
       timeoutHandle.unref();
     }
 
-    log.info("sendMessage", { runId, agentId: req.to, kind, sessionId });
+    log.info("run", { runId, agentId: req.to, kind, sessionId });
 
     try {
       req.onRunStart?.(runId);
@@ -504,16 +470,16 @@ export class AgentRuntime {
     }
 
     try {
-      if (isClaude) {
-        yield* this.claudeRunner!.run({
+      if (runner) {
+        yield* runner.run({
           request: req,
           runId,
           abort: abort.signal,
         });
       } else {
-        const session = await this.buildPiSession({ kind, agent, sessionId, runId, req });
+        const session = await this.buildRootPiSession(agent!, sessionId, req.cwd);
         handle.session = session;
-        log.info("sendMessage runner", { runId, kind, agentId: req.to });
+        log.info("run runner", { runId, kind, agentId: req.to });
         yield* this.piRunner!.run({
           session,
           content: req.content,
@@ -533,35 +499,20 @@ export class AgentRuntime {
     }
   }
 
-  private async buildPiSession(opts: {
-    kind: AgentSessionKind;
-    agent?: RegisteredAgent;
-    sessionId: string;
-    runId: string;
-    req: SendMessageRequest;
-  }): Promise<AgentSession> {
-    const piDeps = {
+  private async buildRootPiSession(agent: RegisteredAgent, sessionId: string, cwd?: string): Promise<AgentSession> {
+    return createRootPiSession({
       globalProvider: this.piGlobalProvider!,
       authStorage: this.piAuthStorage!,
       modelRegistry: this.piModelRegistry!,
       getAgentTools: (id: string) => this.getAgentTools(id),
       ...(this.hooks ? { hooks: this.hooks } : {}),
-    };
-    if (opts.kind === "root") {
-      return createRootPiSession(piDeps, {
-        agent: opts.agent!,
-        sessionId: opts.sessionId,
-        ...(opts.req.cwd ? { cwd: opts.req.cwd } : {}),
-      });
-    }
-    return createLeafPiSession(piDeps, {
-      leafContext: opts.req.leafContext!,
-      runId: opts.runId,
-      content: opts.req.content,
+    }, {
+      agent,
+      sessionId,
+      ...(cwd ? { cwd } : {}),
     });
   }
 
-  // ---------- Lifecycle ----------
 
   cancel(runId: string, opts?: { reason?: string }): boolean {
     const handle = this.runs.get(runId);

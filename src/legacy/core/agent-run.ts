@@ -2,7 +2,7 @@
 // callers (REST/Discord/heartbeat/cron). Also wires hooks, usage tracker,
 // runtime per-session event emission, and mid-turn steer-from-pending-buffer.
 
-import type { AgentRuntime } from "../agents/runtime.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
 import { userMessage, assistantMessage, getAgentEndMeta } from "../../agent/runners/pi/messages.js";
 import type { Logger } from "../../logging/logger.js";
 import type { HookRegistry } from "../plugins/hooks.js";
@@ -50,7 +50,7 @@ export async function consumeRootRun(
   let runId: string | undefined;
 
   try {
-    const stream = runtime.sendMessage({
+    const stream = runtime.run({
       to,
       sessionId,
       content,
@@ -97,7 +97,7 @@ export async function consumeRootRun(
     );
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
-    log.error(`runtime.sendMessage threw: ${errorMessage}`);
+    log.error(`runtime.run threw: ${errorMessage}`);
   }
 
   if (hooks && responseText) {

@@ -139,11 +139,11 @@ export interface DiscordTransportConfig {
   token: string;
   /**
    * Unified runtime. When provided, the transport drives the agent loop via
-   * `runtime.sendMessage` (the #568 path). When omitted, falls back to the
+   * `runtime.run` (the #568 path). When omitted, falls back to the
    * legacy `runAgentLoop` (kept temporarily for unit tests that pre-date the
    * runtime; will be removed once those tests are migrated).
    */
-  agentRuntime?: import("../../agents/runtime.js").AgentRuntime;
+  agentRuntime?: import("../../../agent/runtime.js").AgentRuntime;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   /** Default agent ID to use when no @mention routing */
@@ -479,7 +479,6 @@ export class DiscordTransport implements Transport {
         username: msg.author.username,
         sessionId: session?.id,
         sessionKey,
-        runtime: this.config.agentRuntime,
       });
       await (msg.channel as SendableChannel).send(result.response);
       return;

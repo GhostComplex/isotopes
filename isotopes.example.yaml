@@ -38,10 +38,6 @@ agents:
     # workspace: workspace-main             # absolute or relative to ISOTOPES_HOME
     # allowedWorkspaces:                    # extra dirs subagents may cwd into
     #   - /path/to/repo
-    # codingMode: auto                      # subagent | direct | auto
-    #                                       #   subagent = force code edits through spawn_subagent
-    #                                       #   direct   = agent edits files directly
-    #                                       #   auto     = agent chooses (default)
     # heartbeatInterval: 0                  # ms; 0 = disabled (legacy field)
     # heartbeatPrompt: "what's next?"       # custom heartbeat prompt
     # heartbeat:                            # periodic wake-up (#191)
@@ -163,26 +159,13 @@ channels:
 #         id: "1480866703880487034"
 
 # =============================================================================
-# Subagent — Sub-agent spawning configuration
+# Built-in runners (claude / subagent) live alongside user agents — both are
+# enabled and spawnable by default. Override only if you need to opt out.
 # =============================================================================
-subagent:
-  enabled: true
-  allowedTypes: [claude, builtin]   # runner types allowed to be spawned
-  # timeout: 900                      # seconds; default 15min
-  # maxTurns: 50
-  # useThread: true                   # spawn Discord thread for subagent output
-  # showToolCalls: true
-  claude:                             # Claude Agent SDK runner config
-    # permissionMode: allowlist       # skip | allowlist | default
-    # allowedTools:                   # used when permissionMode=allowlist
-    #   - Read
-    #   - Write
-    #   - Edit
-    #   - Glob
-    #   - Grep
-    #   - LS
-    # enableShell: false              # appends Bash to allowedTools
-    # settingSources: [user]          # loads ~/.claude/settings.json; use [] to opt out
+# - id: claude
+#   enabled: false
+# - id: subagent
+#   spawnable: false
 
 # =============================================================================
 # CRON — channel-level scheduled jobs (per-agent cron lives under agents.<id>.cron)

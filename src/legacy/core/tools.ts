@@ -15,9 +15,9 @@ import type { SandboxConfig } from "../sandbox/config.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import { createReactTools, type LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
-import type { AgentRuntime } from "../agents/runtime.js";
-import { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID, SendMessageValidationError } from "../agents/runtime.js";
-import type { SendMessageRequest } from "../../agent/runtime/types.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
+import { RunValidationError } from "../../agent/types.js";
+import type { RunRequest } from "../../agent/types.js";
 import { getMessageContext } from "../transport/context.js";
 import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
 import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
@@ -26,7 +26,6 @@ import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("tools");
 
-export { SUBAGENT_AGENT_ID, CLAUDE_AGENT_ID };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,8 +95,11 @@ export interface SendMessageToolOptions {
 export function createSendMessageTool(options: SendMessageToolOptions): AgentTool {
   const { runtime, parentAgentId, workspacePath, parentTools, allowedAgents, spawnableAgentIds } = options;
   const computedTargets: string[] = [];
-  if (parentTools) computedTargets.push(SUBAGENT_AGENT_ID);
-  if (runtime.hasClaudeRunner()) computedTargets.push(CLAUDE_AGENT_ID);
+  for (const name of runtime.spawnableRunnerNames()) {
+    // subagent needs caller-provided tools; skip if caller has none.
+    if (name === "subagent" && !parentTools) continue;
+    computedTargets.push(name);
+  }
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
       if (id !== parentAgentId && !computedTargets.includes(id)) computedTargets.push(id);
@@ -147,15 +149,15 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
       if (!targets.includes(to)) {
         return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`);
       }
-      const isSubagent = to === SUBAGENT_AGENT_ID;
-      const isClaude = to === CLAUDE_AGENT_ID;
+      const isSubagent = to === "subagent";
+      const isRunner = runtime.hasRunner(to);
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
       const ctx = getMessageContext();
 
       let cancelReason: string | undefined;
-      const req: SendMessageRequest = {
+      const req: RunRequest = {
         to,
         content,
         cwd,
@@ -183,7 +185,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
       let assistantText = "";
       let errorMessage: string | null = null;
       try {
-        for await (const event of runtime.sendMessage(req)) {
+        for await (const event of runtime.run(req)) {
           if (sink) await sink.sendEvent(event);
           if (event.type === "message_update") {
             const ame = event.assistantMessageEvent;
@@ -197,7 +199,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (err instanceof SendMessageValidationError) {
+        if (err instanceof RunValidationError) {
           if (sink) await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
           return textResult(`[error] ${msg}`);
         }
@@ -222,7 +224,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         return textResult(`[send_message failed] ${errorMessage}`);
       }
       const trimmed = assistantText.trim();
-      return textResult(trimmed.length > 0 ? trimmed : (isClaude ? "[claude completed with no output]" : "[no reply]"));
+      return textResult(trimmed.length > 0 ? trimmed : (isRunner ? `[${to} completed with no output]` : "[no reply]"));
     },
   };
 }
@@ -289,16 +291,11 @@ export function applyToolPolicy(
 // Workspace tool set
 // ---------------------------------------------------------------------------
 
-/** Tools that modify files — excluded when codingMode is 'send-message'. */
-export const FILE_WRITING_TOOLS = ["write", "edit"];
-
 export interface CreateWorkspaceToolsOptions {
   workspacePath: string;
   settings?: AgentToolSettings;
   /** Register the `send_message` tool. Requires `runtime` + `parentAgentId`. */
   sendMessageEnabled?: boolean;
-  /** "send-message" excludes write/edit (caller delegates code edits). */
-  codingMode?: "send-message" | "direct" | "auto";
   fsImpl?: FsImpl;
   parentAgentId?: string;
   /** Caller's tool list — filtered + lent to leaf sessions. */
@@ -314,7 +311,6 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
     workspacePath,
     settings,
     sendMessageEnabled = false,
-    codingMode = "auto",
     fsImpl = nodeFs,
     parentAgentId,
     parentTools,
@@ -322,7 +318,7 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
     spawnableAgentIds,
   } = options;
 
-  let tools: AgentTool[] = [
+  const tools: AgentTool[] = [
     ...createFsTools(workspacePath, fsImpl),
     createTimeTool(),
   ];
@@ -338,9 +334,6 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   if (settings?.web) {
     tools.push(createWebFetchTool());
     tools.push(createWebSearchTool());
-  }
-  if (codingMode === "send-message") {
-    tools = tools.filter((t) => !FILE_WRITING_TOOLS.includes(t.name));
   }
   return tools;
 }

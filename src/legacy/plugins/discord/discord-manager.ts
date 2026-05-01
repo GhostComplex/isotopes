@@ -5,7 +5,7 @@ import type {
   SessionStore,
 } from "../../../sessions/types.js";
 import type { DiscordAccountConfig } from "./types.js";
-import type { AgentRuntime } from "../../agents/runtime.js";
+import type { AgentRuntime } from "../../../agent/runtime.js";
 import { getDiscordToken } from "./config.js";
 import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "./thread-bindings.js";

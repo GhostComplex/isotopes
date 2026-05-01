@@ -21,9 +21,7 @@ import type { SessionConfig } from "./sessions/types.js";
 import type { CronActionConfig } from "./automation/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "./legacy/sandbox/config.js";
 import type { PluginConfigEntry } from "./legacy/plugins/types.js";
-import { createLogger } from "./logging/logger.js";
 
-const log = createLogger("config");
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -75,6 +73,8 @@ export interface CronTaskConfigFile {
 /** Agent configuration in config file */
 export interface AgentConfigFile {
   id: string;
+  /** When false, the agent is skipped at boot. Default true. */
+  enabled?: boolean;
   /**
    * Explicit workspace directory for this agent (#214).
    * Absolute paths are used as-is; relative paths resolve from ISOTOPES_HOME.
@@ -91,17 +91,6 @@ export interface AgentConfigFile {
   cron?: { tasks: CronTaskConfigFile[] };
   /** Additional workspace paths allowed for spawned agent cwd */
   allowedWorkspaces?: string[];
-  /** Heartbeat interval in milliseconds (0 = disabled). */
-  heartbeatInterval?: number;
-  /** Custom heartbeat prompt (overrides the default). */
-  heartbeatPrompt?: string;
-  /**
-   * Coding mode controls how the agent handles code modifications:
-   * - 'send-message': Force all code through send_message (removes write, edit)
-   * - 'direct': Agent can modify files directly
-   * - 'auto': Agent chooses (default)
-   */
-  codingMode?: "send-message" | "direct" | "auto";
   /** Whether this agent can be spawned by other agents via send_message. Default: false */
   spawnable?: boolean;
   /** How this agent treats incoming a2a `send_message` calls when no
@@ -191,58 +180,6 @@ export interface ContextConfigFile {
   };
 }
 
-/** Permission mode for spawned agent tool execution */
-export type SpawnPermissionMode = "skip" | "allowlist" | "default";
-
-/** Default allowed tools for spawned agent execution */
-export const DEFAULT_SPAWN_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "LS"];
-
-/** Claude Agent SDK settings source — controls which `settings.json` files the spawned `claude` CLI loads. */
-export type SettingSource = "user" | "project" | "local";
-
-/** Claude-specific spawning configuration */
-export interface ClaudeSpawningConfigFile {
-  permissionMode?: SpawnPermissionMode;
-  allowedTools?: string[];
-  enableShell?: boolean;
-  settingSources?: SettingSource[];
-}
-
-/** Spawn agent execution configuration in config file */
-export interface SpawningConfigFile {
-  /** Whether spawning is enabled. Default: false */
-  enabled?: boolean;
-  /** Default timeout in seconds for spawn agent runs */
-  timeout?: number;
-  /** Default maximum turns per spawn agent run */
-  maxTurns?: number;
-  /** Maximum agent nesting depth. Default: 1 (spawned agents cannot spawn further) */
-  maxDepth?: number;
-  /** Whether to create Discord threads for spawn agent output. Default: true */
-  useThread?: boolean;
-  /** Whether to show tool call details in Discord. Default: true */
-  showToolCalls?: boolean;
-  /** Claude Agent SDK runner configuration */
-  claude?: ClaudeSpawningConfigFile;
-}
-
-/** Resolved claude-specific spawning config with defaults applied */
-export interface ResolvedClaudeSpawningConfig {
-  permissionMode: SpawnPermissionMode;
-  allowedTools: string[];
-  settingSources?: SettingSource[];
-}
-
-/** Resolved spawning configuration with defaults applied */
-export interface ResolvedSpawningConfig {
-  timeout?: number;
-  maxTurns?: number;
-  maxDepth?: number;
-  useThread: boolean;
-  showToolCalls: boolean;
-  claude: ResolvedClaudeSpawningConfig;
-}
-
 /** Cron job configuration in config file */
 export interface CronJobConfigFile {
   name: string;
@@ -271,8 +208,8 @@ export interface IsotopesConfigFileRaw {
   sandbox?: SandboxConfigFile;
   /** Session management (TTL, cleanup) */
   session?: SessionConfig;
-  /** Agent definitions — array form or object with defaults + list + spawning */
-  agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[]; spawning?: SpawningConfigFile };
+  /** Agent definitions — array form or object with defaults + list */
+  agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[] };
   /** Agent ↔ Channel bindings */
   bindings?: BindingConfigFile[];
   /** Channel configurations (Discord accounts, per-guild settings) */
@@ -283,11 +220,10 @@ export interface IsotopesConfigFileRaw {
   plugins?: Record<string, PluginConfigEntry>;
 }
 
-/** Normalized config — agents is always an array, agentDefaults/spawning extracted */
+/** Normalized config — agents is always an array. */
 export interface IsotopesConfigFile extends Omit<IsotopesConfigFileRaw, "agents"> {
   agents: AgentConfigFile[];
   agentDefaults?: AgentDefaultsConfigFile;
-  spawning?: SpawningConfigFile;
 }
 
 export function resolveToolSettings(
@@ -348,55 +284,6 @@ export function resolveSessionConfig(
   return {
     ttl: sessionConfig.ttl,
     cleanupInterval: sessionConfig.cleanupInterval,
-  };
-}
-
-const VALID_PERMISSION_MODES = new Set<SpawnPermissionMode>(["skip", "allowlist", "default"]);
-
-/**
- * Resolve spawning config with defaults applied.
- * Validates permission mode, allowed types, and logs security warnings.
- */
-export function resolveSpawningConfig(
-  spawningConfig?: SpawningConfigFile,
-): ResolvedSpawningConfig {
-  const claude = spawningConfig?.claude;
-  const permissionMode = claude?.permissionMode ?? "allowlist";
-
-  if (!VALID_PERMISSION_MODES.has(permissionMode)) {
-    throw new Error(
-      `Invalid agents.spawning.claude.permissionMode "${permissionMode}" (must be skip, allowlist, or default)`,
-    );
-  }
-
-  let allowedTools = claude?.allowedTools ?? [...DEFAULT_SPAWN_ALLOWED_TOOLS];
-  if (claude?.enableShell && !allowedTools.includes("Bash")) {
-    allowedTools = [...allowedTools, "Bash"];
-  }
-
-  if (permissionMode === "skip") {
-    log.warn(
-      "⚠️  SECURITY WARNING: agents.spawning.claude.permissionMode is set to 'skip'. " +
-      "Spawned agents will have unrestricted tool access without any permission prompts.",
-    );
-    if (claude?.enableShell) {
-      log.warn(
-        "⚠️  CRITICAL: permissionMode 'skip' + enableShell allows arbitrary shell commands.",
-      );
-    }
-  }
-
-  return {
-    timeout: spawningConfig?.timeout,
-    maxTurns: spawningConfig?.maxTurns,
-    maxDepth: spawningConfig?.maxDepth,
-    useThread: spawningConfig?.useThread ?? true,
-    showToolCalls: spawningConfig?.showToolCalls ?? true,
-    claude: {
-      permissionMode,
-      allowedTools,
-      ...(claude?.settingSources && { settingSources: claude.settingSources }),
-    },
   };
 }
 
@@ -494,7 +381,6 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
   // Normalize agents: support both array form and object form { defaults, list }
   let agentList: AgentConfigFile[];
   let agentDefaults: AgentDefaultsConfigFile | undefined;
-  let spawning: SpawningConfigFile | undefined;
 
   if (Array.isArray(raw.agents)) {
     agentList = raw.agents;
@@ -508,7 +394,6 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
     }
     agentList = raw.agents.list;
     agentDefaults = raw.agents.defaults;
-    spawning = raw.agents.spawning;
   } else {
     throw new Error("Config must have an 'agents' array or an 'agents' object with a 'list' field");
   }
@@ -522,7 +407,6 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
     ...raw,
     agents: agentList,
     agentDefaults,
-    spawning,
   };
 
   // Process environment variables
@@ -567,9 +451,6 @@ export function toAgentConfig(
     ...(model ? { model } : {}),
     compaction,
     sandbox,
-    heartbeatInterval: agent.heartbeatInterval,
-    heartbeatPrompt: agent.heartbeatPrompt,
-    codingMode: agent.codingMode,
     spawnable: agent.spawnable,
     sessionPolicy: agent.sessionPolicy,
   };
