@@ -39,7 +39,6 @@ export interface CompactionConfig {
 }
 
 
-export type RunStatus = "created" | "running" | "awaiting" | "completed" | "failed" | "cancelled";
 
 export type AgentSessionKind = "root" | "leaf";
 
