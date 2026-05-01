@@ -163,27 +163,10 @@ channels:
 #         id: "1480866703880487034"
 
 # =============================================================================
-# Spawning — claude leaf runner config (placed under agents.spawning)
+# Claude CLI runner — toggles the bundled `claude` leaf runner. Default: on.
 # =============================================================================
-# To enable, switch the top-level `agents:` from an array to the object form
-# `{ list: [...], spawning: {...} }`. Example:
-#
-# agents:
-#   list:
-#     - id: main
-#   spawning:
-#     enabled: true
-#     claude:                             # Claude Agent SDK runner config
-#       # permissionMode: allowlist       # skip | allowlist | default
-#       # allowedTools:                   # used when permissionMode=allowlist
-#       #   - Read
-#       #   - Write
-#       #   - Edit
-#       #   - Glob
-#       #   - Grep
-#       #   - LS
-#       # enableShell: false              # appends Bash to allowedTools
-#       # settingSources: [user]          # loads ~/.claude/settings.json; use [] to opt out
+# claude:
+#   enabled: false                # opt out
 
 # =============================================================================
 # CRON — channel-level scheduled jobs (per-agent cron lives under agents.<id>.cron)

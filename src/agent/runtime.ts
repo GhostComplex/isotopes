@@ -30,7 +30,6 @@ import {
   type SandboxConfigFile,
   type AgentToolsConfigFile,
   type ProviderConfigFile,
-  type SpawningConfigFile,
 } from "../config.js";
 import {
   ensureExplicitWorkspaceDir,
@@ -80,7 +79,6 @@ export interface AddAgentOptions {
   globalTools?: AgentToolsConfigFile;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
-  spawning?: SpawningConfigFile;
   sandboxExecutor?: SandboxExecutor;
   transportContext?: LazyTransportContext;
   spawnableAgentIds?: string[];
@@ -291,7 +289,7 @@ export class AgentRuntime {
   /** Workspace prep + tool creation + registry insert in one call. */
   async addAgent(opts: AddAgentOptions): Promise<AddAgentResult> {
     const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox,
-      spawning, sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
+      sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
 
     const agentConfig = toAgentConfig(agentFile, agentDefaults, provider, globalTools, compaction, sandbox);
 
@@ -315,16 +313,17 @@ export class AgentRuntime {
     const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
     const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
-    const spawningEnabled = spawning?.enabled === true && !isSandboxed;
-    if (spawning?.enabled === true && isSandboxed) {
-      log.warn(`Spawning tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
+    // send_message tool spawns host-side child runners that bypass docker.
+    const sendMessageEnabled = !isSandboxed;
+    if (isSandboxed) {
+      log.warn(`send_message tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
     }
 
     const processRegistry = new ProcessRegistry();
     const tools: AgentTool[] = createAgentTools({
       workspacePath,
       settings: agentConfig.toolSettings,
-      sendMessageEnabled: spawningEnabled,
+      sendMessageEnabled,
       codingMode: agentConfig.codingMode,
       fsImpl,
       parentAgentId: agentConfig.id,

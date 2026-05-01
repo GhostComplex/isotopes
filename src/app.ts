@@ -1,6 +1,5 @@
 import {
   toAgentConfig,
-  resolveSpawningConfig,
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
@@ -64,9 +63,8 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     hooks: pluginManager.getHooks(),
   });
 
-  if (config.spawning?.enabled) {
-    const resolved = resolveSpawningConfig(config.spawning);
-    agentRuntime.registerRunner("claude", new ClaudeRunner(() => resolved.claude));
+  if (config.claude?.enabled !== false) {
+    agentRuntime.registerRunner("claude", new ClaudeRunner());
   }
 
   const agentWorkspaces = new Map<string, string>();
@@ -111,7 +109,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       globalTools: config.tools,
       compaction: config.compaction,
       sandbox: config.sandbox,
-      spawning: config.spawning,
       sandboxExecutor,
       transportContext: transportCtx,
       spawnableAgentIds,

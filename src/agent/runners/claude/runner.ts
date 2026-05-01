@@ -1,9 +1,5 @@
-import { query, type Options, type PermissionMode, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createLogger } from "../../../logging/logger.js";
-import {
-  type ResolvedClaudeSpawningConfig,
-  type SpawnPermissionMode,
-} from "../../../config.js";
 import type { RunRequest } from "../../types.js";
 import { RunValidationError } from "../../types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
@@ -12,29 +8,8 @@ import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-a
 
 const log = createLogger("agents:runner:claude");
 
-export type ClaudeConfigGetter = () => ResolvedClaudeSpawningConfig | undefined;
-
-function translatePermissionMode(
-  mode: SpawnPermissionMode,
-  allowedTools: string[],
-): { permissionMode: PermissionMode; allowedTools?: string[] } {
-  switch (mode) {
-    case "skip":
-      return { permissionMode: "bypassPermissions" };
-    case "allowlist":
-      return { permissionMode: "default", allowedTools };
-    case "default":
-      return { permissionMode: "default" };
-  }
-}
-
 export class ClaudeRunner {
-  constructor(private readonly getConfig: ClaudeConfigGetter) {}
-
   validateRequest(req: RunRequest): void {
-    if (!this.getConfig()) {
-      throw new RunValidationError("claude: not configured");
-    }
     if (!req.cwd) throw new RunValidationError("claude: cwd is required");
   }
 
@@ -44,8 +19,6 @@ export class ClaudeRunner {
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {
     const { request, runId, abort } = opts;
-    const cfg = this.getConfig();
-    if (!cfg) throw new RunValidationError("claude: not configured");
     if (!request.cwd) throw new RunValidationError("claude: cwd is required");
 
     const sdkAbort = new AbortController();
@@ -53,14 +26,12 @@ export class ClaudeRunner {
     abort.addEventListener("abort", onAbort, { once: true });
     if (abort.aborted) sdkAbort.abort();
 
-    const translated = translatePermissionMode(cfg.permissionMode, cfg.allowedTools);
     const sdkOptions: Options = {
       cwd: request.cwd,
       abortController: sdkAbort,
-      permissionMode: translated.permissionMode,
-      settingSources: cfg.settingSources ?? ["user"],
+      permissionMode: "bypassPermissions",
+      settingSources: ["user"],
     };
-    if (translated.allowedTools) sdkOptions.allowedTools = translated.allowedTools;
 
     log.info("ClaudeRunner.run", { runId, cwd: request.cwd });
 
