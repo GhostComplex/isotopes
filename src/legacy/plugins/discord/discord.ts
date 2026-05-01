@@ -479,7 +479,6 @@ export class DiscordTransport implements Transport {
         username: msg.author.username,
         sessionId: session?.id,
         sessionKey,
-        runtime: this.config.agentRuntime,
       });
       await (msg.channel as SendableChannel).send(result.response);
       return;

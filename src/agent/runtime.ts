@@ -383,32 +383,6 @@ export class AgentRuntime {
     };
   }
 
-  /** SDK-side compaction (used by /compact). Returns false if context is
-   * too small to bother compacting. */
-  async compactSession(agentId: string, sessionId: string): Promise<boolean> {
-    if (!this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
-      throw new Error("compactSession requires pi runner (globalProvider)");
-    }
-    const agent = this.agents.get(agentId);
-    if (!agent) throw new Error(`Unknown agent: ${agentId}`);
-    const session = await createRootPiSession(
-      {
-        globalProvider: this.piGlobalProvider,
-        authStorage: this.piAuthStorage,
-        modelRegistry: this.piModelRegistry,
-        getAgentTools: (id) => this.getAgentTools(id),
-        ...(this.hooks ? { hooks: this.hooks } : {}),
-      },
-      { agent, sessionId },
-    );
-    try {
-      const compacted = await session.compact();
-      return !!compacted;
-    } finally {
-      session.dispose();
-    }
-  }
-
   getAgent(id: string): RegisteredAgent | undefined {
     return this.agents.get(id);
   }
