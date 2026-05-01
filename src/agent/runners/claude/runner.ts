@@ -9,6 +9,7 @@ import {
   type SpawnPermissionMode,
 } from "../../../config.js";
 import type { RunRequest } from "../../types.js";
+import { RunValidationError } from "../../types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-ai";
@@ -56,6 +57,10 @@ export class ClaudeRunner {
 
   /** `request.cwd` is required; Claude CLI manages its own session state
    * so conversational continuity across calls is out of scope. */
+  validateRequest(req: RunRequest): void {
+    if (!req.cwd) throw new RunValidationError("claude: cwd is required");
+  }
+
   async *run(opts: {
     request: RunRequest;
     runId: string;

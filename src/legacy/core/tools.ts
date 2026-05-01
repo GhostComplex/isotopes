@@ -16,7 +16,7 @@ import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import { createReactTools, type LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
 import type { AgentRuntime } from "../../agent/runtime.js";
-import { SUBAGENT_AGENT_ID, RunValidationError } from "../../agent/runtime.js";
+import { RunValidationError } from "../../agent/types.js";
 import type { RunRequest } from "../../agent/types.js";
 import { getMessageContext } from "../transport/context.js";
 import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
@@ -26,7 +26,6 @@ import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("tools");
 
-export { SUBAGENT_AGENT_ID };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,8 +95,11 @@ export interface SendMessageToolOptions {
 export function createSendMessageTool(options: SendMessageToolOptions): AgentTool {
   const { runtime, parentAgentId, workspacePath, parentTools, allowedAgents, spawnableAgentIds } = options;
   const computedTargets: string[] = [];
-  if (parentTools) computedTargets.push(SUBAGENT_AGENT_ID);
-  for (const name of runtime.runnerNames()) computedTargets.push(name);
+  for (const name of runtime.runnerNames()) {
+    // subagent needs caller-provided tools; skip if caller has none.
+    if (name === "subagent" && !parentTools) continue;
+    computedTargets.push(name);
+  }
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
       if (id !== parentAgentId && !computedTargets.includes(id)) computedTargets.push(id);
@@ -147,7 +149,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
       if (!targets.includes(to)) {
         return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`);
       }
-      const isSubagent = to === SUBAGENT_AGENT_ID;
+      const isSubagent = to === "subagent";
       const isLeafRunner = runtime.hasRunner(to);
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)

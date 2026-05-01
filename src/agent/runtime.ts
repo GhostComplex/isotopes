@@ -13,11 +13,12 @@ import type {
   RunRequest,
   RunInfo,
 } from "./types.js";
+import { RunValidationError } from "./types.js";
 import type { ProviderConfig } from "./types.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import { PiRunner } from "./runners/pi/runner.js";
-import { createRootPiSession, createLeafPiSession } from "./runners/pi/session-factory.js";
-import { ClaudeRunner } from "./runners/claude/runner.js";
+import { createRootPiSession } from "./runners/pi/session-factory.js";
+import { SubagentRunner } from "./runners/subagent.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -50,10 +51,8 @@ import type { DefaultSessionStore } from "../legacy/core/session-store.js";
 
 const log = createLogger("agents:runtime");
 
-// Reserved magic ids — cannot be registered as named agents. See #613 for
-// the policy decision on whether `claude` should be conditionally reserved.
-export const SUBAGENT_AGENT_ID = "subagent";
-export const RESERVED_AGENT_IDS: ReadonlySet<string> = new Set([SUBAGENT_AGENT_ID]);
+// "subagent" is conventionally the built-in helper runner, auto-registered
+// when pi infrastructure is available. Inlined as a string elsewhere.
 
 export const LEAF_CONCURRENCY_CAP = 5;
 export const LEAF_DEFAULT_TIMEOUT_SEC = 900;
@@ -101,16 +100,6 @@ export interface AddAgentResult {
   transportContext?: LazyTransportContext;
 }
 
-/** Caller-fixable input error. Tool handlers should surface as `[error]`
- * instead of `[failed]` so the LLM doesn't retry. */
-export class RunValidationError extends Error {
-  readonly isValidationError = true;
-  constructor(message: string) {
-    super(message);
-    this.name = "RunValidationError";
-  }
-}
-
 /** Per-session pub/sub keyed by sessionId. Private to AgentRuntime —
  * subscribe via runtime.on / endSession. */
 class SessionEventBus {
@@ -152,10 +141,15 @@ class SessionEventBus {
   }
 }
 
+interface LeafRunner {
+  validateRequest?(req: RunRequest): void;
+  run(opts: { request: RunRequest; runId: string; abort: AbortSignal }): AsyncGenerator<AgentEvent>;
+}
+
 export class AgentRuntime {
   private allowedRoots: string[];
   private piRunner?: PiRunner;
-  private leafRunners = new Map<string, ClaudeRunner>();
+  private leafRunners = new Map<string, LeafRunner>();
   private runs = new Map<string, RunHandle>();
   private agents = new Map<string, RegisteredAgent>();
   private events = new SessionEventBus();
@@ -179,6 +173,16 @@ export class AgentRuntime {
       this.piAuthStorage = AuthStorage.inMemory(creds);
       this.piModelRegistry = ModelRegistry.create(this.piAuthStorage);
       this.piRunner = new PiRunner();
+      this.registerRunner("subagent", new SubagentRunner({
+        piRunner: this.piRunner,
+        piDeps: {
+          globalProvider: this.piGlobalProvider,
+          authStorage: this.piAuthStorage,
+          modelRegistry: this.piModelRegistry,
+          getAgentTools: (id) => this.getAgentTools(id),
+          ...(this.hooks ? { hooks: this.hooks } : {}),
+        },
+      }));
     }
   }
 
@@ -188,10 +192,7 @@ export class AgentRuntime {
 
   /** Register a leaf runner under a magic name (e.g. "claude"). The name
    * becomes reserved — registerAgent will reject it. */
-  registerRunner(name: string, runner: ClaudeRunner): void {
-    if (name === SUBAGENT_AGENT_ID) {
-      throw new Error(`Cannot register runner with reserved name: ${name}`);
-    }
+  registerRunner(name: string, runner: LeafRunner): void {
     if (this.agents.has(name)) {
       throw new Error(`Cannot register runner — name in use as agent: ${name}`);
     }
@@ -279,9 +280,6 @@ export class AgentRuntime {
 
 
   registerAgent(agent: RegisteredAgent): void {
-    if (RESERVED_AGENT_IDS.has(agent.id)) {
-      throw new Error(`Cannot register agent with reserved magic id: ${agent.id}`);
-    }
     if (this.leafRunners.has(agent.id)) {
       throw new Error(`Cannot register agent — name in use by runner: ${agent.id}`);
     }
@@ -405,27 +403,20 @@ export class AgentRuntime {
     return [...this.agents.values()];
   }
 
-  /** `to`: "subagent" (leaf, needs leafContext) | a registered runner name
-   * (e.g. "claude", leaf, needs cwd) | registered-id (root). Yields SDK
-   * AgentEvent. */
+  /** `to`: a registered runner name (leaf) | a registered agent id (root).
+   * Yields SDK AgentEvent. */
   async *run(req: RunRequest): AsyncGenerator<AgentEvent> {
-    const isSubagent = req.to === SUBAGENT_AGENT_ID;
     const leafRunner = this.leafRunners.get(req.to);
-    const isLeaf = isSubagent || leafRunner !== undefined;
+    const isLeaf = leafRunner !== undefined;
     const agent = isLeaf ? undefined : this.agents.get(req.to);
     if (!isLeaf && !agent) throw new RunValidationError(`Unknown agent: ${req.to}`);
-    if (isSubagent && !req.leafContext) {
-      throw new RunValidationError('run: leafContext is required when to === "subagent"');
-    }
-    if (leafRunner && !req.cwd) {
-      throw new RunValidationError(`run: cwd is required when to === "${req.to}"`);
-    }
     if (isLeaf && req.sessionId) {
       throw new RunValidationError("run: leaf sessions are not resumable; omit sessionId");
     }
     if (!leafRunner && !this.piRunner) {
       throw new RunValidationError("AgentRuntime: pi runner not configured (pass `globalProvider` to constructor)");
     }
+    leafRunner?.validateRequest?.(req);
     if (req.cwd) {
       try { this.validateCwd(req.cwd); }
       catch (err) { throw new RunValidationError(err instanceof Error ? err.message : String(err)); }
@@ -446,8 +437,6 @@ export class AgentRuntime {
       sessionId = req.sessionId;
     } else if (leafRunner) {
       sessionId = `${req.to}:${runId}`;
-    } else if (isSubagent) {
-      sessionId = `${SUBAGENT_AGENT_ID}:${runId}`;
     } else {
       const policy: AgentSessionPolicy = agent!.sessionPolicy ?? "parent-reuse";
       const fromId = req.from?.agentId ?? "transport";
@@ -500,7 +489,7 @@ export class AgentRuntime {
           abort: abort.signal,
         });
       } else {
-        const session = await this.buildPiSession({ kind, agent, sessionId, runId, req });
+        const session = await this.buildRootPiSession(agent!, sessionId, req.cwd);
         handle.session = session;
         log.info("run runner", { runId, kind, agentId: req.to });
         yield* this.piRunner!.run({
@@ -522,31 +511,17 @@ export class AgentRuntime {
     }
   }
 
-  private async buildPiSession(opts: {
-    kind: AgentSessionKind;
-    agent?: RegisteredAgent;
-    sessionId: string;
-    runId: string;
-    req: RunRequest;
-  }): Promise<AgentSession> {
-    const piDeps = {
+  private async buildRootPiSession(agent: RegisteredAgent, sessionId: string, cwd?: string): Promise<AgentSession> {
+    return createRootPiSession({
       globalProvider: this.piGlobalProvider!,
       authStorage: this.piAuthStorage!,
       modelRegistry: this.piModelRegistry!,
       getAgentTools: (id: string) => this.getAgentTools(id),
       ...(this.hooks ? { hooks: this.hooks } : {}),
-    };
-    if (opts.kind === "root") {
-      return createRootPiSession(piDeps, {
-        agent: opts.agent!,
-        sessionId: opts.sessionId,
-        ...(opts.req.cwd ? { cwd: opts.req.cwd } : {}),
-      });
-    }
-    return createLeafPiSession(piDeps, {
-      leafContext: opts.req.leafContext!,
-      runId: opts.runId,
-      content: opts.req.content,
+    }, {
+      agent,
+      sessionId,
+      ...(cwd ? { cwd } : {}),
     });
   }
 

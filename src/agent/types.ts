@@ -122,3 +122,13 @@ export interface RunInfo {
   startedAt: number;
   parentSessionId?: string;
 }
+
+/** Caller-fixable input error. Tool handlers should surface as `[error]`
+ * instead of `[failed]` so the LLM doesn't retry. */
+export class RunValidationError extends Error {
+  readonly isValidationError = true;
+  constructor(message: string) {
+    super(message);
+    this.name = "RunValidationError";
+  }
+}

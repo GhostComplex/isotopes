@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  AgentRuntime,
-  RESERVED_AGENT_IDS,
-  LEAF_CONCURRENCY_CAP,
-  RunValidationError,
-} from "./runtime.js";
+import { AgentRuntime, LEAF_CONCURRENCY_CAP } from "./runtime.js";
 import type { RegisteredAgent } from "./types.js";
+import { RunValidationError } from "./types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
@@ -62,7 +58,7 @@ interface StubPiRunner {
 
 function installStubRunner(rt: AgentRuntime, runner: StubPiRunner) {
   (rt as unknown as { piRunner: StubPiRunner }).piRunner = runner;
-  (rt as unknown as { buildPiSession: () => Promise<AgentSession> }).buildPiSession =
+  (rt as unknown as { buildRootPiSession: () => Promise<AgentSession> }).buildRootPiSession =
     async () => ({ dispose: () => {}, abort: () => {} } as unknown as AgentSession);
 }
 
@@ -86,10 +82,9 @@ describe("AgentRuntime — agent registry", () => {
     expect(() => rt.registerAgent(fakeAgent("main"))).toThrow(/already registered/);
   });
 
-  it("rejects reserved magic ids", () => {
-    for (const id of RESERVED_AGENT_IDS) {
-      expect(() => rt.registerAgent(fakeAgent(id))).toThrow(/reserved magic id/);
-    }
+  it("rejects agent name already in use by a runner", () => {
+    rt.registerRunner("custom", { run: async function* () {} });
+    expect(() => rt.registerAgent(fakeAgent("custom"))).toThrow(/name in use by runner/);
   });
 
   it("unregisters", () => {
@@ -102,7 +97,16 @@ describe("AgentRuntime — agent registry", () => {
 
 describe("AgentRuntime.sendMessage — validation", () => {
   let rt: AgentRuntime;
-  beforeEach(() => { rt = new AgentRuntime(); });
+  beforeEach(() => {
+    rt = new AgentRuntime();
+    // Stub the subagent runner so validation tests don't need full pi infra.
+    rt.registerRunner("subagent", {
+      validateRequest(req) {
+        if (!req.leafContext) throw new RunValidationError("subagent: leafContext is required");
+      },
+      run: async function* () {},
+    });
+  });
 
   it("rejects unknown agent id", async () => {
     await expect(consume(rt.run({ to: "ghost", content: "hi" }))).rejects.toThrow(/Unknown agent/);
@@ -112,7 +116,7 @@ describe("AgentRuntime.sendMessage — validation", () => {
     await expect(consume(rt.run({ to: "subagent", content: "hi" }))).rejects.toThrow(/leafContext is required/);
   });
 
-  it("rejects sessionId on subagent target", async () => {
+  it("rejects sessionId on leaf target", async () => {
     await expect(consume(rt.run({
       to: "subagent",
       content: "hi",
