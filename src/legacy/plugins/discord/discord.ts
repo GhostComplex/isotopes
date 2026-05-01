@@ -22,7 +22,7 @@ import type { ContextConfigFile } from "../../../config.js";
 import { shouldRespondToMessage } from "../../../gateway/mention.js";
 import { loggers } from "../../../logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../core/agent-run.js";
+import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../../agent/run-adapter.js";
 import { runWithDiscordSubagentStream, type DiscordSubagentStreamContext } from "./subagent-stream-context.js";
 import { isSilentReply } from "../../core/silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
