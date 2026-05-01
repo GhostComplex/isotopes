@@ -93,13 +93,6 @@ export interface AgentConfigFile {
   heartbeatInterval?: number;
   /** Custom heartbeat prompt (overrides the default). */
   heartbeatPrompt?: string;
-  /**
-   * Coding mode controls how the agent handles code modifications:
-   * - 'send-message': Force all code through send_message (removes write, edit)
-   * - 'direct': Agent can modify files directly
-   * - 'auto': Agent chooses (default)
-   */
-  codingMode?: "send-message" | "direct" | "auto";
   /** Whether this agent can be spawned by other agents via send_message. Default: false */
   spawnable?: boolean;
   /** How this agent treats incoming a2a `send_message` calls when no
@@ -469,7 +462,6 @@ export function toAgentConfig(
     sandbox,
     heartbeatInterval: agent.heartbeatInterval,
     heartbeatPrompt: agent.heartbeatPrompt,
-    codingMode: agent.codingMode,
     spawnable: agent.spawnable,
     sessionPolicy: agent.sessionPolicy,
   };

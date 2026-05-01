@@ -25,12 +25,6 @@ export interface AgentConfig {
   heartbeatInterval?: number;
   /** Overrides the default heartbeat prompt. */
   heartbeatPrompt?: string;
-  /**
-   * - 'send-message': force code changes through send_message (removes write/edit)
-   * - 'direct': agent edits files directly
-   * - 'auto' (default): agent picks based on task
-   */
-  codingMode?: "send-message" | "direct" | "auto";
   /** Default false. */
   spawnable?: boolean;
   /** Defaults to "parent-reuse". */

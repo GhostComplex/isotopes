@@ -324,7 +324,6 @@ export class AgentRuntime {
       workspacePath,
       settings: agentConfig.toolSettings,
       sendMessageEnabled,
-      codingMode: agentConfig.codingMode,
       fsImpl,
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,

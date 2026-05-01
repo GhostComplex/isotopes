@@ -291,16 +291,11 @@ export function applyToolPolicy(
 // Workspace tool set
 // ---------------------------------------------------------------------------
 
-/** Tools that modify files — excluded when codingMode is 'send-message'. */
-export const FILE_WRITING_TOOLS = ["write", "edit"];
-
 export interface CreateWorkspaceToolsOptions {
   workspacePath: string;
   settings?: AgentToolSettings;
   /** Register the `send_message` tool. Requires `runtime` + `parentAgentId`. */
   sendMessageEnabled?: boolean;
-  /** "send-message" excludes write/edit (caller delegates code edits). */
-  codingMode?: "send-message" | "direct" | "auto";
   fsImpl?: FsImpl;
   parentAgentId?: string;
   /** Caller's tool list — filtered + lent to leaf sessions. */
@@ -316,7 +311,6 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
     workspacePath,
     settings,
     sendMessageEnabled = false,
-    codingMode = "auto",
     fsImpl = nodeFs,
     parentAgentId,
     parentTools,
@@ -324,7 +318,7 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
     spawnableAgentIds,
   } = options;
 
-  let tools: AgentTool[] = [
+  const tools: AgentTool[] = [
     ...createFsTools(workspacePath, fsImpl),
     createTimeTool(),
   ];
@@ -340,9 +334,6 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   if (settings?.web) {
     tools.push(createWebFetchTool());
     tools.push(createWebSearchTool());
-  }
-  if (codingMode === "send-message") {
-    tools = tools.filter((t) => !FILE_WRITING_TOOLS.includes(t.name));
   }
   return tools;
 }

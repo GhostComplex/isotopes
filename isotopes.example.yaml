@@ -38,10 +38,6 @@ agents:
     # workspace: workspace-main             # absolute or relative to ISOTOPES_HOME
     # allowedWorkspaces:                    # extra dirs subagents may cwd into
     #   - /path/to/repo
-    # codingMode: auto                      # subagent | direct | auto
-    #                                       #   subagent = force code edits through spawn_subagent
-    #                                       #   direct   = agent edits files directly
-    #                                       #   auto     = agent chooses (default)
     # heartbeatInterval: 0                  # ms; 0 = disabled (legacy field)
     # heartbeatPrompt: "what's next?"       # custom heartbeat prompt
     # heartbeat:                            # periodic wake-up (#191)
