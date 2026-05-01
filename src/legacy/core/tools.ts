@@ -359,32 +359,19 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   return tools;
 }
 
-// ---------------------------------------------------------------------------
-// createAgentTools — unified entry point used by agent-init.
-// Bundles workspace + react + exec into one factory so the caller doesn't
-// have to assemble three separate clusters with three separate dep shapes.
-// ---------------------------------------------------------------------------
-
 export interface CreateAgentToolsOptions extends CreateWorkspaceToolsOptions {
-  /** Discord/transport context for `message_react`. Omit to skip react tools. */
   transportContext?: LazyTransportContext;
-  /** Background process registry for exec tools. */
   processRegistry: ProcessRegistry;
-  /** Sandbox executor (omitted for non-sandboxed agents). */
   sandboxExecutor?: SandboxExecutor;
-  /** Resolved sandbox config for this agent. */
   agentSandboxConfig?: SandboxConfig;
-  /** Workspaces this agent may access via exec. */
   allowedWorkspaces?: string[];
-  /** Agent id (used by exec for sandbox routing). */
   agentId: string;
 }
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   const tools: AgentTool[] = [];
-  // Workspace tools first — send_message inside captures the `tools` array by
-  // reference so its `leafContext.tools` sees the fully populated set when the
-  // tool is later invoked (push mutates in place, the ref doesn't change).
+  // send_message captures `tools` by reference; later push() calls populate it
+  // before the tool is invoked.
   tools.push(...applyToolPolicy(
     createWorkspaceToolsWithGuards({ ...opts, parentTools: tools }),
     opts.settings,

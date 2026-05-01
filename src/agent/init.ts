@@ -112,21 +112,18 @@ export async function initializeAgent(opts: InitAgentOptions): Promise<InitAgent
   // 5. Ensure workspace directory structure exists (sessions/, memory/)
   await ensureWorkspaceStructure(workspacePath);
 
-  // 6. Resolve fs implementation (host vs sandbox)
   const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
   const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
-  // Spawn agent tools spawn child runners (Claude CLI, builtin) that execute on
-  // the host, bypassing the Docker sandbox. Disable them entirely for
-  // sandboxed agents — see issue #440.
+  // Spawn tools run host-side child processes that bypass docker — disable for
+  // sandboxed agents (#440).
   const spawningEnabled = spawning?.enabled === true && !isSandboxed;
   if (spawning?.enabled === true && isSandboxed) {
     log.warn(
-      `Spawning tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined. Use \`docker exec\` with a custom image to run a coding CLI inside the sandbox.`,
+      `Spawning tools disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`,
     );
   }
 
-  // 7. Build the tool set (workspace + react + exec, all with policy applied)
   const processRegistry = new ProcessRegistry();
   const tools: AgentTool[] = createAgentTools({
     workspacePath,
