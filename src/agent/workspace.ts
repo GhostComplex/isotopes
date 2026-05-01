@@ -3,7 +3,11 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { SkillLoader } from "../legacy/skills/index.js";
+import { loadSkills, formatSkillsForPrompt } from "@mariozechner/pi-coding-agent";
+import { getIsotopesHome } from "../paths.js";
+import { createLogger } from "../logging/logger.js";
+
+const log = createLogger("skills");
 
 const ASSISTANT_OUTPUT_DIRECTIVES = `# Assistant Output Directives
 
@@ -86,8 +90,20 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
   }
 
   // Load skills from workspace
-  const skillLoader = new SkillLoader({ workspacePath, bundledPath: options?.bundledPath });
-  const skillsPrompt = await skillLoader.generatePrompt();
+  const skillResult = loadSkills({
+    cwd: workspacePath,
+    agentDir: getIsotopesHome(),
+    skillPaths: [
+      path.join(workspacePath, "skills"),
+      path.join(getIsotopesHome(), "skills"),
+      ...(options?.bundledPath ? [options.bundledPath] : []),
+    ],
+    includeDefaults: false,
+  });
+  for (const d of skillResult.diagnostics) {
+    log.warn(`skill ${d.type}: ${d.message}`, { path: d.path });
+  }
+  const skillsPrompt = formatSkillsForPrompt(skillResult.skills);
 
   return {
     systemPromptAdditions: additions.join("\n\n"),
