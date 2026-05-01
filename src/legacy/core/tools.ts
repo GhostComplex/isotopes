@@ -359,7 +359,7 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   return tools;
 }
 
-export interface CreateAgentToolsOptions extends CreateWorkspaceToolsOptions {
+export interface CreateAgentToolsOptions extends Omit<CreateWorkspaceToolsOptions, "parentTools"> {
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
   sandboxExecutor?: SandboxExecutor;
