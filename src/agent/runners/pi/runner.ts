@@ -3,7 +3,7 @@ import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import type { RegisteredAgent, RunRequest } from "../../types.js";
 import { RunValidationError } from "../../types.js";
-import { createRootPiSession, type PiSessionDeps } from "./session-factory.js";
+import { createPiSession, type PiSessionDeps } from "./session-factory.js";
 
 export interface PiRunnerOptions {
   agent: RegisteredAgent;
@@ -50,7 +50,7 @@ export class PiRunner {
     onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent> {
     const { request, sessionId, abort, onSession } = opts;
-    const session = await createRootPiSession(this.opts.piDeps, {
+    const session = await createPiSession(this.opts.piDeps, {
       agent: this.opts.agent,
       sessionId,
       ...(request.cwd ? { cwd: request.cwd } : {}),
