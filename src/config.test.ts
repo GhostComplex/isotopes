@@ -191,49 +191,6 @@ agents:
       expect(config.agentDefaults?.compaction?.mode).toBe("safeguard");
     });
 
-    it("auto-injects builtin subagent and coding entries when missing", async () => {
-      const configPath = path.join(tempDir, "builtins.yaml");
-      await fs.writeFile(
-        configPath,
-        `
-agents:
-  - id: main
-`,
-      );
-      const config = await loadConfig(configPath);
-      const ids = config.agents.map((a) => a.id);
-      expect(ids).toEqual(["main", "subagent", "coding"]);
-      const subagent = config.agents.find((a) => a.id === "subagent")!;
-      expect(subagent.runner).toBe("pi");
-      expect(subagent.tools).toBe("readonly");
-      const coding = config.agents.find((a) => a.id === "coding")!;
-      expect(coding.runner).toBe("claude");
-      expect(coding.spawnable).toBe(true);
-    });
-
-    it("user override merges over builtin defaults", async () => {
-      const configPath = path.join(tempDir, "override.yaml");
-      await fs.writeFile(
-        configPath,
-        `
-agents:
-  - id: main
-  - id: subagent
-    enabled: false
-  - id: coding
-    workspace: /custom/path
-`,
-      );
-      const config = await loadConfig(configPath);
-      const subagent = config.agents.find((a) => a.id === "subagent")!;
-      expect(subagent.enabled).toBe(false);
-      expect(subagent.runner).toBe("pi");
-      expect(subagent.tools).toBe("readonly");
-      const coding = config.agents.find((a) => a.id === "coding")!;
-      expect(coding.workspace).toBe("/custom/path");
-      expect(coding.runner).toBe("claude");
-    });
-
     it("legacy array form still works and agentDefaults is undefined", async () => {
       const configPath = path.join(tempDir, "legacy.yaml");
       await fs.writeFile(
@@ -329,7 +286,7 @@ agents:
         deny: ["exec"],
       });
 
-      expect((config.toolSettings as { allow?: string[] } | undefined)?.allow).toEqual(["read"]);
+      expect(config.toolSettings?.allow).toEqual(["read"]);
     });
 
     it("includes compaction config from agent-level", () => {
@@ -385,7 +342,7 @@ agents:
 
       const config = toAgentConfig(agentFile, defaults);
 
-      expect((config.toolSettings as { allow?: string[] } | undefined)?.allow).toEqual(["read"]);
+      expect(config.toolSettings?.allow).toEqual(["read"]);
     });
   });
 

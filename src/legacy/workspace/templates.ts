@@ -56,12 +56,12 @@ const EXISTING_CONTENT_FILES = [
   "HEARTBEAT.md",
 ];
 
-/**
- * Get all workspace templates.
- */
-export function getWorkspaceTemplates(): WorkspaceTemplate[] {
+/** Get the workspace templates for an agent. Subagent gets a focused
+ * "ephemeral helper" SOUL; everyone else gets the full personal-assistant set. */
+export function getWorkspaceTemplates(agentId?: string): WorkspaceTemplate[] {
+  const isSubagent = agentId === "subagent";
   return [
-    { filename: "SOUL.md", content: loadTemplate("SOUL.md") },
+    { filename: "SOUL.md", content: loadTemplate(isSubagent ? "SOUL.subagent.md" : "SOUL.md") },
     { filename: "IDENTITY.md", content: loadTemplate("IDENTITY.md") },
     { filename: "USER.md", content: loadTemplate("USER.md") },
     { filename: "TOOLS.md", content: loadTemplate("TOOLS.md") },
@@ -111,8 +111,9 @@ export async function isBrandNewWorkspace(workspacePath: string): Promise<boolea
  */
 export async function seedWorkspaceTemplates(
   workspacePath: string,
+  agentId?: string,
 ): Promise<string[]> {
-  const templates = getWorkspaceTemplates();
+  const templates = getWorkspaceTemplates(agentId);
   const brandNew = await isBrandNewWorkspace(workspacePath);
   const created: string[] = [];
 

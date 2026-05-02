@@ -91,14 +91,16 @@ describe("renderConfig", () => {
     expect(yaml).toContain("token: bot-token-abc");
   });
 
-  it("omits the coding entry when default-enabled", () => {
+  it("emits subagent and coding entries by default", () => {
     const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "enabled" });
-    expect(yaml).not.toMatch(/- id: coding/);
+    expect(yaml).toMatch(/- id: subagent/);
+    expect(yaml).toMatch(/- id: coding/);
+    expect(yaml).not.toContain("enabled: false");
   });
 
-  it("emits a coding entry with enabled: false when user opts out", () => {
+  it("disables coding when user opts out; subagent stays", () => {
     const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "skip" });
-    expect(yaml).toMatch(/- id: coding/);
-    expect(yaml).toContain("enabled: false");
+    expect(yaml).toMatch(/- id: subagent/);
+    expect(yaml).toMatch(/- id: coding\n {4}enabled: false/);
   });
 });

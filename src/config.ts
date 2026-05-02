@@ -79,8 +79,7 @@ export interface AgentConfigFile {
   enabled?: boolean;
   /** Absolute or ISOTOPES_HOME-relative. Omitted → workspace-{id}/. */
   workspace?: string;
-  /** "readonly" → cwd-aware readonly tools (read/ls/grep/find). */
-  tools?: AgentToolsConfigFile | "readonly";
+  tools?: AgentToolsConfigFile;
   model?: string;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
@@ -398,8 +397,6 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
     throw new Error("Config must have at least one agent");
   }
 
-  agentList = mergeBuiltinAgentDefaults(agentList);
-
   // Build normalized config — agents is always an array from here on
   let config: IsotopesConfigFile = {
     ...raw,
@@ -411,36 +408,6 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
   config = processEnvVars(config);
 
   return config;
-}
-
-/** Builtins the framework provides. User entries with the same id win
- * field-by-field; missing builtins are appended. */
-const BUILTIN_AGENT_DEFAULTS: AgentConfigFile[] = [
-  {
-    id: "subagent",
-    runner: "pi",
-    tools: "readonly",
-    sessionPolicy: "always-new",
-    spawnable: true,
-  },
-  {
-    id: "coding",
-    runner: "claude",
-    spawnable: true,
-  },
-];
-
-function mergeBuiltinAgentDefaults(userAgents: AgentConfigFile[]): AgentConfigFile[] {
-  const builtinById = new Map(BUILTIN_AGENT_DEFAULTS.map((b) => [b.id, b] as const));
-  const merged = userAgents.map((user) => {
-    const builtin = builtinById.get(user.id);
-    return builtin ? { ...builtin, ...user } : user;
-  });
-  const userIds = new Set(userAgents.map((a) => a.id));
-  for (const builtin of BUILTIN_AGENT_DEFAULTS) {
-    if (!userIds.has(builtin.id)) merged.push(builtin);
-  }
-  return merged;
 }
 
 /**
@@ -457,9 +424,7 @@ export function toAgentConfig(
 ): AgentConfig {
   // 3-tier merge: agent > defaults > global (shallow replace per block)
   const tools = agent.tools ?? agentDefaults?.tools ?? globalTools;
-  const resolvedToolSettings: AgentToolSettings | "readonly" | undefined = tools === "readonly"
-    ? "readonly"
-    : resolveToolSettings(tools);
+  const resolvedToolSettings = resolveToolSettings(tools);
   const agentCompaction = agent.compaction ?? agentDefaults?.compaction ?? globalCompaction;
   // Sandbox: agents-level (defaults > global) is the base; per-agent overlays
   // partial overrides (typically just `mode: "off"`). The merge happens inside

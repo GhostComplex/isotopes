@@ -29,15 +29,13 @@ const TOOLS = `tools: {}
 `;
 
 function renderAgents(answers: InitAnswers): string {
-  const main = `agents:
-  - id: main
-`;
-  if (answers.claude === "skip") {
-    return `${main}  - id: coding
-    enabled: false
-`;
+  const lines = [`agents:`, `  - id: main`, `  - id: subagent`];
+  if (answers.claude === "enabled") {
+    lines.push(`  - id: coding`);
+  } else {
+    lines.push(`  - id: coding`, `    enabled: false`);
   }
-  return main;
+  return lines.join("\n") + "\n";
 }
 
 function renderChannels(answers: InitAnswers): string {

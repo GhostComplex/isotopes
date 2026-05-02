@@ -19,7 +19,6 @@ import {
   type AgentSession,
   AuthStorage,
   ModelRegistry,
-  createReadOnlyTools,
 } from "@mariozechner/pi-coding-agent";
 import {
   toAgentConfig,
@@ -333,7 +332,7 @@ export class AgentRuntime {
       workspacePath = await ensureWorkspaceDir(agentConfig.id);
     }
 
-    const seededFiles = await seedWorkspaceTemplates(workspacePath);
+    const seededFiles = await seedWorkspaceTemplates(workspacePath, agentConfig.id);
     if (seededFiles.length > 0) {
       log.info(`Seeded ${seededFiles.length} template file(s) for ${agentConfig.id}: ${seededFiles.join(", ")}`);
     }
@@ -351,25 +350,21 @@ export class AgentRuntime {
     }
 
     const processRegistry = new ProcessRegistry();
-    // "readonly" agents (subagent) get the SDK readonly tool set bound to
-    // their own workspacePath; everyone else goes through createAgentTools.
-    const tools: AgentTool[] = agentConfig.toolSettings === "readonly"
-      ? createReadOnlyTools(workspacePath) as AgentTool[]
-      : createAgentTools({
-          workspacePath,
-          settings: agentConfig.toolSettings,
-          sendMessageEnabled,
-          fsImpl,
-          parentAgentId: agentConfig.id,
-          agentId: agentConfig.id,
-          processRegistry,
-          sandboxExecutor,
-          agentSandboxConfig: agentConfig.sandbox,
-          allowedWorkspaces: agentFile.allowedWorkspaces ?? [],
-          transportContext,
-          runtime: this,
-          ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
-        });
+    const tools: AgentTool[] = createAgentTools({
+      workspacePath,
+      settings: agentConfig.toolSettings,
+      sendMessageEnabled,
+      fsImpl,
+      parentAgentId: agentConfig.id,
+      agentId: agentConfig.id,
+      processRegistry,
+      sandboxExecutor,
+      agentSandboxConfig: agentConfig.sandbox,
+      allowedWorkspaces: agentFile.allowedWorkspaces ?? [],
+      transportContext,
+      runtime: this,
+      ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
+    });
 
     if (this.hooks) {
       await this.hooks.emit("before_agent_start", { agentId: agentConfig.id });
