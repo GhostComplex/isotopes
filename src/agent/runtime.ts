@@ -135,9 +135,7 @@ class SessionEventBus {
 }
 
 export interface Runner {
-  /** Backing isotopes agent, if any. Implementers like PiRunner return their
-   * bound agent; runners without an agent (e.g. ClaudeRunner) omit. Surfaces
-   * the agent for getAgent / listAgents. */
+  /** Backing isotopes agent (drives getAgent / listAgents). */
   agent?(): RegisteredAgent | undefined;
   validateRequest?(req: RunRequest): void;
   resolveSessionId(req: RunRequest, runId: string): Promise<string> | string;
