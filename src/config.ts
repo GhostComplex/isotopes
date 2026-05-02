@@ -73,28 +73,23 @@ export interface CronTaskConfigFile {
 /** Agent configuration in config file */
 export interface AgentConfigFile {
   id: string;
-  /** When false, the agent is skipped at boot. Default true. */
+  /** Runner backend. Default "pi". */
+  runner?: "pi" | "claude";
+  /** Default true. */
   enabled?: boolean;
-  /**
-   * Explicit workspace directory for this agent (#214).
-   * Absolute paths are used as-is; relative paths resolve from ISOTOPES_HOME.
-   * When omitted, defaults to "workspace-{id}/".
-   */
+  /** Absolute or ISOTOPES_HOME-relative. Omitted → workspace-{id}/. */
   workspace?: string;
   tools?: AgentToolsConfigFile;
   model?: string;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
-  /** Heartbeat configuration (#191) */
   heartbeat?: HeartbeatConfigFile;
-  /** Cron scheduled tasks (#193) */
   cron?: { tasks: CronTaskConfigFile[] };
-  /** Additional workspace paths allowed for spawned agent cwd */
+  /** Additional workspace paths allowed for spawned agent cwd. */
   allowedWorkspaces?: string[];
-  /** Whether this agent can be spawned by other agents via send_message. Default: false */
+  /** Default false. */
   spawnable?: boolean;
-  /** How this agent treats incoming a2a `send_message` calls when no
-   * sessionId is provided. "parent-reuse" (default) | "always-new". */
+  /** "parent-reuse" (default) | "always-new". */
   sessionPolicy?: "always-new" | "parent-reuse";
 }
 
@@ -429,6 +424,7 @@ export function toAgentConfig(
 ): AgentConfig {
   // 3-tier merge: agent > defaults > global (shallow replace per block)
   const tools = agent.tools ?? agentDefaults?.tools ?? globalTools;
+  const resolvedToolSettings = resolveToolSettings(tools);
   const agentCompaction = agent.compaction ?? agentDefaults?.compaction ?? globalCompaction;
   // Sandbox: agents-level (defaults > global) is the base; per-agent overlays
   // partial overrides (typically just `mode: "off"`). The merge happens inside
@@ -446,8 +442,9 @@ export function toAgentConfig(
 
   return {
     id: agent.id,
+    runner: agent.runner ?? "pi",
     ...(agent.workspace ? { workspace: agent.workspace } : {}),
-    toolSettings: resolveToolSettings(tools),
+    toolSettings: resolvedToolSettings,
     ...(model ? { model } : {}),
     compaction,
     sandbox,

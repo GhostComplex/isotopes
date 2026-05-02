@@ -1,35 +1,29 @@
-import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
-import { type AgentSession, createReadOnlyTools } from "@mariozechner/pi-coding-agent";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import type { RegisteredAgent, RunRequest } from "../../types.js";
-import { RunValidationError } from "../../types.js";
-import { createRootPiSession, type PiSessionDeps } from "./session-factory.js";
+import { createPiSession, type PiSessionDeps } from "./session-factory.js";
 
 export interface PiRunnerOptions {
   agent: RegisteredAgent;
   piDeps: PiSessionDeps;
 }
 
-/** Runs a pi session for an agent. In-memory fallback when no sessionStore. */
+/** Runs a pi session for an agent. registerPi guarantees agent.sessionStore. */
 export class PiRunner {
-  constructor(private opts: PiRunnerOptions) {}
+  constructor(private opts: PiRunnerOptions) {
+    if (!opts.agent.sessionStore) {
+      throw new Error(`PiRunner: agent ${opts.agent.id} has no sessionStore`);
+    }
+  }
 
   agent(): RegisteredAgent {
     return this.opts.agent;
   }
 
-  validateRequest(req: RunRequest): void {
-    if (!this.opts.agent.sessionStore && req.sessionId) {
-      throw new RunValidationError(
-        `${this.opts.agent.id}: sessions are not resumable; omit sessionId`,
-      );
-    }
-  }
-
-  async resolveSessionId(req: RunRequest, runId: string): Promise<string> {
+  async resolveSessionId(req: RunRequest, _runId: string): Promise<string> {
     if (req.sessionId) return req.sessionId;
-    const store = this.opts.agent.sessionStore;
-    if (!store) return `${this.opts.agent.id}:${runId}`;
+    const store = this.opts.agent.sessionStore!;
     const policy = this.opts.agent.sessionPolicy ?? "parent-reuse";
     const fromId = req.from?.agentId ?? "transport";
     const suffix = policy === "parent-reuse" && req.parentSessionId
@@ -50,19 +44,17 @@ export class PiRunner {
     onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent> {
     const { request, sessionId, abort, onSession } = opts;
-    // TODO(#669): replace magic id with config-driven cwd-aware tools
-    const tools = this.opts.agent.id === "subagent"
-      ? createReadOnlyTools(request.cwd ?? process.cwd()) as AgentTool[]
-      : undefined;
-    const session = await createRootPiSession(this.opts.piDeps, {
+    const session = await createPiSession(this.opts.piDeps, {
       agent: this.opts.agent,
       sessionId,
       ...(request.cwd ? { cwd: request.cwd } : {}),
-      ...(tools ? { tools } : {}),
     });
     onSession?.(session);
+    const content = request.cwd && request.from
+      ? `[Caller working directory: ${request.cwd}]\n\n${request.content}`
+      : request.content;
     try {
-      yield* streamPiSession(session, request.content, abort);
+      yield* streamPiSession(session, content, abort);
     } finally {
       session.dispose();
     }

@@ -21,8 +21,6 @@ import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
 import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
 import { AgentRuntime } from "./agent/runtime.js";
-import { ClaudeRunner } from "./agent/runners/claude/runner.js";
-import { createReadOnlyTools } from "@mariozechner/pi-coding-agent";
 import { consumeRootRun } from "./legacy/core/agent-run.js";
 
 const log = createLogger("runtime");
@@ -64,26 +62,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     hooks: pluginManager.getHooks(),
   });
 
-  const builtinIds = new Set(["subagent", "claude"]);
-  const userAgents = config.agents.filter((a) => !builtinIds.has(a.id));
-
-  const subagentOverride = config.agents.find((a) => a.id === "subagent");
-  if (subagentOverride?.enabled !== false && agentRuntime.hasPiInfra()) {
-    agentRuntime.registerBuiltinAgent({
-      id: "subagent",
-      tools: createReadOnlyTools(process.cwd()) as AgentTool[],
-      sessionPolicy: "always-new",
-      spawnable: subagentOverride?.spawnable ?? true,
-    });
-  }
-
-  const claudeOverride = config.agents.find((a) => a.id === "claude");
-  if (claudeOverride?.enabled !== false) {
-    agentRuntime.registerRunner("claude", new ClaudeRunner(), {
-      spawnable: claudeOverride?.spawnable ?? true,
-    });
-  }
-
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
   const processRegistries = new Map<string, ProcessRegistry>();
@@ -112,15 +90,15 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Sandbox executor initialized (image: ${dockerConfig.image})`);
   }
 
-  const spawnableAgentIds = userAgents
-    .filter((a) => a.spawnable === true)
+  const spawnableAgentIds = config.agents
+    .filter((a) => a.spawnable === true && a.enabled !== false)
     .map((a) => a.id);
 
-  for (const agentFile of userAgents) {
+  for (const agentFile of config.agents) {
     if (agentFile.enabled === false) continue;
     const transportCtx = new LazyTransportContext();
     const sessionStore = await sessionStoreManager.getOrCreate(agentFile.id);
-    const result = await agentRuntime.addAgent({
+    const result = await agentRuntime.register({
       agentFile,
       agentDefaults: config.agentDefaults,
       provider: config.provider,
@@ -133,10 +111,10 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       sessionStore,
     });
 
-    agentWorkspaces.set(result.agent.id, result.workspacePath);
+    if (result.workspacePath !== null) agentWorkspaces.set(result.agent.id, result.workspacePath);
     transportContexts.set(result.agent.id, transportCtx);
     processRegistries.set(result.agent.id, result.processRegistry);
-    toolRegistries.set(result.agent.id, result.tools);
+    if (result.tools.length > 0) toolRegistries.set(result.agent.id, result.tools);
   }
 
   const pluginDirs = [
@@ -170,7 +148,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   const heartbeatManagers: HeartbeatManager[] = [];
-  for (const agentFile of userAgents) {
+  for (const agentFile of config.agents) {
     if (!agentFile.heartbeat?.enabled) continue;
     const workspacePath = agentWorkspaces.get(agentFile.id);
     if (!workspacePath) continue;
@@ -201,7 +179,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   const cronScheduler = new CronScheduler();
 
-  for (const agentFile of userAgents) {
+  for (const agentFile of config.agents) {
     if (!agentFile.cron?.tasks?.length) continue;
     for (const task of agentFile.cron.tasks) {
       cronScheduler.register({

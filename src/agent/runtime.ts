@@ -13,6 +13,7 @@ import type { ProviderConfig } from "./types.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import type { PiSessionDeps } from "./runners/pi/session-factory.js";
 import { PiRunner } from "./runners/pi/runner.js";
+import { ClaudeRunner } from "./runners/claude/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -87,7 +88,8 @@ export interface AddAgentOptions {
 
 export interface AddAgentResult {
   agent: RegisteredAgent;
-  workspacePath: string;
+  /** null when the runner has no workspace (e.g. claude). */
+  workspacePath: string | null;
   tools: AgentTool[];
   processRegistry: ProcessRegistry;
   transportContext?: LazyTransportContext;
@@ -185,26 +187,6 @@ export class AgentRuntime {
   /** True iff globalProvider was passed (required for any pi-backed agent). */
   hasPiInfra(): boolean {
     return this.piGlobalProvider !== undefined;
-  }
-
-  /** Synthetic agent with no workspace + in-memory session. Used for built-ins
-   * like "subagent". */
-  registerBuiltinAgent(opts: {
-    id: string;
-    tools: AgentTool[];
-    spawnable?: boolean;
-    sessionPolicy?: "always-new" | "parent-reuse";
-  }): void {
-    const config: import("./types.js").AgentConfig = { id: opts.id };
-    const agent: RegisteredAgent = {
-      id: opts.id,
-      config,
-      capabilities: { tools: opts.tools.map((t) => t.name), canBeAddressed: true },
-      ...(opts.sessionPolicy ? { sessionPolicy: opts.sessionPolicy } : {}),
-    };
-    this.setAgentTools(opts.id, opts.tools);
-    const runner = new PiRunner({ agent, piDeps: this.piDeps() });
-    this.registerRunner(opts.id, runner, { spawnable: opts.spawnable ?? true });
   }
 
   private piDeps(): PiSessionDeps {
@@ -315,12 +297,32 @@ export class AgentRuntime {
     }
   }
 
-  /** Workspace prep + tool creation + entry registration in one call. */
-  async addAgent(opts: AddAgentOptions): Promise<AddAgentResult> {
-    const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox,
-      sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
-
+  /** Single registration entry point. Branches on agent.runner. */
+  async register(opts: AddAgentOptions): Promise<AddAgentResult> {
+    const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox } = opts;
     const agentConfig = toAgentConfig(agentFile, agentDefaults, provider, globalTools, compaction, sandbox);
+    return agentConfig.runner === "claude"
+      ? this.registerClaude(agentConfig)
+      : this.registerPi(agentConfig, opts);
+  }
+
+  private registerClaude(agentConfig: import("./types.js").AgentConfig): AddAgentResult {
+    const agent: RegisteredAgent = {
+      id: agentConfig.id,
+      config: agentConfig,
+      capabilities: { tools: [], canBeAddressed: true },
+      ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
+    };
+    this.registerRunner(agentConfig.id, new ClaudeRunner(), { spawnable: agentConfig.spawnable === true });
+    log.info(`Added agent: ${agent.id} (runner: claude)`);
+    return { agent, workspacePath: null, processRegistry: new ProcessRegistry(), tools: [] };
+  }
+
+  private async registerPi(
+    agentConfig: import("./types.js").AgentConfig,
+    opts: AddAgentOptions,
+  ): Promise<AddAgentResult> {
+    const { agentFile, sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
 
     let workspacePath: string;
     if (agentFile.workspace) {
@@ -331,7 +333,7 @@ export class AgentRuntime {
       workspacePath = await ensureWorkspaceDir(agentConfig.id);
     }
 
-    const seededFiles = await seedWorkspaceTemplates(workspacePath);
+    const seededFiles = await seedWorkspaceTemplates(workspacePath, agentConfig.id);
     if (seededFiles.length > 0) {
       log.info(`Seeded ${seededFiles.length} template file(s) for ${agentConfig.id}: ${seededFiles.join(", ")}`);
     }
@@ -342,7 +344,7 @@ export class AgentRuntime {
     const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
     const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
-    // send_message tool spawns host-side child runners that bypass docker.
+    // send_message spawns host-side child runners that bypass docker.
     const sendMessageEnabled = !isSandboxed;
     if (isSandboxed) {
       log.warn(`send_message tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
@@ -381,7 +383,7 @@ export class AgentRuntime {
     const runner = new PiRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(agent.id, runner, { spawnable: agentConfig.spawnable === true });
 
-    log.info(`Added agent: ${agent.id} (workspace: ${workspacePath}, tools: ${tools.length})`);
+    log.info(`Added agent: ${agent.id} (runner: pi, workspace: ${workspacePath}, tools: ${tools.length})`);
 
     return {
       agent,

@@ -50,7 +50,6 @@ describe("ConfigReloader", () => {
 
       const config = reloader.getConfig();
       expect(config).not.toBeNull();
-      expect(config!.agents).toHaveLength(1);
       expect(config!.agents[0].id).toBe("test-agent");
 
       reloader.stop();

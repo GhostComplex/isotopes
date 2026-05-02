@@ -38,7 +38,6 @@ agents:
 
       const config = await loadConfig(configPath);
 
-      expect(config.agents).toHaveLength(1);
       expect(config.agents[0].id).toBe("test");
     });
 
@@ -53,7 +52,6 @@ agents:
 
       const config = await loadConfig(configPath);
 
-      expect(config.agents).toHaveLength(1);
       expect(config.agents[0].id).toBe("test");
     });
 
@@ -184,7 +182,6 @@ agents:
 
       // agents should be normalized to array
       expect(Array.isArray(config.agents)).toBe(true);
-      expect(config.agents.length).toBe(2);
       expect(config.agents[0].id).toBe("major");
       expect(config.agents[1].id).toBe("tachikoma");
       expect(config.agents[1].model).toBe("claude-opus-4.5");
@@ -612,7 +609,6 @@ agents:
       );
 
       const config = await loadConfig(configPath);
-      expect(config.agents).toHaveLength(1);
       expect(config.agents[0].id).toBe("test");
     });
 

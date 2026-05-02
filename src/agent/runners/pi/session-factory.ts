@@ -6,19 +6,25 @@ import {
   type ModelRegistry,
   type ToolDefinition,
   createAgentSession,
-  SessionManager,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import * as path from "node:path";
 
-import type { AgentConfig, ProviderConfig } from "../../types.js";
+import type { ProviderConfig, RegisteredAgent } from "../../types.js";
 import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
-import type { RegisteredAgent } from "../../types.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
-import { deriveAgentSystemPrompt } from "../../system-prompt.js";
+import { buildAgentSystemPrompt } from "../../workspace.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
+
+export interface PiSessionDeps {
+  globalProvider: ProviderConfig;
+  authStorage: AuthStorage;
+  modelRegistry: ModelRegistry;
+  getAgentTools: (agentId: string) => AgentTool[];
+  hooks?: HookRegistry;
+}
 
 function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<Api> {
   const provider = globalProvider.type as Parameters<typeof getModel>[0];
@@ -30,32 +36,18 @@ function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<A
   if (globalProvider.baseUrl && globalProvider.apiKey) {
     proxyHeaders.Authorization ??= `Bearer ${globalProvider.apiKey}`;
   }
-  const hasProxyHeaders = Object.keys(proxyHeaders).length > 0;
-
-  if (!globalProvider.baseUrl && !hasProxyHeaders) return model;
+  if (!globalProvider.baseUrl && Object.keys(proxyHeaders).length === 0) return model;
 
   return {
     ...model,
     id,
     ...(globalProvider.baseUrl ? { baseUrl: globalProvider.baseUrl } : {}),
-    ...(hasProxyHeaders ? { headers: { ...(model.headers ?? {}), ...proxyHeaders } } : {}),
+    ...(Object.keys(proxyHeaders).length > 0 ? { headers: { ...(model.headers ?? {}), ...proxyHeaders } } : {}),
   };
 }
 
-interface CreatePiAgentSessionOptions {
-  globalProvider: ProviderConfig;
-  authStorage: AuthStorage;
-  modelRegistry: ModelRegistry;
-  agentConfig: AgentConfig;
-  tools: AgentTool[];
-  sessionManager: SessionManager;
-  systemPrompt: string;
-  cwd?: string;
-  hooks?: HookRegistry;
-}
-
-// Promote AgentTool → ToolDefinition (the shape pi-coding-agent customTools wants).
-// AgentTool has no ctx parameter on execute; ToolDefinition does. Inline thin shim.
+/** AgentTool → SDK ToolDefinition shim. AgentTool's execute has no ctx; the
+ * shim adds it (unused) and wraps execution in before/after hooks. */
 function toToolDefinition(t: AgentTool, hooks: HookRegistry | undefined, agentId: string): ToolDefinition {
   return {
     name: t.name,
@@ -79,75 +71,37 @@ function toToolDefinition(t: AgentTool, hooks: HookRegistry | undefined, agentId
   };
 }
 
-async function createPiAgentSession(opts: CreatePiAgentSessionOptions): Promise<AgentSession> {
-  const {
-    globalProvider, authStorage, modelRegistry,
-    agentConfig, tools,
-    sessionManager, systemPrompt, cwd, hooks,
-  } = opts;
+export async function createPiSession(
+  deps: PiSessionDeps,
+  opts: { agent: RegisteredAgent; sessionId: string; cwd?: string },
+): Promise<AgentSession> {
+  const { agent, sessionId, cwd } = opts;
+  if (!agent.sessionStore) throw new Error(`pi runner: agent ${agent.id} requires a sessionStore`);
+  const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
+  if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
-  const model: Model<Api> = resolveModel(globalProvider, agentConfig.model);
-  const agentDir = path.join(ISOTOPES_HOME, "agents", agentConfig.id, "agent");
-
-  const customTools: ToolDefinition[] = tools.map((t) => toToolDefinition(t, hooks, agentConfig.id));
-
-  const compactionEnabled = !!(agentConfig.compaction && agentConfig.compaction.mode !== "off");
-  const compactionSettings = compactionEnabled
-    ? {
-        enabled: true,
-        reserveTokens: agentConfig.compaction?.reserveTokens ?? 20_000,
-        keepRecentTokens: 20_000,
-      }
-    : { enabled: false, reserveTokens: 20_000, keepRecentTokens: 20_000 };
-
-  const settingsManager = SettingsManager.inMemory({ compaction: compactionSettings });
+  const customTools = deps.getAgentTools(agent.id).map((t) => toToolDefinition(t, deps.hooks, agent.id));
+  const compactionEnabled = !!(agent.config.compaction && agent.config.compaction.mode !== "off");
+  const settingsManager = SettingsManager.inMemory({
+    compaction: compactionEnabled
+      ? { enabled: true, reserveTokens: agent.config.compaction?.reserveTokens ?? 20_000, keepRecentTokens: 20_000 }
+      : { enabled: false, reserveTokens: 20_000, keepRecentTokens: 20_000 },
+  });
 
   const { session } = await createAgentSession({
     cwd: cwd ?? process.cwd(),
-    agentDir,
-    authStorage,
-    modelRegistry,
-    model,
-    // SDK reads `tools` as an allowlist. Pass our names so SDK's built-in
-    // `bash` (host shell) doesn't end up active when sandboxed.
+    agentDir: path.join(ISOTOPES_HOME, "agents", agent.id, "agent"),
+    authStorage: deps.authStorage,
+    modelRegistry: deps.modelRegistry,
+    model: resolveModel(deps.globalProvider, agent.config.model),
+    // SDK reads `tools` as an allowlist; pass our names so the SDK's built-in
+    // `bash` doesn't end up active alongside our customTools.
     tools: customTools.map((t) => t.name).filter((n): n is string => typeof n === "string"),
     customTools,
     sessionManager,
     settingsManager,
   });
 
-  overrideSessionSystemPrompt(session, systemPrompt);
-
+  overrideSessionSystemPrompt(session, await buildAgentSystemPrompt(agent.config));
   return session;
-}
-
-export interface PiSessionDeps {
-  globalProvider: ProviderConfig;
-  authStorage: AuthStorage;
-  modelRegistry: ModelRegistry;
-  getAgentTools: (agentId: string) => AgentTool[];
-  hooks?: HookRegistry;
-}
-
-export async function createRootPiSession(
-  deps: PiSessionDeps,
-  opts: { agent: RegisteredAgent; sessionId: string; cwd?: string; tools?: AgentTool[] },
-): Promise<AgentSession> {
-  const { agent, sessionId, cwd } = opts;
-  const sessionManager = agent.sessionStore
-    ? await agent.sessionStore.getSessionManager(sessionId)
-    : SessionManager.inMemory();
-  if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
-
-  return createPiAgentSession({
-    globalProvider: deps.globalProvider,
-    authStorage: deps.authStorage,
-    modelRegistry: deps.modelRegistry,
-    agentConfig: agent.config,
-    tools: opts.tools ?? deps.getAgentTools(agent.id),
-    sessionManager,
-    systemPrompt: await deriveAgentSystemPrompt(agent.config),
-    ...(cwd ? { cwd } : {}),
-    ...(deps.hooks ? { hooks: deps.hooks } : {}),
-  });
 }

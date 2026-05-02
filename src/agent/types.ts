@@ -14,7 +14,9 @@ export interface ProviderConfig {
 
 export interface AgentConfig {
   id: string;
-  /** Defaults to ${ISOTOPES_HOME}/workspace-${id} (#214). */
+  /** Default "pi". */
+  runner?: "pi" | "claude";
+  /** Defaults to ${ISOTOPES_HOME}/workspace-${id}. */
   workspace?: string;
   toolSettings?: AgentToolSettings;
   model?: string;
@@ -22,7 +24,7 @@ export interface AgentConfig {
   sandbox?: SandboxConfig;
   /** Default false. */
   spawnable?: boolean;
-  /** Defaults to "parent-reuse". */
+  /** Default "parent-reuse". */
   sessionPolicy?: "always-new" | "parent-reuse";
 }
 
