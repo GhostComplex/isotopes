@@ -56,10 +56,6 @@ export class PiRunner {
       ...(request.cwd ? { cwd: request.cwd } : {}),
     });
     onSession?.(session);
-    // Pi tools resolve fs paths against the agent's own workspace, so
-    // request.cwd (the caller's working directory) is invisible to them.
-    // Surface it in the prompt so the agent can use absolute paths when
-    // the caller cares about a specific location.
     const content = request.cwd
       ? `[Caller working directory: ${request.cwd}]\n\n${request.content}`
       : request.content;
