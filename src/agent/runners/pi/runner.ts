@@ -50,7 +50,7 @@ export class PiRunner {
       ...(request.cwd ? { cwd: request.cwd } : {}),
     });
     onSession?.(session);
-    const content = request.cwd
+    const content = request.cwd && request.from
       ? `[Caller working directory: ${request.cwd}]\n\n${request.content}`
       : request.content;
     try {
