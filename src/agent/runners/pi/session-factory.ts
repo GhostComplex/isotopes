@@ -13,9 +13,7 @@ import * as path from "node:path";
 import type { ProviderConfig, RegisteredAgent } from "../../types.js";
 import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
-import { resolveAgentWorkspacePath } from "../../../paths.js";
-import { resolveBundledSkillsDir } from "../../../legacy/skills/bundled-dir.js";
-import { buildSystemPromptForWorkspace } from "../../workspace.js";
+import { buildAgentSystemPrompt } from "../../workspace.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -104,11 +102,6 @@ export async function createPiSession(
     settingsManager,
   });
 
-  overrideSessionSystemPrompt(
-    session,
-    await buildSystemPromptForWorkspace(resolveAgentWorkspacePath(agent.config), {
-      bundledPath: resolveBundledSkillsDir(),
-    }),
-  );
+  overrideSessionSystemPrompt(session, await buildAgentSystemPrompt(agent.config));
   return session;
 }
