@@ -6,7 +6,6 @@ import {
   type ModelRegistry,
   type ToolDefinition,
   createAgentSession,
-  SessionManager,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import * as path from "node:path";
@@ -77,10 +76,8 @@ export async function createPiSession(
   opts: { agent: RegisteredAgent; sessionId: string; cwd?: string },
 ): Promise<AgentSession> {
   const { agent, sessionId, cwd } = opts;
-
-  const sessionManager = agent.sessionStore
-    ? await agent.sessionStore.getSessionManager(sessionId)
-    : SessionManager.inMemory();
+  if (!agent.sessionStore) throw new Error(`pi runner: agent ${agent.id} requires a sessionStore`);
+  const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
   const customTools = deps.getAgentTools(agent.id).map((t) => toToolDefinition(t, deps.hooks, agent.id));

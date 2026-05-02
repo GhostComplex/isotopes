@@ -2,7 +2,6 @@ import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import type { RegisteredAgent, RunRequest } from "../../types.js";
-import { RunValidationError } from "../../types.js";
 import { createPiSession, type PiSessionDeps } from "./session-factory.js";
 
 export interface PiRunnerOptions {
@@ -10,26 +9,21 @@ export interface PiRunnerOptions {
   piDeps: PiSessionDeps;
 }
 
-/** Runs a pi session for an agent. In-memory fallback when no sessionStore. */
+/** Runs a pi session for an agent. registerPi guarantees agent.sessionStore. */
 export class PiRunner {
-  constructor(private opts: PiRunnerOptions) {}
+  constructor(private opts: PiRunnerOptions) {
+    if (!opts.agent.sessionStore) {
+      throw new Error(`PiRunner: agent ${opts.agent.id} has no sessionStore`);
+    }
+  }
 
   agent(): RegisteredAgent {
     return this.opts.agent;
   }
 
-  validateRequest(req: RunRequest): void {
-    if (!this.opts.agent.sessionStore && req.sessionId) {
-      throw new RunValidationError(
-        `${this.opts.agent.id}: sessions are not resumable; omit sessionId`,
-      );
-    }
-  }
-
-  async resolveSessionId(req: RunRequest, runId: string): Promise<string> {
+  async resolveSessionId(req: RunRequest, _runId: string): Promise<string> {
     if (req.sessionId) return req.sessionId;
-    const store = this.opts.agent.sessionStore;
-    if (!store) return `${this.opts.agent.id}:${runId}`;
+    const store = this.opts.agent.sessionStore!;
     const policy = this.opts.agent.sessionPolicy ?? "parent-reuse";
     const fromId = req.from?.agentId ?? "transport";
     const suffix = policy === "parent-reuse" && req.parentSessionId
