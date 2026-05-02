@@ -1,5 +1,5 @@
-import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
-import { type AgentSession, createReadOnlyTools } from "@mariozechner/pi-coding-agent";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import type { RegisteredAgent, RunRequest } from "../../types.js";
 import { RunValidationError } from "../../types.js";
@@ -50,14 +50,10 @@ export class PiRunner {
     onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent> {
     const { request, sessionId, abort, onSession } = opts;
-    const tools = this.opts.agent.config.toolsMode === "readonly"
-      ? createReadOnlyTools(request.cwd ?? process.cwd()) as AgentTool[]
-      : undefined;
     const session = await createRootPiSession(this.opts.piDeps, {
       agent: this.opts.agent,
       sessionId,
       ...(request.cwd ? { cwd: request.cwd } : {}),
-      ...(tools ? { tools } : {}),
     });
     onSession?.(session);
     try {

@@ -18,9 +18,8 @@ export interface AgentConfig {
   runner?: "pi" | "claude";
   /** Defaults to ${ISOTOPES_HOME}/workspace-${id}. */
   workspace?: string;
-  toolSettings?: AgentToolSettings;
-  /** "readonly" → cwd-aware readonly tools built per-run. */
-  toolsMode?: "readonly";
+  /** Structured allow/deny, or "readonly" for the SDK readonly tool set. */
+  toolSettings?: AgentToolSettings | "readonly";
   model?: string;
   compaction?: CompactionConfig;
   sandbox?: SandboxConfig;

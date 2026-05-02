@@ -457,6 +457,9 @@ export function toAgentConfig(
 ): AgentConfig {
   // 3-tier merge: agent > defaults > global (shallow replace per block)
   const tools = agent.tools ?? agentDefaults?.tools ?? globalTools;
+  const resolvedToolSettings: AgentToolSettings | "readonly" | undefined = tools === "readonly"
+    ? "readonly"
+    : resolveToolSettings(tools);
   const agentCompaction = agent.compaction ?? agentDefaults?.compaction ?? globalCompaction;
   // Sandbox: agents-level (defaults > global) is the base; per-agent overlays
   // partial overrides (typically just `mode: "off"`). The merge happens inside
@@ -476,8 +479,7 @@ export function toAgentConfig(
     id: agent.id,
     runner: agent.runner ?? "pi",
     ...(agent.workspace ? { workspace: agent.workspace } : {}),
-    toolSettings: tools === "readonly" ? undefined : resolveToolSettings(tools as AgentToolsConfigFile | undefined),
-    ...(tools === "readonly" ? { toolsMode: "readonly" as const } : {}),
+    toolSettings: resolvedToolSettings,
     ...(model ? { model } : {}),
     compaction,
     sandbox,

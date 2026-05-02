@@ -19,6 +19,7 @@ import {
   type AgentSession,
   AuthStorage,
   ModelRegistry,
+  createReadOnlyTools,
 } from "@mariozechner/pi-coding-agent";
 import {
   toAgentConfig,
@@ -350,10 +351,10 @@ export class AgentRuntime {
     }
 
     const processRegistry = new ProcessRegistry();
-    // toolsMode === "readonly" agents (subagent) build cwd-aware readonly tools
-    // per-run inside PiRunner. Skip the static tool set here.
-    const tools: AgentTool[] = agentConfig.toolsMode === "readonly"
-      ? []
+    // "readonly" agents (subagent) get the SDK readonly tool set bound to
+    // their own workspacePath; everyone else goes through createAgentTools.
+    const tools: AgentTool[] = agentConfig.toolSettings === "readonly"
+      ? createReadOnlyTools(workspacePath) as AgentTool[]
       : createAgentTools({
           workspacePath,
           settings: agentConfig.toolSettings,

@@ -329,7 +329,7 @@ agents:
         deny: ["exec"],
       });
 
-      expect(config.toolSettings?.allow).toEqual(["read"]);
+      expect((config.toolSettings as { allow?: string[] } | undefined)?.allow).toEqual(["read"]);
     });
 
     it("includes compaction config from agent-level", () => {
@@ -385,7 +385,7 @@ agents:
 
       const config = toAgentConfig(agentFile, defaults);
 
-      expect(config.toolSettings?.allow).toEqual(["read"]);
+      expect((config.toolSettings as { allow?: string[] } | undefined)?.allow).toEqual(["read"]);
     });
   });
 
