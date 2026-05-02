@@ -15,7 +15,7 @@ import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
 import { resolveBundledSkillsDir } from "../../../legacy/skills/bundled-dir.js";
-import { loadWorkspaceContext, buildSystemPrompt } from "../../workspace.js";
+import { buildSystemPromptForWorkspace } from "../../workspace.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -104,14 +104,11 @@ export async function createPiSession(
     settingsManager,
   });
 
-  overrideSessionSystemPrompt(session, await deriveSystemPrompt(agent));
+  overrideSessionSystemPrompt(
+    session,
+    await buildSystemPromptForWorkspace(resolveAgentWorkspacePath(agent.config), {
+      bundledPath: resolveBundledSkillsDir(),
+    }),
+  );
   return session;
-}
-
-async function deriveSystemPrompt(agent: RegisteredAgent): Promise<string> {
-  const workspacePath = resolveAgentWorkspacePath(agent.config);
-  const workspace = await loadWorkspaceContext(workspacePath, {
-    bundledPath: resolveBundledSkillsDir(),
-  });
-  return buildSystemPrompt(workspace);
 }

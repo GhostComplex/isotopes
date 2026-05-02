@@ -143,6 +143,15 @@ export function buildSystemPrompt(workspace: WorkspaceContext | null): string {
   return parts.join("\n\n---\n\n");
 }
 
+/** Convenience: load workspace context from a path and build the prompt. */
+export async function buildSystemPromptForWorkspace(
+  workspacePath: string,
+  options?: { bundledPath?: string },
+): Promise<string> {
+  const ctx = await loadWorkspaceContext(workspacePath, options);
+  return buildSystemPrompt(ctx);
+}
+
 /**
  * Ensure workspace directory structure exists.
  */
