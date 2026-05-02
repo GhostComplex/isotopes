@@ -91,16 +91,16 @@ describe("renderConfig", () => {
     expect(yaml).toContain("token: bot-token-abc");
   });
 
-  it("emits subagent and coding entries by default", () => {
+  it("emits subagent and coding entries by default; coding has runner: claude", () => {
     const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "enabled" });
     expect(yaml).toMatch(/- id: subagent/);
-    expect(yaml).toMatch(/- id: coding/);
+    expect(yaml).toMatch(/- id: coding\n {4}runner: claude/);
     expect(yaml).not.toContain("enabled: false");
   });
 
-  it("disables coding when user opts out; subagent stays", () => {
+  it("disables coding when user opts out; subagent stays; runner stays", () => {
     const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "skip" });
     expect(yaml).toMatch(/- id: subagent/);
-    expect(yaml).toMatch(/- id: coding\n {4}enabled: false/);
+    expect(yaml).toMatch(/- id: coding\n {4}runner: claude\n {4}enabled: false/);
   });
 });

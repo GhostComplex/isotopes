@@ -31,9 +31,9 @@ const TOOLS = `tools: {}
 function renderAgents(answers: InitAnswers): string {
   const lines = [`agents:`, `  - id: main`, `  - id: subagent`];
   if (answers.claude === "enabled") {
-    lines.push(`  - id: coding`);
+    lines.push(`  - id: coding`, `    runner: claude`);
   } else {
-    lines.push(`  - id: coding`, `    enabled: false`);
+    lines.push(`  - id: coding`, `    runner: claude`, `    enabled: false`);
   }
   return lines.join("\n") + "\n";
 }
