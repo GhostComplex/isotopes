@@ -13,6 +13,7 @@ import type { ProviderConfig } from "./types.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import type { PiSessionDeps } from "./runners/pi/session-factory.js";
 import { PiRunner } from "./runners/pi/runner.js";
+import { ClaudeRunner } from "./runners/claude/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -187,26 +188,6 @@ export class AgentRuntime {
     return this.piGlobalProvider !== undefined;
   }
 
-  /** Synthetic agent with no workspace + in-memory session. Used for built-ins
-   * like "subagent". */
-  registerBuiltinAgent(opts: {
-    id: string;
-    tools: AgentTool[];
-    spawnable?: boolean;
-    sessionPolicy?: "always-new" | "parent-reuse";
-  }): void {
-    const config: import("./types.js").AgentConfig = { id: opts.id };
-    const agent: RegisteredAgent = {
-      id: opts.id,
-      config,
-      capabilities: { tools: opts.tools.map((t) => t.name), canBeAddressed: true },
-      ...(opts.sessionPolicy ? { sessionPolicy: opts.sessionPolicy } : {}),
-    };
-    this.setAgentTools(opts.id, opts.tools);
-    const runner = new PiRunner({ agent, piDeps: this.piDeps() });
-    this.registerRunner(opts.id, runner, { spawnable: opts.spawnable ?? true });
-  }
-
   private piDeps(): PiSessionDeps {
     if (!this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
       throw new Error("pi infra not configured (pass globalProvider to AgentRuntime)");
@@ -315,64 +296,96 @@ export class AgentRuntime {
     }
   }
 
-  /** Workspace prep + tool creation + entry registration in one call. */
-  async addAgent(opts: AddAgentOptions): Promise<AddAgentResult> {
-    const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox,
-      sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
-
+  /** Single registration entry point. Branches on agent.runner. */
+  async register(opts: AddAgentOptions): Promise<AddAgentResult> {
+    const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox } = opts;
     const agentConfig = toAgentConfig(agentFile, agentDefaults, provider, globalTools, compaction, sandbox);
 
-    let workspacePath: string;
-    if (agentFile.workspace) {
-      const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
-      workspacePath = await ensureExplicitWorkspaceDir(resolved);
-      log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
-    } else {
-      workspacePath = await ensureWorkspaceDir(agentConfig.id);
+    if (agentConfig.runner === "claude") {
+      return this.registerClaude(agentConfig);
     }
+    return this.registerPi(agentConfig, opts);
+  }
 
-    const seededFiles = await seedWorkspaceTemplates(workspacePath);
-    if (seededFiles.length > 0) {
-      log.info(`Seeded ${seededFiles.length} template file(s) for ${agentConfig.id}: ${seededFiles.join(", ")}`);
-    }
+  /** Claude runner: subprocess CLI, no workspace/sessionStore/sandbox/tools setup. */
+  private registerClaude(agentConfig: import("./types.js").AgentConfig): AddAgentResult {
+    const agent: RegisteredAgent = {
+      id: agentConfig.id,
+      config: agentConfig,
+      capabilities: { tools: [], canBeAddressed: true },
+      ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
+    };
+    this.registerRunner(agentConfig.id, new ClaudeRunner(), { spawnable: agentConfig.spawnable === true });
+    log.info(`Added agent: ${agent.id} (runner: claude)`);
+    return { agent, workspacePath: "", processRegistry: new ProcessRegistry(), tools: [] };
+  }
 
-    await reconcileWorkspaceState(workspacePath);
-    await ensureWorkspaceStructure(workspacePath);
+  /** Pi runner: full workspace prep + tool creation, OR no-workspace readonly mode. */
+  private async registerPi(
+    agentConfig: import("./types.js").AgentConfig,
+    opts: AddAgentOptions,
+  ): Promise<AddAgentResult> {
+    const { agentFile, sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
+    const noWorkspace = agentConfig.workspace === null;
 
-    const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
-    const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
-
-    // send_message tool spawns host-side child runners that bypass docker.
-    const sendMessageEnabled = !isSandboxed;
-    if (isSandboxed) {
-      log.warn(`send_message tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
-    }
-
+    let workspacePath = "";
+    let tools: AgentTool[] = [];
     const processRegistry = new ProcessRegistry();
-    const tools: AgentTool[] = createAgentTools({
-      workspacePath,
-      settings: agentConfig.toolSettings,
-      sendMessageEnabled,
-      fsImpl,
-      parentAgentId: agentConfig.id,
-      agentId: agentConfig.id,
-      processRegistry,
-      sandboxExecutor,
-      agentSandboxConfig: agentConfig.sandbox,
-      allowedWorkspaces: agentFile.allowedWorkspaces ?? [],
-      transportContext,
-      runtime: this,
-      ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
-    });
+
+    if (!noWorkspace) {
+      if (agentFile.workspace) {
+        const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
+        workspacePath = await ensureExplicitWorkspaceDir(resolved);
+        log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
+      } else {
+        workspacePath = await ensureWorkspaceDir(agentConfig.id);
+      }
+
+      const seededFiles = await seedWorkspaceTemplates(workspacePath);
+      if (seededFiles.length > 0) {
+        log.info(`Seeded ${seededFiles.length} template file(s) for ${agentConfig.id}: ${seededFiles.join(", ")}`);
+      }
+
+      await reconcileWorkspaceState(workspacePath);
+      await ensureWorkspaceStructure(workspacePath);
+
+      const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
+      const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
+
+      const sendMessageEnabled = !isSandboxed;
+      if (isSandboxed) {
+        log.warn(`send_message tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
+      }
+
+      tools = createAgentTools({
+        workspacePath,
+        settings: agentConfig.toolSettings,
+        sendMessageEnabled,
+        fsImpl,
+        parentAgentId: agentConfig.id,
+        agentId: agentConfig.id,
+        processRegistry,
+        sandboxExecutor,
+        agentSandboxConfig: agentConfig.sandbox,
+        allowedWorkspaces: agentFile.allowedWorkspaces ?? [],
+        transportContext,
+        runtime: this,
+        ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
+      });
+    }
 
     if (this.hooks) {
       await this.hooks.emit("before_agent_start", { agentId: agentConfig.id });
     }
 
+    // Subagent / readonly agents have no persistent sessionStore; PiRunner falls
+    // back to in-memory SessionManager when sessionStore is undefined.
+    const persistentStore = noWorkspace ? undefined : sessionStore;
+
     const agent: RegisteredAgent = {
       id: agentConfig.id,
       config: agentConfig,
-      sessionStore,
+      ...(persistentStore ? { sessionStore: persistentStore } : {}),
       capabilities: { tools: tools.map((t) => t.name), canBeAddressed: true },
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
     };
@@ -381,7 +394,7 @@ export class AgentRuntime {
     const runner = new PiRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(agent.id, runner, { spawnable: agentConfig.spawnable === true });
 
-    log.info(`Added agent: ${agent.id} (workspace: ${workspacePath}, tools: ${tools.length})`);
+    log.info(`Added agent: ${agent.id} (runner: pi, workspace: ${workspacePath || "<none>"}, tools: ${tools.length})`);
 
     return {
       agent,

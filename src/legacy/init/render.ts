@@ -33,7 +33,7 @@ function renderAgents(answers: InitAnswers): string {
   - id: main
 `;
   if (answers.claude === "skip") {
-    return `${main}  - id: claude
+    return `${main}  - id: coding
     enabled: false
 `;
   }

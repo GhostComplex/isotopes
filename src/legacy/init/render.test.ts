@@ -91,14 +91,14 @@ describe("renderConfig", () => {
     expect(yaml).toContain("token: bot-token-abc");
   });
 
-  it("omits the claude entry when default-enabled", () => {
+  it("omits the coding entry when default-enabled", () => {
     const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "enabled" });
-    expect(yaml).not.toMatch(/- id: claude/);
+    expect(yaml).not.toMatch(/- id: coding/);
   });
 
-  it("emits a claude entry with enabled: false when user opts out", () => {
+  it("emits a coding entry with enabled: false when user opts out", () => {
     const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "skip" });
-    expect(yaml).toMatch(/- id: claude/);
+    expect(yaml).toMatch(/- id: coding/);
     expect(yaml).toContain("enabled: false");
   });
 });

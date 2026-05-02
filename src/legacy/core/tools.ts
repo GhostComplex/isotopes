@@ -111,7 +111,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
     working_directory: Type.Optional(Type.String({
       description:
         "Working directory for the target's session (relative to your workspace or absolute). " +
-        "Required for `claude`; optional for others (defaults to your workspace root).",
+        "Required for `coding`; optional for others (defaults to your workspace root).",
     })),
   });
 
@@ -127,7 +127,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
     description:
       `Send a message to another agent. Available targets: ${targets.join(", ") || "(none)"}. ` +
       "For `subagent`, an ephemeral helper runs with read-only tools and returns its " +
-      "final assistant message. For `claude`, a Claude CLI session runs against " +
+      "final assistant message. For `coding`, a Claude CLI session runs against " +
       "`working_directory` and returns its final assistant message. For a registered agent id, " +
       "the message is appended to that agent's session as a user-role turn and its reply is returned. " +
       "Session continuity for registered agents is managed by the runtime (per caller / parent-session).",

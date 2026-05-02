@@ -50,8 +50,7 @@ export class PiRunner {
     onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent> {
     const { request, sessionId, abort, onSession } = opts;
-    // TODO(#669): replace magic id with config-driven cwd-aware tools
-    const tools = this.opts.agent.id === "subagent"
+    const tools = this.opts.agent.config.toolsMode === "readonly"
       ? createReadOnlyTools(request.cwd ?? process.cwd()) as AgentTool[]
       : undefined;
     const session = await createRootPiSession(this.opts.piDeps, {
