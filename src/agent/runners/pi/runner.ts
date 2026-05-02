@@ -10,9 +10,7 @@ export interface PiRunnerOptions {
   piDeps: PiSessionDeps;
 }
 
-/** Runs a pi-coding-agent session for a registered agent (user-defined or
- * built-in synthetic). Falls back to in-memory session when
- * agent.sessionStore is absent. */
+/** Runs a pi session for an agent. In-memory fallback when no sessionStore. */
 export class PiRunner {
   constructor(private opts: PiRunnerOptions) {}
 
@@ -60,8 +58,6 @@ export class PiRunner {
   }
 }
 
-/** Drive a pi-coding-agent session for one prompt and yield its events.
- * Caller owns session lifecycle (creation + dispose). */
 async function* streamPiSession(
   session: AgentSession,
   content: string,
