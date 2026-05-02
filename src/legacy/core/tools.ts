@@ -113,18 +113,12 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         "Working directory for the target's session (relative to your workspace or absolute). " +
         "Required for `claude`; optional for others (defaults to your workspace root).",
     })),
-    conversation_id: Type.Optional(Type.String({
-      description:
-        "Optional existing session id to resume. Only valid for registered agents " +
-        "(not `subagent` or `claude`).",
-    })),
   });
 
   type Params = {
     to: string;
     content: string;
     working_directory?: string;
-    conversation_id?: string;
   };
 
   return {
@@ -132,14 +126,15 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
     label: "send_message",
     description:
       `Send a message to another agent. Available targets: ${targets.join(", ") || "(none)"}. ` +
-      "For `subagent`, an ephemeral helper runs with your filtered tool set and returns its " +
-      "final assistant message as the result. For `claude`, a Claude CLI session runs against " +
+      "For `subagent`, an ephemeral helper runs with read-only tools and returns its " +
+      "final assistant message. For `claude`, a Claude CLI session runs against " +
       "`working_directory` and returns its final assistant message. For a registered agent id, " +
-      "the message is appended to that agent's session as a user-role turn and its reply is returned.",
+      "the message is appended to that agent's session as a user-role turn and its reply is returned. " +
+      "Session continuity for registered agents is managed by the runtime (per caller / parent-session).",
     parameters: schema,
     execute: async (_toolCallId, rawParams) => {
       const params = rawParams as Params;
-      const { to, content, working_directory, conversation_id } = params;
+      const { to, content, working_directory } = params;
       if (!targets.includes(to)) {
         return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`);
       }
@@ -155,11 +150,10 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         content,
         cwd,
         from: { agentId: parentAgentId },
-        ...(conversation_id ? { sessionId: conversation_id } : {}),
         ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
         onCancel: (reason) => { cancelReason = reason; },
       };
-      log.info("send_message", { from: parentAgentId, to, cwd, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
+      log.info("send_message", { from: parentAgentId, to, cwd, parent: ctx?.parentSessionId });
 
       const discordCtx = getDiscordSubagentStreamContext();
       let sink: DiscordSubagentSink | undefined;

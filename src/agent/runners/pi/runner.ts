@@ -2,6 +2,7 @@ import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import type { RegisteredAgent, RunRequest } from "../../types.js";
+import { RunValidationError } from "../../types.js";
 import { createRootPiSession, type PiSessionDeps } from "./session-factory.js";
 
 export interface PiRunnerOptions {
@@ -14,6 +15,14 @@ export interface PiRunnerOptions {
  * agent.sessionStore is absent. */
 export class PiRunner {
   constructor(private opts: PiRunnerOptions) {}
+
+  validateRequest(req: RunRequest): void {
+    if (!this.opts.agent.sessionStore && req.sessionId) {
+      throw new RunValidationError(
+        `${this.opts.agent.id}: sessions are not resumable; omit sessionId`,
+      );
+    }
+  }
 
   async resolveSessionId(req: RunRequest, runId: string): Promise<string> {
     if (req.sessionId) return req.sessionId;
