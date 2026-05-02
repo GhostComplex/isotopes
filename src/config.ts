@@ -77,8 +77,8 @@ export interface AgentConfigFile {
   runner?: "pi" | "claude";
   /** Default true. */
   enabled?: boolean;
-  /** Absolute or ISOTOPES_HOME-relative. `null` = no workspace. Omitted → workspace-{id}/. */
-  workspace?: string | null;
+  /** Absolute or ISOTOPES_HOME-relative. Omitted → workspace-{id}/. */
+  workspace?: string;
   /** "readonly" → cwd-aware readonly tools (read/ls/grep/find). */
   tools?: AgentToolsConfigFile | "readonly";
   model?: string;
@@ -419,7 +419,6 @@ const BUILTIN_AGENT_DEFAULTS: AgentConfigFile[] = [
   {
     id: "subagent",
     runner: "pi",
-    workspace: null,
     tools: "readonly",
     sessionPolicy: "always-new",
     spawnable: true,
@@ -476,7 +475,7 @@ export function toAgentConfig(
   return {
     id: agent.id,
     runner: agent.runner ?? "pi",
-    ...(agent.workspace !== undefined ? { workspace: agent.workspace } : {}),
+    ...(agent.workspace ? { workspace: agent.workspace } : {}),
     toolSettings: tools === "readonly" ? undefined : resolveToolSettings(tools as AgentToolsConfigFile | undefined),
     ...(tools === "readonly" ? { toolsMode: "readonly" as const } : {}),
     ...(model ? { model } : {}),

@@ -14,12 +14,13 @@ const SUBAGENT_DEFAULT_PROMPT =
   "or refer to your model.";
 
 export async function deriveAgentSystemPrompt(config: AgentConfig): Promise<string> {
-  if (config.workspace === null) {
-    return config.id === "subagent" ? SUBAGENT_DEFAULT_PROMPT : "";
-  }
   const workspacePath = resolveAgentWorkspacePath(config);
   const workspace = await loadWorkspaceContext(workspacePath, {
     bundledPath: resolveBundledSkillsDir(),
   });
-  return buildSystemPrompt(workspace);
+  const fromWorkspace = buildSystemPrompt(workspace);
+  if (config.id === "subagent") {
+    return workspace ? `${SUBAGENT_DEFAULT_PROMPT}\n\n---\n\n${fromWorkspace}` : SUBAGENT_DEFAULT_PROMPT;
+  }
+  return fromWorkspace;
 }

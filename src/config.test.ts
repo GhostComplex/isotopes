@@ -206,7 +206,6 @@ agents:
       const subagent = config.agents.find((a) => a.id === "subagent")!;
       expect(subagent.runner).toBe("pi");
       expect(subagent.tools).toBe("readonly");
-      expect(subagent.workspace).toBeNull();
       const coding = config.agents.find((a) => a.id === "coding")!;
       expect(coding.runner).toBe("claude");
       expect(coding.spawnable).toBe(true);

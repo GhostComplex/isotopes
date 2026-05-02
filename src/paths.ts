@@ -107,7 +107,7 @@ export function resolveExplicitWorkspacePath(workspacePath: string): string {
  * Resolve the workspace directory for an agent given its config.
  * Pure — returns the path; doesn't touch the filesystem.
  */
-export function resolveAgentWorkspacePath(config: { id: string; workspace?: string | null }): string {
+export function resolveAgentWorkspacePath(config: { id: string; workspace?: string }): string {
   if (config.workspace) return resolveExplicitWorkspacePath(config.workspace);
   return getWorkspacePath(config.id);
 }

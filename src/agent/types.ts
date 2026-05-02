@@ -16,8 +16,8 @@ export interface AgentConfig {
   id: string;
   /** Default "pi". */
   runner?: "pi" | "claude";
-  /** `null` = no workspace; omitted → ${ISOTOPES_HOME}/workspace-${id}. */
-  workspace?: string | null;
+  /** Defaults to ${ISOTOPES_HOME}/workspace-${id}. */
+  workspace?: string;
   toolSettings?: AgentToolSettings;
   /** "readonly" → cwd-aware readonly tools built per-run. */
   toolsMode?: "readonly";
