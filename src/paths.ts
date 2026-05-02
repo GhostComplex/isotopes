@@ -4,6 +4,8 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { readdirSync, existsSync as syncExistsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -129,3 +131,44 @@ export async function ensureExplicitWorkspaceDir(resolvedPath: string): Promise<
   return resolvedPath;
 }
 
+
+// ---------------------------------------------------------------------------
+// Bundled skills (shipped with the package)
+// ---------------------------------------------------------------------------
+
+function looksLikeSkillsDir(dir: string): boolean {
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      if (entry.isDirectory() && syncExistsSync(path.join(dir, entry.name, "SKILL.md"))) {
+        return true;
+      }
+    }
+  } catch { /* unreadable */ }
+  return false;
+}
+
+/** Resolve the bundled skills directory shipped with the isotopes package.
+ *  Walks up from this module to find `skills/`. Override with
+ *  ISOTOPES_BUNDLED_SKILLS_DIR env var. */
+export function resolveBundledSkillsDir(): string | undefined {
+  const override = process.env.ISOTOPES_BUNDLED_SKILLS_DIR?.trim();
+  if (override) return override;
+
+  try {
+    const thisFile = fileURLToPath(import.meta.url);
+    let current = path.dirname(thisFile);
+    for (let depth = 0; depth < 6; depth++) {
+      const candidate = path.join(current, "skills");
+      if (syncExistsSync(candidate) && looksLikeSkillsDir(candidate)) {
+        return candidate;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  } catch { /* silent */ }
+
+  return undefined;
+}

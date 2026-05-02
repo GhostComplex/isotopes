@@ -1,10 +1,10 @@
-// src/skills/bundled-dir.test.ts — Unit tests for bundled skills dir resolver
+// src/bundled-skills.test.ts — Unit tests for bundled skills dir resolver
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { resolveBundledSkillsDir } from "./bundled-dir.js";
+import { resolveBundledSkillsDir } from "./paths.js";
 
 describe("resolveBundledSkillsDir", () => {
   beforeEach(() => {
