@@ -135,6 +135,10 @@ class SessionEventBus {
 }
 
 export interface Runner {
+  /** Backing isotopes agent, if any. Implementers like PiRunner return their
+   * bound agent; runners without an agent (e.g. ClaudeRunner) omit. Surfaces
+   * the agent for getAgent / listAgents. */
+  agent?(): RegisteredAgent | undefined;
   validateRequest?(req: RunRequest): void;
   resolveSessionId(req: RunRequest, runId: string): Promise<string> | string;
   run(opts: {
@@ -148,8 +152,6 @@ export interface Runner {
 interface Entry {
   runner: Runner;
   spawnable: boolean;
-  /** Read by getAgent / listAgents; absent for built-in runners. */
-  agent?: RegisteredAgent;
 }
 
 export class AgentRuntime {
@@ -201,7 +203,7 @@ export class AgentRuntime {
     };
     this.setAgentTools(opts.id, opts.tools);
     const runner = new PiRunner({ agent, piDeps: this.piDeps() });
-    this.registerRunner(opts.id, runner, { spawnable: opts.spawnable ?? true, agent });
+    this.registerRunner(opts.id, runner, { spawnable: opts.spawnable ?? true });
   }
 
   private piDeps(): PiSessionDeps {
@@ -217,18 +219,17 @@ export class AgentRuntime {
     };
   }
 
-  /** Register a runner under a name. Set `agent` to make it visible via
-   * getAgent / listAgents. */
+  /** Register a runner under a name. The runner's agent (if any) becomes
+   * visible via getAgent / listAgents. */
   registerRunner(
     name: string,
     runner: Runner,
-    opts: { spawnable?: boolean; agent?: RegisteredAgent } = {},
+    opts: { spawnable?: boolean } = {},
   ): void {
     if (this.entries.has(name)) throw new Error(`Already registered: ${name}`);
     this.entries.set(name, {
       runner,
       spawnable: opts.spawnable ?? true,
-      ...(opts.agent ? { agent: opts.agent } : {}),
     });
   }
 
@@ -377,10 +378,7 @@ export class AgentRuntime {
 
     this.setAgentTools(agent.id, tools);
     const runner = new PiRunner({ agent, piDeps: this.piDeps() });
-    this.registerRunner(agent.id, runner, {
-      spawnable: agentConfig.spawnable === true,
-      agent,
-    });
+    this.registerRunner(agent.id, runner, { spawnable: agentConfig.spawnable === true });
 
     log.info(`Added agent: ${agent.id} (workspace: ${workspacePath}, tools: ${tools.length})`);
 
@@ -394,20 +392,21 @@ export class AgentRuntime {
   }
 
   getAgent(id: string): RegisteredAgent | undefined {
-    return this.entries.get(id)?.agent;
+    return this.entries.get(id)?.runner.agent?.();
   }
 
   listAgents(): RegisteredAgent[] {
     const out: RegisteredAgent[] = [];
     for (const entry of this.entries.values()) {
-      if (entry.agent) out.push(entry.agent);
+      const a = entry.runner.agent?.();
+      if (a) out.push(a);
     }
     return out;
   }
 
   unregisterAgent(id: string): boolean {
     const entry = this.entries.get(id);
-    if (!entry?.agent) return false;
+    if (!entry?.runner.agent?.()) return false;
     this.toolRegistries.delete(id);
     this.entries.delete(id);
     return true;

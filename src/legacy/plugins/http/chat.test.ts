@@ -12,16 +12,16 @@ const MOCK_AGENT_ID = "mock";
 
 function makeRuntime(): AgentRuntime {
   const rt = new AgentRuntime({ globalProvider: { type: "anthropic", defaultModel: "claude-opus-4-5" } });
+  const agent = {
+    id: MOCK_AGENT_ID,
+    config: { id: MOCK_AGENT_ID },
+    sessionStore: createMockSessionStore() as never,
+    capabilities: { tools: [], canBeAddressed: true },
+  };
   rt.registerRunner(MOCK_AGENT_ID, {
+    agent: () => agent,
     resolveSessionId: (req, runId) => req.sessionId ?? `mock:${runId}`,
     async *run() {},
-  }, {
-    agent: {
-      id: MOCK_AGENT_ID,
-      config: { id: MOCK_AGENT_ID },
-      sessionStore: createMockSessionStore() as never,
-      capabilities: { tools: [], canBeAddressed: true },
-    },
   });
   return rt;
 }

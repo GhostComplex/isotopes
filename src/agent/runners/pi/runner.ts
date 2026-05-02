@@ -14,6 +14,10 @@ export interface PiRunnerOptions {
 export class PiRunner {
   constructor(private opts: PiRunnerOptions) {}
 
+  agent(): RegisteredAgent {
+    return this.opts.agent;
+  }
+
   validateRequest(req: RunRequest): void {
     if (!this.opts.agent.sessionStore && req.sessionId) {
       throw new RunValidationError(

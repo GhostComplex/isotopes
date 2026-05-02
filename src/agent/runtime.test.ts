@@ -46,12 +46,15 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
 }
 
 /** Minimal Runner stub for dispatch-level tests. Override per test. */
-function stubRunner(overrides: Partial<Runner> = {}): Runner {
-  return {
+function stubRunner(opts: Omit<Partial<Runner>, "agent"> & { agent?: RegisteredAgent } = {}): Runner {
+  const { agent, ...overrides } = opts;
+  const base: Runner = {
     resolveSessionId: (_req, runId) => `stub:${runId}`,
     async *run() {},
     ...overrides,
   };
+  if (agent) base.agent = () => agent;
+  return base;
 }
 
 async function consume(gen: AsyncGenerator<unknown>): Promise<void> {
@@ -64,7 +67,7 @@ describe("AgentRuntime — agent registry", () => {
 
   it("registerRunner with agent metadata is reachable via getAgent / listAgents", () => {
     const a = fakeAgent("main");
-    rt.registerRunner("main", stubRunner(), { agent: a });
+    rt.registerRunner("main", stubRunner({ agent: a }));
     expect(rt.getAgent("main")).toBe(a);
     expect(rt.listAgents()).toEqual([a]);
   });
@@ -76,12 +79,12 @@ describe("AgentRuntime — agent registry", () => {
   });
 
   it("rejects duplicate registration under the same name", () => {
-    rt.registerRunner("main", stubRunner(), { agent: fakeAgent("main") });
+    rt.registerRunner("main", stubRunner({ agent: fakeAgent("main") }));
     expect(() => rt.registerRunner("main", stubRunner())).toThrow(/Already registered/);
   });
 
   it("unregisterAgent removes the entry and tools", () => {
-    rt.registerRunner("main", stubRunner(), { agent: fakeAgent("main") });
+    rt.registerRunner("main", stubRunner({ agent: fakeAgent("main") }));
     expect(rt.unregisterAgent("main")).toBe(true);
     expect(rt.getAgent("main")).toBeUndefined();
     expect(rt.unregisterAgent("ghost")).toBe(false);
@@ -216,7 +219,8 @@ describe("runtime.run — onRunStart timing", () => {
         order.push("event:start");
         yield buildAgentEnd("done");
       },
-    }), { agent: fakeAgent("main") });
+      agent: fakeAgent("main"),
+    }));
 
     const events: AgentEvent[] = [];
     for await (const ev of rt.run({
@@ -241,7 +245,8 @@ describe("runtime.run — onRunStart timing", () => {
         runIdsDuringRun = rt.listRuns().map((r) => r.runId);
         yield buildAgentEnd("ok");
       },
-    }), { agent: fakeAgent("main") });
+      agent: fakeAgent("main"),
+    }));
 
     for await (const _ev of rt.run({
       to: "main",
@@ -270,7 +275,8 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
         await pending;
         yield buildAgentEnd("aborted", "stop");
       },
-    }), { agent: fakeAgent("main") });
+      agent: fakeAgent("main"),
+    }));
 
     const onCancel = vi.fn();
     let runId: string | undefined;
@@ -303,7 +309,8 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
         await pending;
         yield buildAgentEnd("done");
       },
-    }), { agent: fakeAgent("main") });
+      agent: fakeAgent("main"),
+    }));
 
     const onCancel = vi.fn();
     let runId: string | undefined;
@@ -337,7 +344,8 @@ describe("runtime.run — abort on consumer early-return", () => {
         await pending;
         yield buildAgentEnd("late");
       },
-    }), { agent: fakeAgent("main") });
+      agent: fakeAgent("main"),
+    }));
 
     let count = 0;
     for await (const ev of rt.run({ to: "main", content: "hi" })) {

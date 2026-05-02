@@ -9,16 +9,16 @@ import { AgentRuntime } from "../../../agent/runtime.js";
 
 function makeMockRuntime(agentId: string, cache: unknown, sessionStore: SessionStore): AgentRuntime {
   const rt = new AgentRuntime({ globalProvider: { type: "anthropic", defaultModel: "claude-opus-4.5" } });
+  const agent = {
+    id: agentId,
+    config: { id: agentId } as never,
+    sessionStore: sessionStore as never,
+    capabilities: { tools: [], canBeAddressed: true },
+  };
   rt.registerRunner(agentId, {
+    agent: () => agent,
     resolveSessionId: (req, runId) => req.sessionId ?? `${agentId}:${runId}`,
     async *run() {},
-  }, {
-    agent: {
-      id: agentId,
-      config: { id: agentId } as never,
-      sessionStore: sessionStore as never,
-      capabilities: { tools: [], canBeAddressed: true },
-    },
   });
   return rt;
 }
