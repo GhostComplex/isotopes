@@ -20,8 +20,9 @@ import { CronScheduler } from "./legacy/automation/cron-job.js";
 import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
 import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
-import { AgentRuntime, type Runner } from "./agent/runtime.js";
+import { AgentRuntime } from "./agent/runtime.js";
 import { ClaudeRunner } from "./agent/runners/claude/runner.js";
+import { createReadOnlyTools } from "@mariozechner/pi-coding-agent";
 import { consumeRootRun } from "./legacy/core/agent-run.js";
 
 const log = createLogger("runtime");
@@ -63,21 +64,24 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     hooks: pluginManager.getHooks(),
   });
 
-  // Built-in runners live in agents[] alongside user agents but follow a
-  // different registration path (no workspace / tools / sessions of their
-  // own). Listed here as the single source of truth.
-  const builtinRunners: Array<{ id: string; build: () => Runner | null }> = [
-    { id: "subagent", build: () => agentRuntime.hasPiRunner() ? agentRuntime.createSubagentRunner() : null },
-    { id: "claude",   build: () => new ClaudeRunner() },
-  ];
-  const builtinIds = new Set(builtinRunners.map((b) => b.id));
+  const builtinIds = new Set(["subagent", "claude"]);
   const userAgents = config.agents.filter((a) => !builtinIds.has(a.id));
-  for (const builtin of builtinRunners) {
-    const override = config.agents.find((a) => a.id === builtin.id);
-    if (override?.enabled === false) continue;
-    const runner = builtin.build();
-    if (!runner) continue;
-    agentRuntime.registerRunner(builtin.id, runner, { spawnable: override?.spawnable ?? true });
+
+  const subagentOverride = config.agents.find((a) => a.id === "subagent");
+  if (subagentOverride?.enabled !== false && agentRuntime.hasPiInfra()) {
+    agentRuntime.registerBuiltinAgent({
+      id: "subagent",
+      tools: createReadOnlyTools(process.cwd()) as AgentTool[],
+      sessionPolicy: "always-new",
+      spawnable: subagentOverride?.spawnable ?? true,
+    });
+  }
+
+  const claudeOverride = config.agents.find((a) => a.id === "claude");
+  if (claudeOverride?.enabled !== false) {
+    agentRuntime.registerRunner("claude", new ClaudeRunner(), {
+      spawnable: claudeOverride?.spawnable ?? true,
+    });
   }
 
   const agentWorkspaces = new Map<string, string>();

@@ -4,8 +4,6 @@ import { randomUUID } from "node:crypto";
 import * as nodeFs from "node:fs/promises";
 import { createLogger } from "../logging/logger.js";
 import type {
-  AgentSessionKind,
-  AgentSessionPolicy,
   RegisteredAgent,
   RunRequest,
   RunInfo,
@@ -13,9 +11,8 @@ import type {
 import { RunValidationError } from "./types.js";
 import type { ProviderConfig } from "./types.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
+import type { PiSessionDeps } from "./runners/pi/session-factory.js";
 import { PiRunner } from "./runners/pi/runner.js";
-import { createRootPiSession } from "./runners/pi/session-factory.js";
-import { SubagentRunner } from "./runners/subagent/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -47,14 +44,18 @@ import type { DefaultSessionStore } from "../legacy/core/session-store.js";
 
 const log = createLogger("agents:runtime");
 
-export const LEAF_CONCURRENCY_CAP = 5;
-export const LEAF_DEFAULT_TIMEOUT_SEC = 900;
+/** Spawn-tree depth limit. Top-level = 1; reject when child would land > MAX_DEPTH. */
+export const MAX_DEPTH = 5;
+/** Concurrent in-flight children per parentSessionId. */
+export const MAX_CHILDREN_PER_PARENT = 5;
+/** Default per-run timeout when req.timeoutSeconds is absent. */
+export const DEFAULT_TIMEOUT_SEC = 900;
 
 interface RunHandle {
   runId: string;
   agentId: string;
-  kind: AgentSessionKind;
   sessionId: string;
+  depth: number;
   startedAt: number;
   abort: AbortController;
   parentSessionId?: string;
@@ -134,26 +135,35 @@ class SessionEventBus {
 }
 
 export interface Runner {
+  /** Backing isotopes agent (drives getAgent / listAgents). */
+  agent?(): RegisteredAgent | undefined;
   validateRequest?(req: RunRequest): void;
-  run(opts: { request: RunRequest; runId: string; abort: AbortSignal }): AsyncGenerator<AgentEvent>;
+  resolveSessionId(req: RunRequest, runId: string): Promise<string> | string;
+  run(opts: {
+    request: RunRequest;
+    runId: string;
+    sessionId: string;
+    abort: AbortSignal;
+    /** Called once a steerable session is ready. Runners that have no
+     * steerable session (e.g. ClaudeRunner) simply don't call it. */
+    onSession?: (session: AgentSession) => void;
+  }): AsyncGenerator<AgentEvent>;
 }
 
-interface RunnerEntry {
+interface Entry {
   runner: Runner;
   spawnable: boolean;
 }
 
 export class AgentRuntime {
   private allowedRoots: string[];
-  private piRunner?: PiRunner;
-  private runners = new Map<string, RunnerEntry>();
+  private entries = new Map<string, Entry>();
   private runs = new Map<string, RunHandle>();
-  private agents = new Map<string, RegisteredAgent>();
-  private events = new SessionEventBus();
-  private piToolRegistries = new Map<string, Map<string, AgentTool>>();
+  private toolRegistries = new Map<string, Map<string, AgentTool>>();
   private piGlobalProvider?: ProviderConfig;
   private piAuthStorage?: AuthStorage;
   private piModelRegistry?: ModelRegistry;
+  private events = new SessionEventBus();
   private hooks?: HookRegistry;
 
   constructor(options?: AgentRuntimeOptions) {
@@ -169,80 +179,93 @@ export class AgentRuntime {
       this.piGlobalProvider = opts.globalProvider;
       this.piAuthStorage = AuthStorage.inMemory(creds);
       this.piModelRegistry = ModelRegistry.create(this.piAuthStorage);
-      this.piRunner = new PiRunner();
     }
   }
 
-  hasPiRunner(): boolean {
-    return this.piRunner !== undefined;
+  /** True iff globalProvider was passed (required for any pi-backed agent). */
+  hasPiInfra(): boolean {
+    return this.piGlobalProvider !== undefined;
   }
 
-  /** Builds the in-process pi-leaf SubagentRunner using runtime's pi infra.
-   * Throws if pi is not configured. Caller registers it via registerRunner. */
-  createSubagentRunner(): SubagentRunner {
-    if (!this.piRunner || !this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
-      throw new Error("createSubagentRunner: pi runner not configured (pass globalProvider to AgentRuntime)");
+  /** Synthetic agent with no workspace + in-memory session. Used for built-ins
+   * like "subagent". */
+  registerBuiltinAgent(opts: {
+    id: string;
+    tools: AgentTool[];
+    spawnable?: boolean;
+    sessionPolicy?: "always-new" | "parent-reuse";
+  }): void {
+    const config: import("./types.js").AgentConfig = { id: opts.id };
+    const agent: RegisteredAgent = {
+      id: opts.id,
+      config,
+      capabilities: { tools: opts.tools.map((t) => t.name), canBeAddressed: true },
+      ...(opts.sessionPolicy ? { sessionPolicy: opts.sessionPolicy } : {}),
+    };
+    this.setAgentTools(opts.id, opts.tools);
+    const runner = new PiRunner({ agent, piDeps: this.piDeps() });
+    this.registerRunner(opts.id, runner, { spawnable: opts.spawnable ?? true });
+  }
+
+  private piDeps(): PiSessionDeps {
+    if (!this.piGlobalProvider || !this.piAuthStorage || !this.piModelRegistry) {
+      throw new Error("pi infra not configured (pass globalProvider to AgentRuntime)");
     }
-    return new SubagentRunner({
-      piRunner: this.piRunner,
-      piDeps: {
-        globalProvider: this.piGlobalProvider,
-        authStorage: this.piAuthStorage,
-        modelRegistry: this.piModelRegistry,
-        getAgentTools: (id) => this.getAgentTools(id),
-        ...(this.hooks ? { hooks: this.hooks } : {}),
-      },
+    return {
+      globalProvider: this.piGlobalProvider,
+      authStorage: this.piAuthStorage,
+      modelRegistry: this.piModelRegistry,
+      getAgentTools: (id) => this.getAgentTools(id),
+      ...(this.hooks ? { hooks: this.hooks } : {}),
+    };
+  }
+
+  /** Register a runner under a name. The runner's agent (if any) becomes
+   * visible via getAgent / listAgents. */
+  registerRunner(
+    name: string,
+    runner: Runner,
+    opts: { spawnable?: boolean } = {},
+  ): void {
+    if (this.entries.has(name)) throw new Error(`Already registered: ${name}`);
+    this.entries.set(name, {
+      runner,
+      spawnable: opts.spawnable ?? true,
     });
   }
 
-  /** Register a leaf runner under a magic name (e.g. "claude"). The name
-   * becomes reserved — registerAgent will reject it. */
-  registerRunner(name: string, runner: Runner, opts: { spawnable?: boolean } = {}): void {
-    if (this.agents.has(name)) {
-      throw new Error(`Cannot register runner — name in use as agent: ${name}`);
-    }
-    if (this.runners.has(name)) {
-      throw new Error(`Runner already registered: ${name}`);
-    }
-    this.runners.set(name, { runner, spawnable: opts.spawnable ?? true });
-  }
-
   hasRunner(name: string): boolean {
-    return this.runners.has(name);
+    return this.entries.has(name);
   }
 
-  /** Names of registered leaf runners. */
+  /** Names of all registered entries. */
   runnerNames(): string[] {
-    return Array.from(this.runners.keys());
+    return Array.from(this.entries.keys());
   }
 
-  /** Names of leaf runners advertised to other agents in send_message. */
+  /** Names advertised to other agents in send_message. */
   spawnableRunnerNames(): string[] {
     const out: string[] = [];
-    for (const [name, entry] of this.runners) {
+    for (const [name, entry] of this.entries) {
       if (entry.spawnable) out.push(name);
     }
     return out;
   }
 
-
   setAgentTools(agentId: string, tools: Iterable<AgentTool>): void {
     const map = new Map<string, AgentTool>();
-    for (const t of tools) {
-      map.set(t.name, t);
-    }
-    this.piToolRegistries.set(agentId, map);
+    for (const t of tools) map.set(t.name, t);
+    this.toolRegistries.set(agentId, map);
   }
 
   clearAgentTools(agentId: string): void {
-    this.piToolRegistries.delete(agentId);
+    this.toolRegistries.delete(agentId);
   }
 
   getAgentTools(agentId: string): AgentTool[] {
-    const map = this.piToolRegistries.get(agentId);
+    const map = this.toolRegistries.get(agentId);
     return map ? Array.from(map.values()) : [];
   }
-
 
   on(sessionId: string, listener: (event: AgentEvent) => void): () => void {
     return this.events.on(sessionId, listener);
@@ -292,22 +315,7 @@ export class AgentRuntime {
     }
   }
 
-
-  registerAgent(agent: RegisteredAgent): void {
-    if (this.runners.has(agent.id)) {
-      throw new Error(`Cannot register agent — name in use by runner: ${agent.id}`);
-    }
-    if (this.agents.has(agent.id)) throw new Error(`Agent already registered: ${agent.id}`);
-    this.agents.set(agent.id, agent);
-    log.debug(`Registered agent: ${agent.id}`);
-  }
-
-  unregisterAgent(id: string): boolean {
-    this.piToolRegistries.delete(id);
-    return this.agents.delete(id);
-  }
-
-  /** Workspace prep + tool creation + registry insert in one call. */
+  /** Workspace prep + tool creation + entry registration in one call. */
   async addAgent(opts: AddAgentOptions): Promise<AddAgentResult> {
     const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox,
       sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
@@ -370,7 +378,8 @@ export class AgentRuntime {
     };
 
     this.setAgentTools(agent.id, tools);
-    this.registerAgent(agent);
+    const runner = new PiRunner({ agent, piDeps: this.piDeps() });
+    this.registerRunner(agent.id, runner, { spawnable: agentConfig.spawnable === true });
 
     log.info(`Added agent: ${agent.id} (workspace: ${workspacePath}, tools: ${tools.length})`);
 
@@ -384,84 +393,82 @@ export class AgentRuntime {
   }
 
   getAgent(id: string): RegisteredAgent | undefined {
-    return this.agents.get(id);
+    return this.entries.get(id)?.runner.agent?.();
   }
 
   listAgents(): RegisteredAgent[] {
-    return [...this.agents.values()];
+    const out: RegisteredAgent[] = [];
+    for (const entry of this.entries.values()) {
+      const a = entry.runner.agent?.();
+      if (a) out.push(a);
+    }
+    return out;
   }
 
-  /** `to`: a registered runner name (leaf) | a registered agent id (root). */
+  unregisterAgent(id: string): boolean {
+    const entry = this.entries.get(id);
+    if (!entry?.runner.agent?.()) return false;
+    this.toolRegistries.delete(id);
+    this.entries.delete(id);
+    return true;
+  }
+
+  /** Compute spawn-tree depth: parent.depth + 1, or 1 for top-level. */
+  private computeDepth(parentSessionId: string | undefined): number {
+    if (!parentSessionId) return 1;
+    for (const r of this.runs.values()) {
+      if (r.sessionId === parentSessionId) return r.depth + 1;
+    }
+    return 1;
+  }
+
+  /** Count active sibling runs sharing the same parentSessionId. */
+  private countActiveSiblings(parentSessionId: string | undefined): number {
+    if (!parentSessionId) return 0;
+    let n = 0;
+    for (const r of this.runs.values()) {
+      if (r.parentSessionId === parentSessionId) n++;
+    }
+    return n;
+  }
+
   async *run(req: RunRequest): AsyncGenerator<AgentEvent> {
-    const leafEntry = this.runners.get(req.to);
-    const runner = leafEntry?.runner;
-    const isLeaf = runner !== undefined;
-    const agent = isLeaf ? undefined : this.agents.get(req.to);
-    if (!isLeaf && !agent) throw new RunValidationError(`Unknown agent: ${req.to}`);
-    if (isLeaf && req.sessionId) {
-      throw new RunValidationError("run: leaf sessions are not resumable; omit sessionId");
-    }
-    if (!runner && !this.piRunner) {
-      throw new RunValidationError("AgentRuntime: pi runner not configured (pass `globalProvider` to constructor)");
-    }
-    runner?.validateRequest?.(req);
+    const entry = this.entries.get(req.to);
+    if (!entry) throw new RunValidationError(`Unknown agent: ${req.to}`);
+    entry.runner.validateRequest?.(req);
     if (req.cwd) {
       try { this.validateCwd(req.cwd); }
       catch (err) { throw new RunValidationError(err instanceof Error ? err.message : String(err)); }
     }
 
-    const kind: AgentSessionKind = isLeaf ? "leaf" : "root";
-    if (kind === "leaf") {
-      const leafCount = [...this.runs.values()].filter((r) => r.kind === "leaf").length;
-      if (leafCount >= LEAF_CONCURRENCY_CAP) {
-        throw new RunValidationError(`Max concurrent leaf runs reached (${LEAF_CONCURRENCY_CAP})`);
-      }
+    const depth = this.computeDepth(req.parentSessionId);
+    if (depth > MAX_DEPTH) {
+      throw new RunValidationError(`Max spawn depth reached (${MAX_DEPTH})`);
+    }
+    const siblings = this.countActiveSiblings(req.parentSessionId);
+    if (siblings >= MAX_CHILDREN_PER_PARENT) {
+      throw new RunValidationError(`Max concurrent children per parent reached (${MAX_CHILDREN_PER_PARENT})`);
     }
 
     const runId = randomUUID();
-
-    let sessionId: string;
-    if (req.sessionId) {
-      sessionId = req.sessionId;
-    } else if (runner) {
-      sessionId = `${req.to}:${runId}`;
-    } else {
-      const policy: AgentSessionPolicy = agent!.sessionPolicy ?? "parent-reuse";
-      const fromId = req.from?.agentId ?? "transport";
-      const suffix = policy === "parent-reuse" && req.parentSessionId
-        ? req.parentSessionId
-        : randomUUID();
-      const sessionKey = `peer:${fromId}:${suffix}`;
-      const existing = await agent!.sessionStore.findByKey(sessionKey);
-      if (existing) {
-        sessionId = existing.id;
-      } else {
-        const session = await agent!.sessionStore.create(agent!.id, { key: sessionKey });
-        sessionId = session.id;
-        log.debug("Created peer session", { target: agent!.id, key: sessionKey, sessionId });
-      }
-    }
-
+    const sessionId = await entry.runner.resolveSessionId(req, runId);
     const abort = new AbortController();
     const handle: RunHandle = {
       runId,
       agentId: req.to,
-      kind,
       sessionId,
+      depth,
       startedAt: Date.now(),
       abort,
       ...(req.parentSessionId ? { parentSessionId: req.parentSessionId } : {}),
     };
     this.runs.set(runId, handle);
 
-    let timeoutHandle: NodeJS.Timeout | undefined;
-    if (kind === "leaf") {
-      const sec = req.timeoutSeconds ?? LEAF_DEFAULT_TIMEOUT_SEC;
-      timeoutHandle = setTimeout(() => this.cancel(runId, { reason: "timeout" }), sec * 1000);
-      timeoutHandle.unref();
-    }
+    const sec = req.timeoutSeconds ?? DEFAULT_TIMEOUT_SEC;
+    const timeoutHandle = setTimeout(() => this.cancel(runId, { reason: "timeout" }), sec * 1000);
+    timeoutHandle.unref();
 
-    log.info("run", { runId, agentId: req.to, kind, sessionId });
+    log.info("run", { runId, agentId: req.to, sessionId, depth });
 
     try {
       req.onRunStart?.(runId);
@@ -470,24 +477,15 @@ export class AgentRuntime {
     }
 
     try {
-      if (runner) {
-        yield* runner.run({
-          request: req,
-          runId,
-          abort: abort.signal,
-        });
-      } else {
-        const session = await this.buildRootPiSession(agent!, sessionId, req.cwd);
-        handle.session = session;
-        log.info("run runner", { runId, kind, agentId: req.to });
-        yield* this.piRunner!.run({
-          session,
-          content: req.content,
-          abort: abort.signal,
-        });
-      }
+      yield* entry.runner.run({
+        request: req,
+        runId,
+        sessionId,
+        abort: abort.signal,
+        onSession: (session) => { handle.session = session; },
+      });
     } finally {
-      if (timeoutHandle) clearTimeout(timeoutHandle);
+      clearTimeout(timeoutHandle);
       // Consumer break → abort inner runner so no orphan SDK work.
       if (!handle.abort.signal.aborted) handle.abort.abort();
       if (handle.cancelReason && req.onCancel) {
@@ -498,21 +496,6 @@ export class AgentRuntime {
       this.runs.delete(runId);
     }
   }
-
-  private async buildRootPiSession(agent: RegisteredAgent, sessionId: string, cwd?: string): Promise<AgentSession> {
-    return createRootPiSession({
-      globalProvider: this.piGlobalProvider!,
-      authStorage: this.piAuthStorage!,
-      modelRegistry: this.piModelRegistry!,
-      getAgentTools: (id: string) => this.getAgentTools(id),
-      ...(this.hooks ? { hooks: this.hooks } : {}),
-    }, {
-      agent,
-      sessionId,
-      ...(cwd ? { cwd } : {}),
-    });
-  }
-
 
   cancel(runId: string, opts?: { reason?: string }): boolean {
     const handle = this.runs.get(runId);
@@ -557,9 +540,9 @@ function toRunInfo(h: RunHandle): RunInfo {
   return {
     runId: h.runId,
     agentId: h.agentId,
-    kind: h.kind,
     sessionId: h.sessionId,
     startedAt: h.startedAt,
+    depth: h.depth,
     ...(h.parentSessionId ? { parentSessionId: h.parentSessionId } : {}),
   };
 }

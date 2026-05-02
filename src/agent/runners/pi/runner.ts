@@ -1,31 +1,83 @@
-import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
+import { type AgentSession, createReadOnlyTools } from "@mariozechner/pi-coding-agent";
+import { randomUUID } from "node:crypto";
+import type { RegisteredAgent, RunRequest } from "../../types.js";
+import { RunValidationError } from "../../types.js";
+import { createRootPiSession, type PiSessionDeps } from "./session-factory.js";
 
+export interface PiRunnerOptions {
+  agent: RegisteredAgent;
+  piDeps: PiSessionDeps;
+}
+
+/** Runs a pi session for an agent. In-memory fallback when no sessionStore. */
 export class PiRunner {
+  constructor(private opts: PiRunnerOptions) {}
+
+  agent(): RegisteredAgent {
+    return this.opts.agent;
+  }
+
+  validateRequest(req: RunRequest): void {
+    if (!this.opts.agent.sessionStore && req.sessionId) {
+      throw new RunValidationError(
+        `${this.opts.agent.id}: sessions are not resumable; omit sessionId`,
+      );
+    }
+  }
+
+  async resolveSessionId(req: RunRequest, runId: string): Promise<string> {
+    if (req.sessionId) return req.sessionId;
+    const store = this.opts.agent.sessionStore;
+    if (!store) return `${this.opts.agent.id}:${runId}`;
+    const policy = this.opts.agent.sessionPolicy ?? "parent-reuse";
+    const fromId = req.from?.agentId ?? "transport";
+    const suffix = policy === "parent-reuse" && req.parentSessionId
+      ? req.parentSessionId
+      : randomUUID();
+    const sessionKey = `peer:${fromId}:${suffix}`;
+    const existing = await store.findByKey(sessionKey);
+    if (existing) return existing.id;
+    const created = await store.create(this.opts.agent.id, { key: sessionKey });
+    return created.id;
+  }
+
   async *run(opts: {
-    session: AgentSession;
-    content: string;
+    request: RunRequest;
+    runId: string;
+    sessionId: string;
     abort: AbortSignal;
+    onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent> {
-    const { session, content, abort } = opts;
-
-    const onAbort = () => session.abort();
-    abort.addEventListener("abort", onAbort, { once: true });
-    if (abort.aborted) session.abort();
-
+    const { request, sessionId, abort, onSession } = opts;
+    // TODO(#669): replace magic id with config-driven cwd-aware tools
+    const tools = this.opts.agent.id === "subagent"
+      ? createReadOnlyTools(request.cwd ?? process.cwd()) as AgentTool[]
+      : undefined;
+    const session = await createRootPiSession(this.opts.piDeps, {
+      agent: this.opts.agent,
+      sessionId,
+      ...(request.cwd ? { cwd: request.cwd } : {}),
+      ...(tools ? { tools } : {}),
+    });
+    onSession?.(session);
     try {
-      yield* streamSessionAgentEvents(session, content);
+      yield* streamPiSession(session, request.content, abort);
     } finally {
-      abort.removeEventListener("abort", onAbort);
       session.dispose();
     }
   }
 }
 
-async function* streamSessionAgentEvents(
+async function* streamPiSession(
   session: AgentSession,
   content: string,
-): AsyncGenerator<AgentEvent, void, void> {
+  abort: AbortSignal,
+): AsyncGenerator<AgentEvent> {
+  const onAbort = () => session.abort();
+  abort.addEventListener("abort", onAbort, { once: true });
+  if (abort.aborted) session.abort();
+
   type QueueItem = AgentEvent | { type: "__error__"; error: unknown };
   const queue: QueueItem[] = [];
   let resolve: (() => void) | null = null;
@@ -55,5 +107,6 @@ async function* streamSessionAgentEvents(
     }
   } finally {
     unsub();
+    abort.removeEventListener("abort", onAbort);
   }
 }

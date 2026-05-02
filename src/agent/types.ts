@@ -1,4 +1,3 @@
-import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { SandboxConfig } from "../legacy/sandbox/config.js";
 import type { AgentToolSettings } from "../tools/types.js";
 import type { DefaultSessionStore } from "../legacy/core/session-store.js";
@@ -38,10 +37,6 @@ export interface CompactionConfig {
   reserveTokens?: number;
 }
 
-
-
-export type AgentSessionKind = "root" | "leaf";
-
 /** "always-new": fresh session per send_message call.
  *  "parent-reuse": same `(caller, parentSessionId)` reuses one target
  *  session across calls; falls back to fresh when no parentSessionId. */
@@ -50,7 +45,8 @@ export type AgentSessionPolicy = "always-new" | "parent-reuse";
 export interface RegisteredAgent {
   readonly id: string;
   config: AgentConfig;
-  readonly sessionStore: DefaultSessionStore;
+  /** Absent → in-memory session (no continuity across calls). */
+  readonly sessionStore?: DefaultSessionStore;
   readonly capabilities: {
     tools: string[];
     canBeAddressed: boolean;
@@ -67,11 +63,6 @@ export interface RunRequest {
   parentSessionId?: string;
   cwd?: string;
   timeoutSeconds?: number;
-  leafContext?: {
-    /** Parent's filtered tools (parent's tools minus denied for spawn). */
-    tools: AgentTool[];
-    extraSystemPrompt?: string;
-  };
   /** Fires once after run is registered, before any AgentEvent yields.
    * Use to wire side-channel UI (Discord thread, audit) by runId. */
   onRunStart?: (runId: string) => void;
@@ -83,9 +74,10 @@ export interface RunRequest {
 export interface RunInfo {
   runId: string;
   agentId: string;
-  kind: AgentSessionKind;
   sessionId: string;
   startedAt: number;
+  /** Spawn-tree depth: 1 = top-level (no parent), 2 = first child, etc. */
+  depth: number;
   parentSessionId?: string;
 }
 

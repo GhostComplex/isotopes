@@ -87,19 +87,13 @@ export interface SendMessageToolOptions {
   runtime: AgentRuntime;
   parentAgentId: string;
   workspacePath: string;
-  parentTools?: AgentTool[];
   allowedAgents?: string[];
   spawnableAgentIds?: string[];
 }
 
 export function createSendMessageTool(options: SendMessageToolOptions): AgentTool {
-  const { runtime, parentAgentId, workspacePath, parentTools, allowedAgents, spawnableAgentIds } = options;
-  const computedTargets: string[] = [];
-  for (const name of runtime.spawnableRunnerNames()) {
-    // subagent needs caller-provided tools; skip if caller has none.
-    if (name === "subagent" && !parentTools) continue;
-    computedTargets.push(name);
-  }
+  const { runtime, parentAgentId, workspacePath, allowedAgents, spawnableAgentIds } = options;
+  const computedTargets: string[] = [...runtime.spawnableRunnerNames()];
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
       if (id !== parentAgentId && !computedTargets.includes(id)) computedTargets.push(id);
@@ -119,18 +113,12 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         "Working directory for the target's session (relative to your workspace or absolute). " +
         "Required for `claude`; optional for others (defaults to your workspace root).",
     })),
-    conversation_id: Type.Optional(Type.String({
-      description:
-        "Optional existing session id to resume. Only valid for registered agents " +
-        "(not `subagent` or `claude`).",
-    })),
   });
 
   type Params = {
     to: string;
     content: string;
     working_directory?: string;
-    conversation_id?: string;
   };
 
   return {
@@ -138,18 +126,18 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
     label: "send_message",
     description:
       `Send a message to another agent. Available targets: ${targets.join(", ") || "(none)"}. ` +
-      "For `subagent`, an ephemeral helper runs with your filtered tool set and returns its " +
-      "final assistant message as the result. For `claude`, a Claude CLI session runs against " +
+      "For `subagent`, an ephemeral helper runs with read-only tools and returns its " +
+      "final assistant message. For `claude`, a Claude CLI session runs against " +
       "`working_directory` and returns its final assistant message. For a registered agent id, " +
-      "the message is appended to that agent's session as a user-role turn and its reply is returned.",
+      "the message is appended to that agent's session as a user-role turn and its reply is returned. " +
+      "Session continuity for registered agents is managed by the runtime (per caller / parent-session).",
     parameters: schema,
     execute: async (_toolCallId, rawParams) => {
       const params = rawParams as Params;
-      const { to, content, working_directory, conversation_id } = params;
+      const { to, content, working_directory } = params;
       if (!targets.includes(to)) {
         return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`);
       }
-      const isSubagent = to === "subagent";
       const isRunner = runtime.hasRunner(to);
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)
@@ -162,12 +150,10 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         content,
         cwd,
         from: { agentId: parentAgentId },
-        ...(conversation_id ? { sessionId: conversation_id } : {}),
         ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
-        ...(isSubagent && parentTools ? { leafContext: { tools: parentTools } } : {}),
         onCancel: (reason) => { cancelReason = reason; },
       };
-      log.info("send_message", { from: parentAgentId, to, cwd, hasConversation: !!conversation_id, parent: ctx?.parentSessionId });
+      log.info("send_message", { from: parentAgentId, to, cwd, parent: ctx?.parentSessionId });
 
       const discordCtx = getDiscordSubagentStreamContext();
       let sink: DiscordSubagentSink | undefined;
@@ -298,8 +284,6 @@ export interface CreateWorkspaceToolsOptions {
   sendMessageEnabled?: boolean;
   fsImpl?: FsImpl;
   parentAgentId?: string;
-  /** Caller's tool list — filtered + lent to leaf sessions. */
-  parentTools?: AgentTool[];
   /** Unified runtime — required when sendMessageEnabled is true. */
   runtime?: AgentRuntime;
   /** Pre-computed list of registered agent ids the LLM can address. */
@@ -313,7 +297,6 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
     sendMessageEnabled = false,
     fsImpl = nodeFs,
     parentAgentId,
-    parentTools,
     runtime,
     spawnableAgentIds,
   } = options;
@@ -327,7 +310,6 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
       runtime,
       parentAgentId,
       workspacePath,
-      ...(parentTools ? { parentTools } : {}),
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
     }));
   }
@@ -338,7 +320,7 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   return tools;
 }
 
-export interface CreateAgentToolsOptions extends Omit<CreateWorkspaceToolsOptions, "parentTools"> {
+export interface CreateAgentToolsOptions extends CreateWorkspaceToolsOptions {
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
   sandboxExecutor?: SandboxExecutor;
@@ -349,10 +331,8 @@ export interface CreateAgentToolsOptions extends Omit<CreateWorkspaceToolsOption
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   const tools: AgentTool[] = [];
-  // send_message captures `tools` by reference; later push() calls populate it
-  // before the tool is invoked.
   tools.push(...applyToolPolicy(
-    createWorkspaceToolsWithGuards({ ...opts, parentTools: tools }),
+    createWorkspaceToolsWithGuards(opts),
     opts.settings,
   ));
   if (opts.transportContext) {
