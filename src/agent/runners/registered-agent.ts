@@ -10,18 +10,14 @@ export interface RegisteredAgentRunnerOptions {
 }
 
 /** Runner for registered isotopes agents (and built-in synthetic ones).
- * Uses store-backed session when agent.sessionStore is present; falls
- * back to ephemeral in-memory session otherwise. */
+ * Falls back to in-memory session when agent.sessionStore is absent. */
 export class RegisteredAgentRunner {
   constructor(private opts: RegisteredAgentRunnerOptions) {}
 
   async resolveSessionId(req: RunRequest, runId: string): Promise<string> {
     if (req.sessionId) return req.sessionId;
     const store = this.opts.agent.sessionStore;
-    if (!store) {
-      // No persistent store → ephemeral synthetic id per call.
-      return `${this.opts.agent.id}:${runId}`;
-    }
+    if (!store) return `${this.opts.agent.id}:${runId}`;
     const policy = this.opts.agent.sessionPolicy ?? "parent-reuse";
     const fromId = req.from?.agentId ?? "transport";
     const suffix = policy === "parent-reuse" && req.parentSessionId

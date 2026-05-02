@@ -47,9 +47,7 @@ export type AgentSessionPolicy = "always-new" | "parent-reuse";
 export interface RegisteredAgent {
   readonly id: string;
   config: AgentConfig;
-  /** Persistent session storage. Absent → runner uses an in-memory
-   * SessionManager; combined with sessionPolicy="always-new", the agent
-   * has no continuity across calls. */
+  /** Absent → in-memory session (no continuity across calls). */
   readonly sessionStore?: DefaultSessionStore;
   readonly capabilities: {
     tools: string[];

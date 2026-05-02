@@ -64,8 +64,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     hooks: pluginManager.getHooks(),
   });
 
-  // Built-in entries — claude is an external runner; subagent is a
-  // synthetic registered agent (read-only tools, in-memory session).
   const builtinIds = new Set(["subagent", "claude"]);
   const userAgents = config.agents.filter((a) => !builtinIds.has(a.id));
 

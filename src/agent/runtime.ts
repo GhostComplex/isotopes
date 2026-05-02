@@ -44,14 +44,11 @@ import type { DefaultSessionStore } from "../legacy/core/session-store.js";
 
 const log = createLogger("agents:runtime");
 
-/** Maximum spawn-tree depth. 1 = top-level call; rejection triggers when a
- * new run would land at depth > MAX_DEPTH. Replaces the old leaf-only
- * concurrency cap as the primary anti-runaway mechanism. */
+/** Spawn-tree depth limit. Top-level = 1; reject when child would land > MAX_DEPTH. */
 export const MAX_DEPTH = 5;
-/** Maximum concurrent in-flight children sharing the same parentSessionId.
- * Per-parent breadth limit, complementary to MAX_DEPTH. */
+/** Concurrent in-flight children per parentSessionId. */
 export const MAX_CHILDREN_PER_PARENT = 5;
-/** Default per-run timeout when the request doesn't override. */
+/** Default per-run timeout when req.timeoutSeconds is absent. */
 export const DEFAULT_TIMEOUT_SEC = 900;
 
 interface RunHandle {
@@ -151,9 +148,7 @@ export interface Runner {
 interface Entry {
   runner: Runner;
   spawnable: boolean;
-  /** Agent metadata for entries representing registered isotopes agents.
-   * Absent on built-in runners (subagent, claude). Read by getAgent /
-   * listAgents. */
+  /** Read by getAgent / listAgents; absent for built-in runners. */
   agent?: RegisteredAgent;
 }
 
@@ -184,14 +179,13 @@ export class AgentRuntime {
     }
   }
 
-  /** True when LLM provider infra is configured (required for pi-backed agents
-   * including the built-in subagent helper). */
+  /** True iff globalProvider was passed (required for any pi-backed agent). */
   hasPiInfra(): boolean {
     return this.piGlobalProvider !== undefined;
   }
 
-  /** Register a synthetic agent (no workspace, in-memory session) backed by
-   * a fixed tool set. Used by app.ts for built-in helpers like "subagent". */
+  /** Synthetic agent with no workspace + in-memory session. Used for built-ins
+   * like "subagent". */
   registerBuiltinAgent(opts: {
     id: string;
     tools: AgentTool[];
@@ -223,9 +217,8 @@ export class AgentRuntime {
     };
   }
 
-  /** Register a runner under a name. The name becomes the address callers
-   * use in `to`. Set `agent` when the runner is bound to a registered
-   * isotopes agent (read back via getAgent / listAgents). */
+  /** Register a runner under a name. Set `agent` to make it visible via
+   * getAgent / listAgents. */
   registerRunner(
     name: string,
     runner: Runner,
@@ -320,8 +313,7 @@ export class AgentRuntime {
     }
   }
 
-  /** Workspace prep + tool creation + RegisteredAgentRunner registration in
-   * one call. Used by app.ts to wire user-defined isotopes agents. */
+  /** Workspace prep + tool creation + entry registration in one call. */
   async addAgent(opts: AddAgentOptions): Promise<AddAgentResult> {
     const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox,
       sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
