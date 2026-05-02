@@ -4,7 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { loadSkills, formatSkillsForPrompt } from "@mariozechner/pi-coding-agent";
-import { getIsotopesHome, resolveAgentWorkspacePath, resolveBundledSkillsDir } from "../paths.js";
+import { getIsotopesHome, resolveAgentWorkspacePath, resolveBuiltinSkillsDir } from "../paths.js";
 import type { AgentConfig } from "./types.js";
 import { createLogger } from "../logging/logger.js";
 
@@ -54,14 +54,10 @@ export interface WorkspaceContext {
   skillsPrompt: string;
 }
 
-/**
- * Load workspace context from a directory.
- * Reads standard workspace files and combines them for use in system prompt.
- */
-export async function loadWorkspaceContext(workspacePath: string, options?: { bundledPath?: string }): Promise<WorkspaceContext> {
+/** Load workspace files (SOUL/MEMORY/etc) + skills into a context object. */
+export async function loadWorkspaceContext(workspacePath: string, options?: { builtinSkillsPath?: string }): Promise<WorkspaceContext> {
   const additions: string[] = [];
 
-  // Load standard workspace files
   for (const filename of WORKSPACE_FILES) {
     const content = await readFileIfExists(path.join(workspacePath, filename));
     if (content) {
@@ -69,35 +65,33 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
     }
   }
 
-  // Load memory file
   let memory: string | null = null;
   const memoryPath = path.join(workspacePath, "MEMORY.md");
   memory = await readFileIfExists(memoryPath);
 
-  // Load yesterday's daily memory if exists
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0]; // YYYY-MM-DD
+  // Yesterday's daily memory
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
   const yesterdayMemoryPath = path.join(workspacePath, "memory", `${yesterday}.md`);
   const yesterdayMemory = await readFileIfExists(yesterdayMemoryPath);
   if (yesterdayMemory) {
     memory = memory ? `${memory}\n\n## Yesterday's Notes\n\n${yesterdayMemory}` : `## Yesterday's Notes\n\n${yesterdayMemory}`;
   }
 
-  // Load today's daily memory if exists
-  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  // Today's daily memory
+  const today = new Date().toISOString().split("T")[0];
   const dailyMemoryPath = path.join(workspacePath, "memory", `${today}.md`);
   const dailyMemory = await readFileIfExists(dailyMemoryPath);
   if (dailyMemory) {
     memory = memory ? `${memory}\n\n## Today's Notes\n\n${dailyMemory}` : `## Today's Notes\n\n${dailyMemory}`;
   }
 
-  // Load skills from workspace
   const skillResult = loadSkills({
     cwd: workspacePath,
     agentDir: getIsotopesHome(),
     skillPaths: [
       path.join(workspacePath, "skills"),
       path.join(getIsotopesHome(), "skills"),
-      ...(options?.bundledPath ? [options.bundledPath] : []),
+      ...(options?.builtinSkillsPath ? [options.builtinSkillsPath] : []),
     ],
     includeDefaults: false,
   });
@@ -114,31 +108,17 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
   };
 }
 
-/**
- * Build a complete system prompt from workspace context.
- */
+/** Build a complete system prompt from a loaded workspace context. */
 export function buildSystemPrompt(workspace: WorkspaceContext | null): string {
   if (!workspace) {
     return ASSISTANT_OUTPUT_DIRECTIVES;
   }
 
   const parts: string[] = [];
-
-  // Inject workspace path
   parts.push(`# Workspace\n\nYour working directory is: ${workspace.workspacePath}`);
-
-  if (workspace.systemPromptAdditions) {
-    parts.push("# Workspace Context\n\n" + workspace.systemPromptAdditions);
-  }
-
-  if (workspace.skillsPrompt) {
-    parts.push(workspace.skillsPrompt);
-  }
-
-  if (workspace.memory) {
-    parts.push("# Memory\n\n" + workspace.memory);
-  }
-
+  if (workspace.systemPromptAdditions) parts.push("# Workspace Context\n\n" + workspace.systemPromptAdditions);
+  if (workspace.skillsPrompt) parts.push(workspace.skillsPrompt);
+  if (workspace.memory) parts.push("# Memory\n\n" + workspace.memory);
   parts.push(ASSISTANT_OUTPUT_DIRECTIVES);
 
   return parts.join("\n\n---\n\n");
@@ -147,26 +127,18 @@ export function buildSystemPrompt(workspace: WorkspaceContext | null): string {
 /** End-to-end: resolve agent's workspace path, load context, build prompt. */
 export async function buildAgentSystemPrompt(config: AgentConfig): Promise<string> {
   const ctx = await loadWorkspaceContext(resolveAgentWorkspacePath(config), {
-    bundledPath: resolveBundledSkillsDir(),
+    builtinSkillsPath: resolveBuiltinSkillsDir(),
   });
   return buildSystemPrompt(ctx);
 }
 
-/**
- * Ensure workspace directory structure exists.
- */
+/** Ensure workspace + memory subdir exist. */
 export async function ensureWorkspaceStructure(workspacePath: string): Promise<void> {
   await fs.mkdir(workspacePath, { recursive: true });
   await fs.mkdir(path.join(workspacePath, "memory"), { recursive: true });
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 // Stat-based identity cache: skip re-reads when (dev, ino, size, mtime) match.
-// Per-call rebuild stays cheap (one stat syscall), edits are detected
-// automatically without a watcher. Mirrors openclaw's pattern.
 const fileCache = new Map<string, { content: string; identity: string }>();
 
 async function readFileIfExists(filePath: string): Promise<string | null> {

@@ -149,11 +149,10 @@ function looksLikeSkillsDir(dir: string): boolean {
   return false;
 }
 
-/** Resolve the bundled skills directory shipped with the isotopes package.
- *  Walks up from this module to find `skills/`. Override with
- *  ISOTOPES_BUNDLED_SKILLS_DIR env var. */
-export function resolveBundledSkillsDir(): string | undefined {
-  const override = process.env.ISOTOPES_BUNDLED_SKILLS_DIR?.trim();
+/** Resolve the built-in skills directory shipped with the package.
+ *  Override with ISOTOPES_BUILTIN_SKILLS_DIR (or legacy ISOTOPES_BUNDLED_SKILLS_DIR). */
+export function resolveBuiltinSkillsDir(): string | undefined {
+  const override = (process.env.ISOTOPES_BUILTIN_SKILLS_DIR ?? process.env.ISOTOPES_BUNDLED_SKILLS_DIR)?.trim();
   if (override) return override;
 
   try {
