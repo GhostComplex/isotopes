@@ -12,7 +12,7 @@ import { RunValidationError } from "./types.js";
 import type { ProviderConfig } from "./types.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import type { PiSessionDeps } from "./runners/pi/session-factory.js";
-import { RegisteredAgentRunner } from "./runners/registered-agent.js";
+import { PiRunner } from "./runners/pi/runner.js";
 import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -200,7 +200,7 @@ export class AgentRuntime {
       ...(opts.sessionPolicy ? { sessionPolicy: opts.sessionPolicy } : {}),
     };
     this.setAgentTools(opts.id, opts.tools);
-    const runner = new RegisteredAgentRunner({ agent, piDeps: this.piDeps() });
+    const runner = new PiRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(opts.id, runner, { spawnable: opts.spawnable ?? true, agent });
   }
 
@@ -376,7 +376,7 @@ export class AgentRuntime {
     };
 
     this.setAgentTools(agent.id, tools);
-    const runner = new RegisteredAgentRunner({ agent, piDeps: this.piDeps() });
+    const runner = new PiRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(agent.id, runner, {
       spawnable: agentConfig.spawnable === true,
       agent,

@@ -1,9 +1,59 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import { randomUUID } from "node:crypto";
+import type { RegisteredAgent, RunRequest } from "../../types.js";
+import { createRootPiSession, type PiSessionDeps } from "./session-factory.js";
+
+export interface PiRunnerOptions {
+  agent: RegisteredAgent;
+  piDeps: PiSessionDeps;
+}
+
+/** Runs a pi-coding-agent session for a registered agent (user-defined or
+ * built-in synthetic). Falls back to in-memory session when
+ * agent.sessionStore is absent. */
+export class PiRunner {
+  constructor(private opts: PiRunnerOptions) {}
+
+  async resolveSessionId(req: RunRequest, runId: string): Promise<string> {
+    if (req.sessionId) return req.sessionId;
+    const store = this.opts.agent.sessionStore;
+    if (!store) return `${this.opts.agent.id}:${runId}`;
+    const policy = this.opts.agent.sessionPolicy ?? "parent-reuse";
+    const fromId = req.from?.agentId ?? "transport";
+    const suffix = policy === "parent-reuse" && req.parentSessionId
+      ? req.parentSessionId
+      : randomUUID();
+    const sessionKey = `peer:${fromId}:${suffix}`;
+    const existing = await store.findByKey(sessionKey);
+    if (existing) return existing.id;
+    const created = await store.create(this.opts.agent.id, { key: sessionKey });
+    return created.id;
+  }
+
+  async *run(opts: {
+    request: RunRequest;
+    runId: string;
+    sessionId: string;
+    abort: AbortSignal;
+  }): AsyncGenerator<AgentEvent> {
+    const { request, sessionId, abort } = opts;
+    const session = await createRootPiSession(this.opts.piDeps, {
+      agent: this.opts.agent,
+      sessionId,
+      ...(request.cwd ? { cwd: request.cwd } : {}),
+    });
+    try {
+      yield* streamPiSession(session, request.content, abort);
+    } finally {
+      session.dispose();
+    }
+  }
+}
 
 /** Drive a pi-coding-agent session for one prompt and yield its events.
  * Caller owns session lifecycle (creation + dispose). */
-export async function* streamPiSession(
+async function* streamPiSession(
   session: AgentSession,
   content: string,
   abort: AbortSignal,
