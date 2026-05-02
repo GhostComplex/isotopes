@@ -37,8 +37,6 @@ export interface CompactionConfig {
   reserveTokens?: number;
 }
 
-
-
 /** "always-new": fresh session per send_message call.
  *  "parent-reuse": same `(caller, parentSessionId)` reuses one target
  *  session across calls; falls back to fresh when no parentSessionId. */
