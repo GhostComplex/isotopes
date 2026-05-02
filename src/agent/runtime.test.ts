@@ -358,6 +358,75 @@ describe("runtime.run — abort on consumer early-return", () => {
   });
 });
 
+describe("runtime.steer — wires onSession into RunHandle", () => {
+  it("steer reaches the runner's session via onSession callback", async () => {
+    const rt = new AgentRuntime();
+    const steerSpy = vi.fn();
+    let pendingResolve: () => void = () => {};
+    const pending = new Promise<void>((r) => { pendingResolve = r; });
+    let runStarted: () => void = () => {};
+    const started = new Promise<void>((r) => { runStarted = r; });
+
+    rt.registerRunner("main", stubRunner({
+      async *run(opts) {
+        opts.onSession?.({ steer: steerSpy } as never);
+        runStarted();
+        opts.abort.addEventListener("abort", pendingResolve, { once: true });
+        await pending;
+        yield buildAgentEnd("done");
+      },
+      agent: fakeAgent("main"),
+    }));
+
+    let runId: string | undefined;
+    const stream = rt.run({
+      to: "main",
+      content: "hi",
+      onRunStart: (rid) => { runId = rid; },
+    });
+    const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
+
+    await started;
+    await rt.steer(runId!, "interject");
+    expect(steerSpy).toHaveBeenCalledWith("interject");
+
+    rt.cancel(runId!);
+    await drain;
+  });
+
+  it("steer throws when runner did not call onSession", async () => {
+    const rt = new AgentRuntime();
+    let pendingResolve: () => void = () => {};
+    const pending = new Promise<void>((r) => { pendingResolve = r; });
+    let runStarted: () => void = () => {};
+    const started = new Promise<void>((r) => { runStarted = r; });
+
+    rt.registerRunner("noSteer", stubRunner({
+      async *run(opts) {
+        runStarted();
+        opts.abort.addEventListener("abort", pendingResolve, { once: true });
+        await pending;
+        yield buildAgentEnd("done");
+      },
+      agent: fakeAgent("noSteer"),
+    }));
+
+    let runId: string | undefined;
+    const stream = rt.run({
+      to: "noSteer",
+      content: "hi",
+      onRunStart: (rid) => { runId = rid; },
+    });
+    const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
+
+    await started;
+    await expect(rt.steer(runId!, "x")).rejects.toThrow(/No active session/);
+
+    rt.cancel(runId!);
+    await drain;
+  });
+});
+
 describe("AgentRuntime session event subscription", () => {
   it("delivers events to a subscribed listener", () => {
     const rt = new AgentRuntime();

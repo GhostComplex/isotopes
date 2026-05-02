@@ -47,13 +47,15 @@ export class PiRunner {
     runId: string;
     sessionId: string;
     abort: AbortSignal;
+    onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent> {
-    const { request, sessionId, abort } = opts;
+    const { request, sessionId, abort, onSession } = opts;
     const session = await createRootPiSession(this.opts.piDeps, {
       agent: this.opts.agent,
       sessionId,
       ...(request.cwd ? { cwd: request.cwd } : {}),
     });
+    onSession?.(session);
     try {
       yield* streamPiSession(session, request.content, abort);
     } finally {

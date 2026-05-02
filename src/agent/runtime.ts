@@ -144,6 +144,9 @@ export interface Runner {
     runId: string;
     sessionId: string;
     abort: AbortSignal;
+    /** Called once a steerable session is ready. Runners that have no
+     * steerable session (e.g. ClaudeRunner) simply don't call it. */
+    onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent>;
 }
 
@@ -479,6 +482,7 @@ export class AgentRuntime {
         runId,
         sessionId,
         abort: abort.signal,
+        onSession: (session) => { handle.session = session; },
       });
     } finally {
       clearTimeout(timeoutHandle);
