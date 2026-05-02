@@ -110,8 +110,9 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
     content: Type.String({ description: "Message content to deliver as the user-role turn." }),
     working_directory: Type.Optional(Type.String({
       description:
-        "Working directory for the target's session (relative to your workspace or absolute). " +
-        "Required for `coding`; optional for others (defaults to your workspace root).",
+        "Working directory to convey to the target. Required for `coding` " +
+        "(sets the claude subprocess cwd). For pi agents (subagent, registered ones), " +
+        "passed in the prompt as task context — the agent uses absolute paths if it cares.",
     })),
   });
 
