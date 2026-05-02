@@ -131,7 +131,7 @@ export interface PiSessionDeps {
 
 export async function createRootPiSession(
   deps: PiSessionDeps,
-  opts: { agent: RegisteredAgent; sessionId: string; cwd?: string },
+  opts: { agent: RegisteredAgent; sessionId: string; cwd?: string; tools?: AgentTool[] },
 ): Promise<AgentSession> {
   const { agent, sessionId, cwd } = opts;
   const sessionManager = agent.sessionStore
@@ -144,7 +144,7 @@ export async function createRootPiSession(
     authStorage: deps.authStorage,
     modelRegistry: deps.modelRegistry,
     agentConfig: agent.config,
-    tools: deps.getAgentTools(agent.id),
+    tools: opts.tools ?? deps.getAgentTools(agent.id),
     sessionManager,
     systemPrompt: await deriveAgentSystemPrompt(agent.config),
     ...(cwd ? { cwd } : {}),
