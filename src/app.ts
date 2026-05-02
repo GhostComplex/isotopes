@@ -111,7 +111,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       sessionStore,
     });
 
-    if (result.workspacePath) agentWorkspaces.set(result.agent.id, result.workspacePath);
+    if (result.workspacePath !== null) agentWorkspaces.set(result.agent.id, result.workspacePath);
     transportContexts.set(result.agent.id, transportCtx);
     processRegistries.set(result.agent.id, result.processRegistry);
     if (result.tools.length > 0) toolRegistries.set(result.agent.id, result.tools);

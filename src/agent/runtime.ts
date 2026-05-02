@@ -88,7 +88,8 @@ export interface AddAgentOptions {
 
 export interface AddAgentResult {
   agent: RegisteredAgent;
-  workspacePath: string;
+  /** null when the runner has no workspace (e.g. claude). */
+  workspacePath: string | null;
   tools: AgentTool[];
   processRegistry: ProcessRegistry;
   transportContext?: LazyTransportContext;
@@ -314,7 +315,7 @@ export class AgentRuntime {
     };
     this.registerRunner(agentConfig.id, new ClaudeRunner(), { spawnable: agentConfig.spawnable === true });
     log.info(`Added agent: ${agent.id} (runner: claude)`);
-    return { agent, workspacePath: "", processRegistry: new ProcessRegistry(), tools: [] };
+    return { agent, workspacePath: null, processRegistry: new ProcessRegistry(), tools: [] };
   }
 
   private async registerPi(
