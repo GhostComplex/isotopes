@@ -300,14 +300,11 @@ export class AgentRuntime {
   async register(opts: AddAgentOptions): Promise<AddAgentResult> {
     const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox } = opts;
     const agentConfig = toAgentConfig(agentFile, agentDefaults, provider, globalTools, compaction, sandbox);
-
-    if (agentConfig.runner === "claude") {
-      return this.registerClaude(agentConfig);
-    }
-    return this.registerPi(agentConfig, opts);
+    return agentConfig.runner === "claude"
+      ? this.registerClaude(agentConfig)
+      : this.registerPi(agentConfig, opts);
   }
 
-  /** Claude runner: subprocess CLI, no workspace/sessionStore/sandbox/tools setup. */
   private registerClaude(agentConfig: import("./types.js").AgentConfig): AddAgentResult {
     const agent: RegisteredAgent = {
       id: agentConfig.id,
@@ -320,7 +317,6 @@ export class AgentRuntime {
     return { agent, workspacePath: "", processRegistry: new ProcessRegistry(), tools: [] };
   }
 
-  /** Pi runner: full workspace prep + tool creation, OR no-workspace readonly mode. */
   private async registerPi(
     agentConfig: import("./types.js").AgentConfig,
     opts: AddAgentOptions,
@@ -352,6 +348,7 @@ export class AgentRuntime {
       const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
       const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
+      // send_message spawns host-side child runners that bypass docker.
       const sendMessageEnabled = !isSandboxed;
       if (isSandboxed) {
         log.warn(`send_message tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
@@ -378,8 +375,8 @@ export class AgentRuntime {
       await this.hooks.emit("before_agent_start", { agentId: agentConfig.id });
     }
 
-    // Subagent / readonly agents have no persistent sessionStore; PiRunner falls
-    // back to in-memory SessionManager when sessionStore is undefined.
+    // No-workspace agents (subagent) get in-memory sessions; PiRunner falls
+    // back to SessionManager.inMemory() when sessionStore is undefined.
     const persistentStore = noWorkspace ? undefined : sessionStore;
 
     const agent: RegisteredAgent = {

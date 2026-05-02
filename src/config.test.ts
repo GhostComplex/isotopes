@@ -207,7 +207,6 @@ agents:
       expect(subagent.runner).toBe("pi");
       expect(subagent.tools).toBe("readonly");
       expect(subagent.workspace).toBeNull();
-      expect(subagent.defaultSystemPrompt).toContain("subagent in the Isotopes framework");
       const coding = config.agents.find((a) => a.id === "coding")!;
       expect(coding.runner).toBe("claude");
       expect(coding.spawnable).toBe(true);

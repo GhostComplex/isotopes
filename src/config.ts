@@ -73,35 +73,25 @@ export interface CronTaskConfigFile {
 /** Agent configuration in config file */
 export interface AgentConfigFile {
   id: string;
-  /** Runner backend. Defaults to "pi". */
+  /** Runner backend. Default "pi". */
   runner?: "pi" | "claude";
-  /** When false, the agent is skipped at boot. Default true. */
+  /** Default true. */
   enabled?: boolean;
-  /**
-   * Explicit workspace directory for this agent (#214).
-   * Absolute paths are used as-is; relative paths resolve from ISOTOPES_HOME.
-   * `null` = no workspace (e.g. subagent). Omitted = defaults to "workspace-{id}/".
-   */
+  /** Absolute or ISOTOPES_HOME-relative. `null` = no workspace. Omitted → workspace-{id}/. */
   workspace?: string | null;
-  /** Tool config; "readonly" is a shorthand for read/ls/grep/find with caller cwd. */
+  /** "readonly" → cwd-aware readonly tools (read/ls/grep/find). */
   tools?: AgentToolsConfigFile | "readonly";
   model?: string;
   compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
-  /** Heartbeat configuration (#191) */
   heartbeat?: HeartbeatConfigFile;
-  /** Cron scheduled tasks (#193) */
   cron?: { tasks: CronTaskConfigFile[] };
-  /** Additional workspace paths allowed for spawned agent cwd */
+  /** Additional workspace paths allowed for spawned agent cwd. */
   allowedWorkspaces?: string[];
-  /** Whether this agent can be spawned by other agents via send_message. Default: false */
+  /** Default false. */
   spawnable?: boolean;
-  /** How this agent treats incoming a2a `send_message` calls when no
-   * sessionId is provided. "parent-reuse" (default) | "always-new". */
+  /** "parent-reuse" (default) | "always-new". */
   sessionPolicy?: "always-new" | "parent-reuse";
-  /** Framework-only: built-in fallback system prompt when no workspace context exists.
-   * Used by the subagent default entry; users may also set explicitly. */
-  defaultSystemPrompt?: string;
 }
 
 export interface AgentToolsConfigFile {
@@ -423,19 +413,8 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
   return config;
 }
 
-const SUBAGENT_DEFAULT_PROMPT =
-  "You are a subagent in the Isotopes framework — a generic helper " +
-  "spawned by another agent to handle one focused task.\n\n" +
-  "Capabilities: read-only inspection (read, ls, grep, find). You cannot " +
-  "spawn further agents, write or edit files, run shell, or fetch from the web. " +
-  "If the task requires those, return a concise explanation of what is needed and stop.\n\n" +
-  "Be terse. Report findings or completion in plain text. Do not narrate plans " +
-  "before acting; just act and then summarize the result. Do not greet, sign off, " +
-  "or refer to your model.";
-
-/** Builtin agents the framework provides by default. Users override by
- * declaring an entry with the same id. Order matters: user entries come
- * first so toAgentConfig sees them first. */
+/** Builtins the framework provides. User entries with the same id win
+ * field-by-field; missing builtins are appended. */
 const BUILTIN_AGENT_DEFAULTS: AgentConfigFile[] = [
   {
     id: "subagent",
@@ -444,7 +423,6 @@ const BUILTIN_AGENT_DEFAULTS: AgentConfigFile[] = [
     tools: "readonly",
     sessionPolicy: "always-new",
     spawnable: true,
-    defaultSystemPrompt: SUBAGENT_DEFAULT_PROMPT,
   },
   {
     id: "coding",
@@ -453,9 +431,6 @@ const BUILTIN_AGENT_DEFAULTS: AgentConfigFile[] = [
   },
 ];
 
-/** Merge builtin defaults into the user-supplied agent list. For each builtin,
- * if the user declared an entry with the same id, the user's fields win and
- * builtin fields fill the gaps. Otherwise the builtin entry is appended. */
 function mergeBuiltinAgentDefaults(userAgents: AgentConfigFile[]): AgentConfigFile[] {
   const builtinById = new Map(BUILTIN_AGENT_DEFAULTS.map((b) => [b.id, b] as const));
   const merged = userAgents.map((user) => {
@@ -509,7 +484,6 @@ export function toAgentConfig(
     sandbox,
     spawnable: agent.spawnable,
     sessionPolicy: agent.sessionPolicy,
-    ...(agent.defaultSystemPrompt ? { defaultSystemPrompt: agent.defaultSystemPrompt } : {}),
   };
 }
 
