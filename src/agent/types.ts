@@ -14,9 +14,13 @@ export interface ProviderConfig {
 
 export interface AgentConfig {
   id: string;
-  /** Defaults to ${ISOTOPES_HOME}/workspace-${id} (#214). */
-  workspace?: string;
+  /** Runner backend. Defaults to "pi" when constructed by toAgentConfig. */
+  runner?: "pi" | "claude";
+  /** Defaults to ${ISOTOPES_HOME}/workspace-${id} (#214). null = no workspace. */
+  workspace?: string | null;
   toolSettings?: AgentToolSettings;
+  /** "readonly" → cwd-aware readonly tools built per-run. */
+  toolsMode?: "readonly";
   model?: string;
   compaction?: CompactionConfig;
   sandbox?: SandboxConfig;
@@ -24,6 +28,8 @@ export interface AgentConfig {
   spawnable?: boolean;
   /** Defaults to "parent-reuse". */
   sessionPolicy?: "always-new" | "parent-reuse";
+  /** Framework fallback system prompt when workspace context is empty. */
+  defaultSystemPrompt?: string;
 }
 
 export type CompactionMode = 'off' | 'safeguard' | 'aggressive';

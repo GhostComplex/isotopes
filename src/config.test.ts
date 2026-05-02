@@ -38,7 +38,6 @@ agents:
 
       const config = await loadConfig(configPath);
 
-      expect(config.agents).toHaveLength(1);
       expect(config.agents[0].id).toBe("test");
     });
 
@@ -53,7 +52,6 @@ agents:
 
       const config = await loadConfig(configPath);
 
-      expect(config.agents).toHaveLength(1);
       expect(config.agents[0].id).toBe("test");
     });
 
@@ -184,7 +182,6 @@ agents:
 
       // agents should be normalized to array
       expect(Array.isArray(config.agents)).toBe(true);
-      expect(config.agents.length).toBe(2);
       expect(config.agents[0].id).toBe("major");
       expect(config.agents[1].id).toBe("tachikoma");
       expect(config.agents[1].model).toBe("claude-opus-4.5");
@@ -192,6 +189,51 @@ agents:
       // agentDefaults should be extracted
       expect(config.agentDefaults).toBeDefined();
       expect(config.agentDefaults?.compaction?.mode).toBe("safeguard");
+    });
+
+    it("auto-injects builtin subagent and coding entries when missing", async () => {
+      const configPath = path.join(tempDir, "builtins.yaml");
+      await fs.writeFile(
+        configPath,
+        `
+agents:
+  - id: main
+`,
+      );
+      const config = await loadConfig(configPath);
+      const ids = config.agents.map((a) => a.id);
+      expect(ids).toEqual(["main", "subagent", "coding"]);
+      const subagent = config.agents.find((a) => a.id === "subagent")!;
+      expect(subagent.runner).toBe("pi");
+      expect(subagent.tools).toBe("readonly");
+      expect(subagent.workspace).toBeNull();
+      expect(subagent.defaultSystemPrompt).toContain("subagent in the Isotopes framework");
+      const coding = config.agents.find((a) => a.id === "coding")!;
+      expect(coding.runner).toBe("claude");
+      expect(coding.spawnable).toBe(true);
+    });
+
+    it("user override merges over builtin defaults", async () => {
+      const configPath = path.join(tempDir, "override.yaml");
+      await fs.writeFile(
+        configPath,
+        `
+agents:
+  - id: main
+  - id: subagent
+    enabled: false
+  - id: coding
+    workspace: /custom/path
+`,
+      );
+      const config = await loadConfig(configPath);
+      const subagent = config.agents.find((a) => a.id === "subagent")!;
+      expect(subagent.enabled).toBe(false);
+      expect(subagent.runner).toBe("pi");
+      expect(subagent.tools).toBe("readonly");
+      const coding = config.agents.find((a) => a.id === "coding")!;
+      expect(coding.workspace).toBe("/custom/path");
+      expect(coding.runner).toBe("claude");
     });
 
     it("legacy array form still works and agentDefaults is undefined", async () => {
@@ -612,7 +654,6 @@ agents:
       );
 
       const config = await loadConfig(configPath);
-      expect(config.agents).toHaveLength(1);
       expect(config.agents[0].id).toBe("test");
     });
 
