@@ -126,12 +126,13 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
     name: "spawn_agent",
     label: "spawn_agent",
     description:
-      `Send a message to another agent. Available targets: ${targets.join(", ") || "(none)"}. ` +
-      "For `subagent`, an ephemeral helper runs with read-only tools and returns its " +
-      "final assistant message. For `coding`, a Claude CLI session runs against " +
-      "`working_directory` and returns its final assistant message. For a registered agent id, " +
-      "the message is appended to that agent's session as a user-role turn and its reply is returned. " +
-      "Session continuity for registered agents is managed by the runtime (per caller / parent-session).",
+      `Spawn another agent to handle a focused task and synchronously await its final reply. ` +
+      `Available targets: ${targets.join(", ") || "(none)"}. ` +
+      "For `subagent`, an ephemeral helper runs with read-only tools. " +
+      "For `coding`, a Claude CLI session runs against `working_directory`. " +
+      "For a registered agent id, the prompt is appended to that agent's session as a user-role turn. " +
+      "Session continuity for registered agents is managed by the runtime (per caller / parent-session). " +
+      "This call blocks until the spawned agent finishes; the return value is its final assistant message.",
     parameters: schema,
     execute: async (_toolCallId, rawParams) => {
       const params = rawParams as Params;
