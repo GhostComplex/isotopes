@@ -1,4 +1,4 @@
-// src/transports/silent-reply.ts — Silent reply token detection
+// src/silent-reply.ts — Silent reply token detection
 // Agents can return these tokens to suppress outbound messages while still
 // logging internally. Used for heartbeat checks and explicit "no reply" signals.
 

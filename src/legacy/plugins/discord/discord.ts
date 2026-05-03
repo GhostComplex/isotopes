@@ -24,7 +24,7 @@ import { loggers } from "../../../logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../core/agent-run.js";
 import { runWithDiscordSubagentStream, type DiscordSubagentStreamContext } from "./subagent-stream-context.js";
-import { isSilentReply } from "../../core/silent-reply.js";
+import { isSilentReply } from "../../../silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
 import { buildSessionKey } from "../../../gateway/session-keys.js";

@@ -1,4 +1,4 @@
-// src/transports/silent-reply.test.ts — Tests for silent reply token detection
+// src/silent-reply.test.ts — Tests for silent reply token detection
 
 import { describe, it, expect } from "vitest";
 import { isSilentReply, SILENT_REPLY_TOKENS } from "./silent-reply.js";
