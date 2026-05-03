@@ -45,9 +45,8 @@ function getLeadingRegex(token: string): RegExp {
 function getLeadingAttachedRegex(token: string): RegExp {
   const cached = leadingAttachedRegexCache.get(token);
   if (cached) return cached;
-  // Glued to a letter/digit (e.g. `NO_REPLYhello`) — exclude punctuation
-  // (`NO_REPLY: actually...`) so the model commenting on the token is not
-  // mistaken for emitting it.
+  // Glued to a letter/digit only; punctuation (`NO_REPLY: ...`) reads as the
+  // model talking about the token, not emitting it.
   const regex = new RegExp(
     `^\\s*(?:${escapeForRegex(token)}\\s+)*${escapeForRegex(token)}(?=[\\p{L}\\p{N}])`,
     "iu",
@@ -124,11 +123,9 @@ export function startsWithSilentToken(
   return getLeadingAttachedRegex(token).test(text);
 }
 
-/** Streaming partial-token detector. True when the chunk so far is consistent
- *  with the model being mid-emission (e.g. `"NO"`, `"NO_R"`). Uppercase-only
- *  to avoid matching natural-language `"No, ..."`; the bare two-letter `"NO"`
- *  is allowed only for SILENT_REPLY_TOKEN since standalone uppercase `"NO"`
- *  is otherwise too ambiguous. */
+/** Streaming partial-token detector — true when the chunk is consistent with
+ *  the model being mid-emission. Uppercase-only to avoid matching `"No, ..."`;
+ *  bare `"NO"` is allowed only for SILENT_REPLY_TOKEN. */
 export function isSilentReplyPrefixText(
   text: string | undefined,
   token: string = SILENT_REPLY_TOKEN,
