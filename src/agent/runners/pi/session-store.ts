@@ -31,12 +31,7 @@ interface PersistedSessionIndex {
   keyIndex?: Record<string, string>;
 }
 
-/**
- * pi SDK quirk: `SessionManager.open()` on a file with user-but-no-assistant
- * marks itself `flushed=true`, then drops subsequent user-only appends. We
- * cache one manager per session so user/assistant pairs share in-memory state
- * across `addMessage` calls and flush together when the assistant arrives.
- */
+/** Cache one manager per session: pi SDK's `flushed` flag drops user-only appends on a freshly-opened file with no assistant. */
 interface StoredSession extends Session {
   manager?: SessionManager;
 }
