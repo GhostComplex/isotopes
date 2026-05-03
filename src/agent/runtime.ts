@@ -143,7 +143,6 @@ export interface Runner {
   resolveSessionId(req: RunRequest): Promise<string> | string;
   run(opts: {
     request: RunRequest;
-    runId: string;
     sessionId: string;
     abort: AbortSignal;
     /** Called once a steerable session is ready. Runners that have no
@@ -485,7 +484,6 @@ export class AgentRuntime {
       // them uniformly without manual wiring.
       for await (const event of entry.runner.run({
         request: req,
-        runId,
         sessionId,
         abort: abort.signal,
         onSession: (session) => { handle.session = session; },

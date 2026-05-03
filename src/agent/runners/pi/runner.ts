@@ -38,7 +38,6 @@ export class PiRunner {
 
   async *run(opts: {
     request: RunRequest;
-    runId: string;
     sessionId: string;
     abort: AbortSignal;
     onSession?: (session: AgentSession) => void;

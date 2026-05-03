@@ -21,11 +21,10 @@ export class ClaudeRunner {
 
   async *run(opts: {
     request: RunRequest;
-    runId: string;
     sessionId: string;
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {
-    const { request, runId, abort } = opts;
+    const { request, abort } = opts;
 
     const sdkAbort = new AbortController();
     const onAbort = () => sdkAbort.abort();
@@ -39,7 +38,7 @@ export class ClaudeRunner {
       settingSources: ["user"],
     };
 
-    log.info("ClaudeRunner.run", { runId, cwd: request.cwd });
+    log.info("ClaudeRunner.run", { sessionId: opts.sessionId, cwd: request.cwd });
 
     const toolNameById = new Map<string, string>();
     let assistantText = "";
