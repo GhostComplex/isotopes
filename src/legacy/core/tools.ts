@@ -161,10 +161,10 @@ export function createCallAgentTool(options: CallAgentToolOptions): AgentTool {
       const startedAt = Date.now();
       const taskLabel = `${to}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`;
 
-      req.onRunStart = (runId: string, sessionId: string) => {
+      req.onRunStart = (sessionId: string) => {
         if (discordCtx) {
           const showToolCalls = discordCtx.showToolCalls ?? true;
-          sink = new DiscordA2ASink(discordCtx, { runId, sessionId }, { showToolCalls });
+          sink = new DiscordA2ASink(discordCtx, sessionId, { showToolCalls });
           void sink.start(taskLabel);
         }
       };

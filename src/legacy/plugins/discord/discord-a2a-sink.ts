@@ -36,29 +36,17 @@ function truncate(s: string, max = MAX_DISCORD_LEN): string {
   return s.slice(0, max - 1) + "…";
 }
 
-export interface DiscordA2ASinkRunRef {
-  /** Diagnostic-only — used in log lines. */
-  runId: string;
-  /** Used to register the thread → session mapping for /stop routing. */
-  sessionId: string;
-}
-
 export class DiscordA2ASink {
   private threadId: string | undefined;
   private buffer = "";
   private toolCallNames = new Map<string, string>();
   private startedAt = 0;
-  private readonly runId: string;
-  private readonly sessionId: string;
 
   constructor(
     private readonly ctx: DiscordA2AStreamContext,
-    runRef: DiscordA2ASinkRunRef,
+    private readonly sessionId: string,
     private readonly config: DiscordA2ASinkConfig = {},
-  ) {
-    this.runId = runRef.runId;
-    this.sessionId = runRef.sessionId;
-  }
+  ) {}
 
   async start(taskLabel: string, headerMessageId?: string): Promise<string | undefined> {
     this.startedAt = Date.now();
@@ -73,11 +61,11 @@ export class DiscordA2ASink {
       );
       this.threadId = thread.id;
       this.ctx.registerA2AThread(thread.id, this.sessionId);
-      log.debug("Sub-run thread opened", { runId: this.runId, sessionId: this.sessionId, threadId: thread.id });
+      log.debug("Sub-run thread opened", { sessionId: this.sessionId, threadId: thread.id });
       return thread.id;
     } catch (err) {
       log.warn("Failed to open sub-run thread; streaming disabled", {
-        runId: this.runId,
+        sessionId: this.sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
       this.threadId = undefined;
@@ -131,7 +119,7 @@ export class DiscordA2ASink {
     try {
       await this.ctx.sendMessage(this.threadId, head + body);
     } catch (err) {
-      log.warn("Failed to post summary", { runId: this.runId, error: err instanceof Error ? err.message : String(err) });
+      log.warn("Failed to post summary", { sessionId: this.sessionId, error: err instanceof Error ? err.message : String(err) });
     }
     try {
       this.ctx.unregisterA2AThread(this.threadId);
@@ -154,7 +142,7 @@ export class DiscordA2ASink {
         await this.ctx.sendMessage(this.threadId, c);
       } catch (err) {
         log.warn("Failed to send message to sub-run thread", {
-          runId: this.runId,
+          sessionId: this.sessionId,
           threadId: this.threadId,
           error: err instanceof Error ? err.message : String(err),
         });

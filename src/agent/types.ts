@@ -66,9 +66,9 @@ export interface RunRequest {
   cwd?: string;
   timeoutSeconds?: number;
   /** Fires once after run is registered, before any AgentEvent yields.
-   * Use to wire side-channel UI (Discord thread, audit) by sessionId or runId. */
-  onRunStart?: (runId: string, sessionId: string) => void;
-  /** Fires when `runtime.cancel(runId, { reason })` runs. Lets the caller
+   * Use to wire side-channel UI (Discord thread, audit) by sessionId. */
+  onRunStart?: (sessionId: string) => void;
+  /** Fires when `runtime.cancel(sessionId, { reason })` runs. Lets the caller
    * shape the LLM-facing result string (e.g. "user cancel — don't retry"). */
   onCancel?: (reason: string) => void;
 }

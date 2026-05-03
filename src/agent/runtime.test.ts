@@ -227,7 +227,7 @@ describe("runtime.run — onRunStart timing", () => {
     for await (const ev of rt.run({
       to: "main",
       content: "hi",
-      onRunStart: (rid) => order.push(`onRunStart:${rid.slice(0, 4)}`),
+      onRunStart: (sid) => order.push(`onRunStart:${sid.slice(0, 4)}`),
     })) {
       events.push(ev);
     }
@@ -237,13 +237,13 @@ describe("runtime.run — onRunStart timing", () => {
     expect(events[0]?.type).toBe("agent_end");
   });
 
-  it("onRunStart sees a runId that listRuns also reports during the run", async () => {
+  it("onRunStart sees a sessionId that listRuns also reports during the run", async () => {
     const rt = new AgentRuntime();
-    let observedRunId: string | undefined;
-    let runIdsDuringRun: string[] = [];
+    let observedSessionId: string | undefined;
+    let sessionIdsDuringRun: string[] = [];
     rt.registerRunner("main", stubRunner({
       async *run() {
-        runIdsDuringRun = rt.listRuns().map((r) => r.runId);
+        sessionIdsDuringRun = rt.listRuns().map((r) => r.sessionId);
         yield buildAgentEnd("ok");
       },
       agent: fakeAgent("main"),
@@ -252,17 +252,16 @@ describe("runtime.run — onRunStart timing", () => {
     for await (const _ev of rt.run({
       to: "main",
       content: "hi",
-      onRunStart: (rid) => { observedRunId = rid; },
+      onRunStart: (sid) => { observedSessionId = sid; },
     })) { void _ev; }
 
-    expect(observedRunId).toBeDefined();
-    expect(runIdsDuringRun).toContain(observedRunId!);
+    expect(observedSessionId).toBeDefined();
+    expect(sessionIdsDuringRun).toContain(observedSessionId!);
     expect(rt.listRuns()).toEqual([]);
   });
 
-  it("onRunStart receives both runId and sessionId so callers can dispatch by session", async () => {
+  it("onRunStart receives sessionId so callers can dispatch by session", async () => {
     const rt = new AgentRuntime();
-    let observedRunId: string | undefined;
     let observedSessionId: string | undefined;
     rt.registerRunner("main", stubRunner({
       async *run() { yield buildAgentEnd("done"); },
@@ -273,14 +272,13 @@ describe("runtime.run — onRunStart timing", () => {
       to: "main",
       sessionId: "explicit-session",
       content: "hi",
-      onRunStart: (rid, sid) => { observedRunId = rid; observedSessionId = sid; },
+      onRunStart: (sid) => { observedSessionId = sid; },
     })) { void _ev; }
 
-    expect(observedRunId).toBeDefined();
     expect(observedSessionId).toBe("explicit-session");
-    // Critical for discord /stop in sub-run thread: caller must be able to
-    // dispatch runtime.cancel(sessionId) using the sessionId from onRunStart,
-    // not the runId.
+    // Critical for discord /stop in sub-run thread: caller registers
+    // (threadId → sessionId) using the sessionId from onRunStart so
+    // runtime.cancel(sessionId) routes correctly.
   });
 });
 
@@ -399,17 +397,14 @@ describe("runtime.steer — wires onSession into RunHandle", () => {
       agent: fakeAgent("main"),
     }));
 
-    let runId: string | undefined;
     const stream = rt.run({
       to: "main",
       sessionId: "steer-1",
       content: "hi",
-      onRunStart: (rid) => { runId = rid; },
     });
     const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
 
     await started;
-    expect(runId).toBeDefined();
     await rt.steer("steer-1", "interject");
     expect(steerSpy).toHaveBeenCalledWith("interject");
 
