@@ -82,12 +82,7 @@ export async function createPiSession(
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
   const customTools = deps.getAgentTools(agent.id).map((t) => toToolDefinition(t, deps.hooks, agent.id));
-  const compactionEnabled = !!(agent.config.compaction && agent.config.compaction.mode !== "off");
-  const settingsManager = SettingsManager.inMemory({
-    compaction: compactionEnabled
-      ? { enabled: true, reserveTokens: agent.config.compaction?.reserveTokens ?? 20_000, keepRecentTokens: 20_000 }
-      : { enabled: false, reserveTokens: 20_000, keepRecentTokens: 20_000 },
-  });
+  const settingsManager = SettingsManager.inMemory();
 
   const { session } = await createAgentSession({
     cwd: cwd ?? resolveAgentWorkspacePath(agent.config),
