@@ -6,7 +6,7 @@ import path from "node:path";
 import { createLogger } from "../../../logging/logger.js";
 import type { CronScheduler } from "../../automation/cron-job.js";
 import type { ConfigReloader } from "../../workspace/config-reloader.js";
-import type { SessionStoreManager } from "../../core/session-store-manager.js";
+import type { SessionStoreManager } from "../../../agent/runners/pi/session-store.js";
 import {
   applyCors,
   parseJsonBody,

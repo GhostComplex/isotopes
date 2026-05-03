@@ -1,6 +1,6 @@
-// src/core/session-store.ts — Session persistence backed by pi-coding-agent SessionManager
-// Each session maps to one SessionManager (one JSONL file).
-// Multi-session indexing and metadata managed locally via sessions.json.
+// Pi-SDK-backed session persistence. Each session = one SessionManager (one JSONL file);
+// multi-session indexing/metadata kept locally in sessions.json.
+// SessionStoreManager memoizes one DefaultSessionStore per agentId.
 
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -14,8 +14,14 @@ import type {
   SessionStore,
   SessionStoreConfig,
   SessionConfig,
-} from "../../sessions/types.js";
-import { createLogger } from "../../logging/logger.js";
+} from "../../../sessions/types.js";
+import {
+  ensureAgentSessionsDir,
+  getAgentSessionsDir,
+  normalizeAgentId,
+} from "../../../paths.js";
+import { createLogger } from "../../../logging/logger.js";
+import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
 
 const log = createLogger("session-store");
 
@@ -73,8 +79,6 @@ export class DefaultSessionStore implements SessionStore {
 
     const id = randomUUID();
     const sessionFile = this.transcriptFile(id);
-
-    // Create the SessionManager with a new JSONL file
     const manager = SessionManager.open(sessionFile);
 
     const session: StoredSession = {
@@ -164,7 +168,6 @@ export class DefaultSessionStore implements SessionStore {
     if (!session) throw new Error(`Session "${sessionId}" not found`);
 
     session.lastActiveAt = new Date();
-    // Truncate the file and create a fresh SessionManager
     await fs.writeFile(this.transcriptFile(sessionId), "");
     session.manager = SessionManager.open(this.transcriptFile(sessionId));
     session.managerLoaded = true;
@@ -177,7 +180,6 @@ export class DefaultSessionStore implements SessionStore {
     if (!session) throw new Error(`Session "${sessionId}" not found`);
 
     session.lastActiveAt = new Date();
-    // Rewrite the file: truncate and re-append all messages
     await fs.writeFile(this.transcriptFile(sessionId), "");
     const manager = SessionManager.open(this.transcriptFile(sessionId));
     for (const msg of messages) {
@@ -317,7 +319,6 @@ export class DefaultSessionStore implements SessionStore {
     this.sessions.clear();
     this.keyIndex.clear();
 
-    // Load index
     try {
       const raw = await fs.readFile(this.indexFile(), "utf-8");
       const index = JSON.parse(raw) as PersistedSessionIndex;
@@ -339,7 +340,6 @@ export class DefaultSessionStore implements SessionStore {
       log.debug("No session index found (first run or empty store)");
     }
 
-    // Recover orphan JSONL files
     const countBefore = this.sessions.size;
     try {
       const files = await fs.readdir(this.config.dataDir);
@@ -352,7 +352,6 @@ export class DefaultSessionStore implements SessionStore {
           const entries = manager.getBranch();
           if (entries.length === 0) continue;
 
-          // Extract metadata from first message if available
           const firstMsg = entries.find((e) => e.type === "message");
           const messages = entries.filter((e) => e.type === "message");
           const lastEntry = entries[entries.length - 1];
@@ -395,5 +394,100 @@ export class DefaultSessionStore implements SessionStore {
       metadata: stored.metadata,
       lastActiveAt: stored.lastActiveAt,
     };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SessionStoreManager — one DefaultSessionStore per agentId at
+// ~/.isotopes/agents/<id>/sessions/.
+// ---------------------------------------------------------------------------
+
+const mgrLog = createLogger("session-store-manager");
+
+export interface SessionStoreManagerOptions {
+  /** Per-store session config (TTL, cleanup interval). */
+  session?: SessionConfig;
+  /** Per-store maxSessions cap (defaults to DefaultSessionStore default). */
+  maxSessions?: number;
+  /** Per-store maxTotalSizeMB cap (defaults to DefaultSessionStore default). */
+  maxTotalSizeMB?: number;
+  /** Hook registry for lifecycle events. */
+  hooks?: HookRegistry;
+}
+
+/**
+ * Lazily creates and memoizes one DefaultSessionStore per normalized agentId.
+ * Stores are not init()'d until requested.
+ */
+export class SessionStoreManager {
+  private stores = new Map<string, DefaultSessionStore>();
+  private inits = new Map<string, Promise<DefaultSessionStore>>();
+
+  constructor(private readonly opts: SessionStoreManagerOptions = {}) {}
+
+  /**
+   * Get or create the store for an agentId. Returns a fully init()'d store.
+   * Concurrent calls for the same agentId share one initialization.
+   */
+  async getOrCreate(agentId: string): Promise<DefaultSessionStore> {
+    const key = normalizeAgentId(agentId);
+
+    const existing = this.stores.get(key);
+    if (existing) return existing;
+
+    const pending = this.inits.get(key);
+    if (pending) return pending;
+
+    const init = (async () => {
+      const dataDir = await ensureAgentSessionsDir(agentId);
+      const store = new DefaultSessionStore({
+        dataDir,
+        ...(this.opts.maxSessions !== undefined ? { maxSessions: this.opts.maxSessions } : {}),
+        ...(this.opts.maxTotalSizeMB !== undefined ? { maxTotalSizeMB: this.opts.maxTotalSizeMB } : {}),
+        ...(this.opts.session ? { session: this.opts.session } : {}),
+      });
+      await store.init();
+      this.stores.set(key, store);
+      this.inits.delete(key);
+      mgrLog.debug(`Initialized session store for agent ${agentId} at ${dataDir}`);
+      if (this.opts.hooks) {
+        await this.opts.hooks.emit("session_start", { agentId, sessionId: key });
+      }
+      return store;
+    })();
+
+    this.inits.set(key, init);
+    return init;
+  }
+
+  /**
+   * Synchronous lookup — returns the store if it has already been created,
+   * otherwise undefined. Use this in hot paths that already know the store
+   * exists; otherwise prefer getOrCreate().
+   */
+  peek(agentId: string): DefaultSessionStore | undefined {
+    return this.stores.get(normalizeAgentId(agentId));
+  }
+
+  /** Snapshot of all currently-initialized stores keyed by normalizedId. */
+  all(): Map<string, DefaultSessionStore> {
+    return new Map(this.stores);
+  }
+
+  /** Tear down every initialized store. Safe to call multiple times. */
+  destroyAll(): void {
+    for (const [key, store] of this.stores) {
+      if (this.opts.hooks) {
+        this.opts.hooks.emit("session_end", { agentId: key, sessionId: key }).catch(() => {});
+      }
+      store.destroy();
+    }
+    this.stores.clear();
+    this.inits.clear();
+  }
+
+  /** Convenience: directory path the store for `agentId` would use. */
+  static dirFor(agentId: string): string {
+    return getAgentSessionsDir(agentId);
   }
 }

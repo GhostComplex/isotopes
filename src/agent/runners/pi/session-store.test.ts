@@ -1,11 +1,10 @@
-// src/core/session-store-manager.test.ts
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
 
-import { SessionStoreManager } from "./session-store-manager.js";
-import { getAgentSessionsDir, normalizeAgentId } from "../../paths.js";
+import { SessionStoreManager } from "./session-store.js";
+import { getAgentSessionsDir, normalizeAgentId } from "../../../paths.js";
 
 let tmpRoot: string;
 let originalHome: string | undefined;

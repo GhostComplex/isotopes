@@ -1,12 +1,10 @@
-// src/core/session-store.test.ts — Unit tests for DefaultSessionStore
-
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { DefaultSessionStore } from "./session-store.js";
 
-import { userMessage, assistantMessage, messageText } from "../../agent/runners/pi/messages.js";
+import { userMessage, assistantMessage, messageText } from "./messages.js";
 
 // ---------------------------------------------------------------------------
 // Test setup
