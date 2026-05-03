@@ -223,7 +223,7 @@ export class AgentRuntime {
     return Array.from(this.entries.keys());
   }
 
-  /** Names advertised to other agents in call_agent. */
+  /** Names advertised to other agents in Agent. */
   spawnableRunnerNames(): string[] {
     const out: string[] = [];
     for (const [name, entry] of this.entries) {
@@ -336,10 +336,10 @@ export class AgentRuntime {
     const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
     const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
-    // call_agent spawns host-side child runners that bypass docker.
+    // Agent spawns host-side child runners that bypass docker.
     const callAgentEnabled = !isSandboxed;
     if (isSandboxed) {
-      log.warn(`call_agent tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
+      log.warn(`Agent tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
     }
 
     const processRegistry = new ProcessRegistry();

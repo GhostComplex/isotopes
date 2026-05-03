@@ -1,7 +1,7 @@
 // src/plugins/discord/discord-a2a-sink.ts
 //
 // Streams a single sub-run's AgentEvent stream to a dedicated Discord thread.
-// Used by the `call_agent` tool when invoked from inside a Discord chat
+// Used by the `Agent` tool when invoked from inside a Discord chat
 // (DiscordA2AStreamContext is set in AsyncLocalStorage).
 //
 // Lifecycle: start(label) creates thread + registers (threadId → sessionId)
