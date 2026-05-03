@@ -123,8 +123,8 @@ export function createCallAgentTool(options: CallAgentToolOptions): AgentTool {
   };
 
   return {
-    name: "Agent",
-    label: "Agent",
+    name: "spawn_agent",
+    label: "spawn_agent",
     description:
       `Send a message to another agent. Available targets: ${targets.join(", ") || "(none)"}. ` +
       "For `subagent`, an ephemeral helper runs with read-only tools and returns its " +
@@ -154,7 +154,7 @@ export function createCallAgentTool(options: CallAgentToolOptions): AgentTool {
         ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
         onCancel: (reason) => { cancelReason = reason; },
       };
-      log.info("Agent", { from: parentAgentId, to, cwd, parent: ctx?.parentSessionId });
+      log.info("spawn_agent", { from: parentAgentId, to, cwd, parent: ctx?.parentSessionId });
 
       const discordCtx = getDiscordA2AStreamContext();
       let sink: DiscordA2ASink | undefined;
@@ -191,12 +191,12 @@ export function createCallAgentTool(options: CallAgentToolOptions): AgentTool {
           return textResult(`[error] ${msg}`);
         }
         if (sink) await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
-        return textResult(`[Agent failed] ${msg}`);
+        return textResult(`[spawn_agent failed] ${msg}`);
       }
 
       if (cancelReason === "user") {
         if (sink) await sink.finish({ success: false, error: "cancelled by user", durationMs: Date.now() - startedAt });
-        return textResult(`[Agent cancelled by user — do not retry this same request]`);
+        return textResult(`[spawn_agent cancelled by user — do not retry this same request]`);
       }
 
       if (sink) {
@@ -208,7 +208,7 @@ export function createCallAgentTool(options: CallAgentToolOptions): AgentTool {
         });
       }
       if (errorMessage) {
-        return textResult(`[Agent failed] ${errorMessage}`);
+        return textResult(`[spawn_agent failed] ${errorMessage}`);
       }
       const trimmed = assistantText.trim();
       return textResult(trimmed.length > 0 ? trimmed : (isRunner ? `[${to} completed with no output]` : "[no reply]"));
@@ -281,7 +281,7 @@ export function applyToolPolicy(
 export interface CreateWorkspaceToolsOptions {
   workspacePath: string;
   settings?: AgentToolSettings;
-  /** Register the `Agent` tool. Requires `runtime` + `parentAgentId`. */
+  /** Register the `spawn_agent` tool. Requires `runtime` + `parentAgentId`. */
   callAgentEnabled?: boolean;
   fsImpl?: FsImpl;
   parentAgentId?: string;

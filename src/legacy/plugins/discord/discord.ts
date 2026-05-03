@@ -206,7 +206,7 @@ export class DiscordTransport implements Transport {
   private debouncer: InboundDebouncer;
   private commandHandler: SlashCommandHandler;
 
-  // Maps a Discord thread id (created for a sub-run via Agent) to
+  // Maps a Discord thread id (created for a sub-run via spawn_agent) to
   // the sub-run's sessionId so /stop in that thread cancels the right run.
   private a2aThreads = new Map<string, string>();
 
@@ -791,7 +791,7 @@ export class DiscordTransport implements Transport {
       };
 
       // Wrap the run in a Discord a2a stream context so any nested
-      // Agent tool call streams its sub-run to a dedicated thread,
+      // spawn_agent tool call streams its sub-run to a dedicated thread,
       // and the (threadId → sessionId) mapping flows back here for /stop routing.
       const streamCtx: DiscordA2AStreamContext = {
         parentChannelId: channel.id,
