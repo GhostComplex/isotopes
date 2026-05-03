@@ -259,6 +259,29 @@ describe("runtime.run — onRunStart timing", () => {
     expect(runIdsDuringRun).toContain(observedRunId!);
     expect(rt.listRuns()).toEqual([]);
   });
+
+  it("onRunStart receives both runId and sessionId so callers can dispatch by session", async () => {
+    const rt = new AgentRuntime();
+    let observedRunId: string | undefined;
+    let observedSessionId: string | undefined;
+    rt.registerRunner("main", stubRunner({
+      async *run() { yield buildAgentEnd("done"); },
+      agent: fakeAgent("main"),
+    }));
+
+    for await (const _ev of rt.run({
+      to: "main",
+      sessionId: "explicit-session",
+      content: "hi",
+      onRunStart: (rid, sid) => { observedRunId = rid; observedSessionId = sid; },
+    })) { void _ev; }
+
+    expect(observedRunId).toBeDefined();
+    expect(observedSessionId).toBe("explicit-session");
+    // Critical for discord /stop in sub-run thread: caller must be able to
+    // dispatch runtime.cancel(sessionId) using the sessionId from onRunStart,
+    // not the runId.
+  });
 });
 
 describe("runtime.cancel — reason propagates to onCancel", () => {

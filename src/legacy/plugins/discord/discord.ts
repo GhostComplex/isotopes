@@ -207,7 +207,7 @@ export class DiscordTransport implements Transport {
   private commandHandler: SlashCommandHandler;
 
   // Maps a Discord thread id (created for a sub-run via call_agent) to
-  // the runtime's runId. Used so /stop in that thread cancels the right run.
+  // the sub-run's sessionId so /stop in that thread cancels the right run.
   private a2aThreads = new Map<string, string>();
 
   // Buffer messages that arrive while a session is prompting
@@ -379,14 +379,14 @@ export class DiscordTransport implements Transport {
     // content since extractContent only strips numeric Discord ids.
     const stopMatch = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i.exec(msg.content.trim());
     if (stopMatch) {
-      // 3.6a. /stop in a known sub-run thread → cancel that specific runId.
+      // 3.6a. /stop in a known sub-run thread → cancel by sessionId.
       // No @mention required: posting in the thread itself scopes the intent.
       if (isThread) {
-        const subRunId = this.a2aThreads.get(msg.channelId);
-        if (subRunId && this.config.agentRuntime) {
-          const cancelled = this.config.agentRuntime.cancel(subRunId, { reason: "user" });
+        const subSessionId = this.a2aThreads.get(msg.channelId);
+        if (subSessionId && this.config.agentRuntime) {
+          const cancelled = this.config.agentRuntime.cancel(subSessionId, { reason: "user" });
           if (cancelled) {
-            log.info(`Sub-run /stop`, { runId: subRunId, threadId: msg.channelId });
+            log.info(`Sub-run /stop`, { sessionId: subSessionId, threadId: msg.channelId });
             await (msg.channel as SendableChannel).send("🛑 Sub-run cancelled.");
           } else {
             await (msg.channel as SendableChannel).send("⚠️ Sub-run already finished.");
@@ -796,8 +796,8 @@ export class DiscordTransport implements Transport {
       const streamCtx: DiscordA2AStreamContext = {
         parentChannelId: channel.id,
         showToolCalls: this.config.showToolCalls ?? true,
-        registerA2AThread: (threadId, runId) => {
-          this.a2aThreads.set(threadId, runId);
+        registerA2AThread: (threadId, sessionId) => {
+          this.a2aThreads.set(threadId, sessionId);
         },
         unregisterA2AThread: (threadId) => {
           this.a2aThreads.delete(threadId);

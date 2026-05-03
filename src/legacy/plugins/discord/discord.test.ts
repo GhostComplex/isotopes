@@ -1161,10 +1161,12 @@ describe("DiscordTransport", () => {
       return store;
     }
 
-    // /stop and /cancel cancel paths: discord.ts dispatches via cancelAgentRun,
-    // which has its own coverage in agent-run.test.ts; runtime.cancel itself is
-    // covered in runtime-flow.test.ts. Discord-side dispatch is a 2-line regex
-    // match — not worth the in-flight-run mocking complexity.
+    // /stop and /cancel paths: discord.ts dispatches runtime.cancel(sessionId)
+    // directly. Sub-run /stop in a thread routes via the a2aThreads map
+    // (threadId → sessionId, populated by DiscordA2ASink at run start).
+    // runtime.cancel coverage lives in runtime.test.ts; the threadId →
+    // sessionId mapping is exercised in runtime-adapter.test.ts via
+    // onRunStart's sessionId param.
 
     it("/stop with no active turn does not abort and does not dispatch to model", async () => {
       const localSessionStore = createMockSessionStore();

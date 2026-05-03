@@ -22,7 +22,7 @@ export interface DiscordA2AStreamContext extends DiscordChannelMinimalApi {
   /** Whether to surface tool_call events as 🔧 markers in the thread. */
   showToolCalls?: boolean;
   /** Called by the sink as soon as the sub-run thread is created. */
-  registerA2AThread(threadId: string, runId: string): void;
+  registerA2AThread(threadId: string, sessionId: string): void;
   /** Called by the sink when the sub-run completes (success or failure). */
   unregisterA2AThread(threadId: string): void;
 }

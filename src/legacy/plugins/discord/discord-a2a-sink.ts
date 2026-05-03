@@ -1,16 +1,12 @@
 // src/plugins/discord/discord-a2a-sink.ts
 //
-// Streams a single sub-run's AgentEvent stream to a dedicated Discord
-// thread. Used by the `call_agent` tool when invoked from inside a
-// Discord chat (DiscordA2AStreamContext is set in AsyncLocalStorage).
+// Streams a single sub-run's AgentEvent stream to a dedicated Discord thread.
+// Used by the `call_agent` tool when invoked from inside a Discord chat
+// (DiscordA2AStreamContext is set in AsyncLocalStorage).
 //
-// Lifecycle per sub-run:
-//   1. start(label)  → creates the thread, posts a header, registers
-//                      (threadId → runId) so /stop in the thread routes
-//                      back to runtime.cancel(runId).
-//   2. sendEvent(e)  → posts/edits messages in the thread for relevant
-//                      AgentEvent types.
-//   3. finish(result)→ posts a summary, unregisters the thread.
+// Lifecycle: start(label) creates thread + registers (threadId → sessionId)
+// for /stop routing; sendEvent(e) posts updates; finish(result) summarizes
+// + unregisters.
 
 import { createLogger } from "../../../logging/logger.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
@@ -33,11 +29,18 @@ const HEADER_PREFIX = "🤖";
 const TOOL_PREFIX = "🔧";
 const OK_PREFIX = "✅";
 const FAIL_PREFIX = "❌";
-const MAX_DISCORD_LEN = 1900; // leave headroom under Discord's 2000-char cap
+const MAX_DISCORD_LEN = 1900;
 
 function truncate(s: string, max = MAX_DISCORD_LEN): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
+}
+
+export interface DiscordA2ASinkRunRef {
+  /** Diagnostic-only — used in log lines. */
+  runId: string;
+  /** Used to register the thread → session mapping for /stop routing. */
+  sessionId: string;
 }
 
 export class DiscordA2ASink {
@@ -45,12 +48,17 @@ export class DiscordA2ASink {
   private buffer = "";
   private toolCallNames = new Map<string, string>();
   private startedAt = 0;
+  private readonly runId: string;
+  private readonly sessionId: string;
 
   constructor(
     private readonly ctx: DiscordA2AStreamContext,
-    private readonly runId: string,
+    runRef: DiscordA2ASinkRunRef,
     private readonly config: DiscordA2ASinkConfig = {},
-  ) {}
+  ) {
+    this.runId = runRef.runId;
+    this.sessionId = runRef.sessionId;
+  }
 
   async start(taskLabel: string, headerMessageId?: string): Promise<string | undefined> {
     this.startedAt = Date.now();
@@ -64,8 +72,8 @@ export class DiscordA2ASink {
         headerMsg.id,
       );
       this.threadId = thread.id;
-      this.ctx.registerA2AThread(thread.id, this.runId);
-      log.debug("Sub-run thread opened", { runId: this.runId, threadId: thread.id });
+      this.ctx.registerA2AThread(thread.id, this.sessionId);
+      log.debug("Sub-run thread opened", { runId: this.runId, sessionId: this.sessionId, threadId: thread.id });
       return thread.id;
     } catch (err) {
       log.warn("Failed to open sub-run thread; streaming disabled", {

@@ -468,7 +468,7 @@ export class AgentRuntime {
     log.info("run", { runId, agentId: req.to, sessionId, depth });
 
     try {
-      req.onRunStart?.(runId);
+      req.onRunStart?.(runId, sessionId);
     } catch (err) {
       log.warn("onRunStart callback threw", { runId, error: err instanceof Error ? err.message : String(err) });
     }
