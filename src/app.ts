@@ -159,7 +159,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       runAgentLoop: async (agentId, prompt, _sessionKey) => {
         const store = await sessionStoreManager.getOrCreate(agentId);
         const sessionKey = `heartbeat:${agentId}`;
-        const session = (await store.findByKey(sessionKey)) ?? (await store.create(agentId, { key: sessionKey }));
+        const session = await store.findOrCreateByKey(sessionKey, agentId);
         const result = await runAgent(agentRuntime, {
           to: agentId,
           sessionId: session.id,
@@ -227,7 +227,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
     try {
       const store = await sessionStoreManager.getOrCreate(job.agentId);
-      const session = (await store.findByKey(sessionKey)) ?? (await store.create(job.agentId, { key: sessionKey }));
+      const session = await store.findOrCreateByKey(sessionKey, job.agentId);
       const result = await runAgent(agentRuntime, {
         to: job.agentId,
         sessionId: session.id,

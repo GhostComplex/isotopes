@@ -691,11 +691,10 @@ export class DiscordTransport implements Transport {
       return existing;
     }
 
-    // Create new session with key
+    // Create new session with key (atomic against concurrent spawns)
     const channelName = "name" in msg.channel ? (msg.channel as { name?: string }).name : undefined;
     const guildName = msg.guild?.name;
-    const session = await sessionStore.create(agentId, {
-      key: sessionKey,
+    const session = await sessionStore.findOrCreateByKey(sessionKey, agentId, {
       transport: "discord",
       channelId: msg.channelId,
       channelName: channelName ?? undefined,

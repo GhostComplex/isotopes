@@ -26,6 +26,13 @@ export interface SessionMetadata {
 /** Persistent store for sessions and their message histories. */
 export interface SessionStore {
   create(agentId: string, metadata?: SessionMetadata): Promise<Session>;
+  /**
+   * Atomic find-by-key-or-create. Concurrent calls with the same key
+   * coalesce to one underlying create — the alternative
+   * `(await findByKey(k)) ?? (await create(...))` racing pattern throws
+   * "Session with key already exists" under parallel access.
+   */
+  findOrCreateByKey(key: string, agentId: string, metadata?: Omit<SessionMetadata, "key">): Promise<Session>;
   get(sessionId: string): Promise<Session | undefined>;
   findByKey(key: string): Promise<Session | undefined>;
   addMessage(sessionId: string, message: AgentMessage): Promise<void>;

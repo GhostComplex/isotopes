@@ -39,6 +39,7 @@ interface StoredSession extends Session {
 export class DefaultSessionStore implements SessionStore {
   private sessions = new Map<string, StoredSession>();
   private keyIndex = new Map<string, string>();
+  private inflightByKey = new Map<string, Promise<Session>>();
   private indexDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly INDEX_DEBOUNCE_MS = 1_000;
 
@@ -60,6 +61,21 @@ export class DefaultSessionStore implements SessionStore {
     if (metadata?.key) this.keyIndex.set(metadata.key, id);
     await this.persistIndex();
     return toSession(session);
+  }
+
+  async findOrCreateByKey(
+    key: string,
+    agentId: string,
+    metadata?: Omit<SessionMetadata, "key">,
+  ): Promise<Session> {
+    const existing = await this.findByKey(key);
+    if (existing) return existing;
+    const pending = this.inflightByKey.get(key);
+    if (pending) return pending;
+    const promise = this.create(agentId, { ...(metadata ?? {}), key })
+      .finally(() => this.inflightByKey.delete(key));
+    this.inflightByKey.set(key, promise);
+    return promise;
   }
 
   async get(sessionId: string): Promise<Session | undefined> {

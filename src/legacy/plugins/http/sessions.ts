@@ -235,7 +235,7 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
       sessionId = existing.id;
       resumed = true;
     } else {
-      const session = await store.create(agentId, { key: sessionKey });
+      const session = await store.findOrCreateByKey(sessionKey, agentId);
       sessionId = session.id;
     }
   } else {

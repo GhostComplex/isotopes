@@ -30,10 +30,8 @@ export class PiRunner {
       ? req.parentSessionId
       : randomUUID();
     const sessionKey = `peer:${fromId}:${suffix}`;
-    const existing = await store.findByKey(sessionKey);
-    if (existing) return existing.id;
-    const created = await store.create(this.opts.agent.id, { key: sessionKey });
-    return created.id;
+    const session = await store.findOrCreateByKey(sessionKey, this.opts.agent.id);
+    return session.id;
   }
 
   async *run(opts: {

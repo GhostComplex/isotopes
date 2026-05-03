@@ -48,6 +48,11 @@ export function createMockSessionStore(sessionId = "session-123"): SessionStore 
       agentId: "default",
       lastActiveAt: new Date(),
     }),
+    findOrCreateByKey: vi.fn().mockResolvedValue({
+      id: sessionId,
+      agentId: "default",
+      lastActiveAt: new Date(),
+    }),
     get: vi.fn(),
     findByKey: vi.fn().mockResolvedValue(undefined),
     addMessage: vi.fn(),

@@ -144,6 +144,34 @@ describe("DefaultSessionStore", () => {
     });
   });
 
+  describe("findOrCreateByKey", () => {
+    it("returns the existing session when the key is present", async () => {
+      const created = await store.create("agent-1", { key: "k" });
+      const got = await store.findOrCreateByKey("k", "agent-1");
+      expect(got.id).toBe(created.id);
+    });
+
+    it("creates a new session when the key is absent", async () => {
+      const got = await store.findOrCreateByKey("k", "agent-1", {
+        transport: "discord",
+      });
+      expect(got.id).toBeDefined();
+      expect(got.metadata?.key).toBe("k");
+      expect(got.metadata?.transport).toBe("discord");
+    });
+
+    it("coalesces concurrent calls with the same key (regression: spawn race #688)", async () => {
+      const results = await Promise.all([
+        store.findOrCreateByKey("race-key", "agent-1"),
+        store.findOrCreateByKey("race-key", "agent-1"),
+        store.findOrCreateByKey("race-key", "agent-1"),
+      ]);
+      expect(results[0].id).toBe(results[1].id);
+      expect(results[1].id).toBe(results[2].id);
+      expect((await store.list()).filter((s) => s.metadata?.key === "race-key")).toHaveLength(1);
+    });
+  });
+
   describe("addMessage / getMessages", () => {
     it("stores and retrieves messages", async () => {
       const session = await store.create("agent-1");
