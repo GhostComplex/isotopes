@@ -547,7 +547,7 @@ export class DiscordTransport implements Transport {
       : mkUserMsg(contentWithMeta, msg.createdTimestamp);
     await sessionStore.addMessage(session.id, userMsg);
 
-    // 9. Run agent via runtime.sendMessage (system prompt is derived per-call
+    // 9. Run agent via runAgent (system prompt is derived per-call
     // from the registered agent's config + workspace).
     const agentConfig = this.config.agentRuntime?.getAgent(agentId)?.config;
     const cwd = agentConfig ? resolveAgentWorkspacePath(agentConfig) : undefined;
@@ -769,7 +769,7 @@ export class DiscordTransport implements Transport {
         }
       });
 
-      // Create the agent loop runner function via runtime.sendMessage.
+      // Create the agent loop runner function via runAgent.
       const runLoop = () => {
         return runAgent(runtime, {
           to: agentId,

@@ -337,7 +337,7 @@ export class AgentRuntime {
     const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
     // Agent spawns host-side child runners that bypass docker.
-    const callAgentEnabled = !isSandboxed;
+    const spawnAgentEnabled = !isSandboxed;
     if (isSandboxed) {
       log.warn(`spawn_agent tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
     }
@@ -346,7 +346,7 @@ export class AgentRuntime {
     const tools: AgentTool[] = createAgentTools({
       workspacePath,
       settings: agentConfig.toolSettings,
-      callAgentEnabled,
+      spawnAgentEnabled,
       fsImpl,
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,

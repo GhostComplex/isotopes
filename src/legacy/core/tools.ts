@@ -83,7 +83,7 @@ export function createTimeTool(): AgentTool<typeof timeSchema> {
 // Agent
 // ---------------------------------------------------------------------------
 
-export interface CallAgentToolOptions {
+export interface SpawnAgentToolOptions {
   runtime: AgentRuntime;
   parentAgentId: string;
   workspacePath: string;
@@ -91,7 +91,7 @@ export interface CallAgentToolOptions {
   spawnableAgentIds?: string[];
 }
 
-export function createCallAgentTool(options: CallAgentToolOptions): AgentTool {
+export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool {
   const { runtime, parentAgentId, workspacePath, allowedAgents, spawnableAgentIds } = options;
   const computedTargets: string[] = [...runtime.spawnableRunnerNames()];
   if (spawnableAgentIds) {
@@ -282,10 +282,10 @@ export interface CreateWorkspaceToolsOptions {
   workspacePath: string;
   settings?: AgentToolSettings;
   /** Register the `spawn_agent` tool. Requires `runtime` + `parentAgentId`. */
-  callAgentEnabled?: boolean;
+  spawnAgentEnabled?: boolean;
   fsImpl?: FsImpl;
   parentAgentId?: string;
-  /** Unified runtime — required when callAgentEnabled is true. */
+  /** Unified runtime — required when spawnAgentEnabled is true. */
   runtime?: AgentRuntime;
   /** Pre-computed list of registered agent ids the LLM can address. */
   spawnableAgentIds?: string[];
@@ -295,7 +295,7 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   const {
     workspacePath,
     settings,
-    callAgentEnabled = false,
+    spawnAgentEnabled = false,
     fsImpl = nodeFs,
     parentAgentId,
     runtime,
@@ -306,8 +306,8 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
     ...createFsTools(workspacePath, fsImpl),
     createTimeTool(),
   ];
-  if (callAgentEnabled && runtime && parentAgentId) {
-    tools.push(createCallAgentTool({
+  if (spawnAgentEnabled && runtime && parentAgentId) {
+    tools.push(createSpawnAgentTool({
       runtime,
       parentAgentId,
       workspacePath,
