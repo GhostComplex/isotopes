@@ -80,7 +80,7 @@ export function createTimeTool(): AgentTool<typeof timeSchema> {
 }
 
 // ---------------------------------------------------------------------------
-// Agent
+// spawn_agent
 // ---------------------------------------------------------------------------
 
 export interface SpawnAgentToolOptions {
