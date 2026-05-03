@@ -4,7 +4,7 @@ import {
   type IsotopesConfigFile,
 } from "./config.js";
 import path from "node:path";
-import { SessionStoreManager } from "./legacy/core/session-store-manager.js";
+import { SessionStoreManager } from "./agent/runners/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyTransportContext } from "./legacy/tools/react.js";
 import { ProcessRegistry } from "./legacy/tools/exec.js";

@@ -40,7 +40,7 @@ import { createAgentTools } from "../legacy/core/tools.js";
 import { LazyTransportContext } from "../legacy/tools/react.js";
 import { ProcessRegistry } from "../legacy/tools/exec.js";
 import { SandboxExecutor, SandboxFs, shouldSandbox } from "../legacy/sandbox/index.js";
-import type { DefaultSessionStore } from "../legacy/core/session-store.js";
+import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 
 const log = createLogger("agents:runtime");
 

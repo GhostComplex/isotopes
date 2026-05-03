@@ -1,6 +1,6 @@
 import type { SandboxConfig } from "../legacy/sandbox/config.js";
 import type { AgentToolSettings } from "../tools/types.js";
-import type { DefaultSessionStore } from "../legacy/core/session-store.js";
+import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 
 export type ProviderType = "anthropic" | "openai" | "github-copilot";
 

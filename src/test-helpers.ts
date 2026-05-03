@@ -55,8 +55,6 @@ export function createMockSessionStore(sessionId = "session-123"): SessionStore 
     delete: vi.fn(),
     list: vi.fn().mockResolvedValue([]),
     clearMessages: vi.fn(),
-    setMessages: vi.fn(),
-    setMetadata: vi.fn(),
     getSessionManager: vi.fn().mockResolvedValue({
       loadMessages: vi.fn().mockReturnValue([]),
       appendMessage: vi.fn(),

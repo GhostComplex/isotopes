@@ -15,25 +15,10 @@ import type {
   ChannelsConfig,
   PeerKind,
 } from "./gateway/types.js";
-import type { SessionConfig } from "./sessions/types.js";
 import type { CronActionConfig } from "./automation/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "./legacy/sandbox/config.js";
 import type { PluginConfigEntry } from "./legacy/plugins/types.js";
 
-
-// ---------------------------------------------------------------------------
-// Validation helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Assert that a value, if defined, is a positive number.
- * Throws with a descriptive error message if not.
- */
-function assertPositiveNumber(value: unknown, label: string): void {
-  if (value !== undefined && (typeof value !== "number" || value <= 0)) {
-    throw new Error(`Invalid ${label} "${value}" (must be a positive number)`);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -187,8 +172,6 @@ export interface IsotopesConfigFileRaw {
   tools?: AgentToolsConfigFile;
   /** Default sandbox config for all agents */
   sandbox?: SandboxConfigFile;
-  /** Session management (TTL, cleanup) */
-  session?: SessionConfig;
   /** Agent definitions — array form or object with defaults + list */
   agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[] };
   /** Agent ↔ Channel bindings */
@@ -215,25 +198,6 @@ export function resolveToolSettings(
     // allow/deny: agent-level overrides defaults entirely (not merged)
     allow: agentTools?.allow ?? defaultTools?.allow,
     deny: agentTools?.deny ?? defaultTools?.deny,
-  };
-}
-
-/**
- * Resolve session config from the config file.
- * Returns undefined if no session config is provided.
- * Validates that ttl and cleanupInterval are positive numbers.
- */
-export function resolveSessionConfig(
-  sessionConfig?: SessionConfig,
-): SessionConfig | undefined {
-  if (!sessionConfig) return undefined;
-
-  assertPositiveNumber(sessionConfig.ttl, "session.ttl");
-  assertPositiveNumber(sessionConfig.cleanupInterval, "session.cleanupInterval");
-
-  return {
-    ttl: sessionConfig.ttl,
-    cleanupInterval: sessionConfig.cleanupInterval,
   };
 }
 

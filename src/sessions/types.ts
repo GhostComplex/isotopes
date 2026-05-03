@@ -21,24 +21,6 @@ export interface SessionMetadata {
   channelName?: string;
   guildName?: string;
   threadId?: string;
-  /** If true, session is exempt from TTL-based cleanup */
-  persistent?: boolean;
-}
-
-/** Session TTL and cleanup configuration */
-export interface SessionConfig {
-  /** Session time-to-live in seconds. Default: 86400 (24 hours) */
-  ttl?: number;
-  /** Interval between cleanup sweeps in seconds. Default: 3600 (1 hour) */
-  cleanupInterval?: number;
-}
-
-/** Configuration for the session store (data directory, limits, TTL). */
-export interface SessionStoreConfig {
-  dataDir: string;
-  maxSessions?: number;       // default: 100
-  maxTotalSizeMB?: number;    // default: 100
-  session?: SessionConfig;
 }
 
 /** Persistent store for sessions and their message histories. */
@@ -51,8 +33,6 @@ export interface SessionStore {
   delete(sessionId: string): Promise<void>;
   list(): Promise<Session[]>;
   clearMessages(sessionId: string): Promise<void>;
-  setMessages(sessionId: string, messages: AgentMessage[]): Promise<void>;
-  setMetadata(sessionId: string, patch: Partial<SessionMetadata>): Promise<void>;
   /** Get the underlying SDK SessionManager for a session (for AgentSession creation). */
   getSessionManager(sessionId: string): Promise<import("@mariozechner/pi-coding-agent").SessionManager | undefined>;
 }
