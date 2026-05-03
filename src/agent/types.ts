@@ -27,7 +27,7 @@ export interface AgentConfig {
   sessionPolicy?: "always-new" | "parent-reuse";
 }
 
-/** "always-new": fresh session per send_message call.
+/** "always-new": fresh session per spawn_agent tool call.
  *  "parent-reuse": same `(caller, parentSessionId)` reuses one target
  *  session across calls; falls back to fresh when no parentSessionId. */
 export type AgentSessionPolicy = "always-new" | "parent-reuse";
@@ -54,9 +54,9 @@ export interface RunRequest {
   cwd?: string;
   timeoutSeconds?: number;
   /** Fires once after run is registered, before any AgentEvent yields.
-   * Use to wire side-channel UI (Discord thread, audit) by runId. */
-  onRunStart?: (runId: string) => void;
-  /** Fires when `runtime.cancel(runId, { reason })` runs. Lets the caller
+   * Use to wire side-channel UI (Discord thread, audit) by sessionId. */
+  onRunStart?: (sessionId: string) => void;
+  /** Fires when `runtime.cancel(sessionId, { reason })` runs. Lets the caller
    * shape the LLM-facing result string (e.g. "user cancel — don't retry"). */
   onCancel?: (reason: string) => void;
 }

@@ -1,28 +1,24 @@
-// src/plugins/discord/discord-subagent-sink.ts
+// src/plugins/discord/discord-a2a-sink.ts
 //
-// Streams a single sub-run's AgentEvent stream to a dedicated Discord
-// thread. Used by the `send_message` tool when invoked from inside a
-// Discord chat (DiscordSubagentStreamContext is set in AsyncLocalStorage).
+// Streams a single sub-run's AgentEvent stream to a dedicated Discord thread.
+// Used by the `spawn_agent` tool when invoked from inside a Discord chat
+// (DiscordA2AStreamContext is set in AsyncLocalStorage).
 //
-// Lifecycle per sub-run:
-//   1. start(label)  → creates the thread, posts a header, registers
-//                      (threadId → runId) so /stop in the thread routes
-//                      back to runtime.cancel(runId).
-//   2. sendEvent(e)  → posts/edits messages in the thread for relevant
-//                      AgentEvent types.
-//   3. finish(result)→ posts a summary, unregisters the thread.
+// Lifecycle: start(label) creates thread + registers (threadId → sessionId)
+// for /stop routing; sendEvent(e) posts updates; finish(result) summarizes
+// + unregisters.
 
 import { createLogger } from "../../../logging/logger.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { DiscordSubagentStreamContext } from "./subagent-stream-context.js";
+import type { DiscordA2AStreamContext } from "./a2a-stream-context.js";
 
-const log = createLogger("discord-subagent-sink");
+const log = createLogger("discord-a2a-sink");
 
-export interface DiscordSubagentSinkConfig {
+export interface DiscordA2ASinkConfig {
   showToolCalls?: boolean;
 }
 
-export interface DiscordSubagentSinkSummary {
+export interface DiscordA2ASinkSummary {
   success: boolean;
   output?: string;
   error?: string;
@@ -33,23 +29,23 @@ const HEADER_PREFIX = "🤖";
 const TOOL_PREFIX = "🔧";
 const OK_PREFIX = "✅";
 const FAIL_PREFIX = "❌";
-const MAX_DISCORD_LEN = 1900; // leave headroom under Discord's 2000-char cap
+const MAX_DISCORD_LEN = 1900;
 
 function truncate(s: string, max = MAX_DISCORD_LEN): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
 }
 
-export class DiscordSubagentSink {
+export class DiscordA2ASink {
   private threadId: string | undefined;
   private buffer = "";
   private toolCallNames = new Map<string, string>();
   private startedAt = 0;
 
   constructor(
-    private readonly ctx: DiscordSubagentStreamContext,
-    private readonly runId: string,
-    private readonly config: DiscordSubagentSinkConfig = {},
+    private readonly ctx: DiscordA2AStreamContext,
+    private readonly sessionId: string,
+    private readonly config: DiscordA2ASinkConfig = {},
   ) {}
 
   async start(taskLabel: string, headerMessageId?: string): Promise<string | undefined> {
@@ -64,12 +60,12 @@ export class DiscordSubagentSink {
         headerMsg.id,
       );
       this.threadId = thread.id;
-      this.ctx.registerSubagentThread(thread.id, this.runId);
-      log.debug("Sub-run thread opened", { runId: this.runId, threadId: thread.id });
+      this.ctx.registerA2AThread(thread.id, this.sessionId);
+      log.debug("Sub-run thread opened", { sessionId: this.sessionId, threadId: thread.id });
       return thread.id;
     } catch (err) {
       log.warn("Failed to open sub-run thread; streaming disabled", {
-        runId: this.runId,
+        sessionId: this.sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
       this.threadId = undefined;
@@ -106,7 +102,7 @@ export class DiscordSubagentSink {
     }
   }
 
-  async finish(summary: DiscordSubagentSinkSummary): Promise<void> {
+  async finish(summary: DiscordA2ASinkSummary): Promise<void> {
     await this.flushBuffer();
     if (!this.threadId) return;
 
@@ -123,10 +119,10 @@ export class DiscordSubagentSink {
     try {
       await this.ctx.sendMessage(this.threadId, head + body);
     } catch (err) {
-      log.warn("Failed to post summary", { runId: this.runId, error: err instanceof Error ? err.message : String(err) });
+      log.warn("Failed to post summary", { sessionId: this.sessionId, error: err instanceof Error ? err.message : String(err) });
     }
     try {
-      this.ctx.unregisterSubagentThread(this.threadId);
+      this.ctx.unregisterA2AThread(this.threadId);
     } catch { /* ignore */ }
   }
 
@@ -146,7 +142,7 @@ export class DiscordSubagentSink {
         await this.ctx.sendMessage(this.threadId, c);
       } catch (err) {
         log.warn("Failed to send message to sub-run thread", {
-          runId: this.runId,
+          sessionId: this.sessionId,
           threadId: this.threadId,
           error: err instanceof Error ? err.message : String(err),
         });

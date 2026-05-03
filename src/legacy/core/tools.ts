@@ -19,8 +19,8 @@ import type { AgentRuntime } from "../../agent/runtime.js";
 import { RunValidationError } from "../../agent/types.js";
 import type { RunRequest } from "../../agent/types.js";
 import { getMessageContext } from "../transport/context.js";
-import { getDiscordSubagentStreamContext } from "../plugins/discord/subagent-stream-context.js";
-import { DiscordSubagentSink } from "../plugins/discord/discord-subagent-sink.js";
+import { getDiscordA2AStreamContext } from "../plugins/discord/a2a-stream-context.js";
+import { DiscordA2ASink } from "../plugins/discord/discord-a2a-sink.js";
 import { getAgentEndMeta } from "../../agent/runners/pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
 
@@ -80,10 +80,10 @@ export function createTimeTool(): AgentTool<typeof timeSchema> {
 }
 
 // ---------------------------------------------------------------------------
-// send_message
+// spawn_agent
 // ---------------------------------------------------------------------------
 
-export interface SendMessageToolOptions {
+export interface SpawnAgentToolOptions {
   runtime: AgentRuntime;
   parentAgentId: string;
   workspacePath: string;
@@ -91,7 +91,7 @@ export interface SendMessageToolOptions {
   spawnableAgentIds?: string[];
 }
 
-export function createSendMessageTool(options: SendMessageToolOptions): AgentTool {
+export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool {
   const { runtime, parentAgentId, workspacePath, allowedAgents, spawnableAgentIds } = options;
   const computedTargets: string[] = [...runtime.spawnableRunnerNames()];
   if (spawnableAgentIds) {
@@ -123,15 +123,16 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
   };
 
   return {
-    name: "send_message",
-    label: "send_message",
+    name: "spawn_agent",
+    label: "spawn_agent",
     description:
-      `Send a message to another agent. Available targets: ${targets.join(", ") || "(none)"}. ` +
-      "For `subagent`, an ephemeral helper runs with read-only tools and returns its " +
-      "final assistant message. For `coding`, a Claude CLI session runs against " +
-      "`working_directory` and returns its final assistant message. For a registered agent id, " +
-      "the message is appended to that agent's session as a user-role turn and its reply is returned. " +
-      "Session continuity for registered agents is managed by the runtime (per caller / parent-session).",
+      `Spawn another agent to handle a focused task and synchronously await its final reply. ` +
+      `Available targets: ${targets.join(", ") || "(none)"}. ` +
+      "For `subagent`, an ephemeral helper runs with read-only tools. " +
+      "For `coding`, a Claude CLI session runs against `working_directory`. " +
+      "For a registered agent id, the prompt is appended to that agent's session as a user-role turn. " +
+      "Session continuity for registered agents is managed by the runtime (per caller / parent-session). " +
+      "This call blocks until the spawned agent finishes; the return value is its final assistant message.",
     parameters: schema,
     execute: async (_toolCallId, rawParams) => {
       const params = rawParams as Params;
@@ -154,17 +155,17 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
         onCancel: (reason) => { cancelReason = reason; },
       };
-      log.info("send_message", { from: parentAgentId, to, cwd, parent: ctx?.parentSessionId });
+      log.info("spawn_agent", { from: parentAgentId, to, cwd, parent: ctx?.parentSessionId });
 
-      const discordCtx = getDiscordSubagentStreamContext();
-      let sink: DiscordSubagentSink | undefined;
+      const discordCtx = getDiscordA2AStreamContext();
+      let sink: DiscordA2ASink | undefined;
       const startedAt = Date.now();
       const taskLabel = `${to}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`;
 
-      req.onRunStart = (runId: string) => {
+      req.onRunStart = (sessionId: string) => {
         if (discordCtx) {
           const showToolCalls = discordCtx.showToolCalls ?? true;
-          sink = new DiscordSubagentSink(discordCtx, runId, { showToolCalls });
+          sink = new DiscordA2ASink(discordCtx, sessionId, { showToolCalls });
           void sink.start(taskLabel);
         }
       };
@@ -191,12 +192,12 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
           return textResult(`[error] ${msg}`);
         }
         if (sink) await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
-        return textResult(`[send_message failed] ${msg}`);
+        return textResult(`[spawn_agent failed] ${msg}`);
       }
 
       if (cancelReason === "user") {
         if (sink) await sink.finish({ success: false, error: "cancelled by user", durationMs: Date.now() - startedAt });
-        return textResult(`[send_message cancelled by user — do not retry this same request]`);
+        return textResult(`[spawn_agent cancelled by user — do not retry this same request]`);
       }
 
       if (sink) {
@@ -208,7 +209,7 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
         });
       }
       if (errorMessage) {
-        return textResult(`[send_message failed] ${errorMessage}`);
+        return textResult(`[spawn_agent failed] ${errorMessage}`);
       }
       const trimmed = assistantText.trim();
       return textResult(trimmed.length > 0 ? trimmed : (isRunner ? `[${to} completed with no output]` : "[no reply]"));
@@ -281,11 +282,11 @@ export function applyToolPolicy(
 export interface CreateWorkspaceToolsOptions {
   workspacePath: string;
   settings?: AgentToolSettings;
-  /** Register the `send_message` tool. Requires `runtime` + `parentAgentId`. */
-  sendMessageEnabled?: boolean;
+  /** Register the `spawn_agent` tool. Requires `runtime` + `parentAgentId`. */
+  spawnAgentEnabled?: boolean;
   fsImpl?: FsImpl;
   parentAgentId?: string;
-  /** Unified runtime — required when sendMessageEnabled is true. */
+  /** Unified runtime — required when spawnAgentEnabled is true. */
   runtime?: AgentRuntime;
   /** Pre-computed list of registered agent ids the LLM can address. */
   spawnableAgentIds?: string[];
@@ -295,7 +296,7 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   const {
     workspacePath,
     settings,
-    sendMessageEnabled = false,
+    spawnAgentEnabled = false,
     fsImpl = nodeFs,
     parentAgentId,
     runtime,
@@ -306,8 +307,8 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
     ...createFsTools(workspacePath, fsImpl),
     createTimeTool(),
   ];
-  if (sendMessageEnabled && runtime && parentAgentId) {
-    tools.push(createSendMessageTool({
+  if (spawnAgentEnabled && runtime && parentAgentId) {
+    tools.push(createSpawnAgentTool({
       runtime,
       parentAgentId,
       workspacePath,

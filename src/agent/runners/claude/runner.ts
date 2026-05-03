@@ -1,4 +1,5 @@
 import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { randomUUID } from "node:crypto";
 import { createLogger } from "../../../logging/logger.js";
 import type { RunRequest } from "../../types.js";
 import { RunValidationError } from "../../types.js";
@@ -9,8 +10,8 @@ import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-a
 const log = createLogger("agents:runner:claude");
 
 export class ClaudeRunner {
-  resolveSessionId(_req: RunRequest, runId: string): string {
-    return `claude:${runId}`;
+  resolveSessionId(req: RunRequest): string {
+    return req.sessionId ?? `claude:${randomUUID()}`;
   }
 
   validateRequest(req: RunRequest): void {
@@ -20,11 +21,10 @@ export class ClaudeRunner {
 
   async *run(opts: {
     request: RunRequest;
-    runId: string;
     sessionId: string;
     abort: AbortSignal;
   }): AsyncGenerator<AgentEvent> {
-    const { request, runId, abort } = opts;
+    const { request, abort } = opts;
 
     const sdkAbort = new AbortController();
     const onAbort = () => sdkAbort.abort();
@@ -38,7 +38,7 @@ export class ClaudeRunner {
       settingSources: ["user"],
     };
 
-    log.info("ClaudeRunner.run", { runId, cwd: request.cwd });
+    log.info("ClaudeRunner.run", { sessionId: opts.sessionId, cwd: request.cwd });
 
     const toolNameById = new Map<string, string>();
     let assistantText = "";
@@ -138,9 +138,6 @@ function translateSdkMessage(msg: SDKMessage, toolNameById: Map<string, string>)
   }
   return out;
 }
-
-// SDK-internal fields (partial, usage, provider, model) are type-asserted
-// because consumeRootRun + send_message tool only read delta / messages.
 
 function buildAssistantMessage(text: string, extras: { stopReason?: string; errorMessage?: string } = {}): AgentMessage {
   return {

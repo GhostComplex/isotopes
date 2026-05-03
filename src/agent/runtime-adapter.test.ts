@@ -1,10 +1,10 @@
-// Direct unit coverage for consumeRootRun + cancelRunBySessionId.
+// Direct unit coverage for runAgent.
 
 import { describe, it, expect, vi } from "vitest";
-import { consumeRootRun, cancelRunBySessionId } from "./agent-run.js";
-import { AgentRuntime, type Runner } from "../../agent/runtime.js";
+import { runAgent } from "./runtime-adapter.js";
+import { AgentRuntime, type Runner } from "./runtime.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { createLogger } from "../../logging/logger.js";
+import { createLogger } from "../logging/logger.js";
 
 const log = createLogger("test:agent-run");
 
@@ -36,7 +36,7 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
 }
 
 function stubRunner(
-  gen: (opts: { request: import("../../agent/types.js").RunRequest; abort: AbortSignal }) => AsyncGenerator<AgentEvent>,
+  gen: (opts: { request: import("./types.js").RunRequest; abort: AbortSignal }) => AsyncGenerator<AgentEvent>,
 ): Runner {
   return {
     resolveSessionId: (req) => req.sessionId ?? "stub-session",
@@ -44,7 +44,7 @@ function stubRunner(
   };
 }
 
-describe("consumeRootRun", () => {
+describe("runAgent", () => {
   it("accumulates text_delta into responseText", async () => {
     const rt = new AgentRuntime();
     rt.registerRunner("main", stubRunner(async function* () {
@@ -53,7 +53,7 @@ describe("consumeRootRun", () => {
       yield buildAgentEnd("Hello, world!");
     }));
 
-    const result = await consumeRootRun(rt, {
+    const result = await runAgent(rt, {
       to: "main",
       sessionId: "s1",
       content: "hi",
@@ -70,7 +70,7 @@ describe("consumeRootRun", () => {
       yield buildAgentEnd("", "error", "boom");
     }));
 
-    const result = await consumeRootRun(rt, {
+    const result = await runAgent(rt, {
       to: "main",
       sessionId: "s2",
       content: "hi",
@@ -80,21 +80,21 @@ describe("consumeRootRun", () => {
     expect(result.errorMessage).toBe("boom");
   });
 
-  it("captures runId via onRunStart (not by scanning listRuns)", async () => {
+  it("does not scan listRuns to track the run", async () => {
     const rt = new AgentRuntime();
     rt.registerRunner("main", stubRunner(async function* () { yield buildAgentEnd("ok"); }));
     let scanCount = 0;
     const origList = rt.listRuns.bind(rt);
     rt.listRuns = (() => { scanCount++; return origList(); }) as typeof rt.listRuns;
 
-    await consumeRootRun(rt, {
+    await runAgent(rt, {
       to: "main",
       sessionId: "s3",
       content: "hi",
       log,
     });
 
-    // Should not be calling listRuns to find the runId — onRunStart wired it.
+    // Adapter should not need listRuns lookup — sessionId is in scope.
     expect(scanCount).toBe(0);
   });
 
@@ -108,7 +108,7 @@ describe("consumeRootRun", () => {
     const seen: AgentEvent["type"][] = [];
     const unsub = rt.on("s4", (e) => seen.push(e.type));
     try {
-      await consumeRootRun(rt, { to: "main", sessionId: "s4", content: "hi", log });
+      await runAgent(rt, { to: "main", sessionId: "s4", content: "hi", log });
     } finally {
       unsub();
     }
@@ -116,7 +116,7 @@ describe("consumeRootRun", () => {
     expect(seen).toEqual(["message_update", "agent_end"]);
   });
 
-  it("calls onToolComplete on turn_end and forwards drained text via runtime.steer", async () => {
+  it("calls onTurnEnd on turn_end and forwards drained text via runtime.steer", async () => {
     const rt = new AgentRuntime();
     rt.registerRunner("main", stubRunner(async function* () {
       yield {
@@ -129,12 +129,12 @@ describe("consumeRootRun", () => {
     const steerSpy = vi.spyOn(rt, "steer").mockResolvedValue();
 
     let calls = 0;
-    await consumeRootRun(rt, {
+    await runAgent(rt, {
       to: "main",
       sessionId: "s5",
       content: "hi",
       log,
-      onToolComplete: async () => {
+      onTurnEnd: async () => {
         calls++;
         return calls === 1 ? "[buffered]" : null;
       },
@@ -145,7 +145,7 @@ describe("consumeRootRun", () => {
   });
 });
 
-describe("cancelRunBySessionId", () => {
+describe("runtime.cancel via sessionId", () => {
   it("cancels with explicit reason (default 'user')", async () => {
     const rt = new AgentRuntime();
     let pendingResolve: () => void = () => {};
@@ -168,7 +168,7 @@ describe("cancelRunBySessionId", () => {
     })();
 
     await pending;
-    const ok = cancelRunBySessionId(rt, "s6", "user");
+    const ok = rt.cancel("s6", { reason: "user" });
     expect(ok).toBe(true);
     await drain;
     expect(cancelReason).toBe("user");
@@ -176,6 +176,6 @@ describe("cancelRunBySessionId", () => {
 
   it("returns false when no run exists for the sessionId", () => {
     const rt = new AgentRuntime();
-    expect(cancelRunBySessionId(rt, "nope")).toBe(false);
+    expect(rt.cancel("nope")).toBe(false);
   });
 });

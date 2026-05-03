@@ -1,9 +1,9 @@
-// src/plugins/discord/subagent-stream-context.ts
+// src/plugins/discord/a2a-stream-context.ts
 //
 // AsyncLocalStorage that the Discord transport sets while driving the parent
-// agent loop. The in-agent `send_message` tool reads this context to decide
+// agent loop. The in-agent `spawn_agent` tool reads this context to decide
 // whether to stream a sub-run's intermediate output to a dedicated Discord
-// thread (and to register the (threadId → runId) mapping that lets the
+// thread (and to register the (threadId → sessionId) mapping that lets the
 // transport route a `/stop` posted in that thread back to runtime.cancel).
 
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -15,27 +15,27 @@ export interface DiscordChannelMinimalApi {
   createThread(parentChannelId: string, name: string, messageId: string): Promise<{ id: string }>;
 }
 
-export interface DiscordSubagentStreamContext extends DiscordChannelMinimalApi {
+export interface DiscordA2AStreamContext extends DiscordChannelMinimalApi {
   /** The Discord channel where the parent agent is currently replying. New
    * sub-run threads will be created in (or relative to) this channel. */
   parentChannelId: string;
   /** Whether to surface tool_call events as 🔧 markers in the thread. */
   showToolCalls?: boolean;
   /** Called by the sink as soon as the sub-run thread is created. */
-  registerSubagentThread(threadId: string, runId: string): void;
+  registerA2AThread(threadId: string, sessionId: string): void;
   /** Called by the sink when the sub-run completes (success or failure). */
-  unregisterSubagentThread(threadId: string): void;
+  unregisterA2AThread(threadId: string): void;
 }
 
-const storage = new AsyncLocalStorage<DiscordSubagentStreamContext>();
+const storage = new AsyncLocalStorage<DiscordA2AStreamContext>();
 
-export function runWithDiscordSubagentStream<T>(
-  ctx: DiscordSubagentStreamContext,
+export function runWithDiscordA2AStream<T>(
+  ctx: DiscordA2AStreamContext,
   fn: () => T,
 ): T {
   return storage.run(ctx, fn);
 }
 
-export function getDiscordSubagentStreamContext(): DiscordSubagentStreamContext | undefined {
+export function getDiscordA2AStreamContext(): DiscordA2AStreamContext | undefined {
   return storage.getStore();
 }

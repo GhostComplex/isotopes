@@ -21,7 +21,7 @@ export class PiRunner {
     return this.opts.agent;
   }
 
-  async resolveSessionId(req: RunRequest, _runId: string): Promise<string> {
+  async resolveSessionId(req: RunRequest): Promise<string> {
     if (req.sessionId) return req.sessionId;
     const store = this.opts.agent.sessionStore!;
     const policy = this.opts.agent.sessionPolicy ?? "parent-reuse";
@@ -38,7 +38,6 @@ export class PiRunner {
 
   async *run(opts: {
     request: RunRequest;
-    runId: string;
     sessionId: string;
     abort: AbortSignal;
     onSession?: (session: AgentSession) => void;

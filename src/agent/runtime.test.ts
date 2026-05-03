@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import {
   AgentRuntime,
   MAX_DEPTH,
@@ -49,7 +50,7 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
 function stubRunner(opts: Omit<Partial<Runner>, "agent"> & { agent?: RegisteredAgent } = {}): Runner {
   const { agent, ...overrides } = opts;
   const base: Runner = {
-    resolveSessionId: (_req, runId) => `stub:${runId}`,
+    resolveSessionId: (req) => req.sessionId ?? `stub:${randomUUID()}`,
     async *run() {},
     ...overrides,
   };
@@ -97,7 +98,7 @@ describe("AgentRuntime.run — validation", () => {
     rt = new AgentRuntime();
     // Stub a runner that rejects sessionId (mimics subagent / claude).
     rt.registerRunner("ephemeral-only", {
-      resolveSessionId: (_req, runId) => `ephemeral:${runId}`,
+      resolveSessionId: () => `ephemeral:${randomUUID()}`,
       validateRequest(req) {
         if (req.sessionId) throw new RunValidationError("ephemeral-only: sessions are not resumable; omit sessionId");
       },
@@ -195,11 +196,11 @@ describe("AgentRuntime.run — depth + sibling limits", () => {
   });
 });
 
-describe("AgentRuntime — listRuns / getStatus", () => {
+describe("AgentRuntime — listRuns / getRunBySession", () => {
   it("returns empty before any run", () => {
     const rt = new AgentRuntime();
     expect(rt.listRuns()).toEqual([]);
-    expect(rt.getStatus("any")).toBeUndefined();
+    expect(rt.getRunBySession("any")).toBeUndefined();
   });
 });
 
@@ -226,7 +227,7 @@ describe("runtime.run — onRunStart timing", () => {
     for await (const ev of rt.run({
       to: "main",
       content: "hi",
-      onRunStart: (rid) => order.push(`onRunStart:${rid.slice(0, 4)}`),
+      onRunStart: (sid) => order.push(`onRunStart:${sid.slice(0, 4)}`),
     })) {
       events.push(ev);
     }
@@ -236,13 +237,13 @@ describe("runtime.run — onRunStart timing", () => {
     expect(events[0]?.type).toBe("agent_end");
   });
 
-  it("onRunStart sees a runId that listRuns also reports during the run", async () => {
+  it("onRunStart sees a sessionId that listRuns also reports during the run", async () => {
     const rt = new AgentRuntime();
-    let observedRunId: string | undefined;
-    let runIdsDuringRun: string[] = [];
+    let observedSessionId: string | undefined;
+    let sessionIdsDuringRun: string[] = [];
     rt.registerRunner("main", stubRunner({
       async *run() {
-        runIdsDuringRun = rt.listRuns().map((r) => r.runId);
+        sessionIdsDuringRun = rt.listRuns().map((r) => r.sessionId);
         yield buildAgentEnd("ok");
       },
       agent: fakeAgent("main"),
@@ -251,12 +252,33 @@ describe("runtime.run — onRunStart timing", () => {
     for await (const _ev of rt.run({
       to: "main",
       content: "hi",
-      onRunStart: (rid) => { observedRunId = rid; },
+      onRunStart: (sid) => { observedSessionId = sid; },
     })) { void _ev; }
 
-    expect(observedRunId).toBeDefined();
-    expect(runIdsDuringRun).toContain(observedRunId!);
+    expect(observedSessionId).toBeDefined();
+    expect(sessionIdsDuringRun).toContain(observedSessionId!);
     expect(rt.listRuns()).toEqual([]);
+  });
+
+  it("onRunStart receives sessionId so callers can dispatch by session", async () => {
+    const rt = new AgentRuntime();
+    let observedSessionId: string | undefined;
+    rt.registerRunner("main", stubRunner({
+      async *run() { yield buildAgentEnd("done"); },
+      agent: fakeAgent("main"),
+    }));
+
+    for await (const _ev of rt.run({
+      to: "main",
+      sessionId: "explicit-session",
+      content: "hi",
+      onRunStart: (sid) => { observedSessionId = sid; },
+    })) { void _ev; }
+
+    expect(observedSessionId).toBe("explicit-session");
+    // Critical for discord /stop in sub-run thread: caller registers
+    // (threadId → sessionId) using the sessionId from onRunStart so
+    // runtime.cancel(sessionId) routes correctly.
   });
 });
 
@@ -279,19 +301,17 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
     }));
 
     const onCancel = vi.fn();
-    let runId: string | undefined;
     const stream = rt.run({
       to: "main",
+      sessionId: "cancel-1",
       content: "long",
-      onRunStart: (rid) => { runId = rid; },
       onCancel,
     });
 
     const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
 
     await started;
-    expect(runId).toBeDefined();
-    rt.cancel(runId!, { reason: "user" });
+    rt.cancel("cancel-1", { reason: "user" });
     await drain;
 
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -313,17 +333,16 @@ describe("runtime.cancel — reason propagates to onCancel", () => {
     }));
 
     const onCancel = vi.fn();
-    let runId: string | undefined;
     const stream = rt.run({
       to: "main",
+      sessionId: "cancel-2",
       content: "x",
-      onRunStart: (rid) => { runId = rid; },
       onCancel,
     });
 
     const drain = (async () => { for await (const _ of stream) { void _; } })();
     await new Promise((r) => setTimeout(r, 5));
-    rt.cancel(runId!);
+    rt.cancel("cancel-2");
     await drain;
 
     expect(onCancel).not.toHaveBeenCalled();
@@ -378,19 +397,18 @@ describe("runtime.steer — wires onSession into RunHandle", () => {
       agent: fakeAgent("main"),
     }));
 
-    let runId: string | undefined;
     const stream = rt.run({
       to: "main",
+      sessionId: "steer-1",
       content: "hi",
-      onRunStart: (rid) => { runId = rid; },
     });
     const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
 
     await started;
-    await rt.steer(runId!, "interject");
+    await rt.steer("steer-1", "interject");
     expect(steerSpy).toHaveBeenCalledWith("interject");
 
-    rt.cancel(runId!);
+    rt.cancel("steer-1");
     await drain;
   });
 
@@ -411,18 +429,17 @@ describe("runtime.steer — wires onSession into RunHandle", () => {
       agent: fakeAgent("noSteer"),
     }));
 
-    let runId: string | undefined;
     const stream = rt.run({
       to: "noSteer",
+      sessionId: "steer-2",
       content: "hi",
-      onRunStart: (rid) => { runId = rid; },
     });
     const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
 
     await started;
-    await expect(rt.steer(runId!, "x")).rejects.toThrow(/No active session/);
+    await expect(rt.steer("steer-2", "x")).rejects.toThrow(/No active session/);
 
-    rt.cancel(runId!);
+    rt.cancel("steer-2");
     await drain;
   });
 });

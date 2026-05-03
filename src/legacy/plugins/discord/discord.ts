@@ -22,8 +22,8 @@ import type { ContextConfigFile } from "../../../config.js";
 import { shouldRespondToMessage } from "../../../gateway/mention.js";
 import { loggers } from "../../../logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../core/agent-run.js";
-import { runWithDiscordSubagentStream, type DiscordSubagentStreamContext } from "./subagent-stream-context.js";
+import { runAgent } from "../../../agent/runtime-adapter.js";
+import { runWithDiscordA2AStream, type DiscordA2AStreamContext } from "./a2a-stream-context.js";
 import { isSilentReplyPayloadText } from "../../../silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
@@ -206,9 +206,9 @@ export class DiscordTransport implements Transport {
   private debouncer: InboundDebouncer;
   private commandHandler: SlashCommandHandler;
 
-  // Maps a Discord thread id (created for a sub-run via send_message) to
-  // the runtime's runId. Used so /stop in that thread cancels the right run.
-  private subagentThreads = new Map<string, string>();
+  // Maps a Discord thread id (created for a sub-run via spawn_agent) to
+  // the sub-run's sessionId so /stop in that thread cancels the right run.
+  private a2aThreads = new Map<string, string>();
 
   // Buffer messages that arrive while a session is prompting
   private pendingMessages = new Map<string, Array<{ content: string; sender: string; timestamp: number }>>();
@@ -379,14 +379,14 @@ export class DiscordTransport implements Transport {
     // content since extractContent only strips numeric Discord ids.
     const stopMatch = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i.exec(msg.content.trim());
     if (stopMatch) {
-      // 3.6a. /stop in a known sub-run thread → cancel that specific runId.
+      // 3.6a. /stop in a known sub-run thread → cancel by sessionId.
       // No @mention required: posting in the thread itself scopes the intent.
       if (isThread) {
-        const subRunId = this.subagentThreads.get(msg.channelId);
-        if (subRunId && this.config.agentRuntime) {
-          const cancelled = this.config.agentRuntime.cancel(subRunId, { reason: "user" });
+        const subSessionId = this.a2aThreads.get(msg.channelId);
+        if (subSessionId && this.config.agentRuntime) {
+          const cancelled = this.config.agentRuntime.cancel(subSessionId, { reason: "user" });
           if (cancelled) {
-            log.info(`Sub-run /stop`, { runId: subRunId, threadId: msg.channelId });
+            log.info(`Sub-run /stop`, { sessionId: subSessionId, threadId: msg.channelId });
             await (msg.channel as SendableChannel).send("🛑 Sub-run cancelled.");
           } else {
             await (msg.channel as SendableChannel).send("⚠️ Sub-run already finished.");
@@ -406,11 +406,11 @@ export class DiscordTransport implements Transport {
       const session = await sessionStore.findByKey(sessionKey);
       const runtimeForCheck = this.config.agentRuntime;
       const isActive = runtimeForCheck && session
-        ? isRootRunActive(runtimeForCheck, session.id)
+        ? runtimeForCheck.isRunning(session.id)
         : false;
       if (session && isActive && runtimeForCheck) {
         log.info(`Main-agent /stop`, { sessionId: session.id, agentId });
-        cancelRunBySessionId(runtimeForCheck, session.id);
+        runtimeForCheck.cancel(session.id);
         this.pendingMessages.delete(session.id);
         await (msg.channel as SendableChannel).send("🛑 Stopped.");
         return;
@@ -509,10 +509,10 @@ export class DiscordTransport implements Transport {
     const session = await this.findOrCreateSession(sessionStore, sessionKey, agentId, msg);
 
     // 6.5. If session is currently active (in a prompt turn), buffer this message instead.
-    // The buffer is drained at turn_end via onToolComplete, where each message is
+    // The buffer is drained at turn_end via onTurnEnd, where each message is
     // also persisted to SessionStore so future prompt() invocations replay them.
     const sessionActive = this.config.agentRuntime
-      ? isRootRunActive(this.config.agentRuntime, session.id)
+      ? this.config.agentRuntime.isRunning(session.id)
       : false;
     if (sessionActive) {
       log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
@@ -523,7 +523,7 @@ export class DiscordTransport implements Transport {
         timestamp: msg.createdTimestamp,
       });
       this.pendingMessages.set(session.id, pending);
-      // Note: do not also append to channelHistory — onToolComplete persists to
+      // Note: do not also append to channelHistory — onTurnEnd persists to
       // SessionStore, and channelHistory injection on the next trigger would
       // re-surface the same message a second time.
       return;
@@ -547,7 +547,7 @@ export class DiscordTransport implements Transport {
       : mkUserMsg(contentWithMeta, msg.createdTimestamp);
     await sessionStore.addMessage(session.id, userMsg);
 
-    // 9. Run agent via runtime.sendMessage (system prompt is derived per-call
+    // 9. Run agent via runAgent (system prompt is derived per-call
     // from the registered agent's config + workspace).
     const agentConfig = this.config.agentRuntime?.getAgent(agentId)?.config;
     const cwd = agentConfig ? resolveAgentWorkspacePath(agentConfig) : undefined;
@@ -769,15 +769,15 @@ export class DiscordTransport implements Transport {
         }
       });
 
-      // Create the agent loop runner function via runtime.sendMessage.
+      // Create the agent loop runner function via runAgent.
       const runLoop = () => {
-        return consumeRootRun(runtime, {
+        return runAgent(runtime, {
           to: agentId,
           sessionId,
           content: "",
           ...(cwd ? { cwd } : {}),
           log,
-          onToolComplete: async () => {
+          onTurnEnd: async () => {
             const pending = this.pendingMessages.get(sessionId);
             if (!pending?.length) return null;
             const messages = pending.splice(0);
@@ -790,17 +790,17 @@ export class DiscordTransport implements Transport {
         });
       };
 
-      // Wrap the run in a Discord subagent stream context so any nested
-      // send_message tool call streams its sub-run to a dedicated thread,
-      // and the (threadId → runId) mapping flows back here for /stop routing.
-      const streamCtx: DiscordSubagentStreamContext = {
+      // Wrap the run in a Discord a2a stream context so any nested
+      // spawn_agent tool call streams its sub-run to a dedicated thread,
+      // and the (threadId → sessionId) mapping flows back here for /stop routing.
+      const streamCtx: DiscordA2AStreamContext = {
         parentChannelId: channel.id,
         showToolCalls: this.config.showToolCalls ?? true,
-        registerSubagentThread: (threadId, runId) => {
-          this.subagentThreads.set(threadId, runId);
+        registerA2AThread: (threadId, sessionId) => {
+          this.a2aThreads.set(threadId, sessionId);
         },
-        unregisterSubagentThread: (threadId) => {
-          this.subagentThreads.delete(threadId);
+        unregisterA2AThread: (threadId) => {
+          this.a2aThreads.delete(threadId);
         },
         sendMessage: async (channelId, content) => {
           const target = await this.client.channels.fetch(channelId);
@@ -820,7 +820,7 @@ export class DiscordTransport implements Transport {
         },
       };
 
-      const { responseText, errorMessage } = await runWithDiscordSubagentStream(streamCtx, runLoop);
+      const { responseText, errorMessage } = await runWithDiscordA2AStream(streamCtx, runLoop);
 
       // Check for silent reply tokens — suppress outbound delivery
       if (isSilentReplyPayloadText(responseText)) {

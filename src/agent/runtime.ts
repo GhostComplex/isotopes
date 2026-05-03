@@ -138,14 +138,12 @@ export interface Runner {
   /** Backing isotopes agent (drives getAgent / listAgents). */
   agent?(): RegisteredAgent | undefined;
   validateRequest?(req: RunRequest): void;
-  resolveSessionId(req: RunRequest, runId: string): Promise<string> | string;
+  resolveSessionId(req: RunRequest): Promise<string> | string;
   run(opts: {
     request: RunRequest;
-    runId: string;
     sessionId: string;
     abort: AbortSignal;
-    /** Called once a steerable session is ready. Runners that have no
-     * steerable session (e.g. ClaudeRunner) simply don't call it. */
+    /** Steerable session hook; ClaudeRunner doesn't call it. */
     onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent>;
 }
@@ -223,7 +221,7 @@ export class AgentRuntime {
     return Array.from(this.entries.keys());
   }
 
-  /** Names advertised to other agents in send_message. */
+  /** Names advertised to other agents in spawn_agent. */
   spawnableRunnerNames(): string[] {
     const out: string[] = [];
     for (const [name, entry] of this.entries) {
@@ -251,18 +249,12 @@ export class AgentRuntime {
     return this.events.on(sessionId, listener);
   }
 
-  /** @internal Called by run-adapter to fan out events. External callers
-   * should subscribe via on(), not emit. */
+  /** @internal — runtime auto-fans on yield; external callers use on(). */
   emitSessionEvent(sessionId: string, event: AgentEvent): void {
     this.events.emit(sessionId, event);
   }
 
-  /**
-   * Drop all listeners for a session. Single-owner: if a session ever
-   * has multiple concurrent owners (HTTP retry overlap, Discord
-   * reconnect mid-run), this tears down their subscriptions too. Use
-   * the per-listener unsubscribe handle from on() if that matters.
-   */
+  /** Drop all listeners for a session. Tears down concurrent subscriptions. */
   endSession(sessionId: string): void {
     this.events.endSession(sessionId);
   }
@@ -342,17 +334,17 @@ export class AgentRuntime {
     const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
     const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
-    // send_message spawns host-side child runners that bypass docker.
-    const sendMessageEnabled = !isSandboxed;
+    // Agent spawns host-side child runners that bypass docker.
+    const spawnAgentEnabled = !isSandboxed;
     if (isSandboxed) {
-      log.warn(`send_message tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
+      log.warn(`spawn_agent tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
     }
 
     const processRegistry = new ProcessRegistry();
     const tools: AgentTool[] = createAgentTools({
       workspacePath,
       settings: agentConfig.toolSettings,
-      sendMessageEnabled,
+      spawnAgentEnabled,
       fsImpl,
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,
@@ -451,7 +443,10 @@ export class AgentRuntime {
     }
 
     const runId = randomUUID();
-    const sessionId = await entry.runner.resolveSessionId(req, runId);
+    const sessionId = await entry.runner.resolveSessionId(req);
+    if (this.runs.has(sessionId)) {
+      throw new RunValidationError(`Session "${sessionId}" already has an active run`);
+    }
     const abort = new AbortController();
     const handle: RunHandle = {
       runId,
@@ -462,28 +457,36 @@ export class AgentRuntime {
       abort,
       ...(req.parentSessionId ? { parentSessionId: req.parentSessionId } : {}),
     };
-    this.runs.set(runId, handle);
+    this.runs.set(sessionId, handle);
 
     const sec = req.timeoutSeconds ?? DEFAULT_TIMEOUT_SEC;
-    const timeoutHandle = setTimeout(() => this.cancel(runId, { reason: "timeout" }), sec * 1000);
+    const timeoutHandle = setTimeout(() => this.cancel(sessionId, { reason: "timeout" }), sec * 1000);
     timeoutHandle.unref();
 
     log.info("run", { runId, agentId: req.to, sessionId, depth });
 
     try {
-      req.onRunStart?.(runId);
+      req.onRunStart?.(sessionId);
     } catch (err) {
       log.warn("onRunStart callback threw", { runId, error: err instanceof Error ? err.message : String(err) });
     }
 
     try {
-      yield* entry.runner.run({
+      // Auto fan-out + debug-log so consumers stay uniform.
+      for await (const event of entry.runner.run({
         request: req,
-        runId,
         sessionId,
         abort: abort.signal,
         onSession: (session) => { handle.session = session; },
-      });
+      })) {
+        this.emitSessionEvent(sessionId, event);
+        if (event.type === "tool_execution_start") {
+          log.debug("tool_call", { runId, sessionId, agentId: req.to, toolName: event.toolName, id: event.toolCallId });
+        } else if (event.type === "tool_execution_end") {
+          log.debug("tool_result", { runId, sessionId, id: event.toolCallId });
+        }
+        yield event;
+      }
     } finally {
       clearTimeout(timeoutHandle);
       // Consumer break → abort inner runner so no orphan SDK work.
@@ -493,21 +496,23 @@ export class AgentRuntime {
           log.warn("onCancel callback threw", { runId, error: err instanceof Error ? err.message : String(err) });
         }
       }
-      this.runs.delete(runId);
+      this.runs.delete(sessionId);
     }
   }
 
-  cancel(runId: string, opts?: { reason?: string }): boolean {
-    const handle = this.runs.get(runId);
+  /** Cancel an in-flight run by sessionId. */
+  cancel(sessionId: string, opts?: { reason?: string }): boolean {
+    const handle = this.runs.get(sessionId);
     if (!handle) return false;
     if (opts?.reason) handle.cancelReason = opts.reason;
-    log.info("Cancelling run", { runId, agentId: handle.agentId, reason: opts?.reason });
+    log.info("Cancelling run", { sessionId, runId: handle.runId, agentId: handle.agentId, reason: opts?.reason });
     handle.abort.abort();
     return true;
   }
 
-  isRunning(runId: string): boolean {
-    return this.runs.has(runId);
+  /** True iff there's an active run for this sessionId. */
+  isRunning(sessionId: string): boolean {
+    return this.runs.has(sessionId);
   }
 
   get activeCount(): number {
@@ -515,18 +520,19 @@ export class AgentRuntime {
   }
 
   cancelAll(): void {
-    for (const runId of [...this.runs.keys()]) this.cancel(runId);
+    for (const sessionId of [...this.runs.keys()]) this.cancel(sessionId);
   }
 
   /** Push-model steer — inject a user message into an in-flight run mid-turn. */
-  async steer(runId: string, message: string): Promise<void> {
-    const handle = this.runs.get(runId);
-    if (!handle?.session) throw new Error(`No active session for run ${runId}`);
+  async steer(sessionId: string, message: string): Promise<void> {
+    const handle = this.runs.get(sessionId);
+    if (!handle?.session) throw new Error(`No active session for "${sessionId}"`);
     await handle.session.steer(message);
   }
 
-  getStatus(runId: string): RunInfo | undefined {
-    const h = this.runs.get(runId);
+  /** Look up the active run for a sessionId. */
+  getRunBySession(sessionId: string): RunInfo | undefined {
+    const h = this.runs.get(sessionId);
     if (!h) return undefined;
     return toRunInfo(h);
   }

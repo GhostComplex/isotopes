@@ -1,4 +1,5 @@
 // src/plugins/http/chat.test.ts — Unit tests for chat session creation with sessionKey
+import { randomUUID } from "node:crypto";
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
@@ -20,7 +21,7 @@ function makeRuntime(): AgentRuntime {
   };
   rt.registerRunner(MOCK_AGENT_ID, {
     agent: () => agent,
-    resolveSessionId: (req, runId) => req.sessionId ?? `mock:${runId}`,
+    resolveSessionId: (req) => req.sessionId ?? `mock:${randomUUID()}`,
     async *run() {},
   });
   return rt;
