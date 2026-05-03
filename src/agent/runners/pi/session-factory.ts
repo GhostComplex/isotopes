@@ -82,7 +82,6 @@ export async function createPiSession(
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
   const customTools = deps.getAgentTools(agent.id).map((t) => toToolDefinition(t, deps.hooks, agent.id));
-  const settingsManager = SettingsManager.inMemory();
 
   const { session } = await createAgentSession({
     cwd: cwd ?? resolveAgentWorkspacePath(agent.config),
@@ -95,7 +94,7 @@ export async function createPiSession(
     tools: customTools.map((t) => t.name).filter((n): n is string => typeof n === "string"),
     customTools,
     sessionManager,
-    settingsManager,
+    settingsManager: SettingsManager.inMemory(),
   });
 
   overrideSessionSystemPrompt(session, await buildAgentSystemPrompt(agent.config));
