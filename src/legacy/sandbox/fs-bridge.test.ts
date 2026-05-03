@@ -95,29 +95,6 @@ describe("SandboxFs", () => {
       ]);
     });
 
-    it("pipes raw bytes for Buffer input (no utf-8 round-trip corruption)", async () => {
-      const capture = { chunks: [] as Buffer[] };
-      mockSpawn.mockReturnValue(fakeChild({ code: 0, capture }));
-
-      // Bytes that are NOT valid utf-8 — would be mangled by toString("utf-8")
-      const payload = Buffer.from([0xff, 0xfe, 0x00, 0x80, 0x81]);
-      await fs.writeFile("/abs/path", payload);
-
-      const written = Buffer.concat(capture.chunks);
-      expect(Array.from(written)).toEqual([0xff, 0xfe, 0x00, 0x80, 0x81]);
-    });
-
-    it("pipes raw bytes for Uint8Array input", async () => {
-      const capture = { chunks: [] as Buffer[] };
-      mockSpawn.mockReturnValue(fakeChild({ code: 0, capture }));
-
-      const payload = new Uint8Array([1, 2, 3, 4, 0xff]);
-      await fs.writeFile("/abs/path", payload);
-
-      const written = Buffer.concat(capture.chunks);
-      expect(Array.from(written)).toEqual([1, 2, 3, 4, 0xff]);
-    });
-
     it("encodes string input as utf-8", async () => {
       const capture = { chunks: [] as Buffer[] };
       mockSpawn.mockReturnValue(fakeChild({ code: 0, capture }));
@@ -127,27 +104,11 @@ describe("SandboxFs", () => {
       const written = Buffer.concat(capture.chunks);
       expect(written.toString("utf8")).toBe("héllo 😀");
     });
-
-    it("rejects unsupported data types with FsError", async () => {
-      mockSpawn.mockReturnValue(fakeChild({ code: 0 }));
-
-      await expect(fs.writeFile("/abs/path", 42 as unknown as string)).rejects.toMatchObject({
-        name: "FsError",
-        code: "EUNKNOWN",
-      });
-    });
   });
 
   describe("mkdir", () => {
-    it("invokes mkdir without -p by default", async () => {
-      await fs.mkdir("/abs/dir");
-      expect(executor.execute).toHaveBeenCalledWith("agent-1", [
-        "sh", "-c", `mkdir '/abs/dir'`,
-      ]);
-    });
-
-    it("invokes mkdir -p when recursive: true", async () => {
-      await fs.mkdir("/abs/dir/deep", { recursive: true });
+    it("invokes mkdir -p (always recursive)", async () => {
+      await fs.mkdir("/abs/dir/deep");
       expect(executor.execute).toHaveBeenCalledWith("agent-1", [
         "sh", "-c", `mkdir -p '/abs/dir/deep'`,
       ]);
@@ -166,32 +127,14 @@ describe("SandboxFs", () => {
     });
   });
 
-  describe("unlink", () => {
-    it("invokes rm with -- and quoted path", async () => {
-      await fs.unlink("/abs/file");
-      expect(executor.execute).toHaveBeenCalledWith("agent-1", [
-        "sh", "-c", `rm -- '/abs/file'`,
-      ]);
-    });
-  });
-
-  describe("rename", () => {
-    it("invokes mv with -- and both quoted paths", async () => {
-      await fs.rename("/from", "/to");
-      expect(executor.execute).toHaveBeenCalledWith("agent-1", [
-        "sh", "-c", `mv -- '/from' '/to'`,
-      ]);
-    });
-  });
-
   describe("reads", () => {
-    // The read methods are bound to nodeFs; we don't re-test node:fs/promises
-    // here. Instead we just confirm they're callable as methods (i.e. that
-    // typing them with the proper FsLike signatures didn't break dispatch).
-    it("readFile / readdir / stat are functions", () => {
+    // Read methods passthrough to host fs; we only confirm callable shape.
+    it("readFile / readdir / stat / exists / access are functions", () => {
       expect(typeof fs.readFile).toBe("function");
       expect(typeof fs.readdir).toBe("function");
       expect(typeof fs.stat).toBe("function");
+      expect(typeof fs.exists).toBe("function");
+      expect(typeof fs.access).toBe("function");
     });
   });
 });

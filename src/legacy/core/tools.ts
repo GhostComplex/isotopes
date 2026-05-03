@@ -1,5 +1,4 @@
 import path from "node:path";
-import * as nodeFs from "node:fs/promises";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import {
   createReadTool,
@@ -9,7 +8,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import type { AgentToolSettings } from "../../tools/types.js";
-import type { SandboxFs } from "../sandbox/fs-bridge.js";
+import { HostFs, type FsBridge } from "../sandbox/fs-bridge.js";
 import type { SandboxExecutor } from "../sandbox/executor.js";
 import type { SandboxConfig } from "../sandbox/config.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
@@ -221,35 +220,32 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
 // SDK file tools — read/write/edit/ls
 // ---------------------------------------------------------------------------
 
-type FsImpl = SandboxFs | typeof nodeFs;
-
-function createFsTools(workspacePath: string, fsImpl: FsImpl): AgentTool[] {
-  const access = (p: string) => fsImpl.stat(p).then(() => undefined);
+function createFsTools(workspacePath: string, fs: FsBridge): AgentTool[] {
   return [
     createReadTool(workspacePath, {
       operations: {
-        readFile: (p) => fsImpl.readFile(p) as Promise<Buffer>,
-        access,
+        readFile: (p) => fs.readFile(p),
+        access: (p) => fs.access(p),
       },
     }) as AgentTool,
     createWriteTool(workspacePath, {
       operations: {
-        writeFile: (p, c) => fsImpl.writeFile(p, c, "utf-8"),
-        mkdir: (d) => fsImpl.mkdir(d, { recursive: true }).then(() => undefined),
+        writeFile: (p, c) => fs.writeFile(p, c),
+        mkdir: (d) => fs.mkdir(d),
       },
     }) as AgentTool,
     createEditTool(workspacePath, {
       operations: {
-        readFile: (p) => fsImpl.readFile(p) as Promise<Buffer>,
-        writeFile: (p, c) => fsImpl.writeFile(p, c, "utf-8"),
-        access,
+        readFile: (p) => fs.readFile(p),
+        writeFile: (p, c) => fs.writeFile(p, c),
+        access: (p) => fs.access(p),
       },
     }) as AgentTool,
     createLsTool(workspacePath, {
       operations: {
-        exists: (p) => fsImpl.stat(p).then(() => true).catch(() => false),
-        stat: (p) => fsImpl.stat(p),
-        readdir: (p) => fsImpl.readdir(p) as Promise<string[]>,
+        exists: (p) => fs.exists(p),
+        stat: (p) => fs.stat(p),
+        readdir: (p) => fs.readdir(p),
       },
     }) as AgentTool,
   ];
@@ -284,7 +280,8 @@ export interface CreateWorkspaceToolsOptions {
   settings?: AgentToolSettings;
   /** Register the `spawn_agent` tool. Requires `runtime` + `parentAgentId`. */
   spawnAgentEnabled?: boolean;
-  fsImpl?: FsImpl;
+  /** Filesystem backend for FS tools. Defaults to host fs. */
+  fs?: FsBridge;
   parentAgentId?: string;
   /** Unified runtime — required when spawnAgentEnabled is true. */
   runtime?: AgentRuntime;
@@ -297,14 +294,14 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
     workspacePath,
     settings,
     spawnAgentEnabled = false,
-    fsImpl = nodeFs,
+    fs = new HostFs(),
     parentAgentId,
     runtime,
     spawnableAgentIds,
   } = options;
 
   const tools: AgentTool[] = [
-    ...createFsTools(workspacePath, fsImpl),
+    ...createFsTools(workspacePath, fs),
     createTimeTool(),
   ];
   if (spawnAgentEnabled && runtime && parentAgentId) {

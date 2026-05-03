@@ -89,9 +89,10 @@ export async function createPiSession(
     authStorage: deps.authStorage,
     modelRegistry: deps.modelRegistry,
     model: resolveModel(deps.globalProvider, agent.config.model),
-    // SDK reads `tools` as an allowlist; pass our names so the SDK's built-in
-    // `bash` doesn't end up active alongside our customTools.
-    tools: customTools.map((t) => t.name).filter((n): n is string => typeof n === "string"),
+    // Disable SDK built-in tools (bash/read/write/edit/...). Everything we
+    // expose to the LLM goes through customTools so policy filtering, sandbox
+    // routing, and the extended toolset stay consistent.
+    tools: [],
     customTools,
     sessionManager,
     settingsManager: SettingsManager.inMemory(),

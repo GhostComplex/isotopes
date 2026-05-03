@@ -24,6 +24,6 @@ export type { SandboxExecOptions } from "./executor.js";
 
 export { SandboxExecutor } from "./executor.js";
 
-export type { FsErrorCode } from "./fs-bridge.js";
+export type { FsErrorCode, FsBridge } from "./fs-bridge.js";
 
-export { SandboxFs, FsError, mapStderrToCode } from "./fs-bridge.js";
+export { SandboxFs, HostFs, FsError, mapStderrToCode } from "./fs-bridge.js";
