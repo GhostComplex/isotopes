@@ -1,4 +1,5 @@
 import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { randomUUID } from "node:crypto";
 import { createLogger } from "../../../logging/logger.js";
 import type { RunRequest } from "../../types.js";
 import { RunValidationError } from "../../types.js";
@@ -9,8 +10,8 @@ import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-a
 const log = createLogger("agents:runner:claude");
 
 export class ClaudeRunner {
-  resolveSessionId(_req: RunRequest, runId: string): string {
-    return `claude:${runId}`;
+  resolveSessionId(req: RunRequest): string {
+    return req.sessionId ?? `claude:${randomUUID()}`;
   }
 
   validateRequest(req: RunRequest): void {
@@ -140,7 +141,7 @@ function translateSdkMessage(msg: SDKMessage, toolNameById: Map<string, string>)
 }
 
 // SDK-internal fields (partial, usage, provider, model) are type-asserted
-// because consumeRootRun + send_message tool only read delta / messages.
+// because runAgent + send_message tool only read delta / messages.
 
 function buildAssistantMessage(text: string, extras: { stopReason?: string; errorMessage?: string } = {}): AgentMessage {
   return {

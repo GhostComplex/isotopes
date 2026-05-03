@@ -22,7 +22,7 @@ import type { ContextConfigFile } from "../../../config.js";
 import { shouldRespondToMessage } from "../../../gateway/mention.js";
 import { loggers } from "../../../logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { consumeRootRun, cancelRunBySessionId, isRootRunActive } from "../../../agent/run-adapter.js";
+import { runAgent } from "../../../agent/runtime-adapter.js";
 import { runWithDiscordSubagentStream, type DiscordSubagentStreamContext } from "./subagent-stream-context.js";
 import { isSilentReply } from "../../core/silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -406,11 +406,11 @@ export class DiscordTransport implements Transport {
       const session = await sessionStore.findByKey(sessionKey);
       const runtimeForCheck = this.config.agentRuntime;
       const isActive = runtimeForCheck && session
-        ? isRootRunActive(runtimeForCheck, session.id)
+        ? runtimeForCheck.isRunning(session.id)
         : false;
       if (session && isActive && runtimeForCheck) {
         log.info(`Main-agent /stop`, { sessionId: session.id, agentId });
-        cancelRunBySessionId(runtimeForCheck, session.id);
+        runtimeForCheck.cancel(session.id);
         this.pendingMessages.delete(session.id);
         await (msg.channel as SendableChannel).send("🛑 Stopped.");
         return;
@@ -509,10 +509,10 @@ export class DiscordTransport implements Transport {
     const session = await this.findOrCreateSession(sessionStore, sessionKey, agentId, msg);
 
     // 6.5. If session is currently active (in a prompt turn), buffer this message instead.
-    // The buffer is drained at turn_end via onToolComplete, where each message is
+    // The buffer is drained at turn_end via onTurnEnd, where each message is
     // also persisted to SessionStore so future prompt() invocations replay them.
     const sessionActive = this.config.agentRuntime
-      ? isRootRunActive(this.config.agentRuntime, session.id)
+      ? this.config.agentRuntime.isRunning(session.id)
       : false;
     if (sessionActive) {
       log.debug(`Session ${session.id} is active, buffering message from ${msg.author.username}`);
@@ -523,7 +523,7 @@ export class DiscordTransport implements Transport {
         timestamp: msg.createdTimestamp,
       });
       this.pendingMessages.set(session.id, pending);
-      // Note: do not also append to channelHistory — onToolComplete persists to
+      // Note: do not also append to channelHistory — onTurnEnd persists to
       // SessionStore, and channelHistory injection on the next trigger would
       // re-surface the same message a second time.
       return;
@@ -771,13 +771,13 @@ export class DiscordTransport implements Transport {
 
       // Create the agent loop runner function via runtime.sendMessage.
       const runLoop = () => {
-        return consumeRootRun(runtime, {
+        return runAgent(runtime, {
           to: agentId,
           sessionId,
           content: "",
           ...(cwd ? { cwd } : {}),
           log,
-          onToolComplete: async () => {
+          onTurnEnd: async () => {
             const pending = this.pendingMessages.get(sessionId);
             if (!pending?.length) return null;
             const messages = pending.splice(0);

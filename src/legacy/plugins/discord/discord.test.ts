@@ -1,4 +1,5 @@
 // src/transports/discord.test.ts — Unit tests for DiscordTransport
+import { randomUUID } from "node:crypto";
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
@@ -17,7 +18,7 @@ function makeMockRuntime(agentId: string, cache: unknown, sessionStore: SessionS
   };
   rt.registerRunner(agentId, {
     agent: () => agent,
-    resolveSessionId: (req, runId) => req.sessionId ?? `${agentId}:${runId}`,
+    resolveSessionId: (req) => req.sessionId ?? `${agentId}:${randomUUID()}`,
     async *run() {},
   });
   return rt;
@@ -1160,7 +1161,7 @@ describe("DiscordTransport", () => {
       return store;
     }
 
-    // /stop and /cancel cancel paths: discord.ts dispatches via cancelRunBySessionId,
+    // /stop and /cancel cancel paths: discord.ts dispatches via cancelAgentRun,
     // which has its own coverage in agent-run.test.ts; runtime.cancel itself is
     // covered in runtime-flow.test.ts. Discord-side dispatch is a 2-line regex
     // match — not worth the in-flight-run mocking complexity.

@@ -21,7 +21,7 @@ import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
 import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
 import { AgentRuntime } from "./agent/runtime.js";
-import { consumeRootRun } from "./agent/run-adapter.js";
+import { runAgent } from "./agent/runtime-adapter.js";
 
 const log = createLogger("runtime");
 
@@ -161,7 +161,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
         const store = await sessionStoreManager.getOrCreate(agentId);
         const sessionKey = `heartbeat:${agentId}`;
         const session = (await store.findByKey(sessionKey)) ?? (await store.create(agentId, { key: sessionKey }));
-        const result = await consumeRootRun(agentRuntime, {
+        const result = await runAgent(agentRuntime, {
           to: agentId,
           sessionId: session.id,
           content: prompt,
@@ -229,7 +229,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     try {
       const store = await sessionStoreManager.getOrCreate(job.agentId);
       const session = (await store.findByKey(sessionKey)) ?? (await store.create(job.agentId, { key: sessionKey }));
-      const result = await consumeRootRun(agentRuntime, {
+      const result = await runAgent(agentRuntime, {
         to: job.agentId,
         sessionId: session.id,
         content: prompt,

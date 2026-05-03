@@ -11,7 +11,7 @@ import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
 import { createLogger } from "../../../logging/logger.js";
 import { randomUUID } from "node:crypto";
-import { consumeRootRun, cancelRunBySessionId } from "../../../agent/run-adapter.js";
+import { runAgent } from "../../../agent/runtime-adapter.js";
 import { userMessage } from "../../../agent/runners/pi/messages.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
 import type { DefaultSessionStore } from "../../core/session-store.js";
@@ -322,14 +322,14 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
   try {
     const cwd = ((c) => c ? resolveAgentWorkspacePath(c) : undefined)(deps.agentRuntime?.getAgent(agentId)?.config);
 
-    const result = await consumeRootRun(deps.agentRuntime, {
+    const result = await runAgent(deps.agentRuntime, {
       to: agentId,
       sessionId,
       content: body.message,
       ...(cwd ? { cwd } : {}),
       log,
       ...(deps.hooks ? { hooks: deps.hooks } : {}),
-      onToolComplete: async () => {
+      onTurnEnd: async () => {
         const pending = active.pendingMessages;
         if (pending.length === 0) return null;
         const drained = pending.splice(0);
@@ -399,7 +399,7 @@ addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res, deps) => {
   }
 
   if (deps.agentRuntime) {
-    cancelRunBySessionId(deps.agentRuntime, session.sessionId);
+    deps.agentRuntime.cancel(session.sessionId);
   }
   session.pendingMessages.length = 0;
   sendJson(res, 200, { ok: true });
