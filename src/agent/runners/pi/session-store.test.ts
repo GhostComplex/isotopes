@@ -308,6 +308,76 @@ describe("DefaultSessionStore", () => {
     });
   });
 
+  describe("transcript bus (attach)", () => {
+    it("emits a TranscriptUpdate when addMessage appends", async () => {
+      const session = await store.create("agent-1");
+      const seen: Array<{ messageId: string }> = [];
+      const unsub = store.attach(session.id, (u) => seen.push({ messageId: u.messageId }));
+      try {
+        await store.addMessage(session.id, userMessage("hello"));
+        await store.addMessage(session.id, assistantMessage("hi"));
+      } finally { unsub(); }
+      expect(seen).toHaveLength(2);
+      expect(seen[0].messageId).toBeTruthy();
+    });
+
+    it("emits when SDK writes via the shared SessionManager (post-getSessionManager)", async () => {
+      const session = await store.create("agent-1");
+      const seen: number[] = [];
+      const unsub = store.attach(session.id, () => seen.push(1));
+      try {
+        const sm = await store.getSessionManager(session.id);
+        // Simulate SDK-side write through the patched appendMessage.
+        sm!.appendMessage(userMessage("from-sdk") as never);
+      } finally { unsub(); }
+      expect(seen).toHaveLength(1);
+    });
+
+    it("rejects a second attach to the same sessionId", async () => {
+      const session = await store.create("agent-1");
+      const unsub = store.attach(session.id, () => {});
+      expect(() => store.attach(session.id, () => {})).toThrow(/already attached/);
+      unsub();
+      // After unsub, re-attach is allowed.
+      const unsub2 = store.attach(session.id, () => {});
+      unsub2();
+    });
+
+    it("does not emit after unsubscribe", async () => {
+      const session = await store.create("agent-1");
+      const seen: number[] = [];
+      const unsub = store.attach(session.id, () => seen.push(1));
+      await store.addMessage(session.id, userMessage("a"));
+      unsub();
+      await store.addMessage(session.id, userMessage("b"));
+      expect(seen).toHaveLength(1);
+    });
+
+    it("isolates listeners between sessions", async () => {
+      const a = await store.create("agent-1");
+      const b = await store.create("agent-1");
+      const seenA: number[] = [];
+      const seenB: number[] = [];
+      const ua = store.attach(a.id, () => seenA.push(1));
+      const ub = store.attach(b.id, () => seenB.push(1));
+      try {
+        await store.addMessage(a.id, userMessage("for-a"));
+        await store.addMessage(b.id, userMessage("for-b"));
+        await store.addMessage(b.id, userMessage("for-b-2"));
+      } finally { ua(); ub(); }
+      expect(seenA).toHaveLength(1);
+      expect(seenB).toHaveLength(2);
+    });
+
+    it("listener errors do not propagate (turn state safe)", async () => {
+      const session = await store.create("agent-1");
+      const unsub = store.attach(session.id, () => { throw new Error("boom"); });
+      try {
+        await expect(store.addMessage(session.id, userMessage("hi"))).resolves.not.toThrow();
+      } finally { unsub(); }
+    });
+  });
+
 });
 let tmpRoot: string;
 let originalHome: string | undefined;

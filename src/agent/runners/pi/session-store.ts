@@ -8,6 +8,8 @@ import type {
   Session,
   SessionMetadata,
   SessionStore,
+  TranscriptListener,
+  TranscriptUpdate,
 } from "../../../sessions/types.js";
 import {
   ensureAgentSessionsDir,
@@ -36,11 +38,33 @@ interface StoredSession extends Session {
   manager?: SessionManager;
 }
 
+/** Monkey-patch SessionManager.appendMessage to emit after each persisted entry.
+ * Mirrors openclaw's session-tool-result-guard.ts:269 hot-path strategy:
+ * any write — by transports (user input) or by the SDK (assistant/tool) — fans out. */
+function installTranscriptEmitter(
+  sm: SessionManager,
+  sessionId: string,
+  emit: (update: TranscriptUpdate) => void,
+): void {
+  const original = sm.appendMessage.bind(sm);
+  sm.appendMessage = (message: PiMessage) => {
+    const messageId = original(message);
+    try {
+      emit({ sessionId, message: message as unknown as AgentMessage, messageId });
+    } catch {
+      // listener errors don't propagate — they would corrupt SDK turn state
+    }
+    return messageId;
+  };
+}
+
 export class DefaultSessionStore implements SessionStore {
   private sessions = new Map<string, StoredSession>();
   private keyIndex = new Map<string, string>();
   private indexDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly INDEX_DEBOUNCE_MS = 1_000;
+  /** Single-attach: at most one transcript-bus listener per sessionId. */
+  private listeners = new Map<string, TranscriptListener>();
 
   constructor(private readonly dataDir: string) {}
 
@@ -55,6 +79,7 @@ export class DefaultSessionStore implements SessionStore {
     }
     const id = randomUUID();
     const manager = SessionManager.open(this.transcriptFile(id));
+    installTranscriptEmitter(manager, id, (u) => this.emitTranscript(u));
     const session: StoredSession = { id, agentId, metadata, lastActiveAt: new Date(), manager };
     this.sessions.set(id, session);
     if (metadata?.key) this.keyIndex.set(metadata.key, id);
@@ -119,6 +144,7 @@ export class DefaultSessionStore implements SessionStore {
     session.lastActiveAt = new Date();
     await fs.writeFile(this.transcriptFile(sessionId), "");
     session.manager = SessionManager.open(this.transcriptFile(sessionId));
+    installTranscriptEmitter(session.manager, sessionId, (u) => this.emitTranscript(u));
     await this.persistIndex();
   }
 
@@ -196,8 +222,29 @@ export class DefaultSessionStore implements SessionStore {
   private ensureManager(session: StoredSession): SessionManager {
     if (!session.manager) {
       session.manager = SessionManager.open(this.transcriptFile(session.id));
+      installTranscriptEmitter(session.manager, session.id, (u) => this.emitTranscript(u));
     }
     return session.manager;
+  }
+
+  private emitTranscript(update: TranscriptUpdate): void {
+    const listener = this.listeners.get(update.sessionId);
+    if (!listener) return;
+    try { listener(update); }
+    catch (err) { log.warn("Transcript listener threw", err); }
+  }
+
+  /** Attach a single listener for transcript appends on a sessionId. Throws if already attached. */
+  attach(sessionId: string, listener: TranscriptListener): () => void {
+    if (this.listeners.has(sessionId)) {
+      throw new Error(`Session "${sessionId}" already attached`);
+    }
+    this.listeners.set(sessionId, listener);
+    return () => {
+      if (this.listeners.get(sessionId) === listener) {
+        this.listeners.delete(sessionId);
+      }
+    };
   }
 }
 

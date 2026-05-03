@@ -162,6 +162,7 @@ const { values, positionals } = parseArgs({
     level: { type: "string" },
     follow: { type: "boolean", short: "f" },
     force: { type: "boolean" },
+    session: { type: "string" },
   },
   allowPositionals: true,
 });
@@ -181,7 +182,7 @@ Usage:
   isotopes status                    Show daemon status
   isotopes restart [--config path]   Restart the daemon
 
-  isotopes tui [--agent id] [--message "text"]
+  isotopes tui [--agent id] [--message "text"] [--session key]
                                      Interactive TUI chat with an agent
 
   isotopes sessions list             List all sessions
@@ -708,7 +709,7 @@ async function run(): Promise<void> {
 
     case "tui": {
       const { launchTui } = await import("./tui/index.js");
-      await launchTui({ agent: values.agent, config: values.config, message: values.message });
+      await launchTui({ agent: values.agent, config: values.config, message: values.message, session: values.session });
       break;
     }
 

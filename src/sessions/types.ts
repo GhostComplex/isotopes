@@ -2,6 +2,15 @@
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
+/** Per-message append notification for transcript-bus subscribers. */
+export interface TranscriptUpdate {
+  sessionId: string;
+  message: AgentMessage;
+  messageId: string;
+}
+
+export type TranscriptListener = (update: TranscriptUpdate) => void;
+
 /** A conversation session binding an agent to a transport channel. */
 export interface Session {
   id: string;
@@ -35,4 +44,7 @@ export interface SessionStore {
   clearMessages(sessionId: string): Promise<void>;
   /** Get the underlying SDK SessionManager for a session (for AgentSession creation). */
   getSessionManager(sessionId: string): Promise<import("@mariozechner/pi-coding-agent").SessionManager | undefined>;
+  /** Subscribe to transcript appends for a sessionId. At most one listener per session;
+   * throws if already attached. Returns an unsubscribe function. */
+  attach(sessionId: string, listener: TranscriptListener): () => void;
 }

@@ -162,3 +162,55 @@ export async function sendMessage(
     }
   }
 }
+
+// -- Observer-mode SSE: attach to /stream for transcript-bus updates --
+
+export interface AttachedMessage {
+  message: { role: string; content: unknown; toolCallId?: string };
+  messageId: string;
+}
+
+export async function attachStream(
+  agentId: string,
+  sessionKey: string,
+  onMessage: (m: AttachedMessage) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/stream`, { signal });
+  if (res.status === 409) throw new Error("Session already attached by another viewer");
+  if (!res.ok) throw new Error(`API stream: ${res.status} ${res.statusText}`);
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let currentEvent = "";
+  let dataLines: string[] = [];
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line.startsWith(":")) continue; // heartbeat comment
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+        dataLines = [];
+      } else if (line.startsWith("data: ")) {
+        dataLines.push(line.slice(6));
+      } else if (line === "") {
+        if (currentEvent === "message" && dataLines.length > 0) {
+          try {
+            const parsed = JSON.parse(dataLines.join("\n")) as AttachedMessage;
+            onMessage(parsed);
+          } catch { /* malformed, skip */ }
+        }
+        currentEvent = "";
+        dataLines = [];
+      }
+    }
+  }
+}

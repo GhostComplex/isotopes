@@ -107,6 +107,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const [error, setError] = useState<string | null>(null);
   const sessionKeyRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const attachAbortRef = useRef<AbortController | null>(null);
   const pendingSteerRef = useRef<ChatMessage[]>([]);
   const settledRef = useRef<ChatMessage[]>([]);
   const autoMessageSent = useRef(false);
@@ -131,6 +132,34 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         }
       }
 
+      // Attach mode: --session <key> skips create, loads full history, subscribes to /stream.
+      if (options.session) {
+        sessionKeyRef.current = options.session;
+        setAgentId(resolvedAgentId);
+        const { items: history } = await api.getHistory(resolvedAgentId, options.session);
+        const chatMessages = historyToChatMessages(history);
+        setMessages(chatMessages);
+        // Open attach stream — single subscriber per session, /stream rejects 2nd.
+        const attachAbort = new AbortController();
+        attachAbortRef.current = attachAbort;
+        void (async () => {
+          try {
+            await api.attachStream(resolvedAgentId, options.session!, (m) => {
+              const converted = historyToChatMessages([m.message as { role: string; content: unknown; toolCallId?: string }]);
+              if (converted.length > 0) {
+                setMessages((prev) => [...prev, ...converted]);
+              }
+            }, attachAbort.signal);
+          } catch (err) {
+            if (!attachAbort.signal.aborted) {
+              setError(`Attach failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
+        })();
+        setAgentReady(true);
+        return;
+      }
+
       const session = await api.createSession(resolvedAgentId, "tui:main");
       sessionKeyRef.current = session.key;
       setAgentId(session.agentId);
@@ -151,12 +180,13 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [options.session]);
 
   useEffect(() => {
     void initAgent(options.agent);
     return () => {
       abortRef.current?.abort();
+      attachAbortRef.current?.abort();
     };
   }, []);
 

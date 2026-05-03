@@ -193,6 +193,58 @@ addRoute("GET", "/api/sessions/:agentId/:key/messages", async (req, res, deps) =
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/sessions/:agentId/:key/stream — observer SSE for transcript appends
+// Single subscriber per sessionId; second connection rejected with 409.
+// ---------------------------------------------------------------------------
+
+addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => {
+  if (!deps.sessionStoreManager) {
+    sendError(res, 503, "Session store not available");
+    return;
+  }
+  const store = deps.sessionStoreManager.peek(req.params.agentId);
+  if (!store) {
+    sendError(res, 404, "Session not found");
+    return;
+  }
+  const resolved = await resolveSessionKey(store, req.params.agentId, req.params.key);
+  if (!resolved) {
+    sendError(res, 404, "Session not found");
+    return;
+  }
+
+  let unsub: (() => void) | undefined;
+  try {
+    unsub = store.attach(resolved.sessionId, (update) => {
+      res.write(`event: message\ndata: ${JSON.stringify({
+        message: update.message,
+        messageId: update.messageId,
+      })}\n\n`);
+    });
+  } catch (err) {
+    sendError(res, 409, err instanceof Error ? err.message : String(err));
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+  });
+  // Heartbeat every 25s to keep proxies from idling out.
+  const heartbeat = setInterval(() => {
+    res.write(": ping\n\n");
+  }, 25_000);
+
+  const cleanup = () => {
+    clearInterval(heartbeat);
+    unsub?.();
+  };
+  res.on("close", cleanup);
+  req.on("aborted", cleanup);
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/sessions/:agentId — create or resume a session
 // ---------------------------------------------------------------------------
 
@@ -304,21 +356,6 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
-  const unsub = deps.agentRuntime.on(sessionId, (e) => {
-    if (e.type === "message_update") {
-      const ame = e.assistantMessageEvent;
-      if (ame.type === "text_delta") {
-        writeEvent("text_delta", { text: ame.delta });
-      }
-    } else if (e.type === "tool_execution_start") {
-      writeEvent("tool_call", { toolCallId: e.toolCallId, toolName: e.toolName, args: e.args });
-    } else if (e.type === "tool_execution_end") {
-      writeEvent("tool_result", { toolCallId: e.toolCallId, toolName: e.toolName, result: e.result, isError: e.isError });
-    } else if (e.type === "turn_end") {
-      writeEvent("turn_end", {});
-    }
-  });
-
   try {
     const cwd = ((c) => c ? resolveAgentWorkspacePath(c) : undefined)(deps.agentRuntime?.getAgent(agentId)?.config);
 
@@ -329,6 +366,20 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
       ...(cwd ? { cwd } : {}),
       log,
       ...(deps.hooks ? { hooks: deps.hooks } : {}),
+      onEvent: (e) => {
+        if (e.type === "message_update") {
+          const ame = e.assistantMessageEvent;
+          if (ame.type === "text_delta") {
+            writeEvent("text_delta", { text: ame.delta });
+          }
+        } else if (e.type === "tool_execution_start") {
+          writeEvent("tool_call", { toolCallId: e.toolCallId, toolName: e.toolName, args: e.args });
+        } else if (e.type === "tool_execution_end") {
+          writeEvent("tool_result", { toolCallId: e.toolCallId, toolName: e.toolName, result: e.result, isError: e.isError });
+        } else if (e.type === "turn_end") {
+          writeEvent("turn_end", {});
+        }
+      },
       onTurnEnd: async () => {
         const pending = active.pendingMessages;
         if (pending.length === 0) return null;
@@ -348,8 +399,6 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
   } catch (err) {
     writeEvent("error", { message: err instanceof Error ? err.message : String(err) });
   } finally {
-    unsub();
-    deps.agentRuntime.endSession(sessionId);
     res.end();
   }
 });

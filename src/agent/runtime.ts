@@ -93,47 +93,6 @@ export interface AddAgentResult {
   transportContext?: LazyTransportContext;
 }
 
-/** Per-session pub/sub keyed by sessionId. Private to AgentRuntime —
- * subscribe via runtime.on / endSession. */
-class SessionEventBus {
-  private listeners = new Map<string, Set<(event: AgentEvent) => void>>();
-
-  on(sessionId: string, listener: (event: AgentEvent) => void): () => void {
-    let set = this.listeners.get(sessionId);
-    if (!set) {
-      set = new Set();
-      this.listeners.set(sessionId, set);
-    }
-    set.add(listener);
-    return () => {
-      set!.delete(listener);
-    };
-  }
-
-  emit(sessionId: string, event: AgentEvent): void {
-    const set = this.listeners.get(sessionId);
-    if (!set) return;
-    for (const fn of set) {
-      try {
-        fn(event);
-      } catch (err) {
-        log.warn("Session event listener threw", err);
-      }
-    }
-  }
-
-  endSession(sessionId: string): void {
-    const set = this.listeners.get(sessionId);
-    if (!set) return;
-    set.clear();
-    this.listeners.delete(sessionId);
-  }
-
-  listenerCount(sessionId: string): number {
-    return this.listeners.get(sessionId)?.size ?? 0;
-  }
-}
-
 export interface Runner {
   /** Backing isotopes agent (drives getAgent / listAgents). */
   agent?(): RegisteredAgent | undefined;
@@ -161,7 +120,6 @@ export class AgentRuntime {
   private piGlobalProvider?: ProviderConfig;
   private piAuthStorage?: AuthStorage;
   private piModelRegistry?: ModelRegistry;
-  private events = new SessionEventBus();
   private hooks?: HookRegistry;
 
   constructor(options?: AgentRuntimeOptions) {
@@ -243,24 +201,6 @@ export class AgentRuntime {
   getAgentTools(agentId: string): AgentTool[] {
     const map = this.toolRegistries.get(agentId);
     return map ? Array.from(map.values()) : [];
-  }
-
-  on(sessionId: string, listener: (event: AgentEvent) => void): () => void {
-    return this.events.on(sessionId, listener);
-  }
-
-  /** @internal — runtime auto-fans on yield; external callers use on(). */
-  emitSessionEvent(sessionId: string, event: AgentEvent): void {
-    this.events.emit(sessionId, event);
-  }
-
-  /** Drop all listeners for a session. Tears down concurrent subscriptions. */
-  endSession(sessionId: string): void {
-    this.events.endSession(sessionId);
-  }
-
-  sessionListenerCount(sessionId: string): number {
-    return this.events.listenerCount(sessionId);
   }
 
   validateCwd(cwd: string): void {
@@ -472,14 +412,12 @@ export class AgentRuntime {
     }
 
     try {
-      // Auto fan-out + debug-log so consumers stay uniform.
       for await (const event of entry.runner.run({
         request: req,
         sessionId,
         abort: abort.signal,
         onSession: (session) => { handle.session = session; },
       })) {
-        this.emitSessionEvent(sessionId, event);
         if (event.type === "tool_execution_start") {
           log.debug("tool_call", { runId, sessionId, agentId: req.to, toolName: event.toolName, id: event.toolCallId });
         } else if (event.type === "tool_execution_end") {

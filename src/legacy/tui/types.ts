@@ -61,4 +61,6 @@ export interface TuiOptions {
   agent?: string;
   config?: string;
   message?: string;
+  /** Attach to an existing session by key instead of creating tui:main. */
+  session?: string;
 }
