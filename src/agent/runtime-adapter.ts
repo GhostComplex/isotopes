@@ -1,7 +1,5 @@
-// Decorator over runtime.run for chat-style consumers (REST/Discord/heartbeat/cron).
-// Accumulates assistant text, fires message hooks, wires mid-turn buffered steering,
-// and wraps the iteration in an AsyncLocalStorage transport context so nested tools
-// see the correct parentSessionId. Use runtime.run directly for raw event streams.
+// Decorator over runtime.run for chat-style consumers. Use runtime.run
+// directly for raw event streams.
 
 import type { AgentRuntime } from "./runtime.js";
 import { userMessage, assistantMessage, getAgentEndMeta } from "./runners/pi/messages.js";
@@ -16,8 +14,7 @@ export interface RunAgentOptions {
   cwd?: string;
   log: Logger;
   hooks?: HookRegistry;
-  /** Fires at every turn boundary. Returning a non-null string steers it
-   * into the next turn. Used by transports that buffer mid-run user input. */
+  /** Fires at every turn boundary; non-null return is steered into the next turn. */
   onTurnEnd?: () => Promise<string | null>;
 }
 

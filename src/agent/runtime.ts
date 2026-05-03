@@ -145,8 +145,7 @@ export interface Runner {
     request: RunRequest;
     sessionId: string;
     abort: AbortSignal;
-    /** Called once a steerable session is ready. Runners that have no
-     * steerable session (e.g. ClaudeRunner) simply don't call it. */
+    /** Steerable session hook; ClaudeRunner doesn't call it. */
     onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent>;
 }
@@ -252,16 +251,12 @@ export class AgentRuntime {
     return this.events.on(sessionId, listener);
   }
 
-  /** @internal — runtime auto-fans events from run(); external callers
-   * should subscribe via on(), not emit. Public only to enable tests of
-   * the SessionEventBus pubsub independently of run(). */
+  /** @internal — runtime auto-fans on yield; external callers use on(). */
   emitSessionEvent(sessionId: string, event: AgentEvent): void {
     this.events.emit(sessionId, event);
   }
 
-  /** Drop all listeners for a session. Single-owner: tears down concurrent
-   * subscriptions too. Use the per-listener unsubscribe handle from on() if
-   * that matters. */
+  /** Drop all listeners for a session. Tears down concurrent subscriptions. */
   endSession(sessionId: string): void {
     this.events.endSession(sessionId);
   }
@@ -479,9 +474,7 @@ export class AgentRuntime {
     }
 
     try {
-      // Auto fan-out events to session bus + auto debug-log tool calls so
-      // every consumer (adapter, call_agent tool, future ACP gateway) gets
-      // them uniformly without manual wiring.
+      // Auto fan-out + debug-log so consumers stay uniform.
       for await (const event of entry.runner.run({
         request: req,
         sessionId,
