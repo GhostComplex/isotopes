@@ -8,7 +8,6 @@ import {
   loadConfig,
   toAgentConfig,
   resolveToolSettings,
-  resolveCompactionConfigFromFile,
   resolveSessionConfig,
   resolveSandboxConfigFromFile,
 } from "./config.js";
@@ -169,8 +168,8 @@ provider:
 
 agents:
   defaults:
-    compaction:
-      mode: safeguard
+    tools:
+      deny: [shell]
   list:
     - id: major
     - id: tachikoma
@@ -188,7 +187,7 @@ agents:
 
       // agentDefaults should be extracted
       expect(config.agentDefaults).toBeDefined();
-      expect(config.agentDefaults?.compaction?.mode).toBe("safeguard");
+      expect(config.agentDefaults?.tools?.deny).toEqual(["shell"]);
     });
 
     it("legacy array form still works and agentDefaults is undefined", async () => {
@@ -289,53 +288,6 @@ agents:
       expect(config.toolSettings?.allow).toEqual(["read"]);
     });
 
-    it("includes compaction config from agent-level", () => {
-      const agentFile = {
-        id: "test",
-        compaction: { mode: "aggressive" },
-      };
-      const config = toAgentConfig(agentFile);
-
-      expect(config.compaction?.mode).toBe("aggressive");
-    });
-
-    it("includes compaction config from defaults", () => {
-      const agentFile = { id: "test" };
-      const config = toAgentConfig(agentFile, undefined, undefined, undefined, {
-        mode: "safeguard",
-      });
-
-      expect(config.compaction?.mode).toBe("safeguard");
-    });
-
-    it("agent compaction overrides default compaction", () => {
-      const agentFile = {
-        id: "test",
-        compaction: { mode: "off" },
-      };
-      const config = toAgentConfig(agentFile, undefined, undefined, undefined, {
-        mode: "safeguard",
-      });
-
-      expect(config.compaction?.mode).toBe("off");
-    });
-
-    it("omits compaction when neither agent nor default has it", () => {
-      const agentFile = { id: "test" };
-      const config = toAgentConfig(agentFile);
-
-      expect(config.compaction).toBeUndefined();
-    });
-
-    it("inherits compaction from agentDefaults", () => {
-      const agentFile = { id: "test" };
-      const defaults = { compaction: { mode: "aggressive" } };
-
-      const config = toAgentConfig(agentFile, defaults);
-
-      expect(config.compaction?.mode).toBe("aggressive");
-    });
-
     it("inherits tools from agentDefaults", () => {
       const agentFile = { id: "test" };
       const defaults = { tools: { allow: ["read"] } };
@@ -406,45 +358,6 @@ agents:
         { deny: ["shell"] },
       );
       expect(result.deny).toEqual(["shell"]);
-    });
-  });
-
-  describe("resolveCompactionConfigFromFile", () => {
-    it("returns undefined when neither agent nor default config provided", () => {
-      expect(resolveCompactionConfigFromFile()).toBeUndefined();
-    });
-
-    it("returns config with defaults for safeguard mode", () => {
-      const config = resolveCompactionConfigFromFile({ mode: "safeguard" });
-
-      expect(config).toBeDefined();
-      expect(config!.mode).toBe("safeguard");
-    });
-
-    it("agent config overrides default config", () => {
-      const config = resolveCompactionConfigFromFile(
-        { mode: "off" },
-        { mode: "safeguard" },
-      );
-
-      expect(config!.mode).toBe("off");
-    });
-
-    it("merges agent and default config fields", () => {
-      const config = resolveCompactionConfigFromFile(
-        { contextWindow: 200_000 },
-        { mode: "aggressive", threshold: 0.5 },
-      );
-
-      expect(config!.mode).toBe("aggressive");
-      expect(config!.contextWindow).toBe(200_000);
-      expect(config!.threshold).toBe(0.5);
-    });
-
-    it("throws on invalid mode", () => {
-      expect(() =>
-        resolveCompactionConfigFromFile({ mode: "invalid" }),
-      ).toThrow('Invalid compaction mode "invalid"');
     });
   });
 

@@ -20,23 +20,11 @@ export interface AgentConfig {
   workspace?: string;
   toolSettings?: AgentToolSettings;
   model?: string;
-  compaction?: CompactionConfig;
   sandbox?: SandboxConfig;
   /** Default false. */
   spawnable?: boolean;
   /** Default "parent-reuse". */
   sessionPolicy?: "always-new" | "parent-reuse";
-}
-
-export type CompactionMode = 'off' | 'safeguard' | 'aggressive';
-
-export interface CompactionConfig {
-  mode: CompactionMode;
-  contextWindow?: number;
-  threshold?: number;
-  preserveRecent?: number;
-  /** Absolute token reserve before compaction triggers. Overrides threshold if set. */
-  reserveTokens?: number;
 }
 
 /** "always-new": fresh session per send_message call.

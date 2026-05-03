@@ -7,8 +7,6 @@ import YAML from "yaml";
 import type { ProviderType } from "./agent/types.js";
 import type {
   AgentConfig,
-  CompactionConfig,
-  CompactionMode,
 } from "./agent/types.js";
 import type { AgentToolSettings } from "./tools/types.js";
 import type {
@@ -81,7 +79,6 @@ export interface AgentConfigFile {
   workspace?: string;
   tools?: AgentToolsConfigFile;
   model?: string;
-  compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
   heartbeat?: HeartbeatConfigFile;
   cron?: { tasks: CronTaskConfigFile[] };
@@ -98,14 +95,6 @@ export interface AgentToolsConfigFile {
   allow?: string[];
   /** Tool names to explicitly deny (takes precedence over allow) */
   deny?: string[];
-}
-
-/** Compaction configuration in config file */
-export interface CompactionConfigFile {
-  mode?: string;
-  contextWindow?: number;
-  threshold?: number;
-  preserveRecent?: number;
 }
 
 /** Sandbox Docker configuration in config file */
@@ -187,7 +176,6 @@ export interface CronJobConfigFile {
 /** Agent defaults — shared configuration inherited by all agents unless overridden */
 export interface AgentDefaultsConfigFile {
   tools?: AgentToolsConfigFile;
-  compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
 }
 
@@ -197,8 +185,6 @@ export interface IsotopesConfigFileRaw {
   provider?: ProviderConfigFile;
   /** Default tool policy/guards for all agents */
   tools?: AgentToolsConfigFile;
-  /** Default compaction config for all agents */
-  compaction?: CompactionConfigFile;
   /** Default sandbox config for all agents */
   sandbox?: SandboxConfigFile;
   /** Session management (TTL, cleanup) */
@@ -229,37 +215,6 @@ export function resolveToolSettings(
     // allow/deny: agent-level overrides defaults entirely (not merged)
     allow: agentTools?.allow ?? defaultTools?.allow,
     deny: agentTools?.deny ?? defaultTools?.deny,
-  };
-}
-
-const VALID_COMPACTION_MODES = new Set<string>(["off", "safeguard", "aggressive"]);
-
-/**
- * Resolve compaction config, merging agent-level overrides with defaults.
- * Returns undefined if compaction is not configured at all.
- */
-export function resolveCompactionConfigFromFile(
-  agentCompaction?: CompactionConfigFile,
-  defaultCompaction?: CompactionConfigFile,
-): CompactionConfig | undefined {
-  // If neither agent nor default has compaction config, return undefined
-  if (!agentCompaction && !defaultCompaction) return undefined;
-
-  const rawMode = agentCompaction?.mode ?? defaultCompaction?.mode ?? "safeguard";
-
-  if (!VALID_COMPACTION_MODES.has(rawMode)) {
-    throw new Error(
-      `Invalid compaction mode "${rawMode}" (must be off, safeguard, or aggressive)`,
-    );
-  }
-
-  const mode = rawMode as CompactionMode;
-
-  return {
-    mode,
-    contextWindow: agentCompaction?.contextWindow ?? defaultCompaction?.contextWindow,
-    threshold: agentCompaction?.threshold ?? defaultCompaction?.threshold,
-    preserveRecent: agentCompaction?.preserveRecent ?? defaultCompaction?.preserveRecent,
   };
 }
 
@@ -419,13 +374,11 @@ export function toAgentConfig(
   agentDefaults?: AgentDefaultsConfigFile,
   globalProvider?: ProviderConfigFile,
   globalTools?: AgentToolsConfigFile,
-  globalCompaction?: CompactionConfigFile,
   globalSandbox?: SandboxConfigFile,
 ): AgentConfig {
   // 3-tier merge: agent > defaults > global (shallow replace per block)
   const tools = agent.tools ?? agentDefaults?.tools ?? globalTools;
   const resolvedToolSettings = resolveToolSettings(tools);
-  const agentCompaction = agent.compaction ?? agentDefaults?.compaction ?? globalCompaction;
   // Sandbox: agents-level (defaults > global) is the base; per-agent overlays
   // partial overrides (typically just `mode: "off"`). The merge happens inside
   // resolveSandboxConfigFromFile so per-agent need not repeat docker config.
@@ -434,7 +387,6 @@ export function toAgentConfig(
   // Model: per-agent override > global defaultModel
   const model = agent.model ?? globalProvider?.defaultModel;
 
-  const compaction = resolveCompactionConfigFromFile(agentCompaction);
   const sandbox =
     agent.sandbox || baseSandbox
       ? resolveSandboxConfigFromFile(agent.id, agent.sandbox, baseSandbox)
@@ -446,7 +398,6 @@ export function toAgentConfig(
     ...(agent.workspace ? { workspace: agent.workspace } : {}),
     toolSettings: resolvedToolSettings,
     ...(model ? { model } : {}),
-    compaction,
     sandbox,
     spawnable: agent.spawnable,
     sessionPolicy: agent.sessionPolicy,
