@@ -224,7 +224,7 @@ export class AgentRuntime {
     return Array.from(this.entries.keys());
   }
 
-  /** Names advertised to other agents in send_message. */
+  /** Names advertised to other agents in call_agent. */
   spawnableRunnerNames(): string[] {
     const out: string[] = [];
     for (const [name, entry] of this.entries) {
@@ -341,17 +341,17 @@ export class AgentRuntime {
     const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
     const fsImpl = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : nodeFs;
 
-    // send_message spawns host-side child runners that bypass docker.
-    const sendMessageEnabled = !isSandboxed;
+    // call_agent spawns host-side child runners that bypass docker.
+    const callAgentEnabled = !isSandboxed;
     if (isSandboxed) {
-      log.warn(`send_message tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
+      log.warn(`call_agent tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
     }
 
     const processRegistry = new ProcessRegistry();
     const tools: AgentTool[] = createAgentTools({
       workspacePath,
       settings: agentConfig.toolSettings,
-      sendMessageEnabled,
+      callAgentEnabled,
       fsImpl,
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,

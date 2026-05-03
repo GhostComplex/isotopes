@@ -39,7 +39,7 @@ export interface CompactionConfig {
   reserveTokens?: number;
 }
 
-/** "always-new": fresh session per send_message call.
+/** "always-new": fresh session per call_agent call.
  *  "parent-reuse": same `(caller, parentSessionId)` reuses one target
  *  session across calls; falls back to fresh when no parentSessionId. */
 export type AgentSessionPolicy = "always-new" | "parent-reuse";

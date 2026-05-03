@@ -23,7 +23,7 @@ import { shouldRespondToMessage } from "../../../gateway/mention.js";
 import { loggers } from "../../../logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import { runAgent } from "../../../agent/runtime-adapter.js";
-import { runWithDiscordSubagentStream, type DiscordSubagentStreamContext } from "./subagent-stream-context.js";
+import { runWithDiscordA2AStream, type DiscordA2AStreamContext } from "./a2a-stream-context.js";
 import { isSilentReply } from "../../core/silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
@@ -206,9 +206,9 @@ export class DiscordTransport implements Transport {
   private debouncer: InboundDebouncer;
   private commandHandler: SlashCommandHandler;
 
-  // Maps a Discord thread id (created for a sub-run via send_message) to
+  // Maps a Discord thread id (created for a sub-run via call_agent) to
   // the runtime's runId. Used so /stop in that thread cancels the right run.
-  private subagentThreads = new Map<string, string>();
+  private a2aThreads = new Map<string, string>();
 
   // Buffer messages that arrive while a session is prompting
   private pendingMessages = new Map<string, Array<{ content: string; sender: string; timestamp: number }>>();
@@ -382,7 +382,7 @@ export class DiscordTransport implements Transport {
       // 3.6a. /stop in a known sub-run thread → cancel that specific runId.
       // No @mention required: posting in the thread itself scopes the intent.
       if (isThread) {
-        const subRunId = this.subagentThreads.get(msg.channelId);
+        const subRunId = this.a2aThreads.get(msg.channelId);
         if (subRunId && this.config.agentRuntime) {
           const cancelled = this.config.agentRuntime.cancel(subRunId, { reason: "user" });
           if (cancelled) {
@@ -790,17 +790,17 @@ export class DiscordTransport implements Transport {
         });
       };
 
-      // Wrap the run in a Discord subagent stream context so any nested
-      // send_message tool call streams its sub-run to a dedicated thread,
+      // Wrap the run in a Discord a2a stream context so any nested
+      // call_agent tool call streams its sub-run to a dedicated thread,
       // and the (threadId → runId) mapping flows back here for /stop routing.
-      const streamCtx: DiscordSubagentStreamContext = {
+      const streamCtx: DiscordA2AStreamContext = {
         parentChannelId: channel.id,
         showToolCalls: this.config.showToolCalls ?? true,
-        registerSubagentThread: (threadId, runId) => {
-          this.subagentThreads.set(threadId, runId);
+        registerA2AThread: (threadId, runId) => {
+          this.a2aThreads.set(threadId, runId);
         },
-        unregisterSubagentThread: (threadId) => {
-          this.subagentThreads.delete(threadId);
+        unregisterA2AThread: (threadId) => {
+          this.a2aThreads.delete(threadId);
         },
         sendMessage: async (channelId, content) => {
           const target = await this.client.channels.fetch(channelId);
@@ -820,7 +820,7 @@ export class DiscordTransport implements Transport {
         },
       };
 
-      const { responseText, errorMessage } = await runWithDiscordSubagentStream(streamCtx, runLoop);
+      const { responseText, errorMessage } = await runWithDiscordA2AStream(streamCtx, runLoop);
 
       // Check for silent reply tokens — suppress outbound delivery
       if (isSilentReply(responseText)) {
