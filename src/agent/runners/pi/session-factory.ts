@@ -14,6 +14,7 @@ import type { ProviderConfig, RegisteredAgent } from "../../types.js";
 import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../../workspace.js";
+import { resolveAgentWorkspacePath } from "../../../paths.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -89,7 +90,7 @@ export async function createPiSession(
   });
 
   const { session } = await createAgentSession({
-    cwd: cwd ?? process.cwd(),
+    cwd: cwd ?? resolveAgentWorkspacePath(agent.config),
     agentDir: path.join(ISOTOPES_HOME, "agents", agent.id, "agent"),
     authStorage: deps.authStorage,
     modelRegistry: deps.modelRegistry,
