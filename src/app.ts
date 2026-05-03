@@ -70,7 +70,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   let sandboxExecutor: SandboxExecutor | undefined;
   const baseSandboxFile = config.agentDefaults?.sandbox ?? config.sandbox;
   const resolvedAgentConfigs = config.agents.map((a) =>
-    toAgentConfig(a, config.agentDefaults, config.provider, config.tools, config.compaction, config.sandbox),
+    toAgentConfig(a, config.agentDefaults, config.provider, config.tools, config.sandbox),
   );
   const anySandboxed = resolvedAgentConfigs.some((c) => c.sandbox && c.sandbox.mode !== "off");
   if (anySandboxed) {
@@ -103,7 +103,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       agentDefaults: config.agentDefaults,
       provider: config.provider,
       globalTools: config.tools,
-      compaction: config.compaction,
       sandbox: config.sandbox,
       sandboxExecutor,
       transportContext: transportCtx,

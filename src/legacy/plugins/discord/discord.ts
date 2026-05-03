@@ -24,7 +24,7 @@ import { loggers } from "../../../logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import { runAgent } from "../../../agent/runtime-adapter.js";
 import { runWithDiscordA2AStream, type DiscordA2AStreamContext } from "./a2a-stream-context.js";
-import { isSilentReply } from "../../core/silent-reply.js";
+import { isSilentReplyPayloadText } from "../../../silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
 import { buildSessionKey } from "../../../gateway/session-keys.js";
@@ -823,7 +823,7 @@ export class DiscordTransport implements Transport {
       const { responseText, errorMessage } = await runWithDiscordA2AStream(streamCtx, runLoop);
 
       // Check for silent reply tokens — suppress outbound delivery
-      if (isSilentReply(responseText)) {
+      if (isSilentReplyPayloadText(responseText)) {
         log.info(`Silent reply detected (${responseText.trim()}), suppressing Discord send`);
         typing.stop();
         return;

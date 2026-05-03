@@ -24,7 +24,6 @@ import {
   toAgentConfig,
   type AgentConfigFile,
   type AgentDefaultsConfigFile,
-  type CompactionConfigFile,
   type SandboxConfigFile,
   type AgentToolsConfigFile,
   type ProviderConfigFile,
@@ -78,7 +77,6 @@ export interface AddAgentOptions {
   agentDefaults?: AgentDefaultsConfigFile;
   provider?: ProviderConfigFile;
   globalTools?: AgentToolsConfigFile;
-  compaction?: CompactionConfigFile;
   sandbox?: SandboxConfigFile;
   sandboxExecutor?: SandboxExecutor;
   transportContext?: LazyTransportContext;
@@ -291,8 +289,8 @@ export class AgentRuntime {
 
   /** Single registration entry point. Branches on agent.runner. */
   async register(opts: AddAgentOptions): Promise<AddAgentResult> {
-    const { agentFile, agentDefaults, provider, globalTools, compaction, sandbox } = opts;
-    const agentConfig = toAgentConfig(agentFile, agentDefaults, provider, globalTools, compaction, sandbox);
+    const { agentFile, agentDefaults, provider, globalTools, sandbox } = opts;
+    const agentConfig = toAgentConfig(agentFile, agentDefaults, provider, globalTools, sandbox);
     return agentConfig.runner === "claude"
       ? this.registerClaude(agentConfig)
       : this.registerPi(agentConfig, opts);
