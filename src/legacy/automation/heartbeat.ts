@@ -5,7 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createLogger, type Logger } from "../../logging/logger.js";
-import { isSilentReply } from "../../silent-reply.js";
+import { isSilentReplyPayloadText } from "../../silent-reply.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -134,7 +134,7 @@ export class HeartbeatManager {
     try {
       const response = await this.runAgentLoop(this.agentId, prompt, sessionKey);
 
-      if (isSilentReply(response)) {
+      if (isSilentReplyPayloadText(response)) {
         this.log.debug(`Heartbeat silent reply from "${this.agentId}"`);
       } else {
         this.log.info(`Heartbeat response from "${this.agentId}": ${response}`);
