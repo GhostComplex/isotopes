@@ -2,11 +2,11 @@
 // callers (REST/Discord/heartbeat/cron). Also wires hooks, usage tracker,
 // runtime per-session event emission, and mid-turn steer-from-pending-buffer.
 
-import type { AgentRuntime } from "../../agent/runtime.js";
-import { userMessage, assistantMessage, getAgentEndMeta } from "../../agent/runners/pi/messages.js";
-import type { Logger } from "../../logging/logger.js";
-import type { HookRegistry } from "../plugins/hooks.js";
-import { runWithMessageContext } from "../transport/context.js";
+import type { AgentRuntime } from "./runtime.js";
+import { userMessage, assistantMessage, getAgentEndMeta } from "./runners/pi/messages.js";
+import type { Logger } from "../logging/logger.js";
+import type { HookRegistry } from "../legacy/plugins/hooks.js";
+import { runWithMessageContext } from "../legacy/transport/context.js";
 
 export interface ConsumeRootRunOptions {
   /** Registered agent id to address. */

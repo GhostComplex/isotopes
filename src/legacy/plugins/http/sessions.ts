@@ -11,7 +11,7 @@ import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
 import { createLogger } from "../../../logging/logger.js";
 import { randomUUID } from "node:crypto";
-import { consumeRootRun, cancelRunBySessionId } from "../../core/agent-run.js";
+import { consumeRootRun, cancelRunBySessionId } from "../../../agent/run-adapter.js";
 import { userMessage } from "../../../agent/runners/pi/messages.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
 import type { DefaultSessionStore } from "../../core/session-store.js";

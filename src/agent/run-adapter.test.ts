@@ -1,10 +1,10 @@
 // Direct unit coverage for consumeRootRun + cancelRunBySessionId.
 
 import { describe, it, expect, vi } from "vitest";
-import { consumeRootRun, cancelRunBySessionId } from "./agent-run.js";
-import { AgentRuntime, type Runner } from "../../agent/runtime.js";
+import { consumeRootRun, cancelRunBySessionId } from "./run-adapter.js";
+import { AgentRuntime, type Runner } from "./runtime.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { createLogger } from "../../logging/logger.js";
+import { createLogger } from "../logging/logger.js";
 
 const log = createLogger("test:agent-run");
 
@@ -36,7 +36,7 @@ function buildAgentEnd(text: string, stopReason = "end", errorMessage?: string):
 }
 
 function stubRunner(
-  gen: (opts: { request: import("../../agent/types.js").RunRequest; abort: AbortSignal }) => AsyncGenerator<AgentEvent>,
+  gen: (opts: { request: import("./types.js").RunRequest; abort: AbortSignal }) => AsyncGenerator<AgentEvent>,
 ): Runner {
   return {
     resolveSessionId: (req) => req.sessionId ?? "stub-session",

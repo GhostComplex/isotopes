@@ -21,7 +21,7 @@ import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
 import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
 import { AgentRuntime } from "./agent/runtime.js";
-import { consumeRootRun } from "./legacy/core/agent-run.js";
+import { consumeRootRun } from "./agent/run-adapter.js";
 
 const log = createLogger("runtime");
 
