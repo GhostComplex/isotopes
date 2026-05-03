@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -17,7 +17,7 @@ describe("DefaultSessionStore", () => {
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-test-"));
-    store = new DefaultSessionStore({ dataDir: tempDir });
+    store = new DefaultSessionStore(tempDir);
     await store.init();
   });
 
@@ -102,7 +102,7 @@ describe("DefaultSessionStore", () => {
       const created = await store.create("agent-1");
 
       // Create a new store instance (simulates restart)
-      const newStore = new DefaultSessionStore({ dataDir: tempDir });
+      const newStore = new DefaultSessionStore(tempDir);
       await newStore.init();
 
       const loaded = await newStore.get(created.id);
@@ -135,7 +135,7 @@ describe("DefaultSessionStore", () => {
       });
 
       // Create a new store instance (simulates restart)
-      const newStore = new DefaultSessionStore({ dataDir: tempDir });
+      const newStore = new DefaultSessionStore(tempDir);
       await newStore.init();
 
       const found = await newStore.findByKey("discord:bot1:channel:456:agent-1");
@@ -183,7 +183,7 @@ describe("DefaultSessionStore", () => {
       await store.addMessage(session.id, assistantMessage("Response"));
 
       // New store instance
-      const newStore = new DefaultSessionStore({ dataDir: tempDir });
+      const newStore = new DefaultSessionStore(tempDir);
       await newStore.init();
 
       const messages = await newStore.getMessages(session.id);
@@ -256,178 +256,6 @@ describe("DefaultSessionStore", () => {
   });
 
   // -------------------------------------------------------------------------
-  // TTL & cleanup
-  // -------------------------------------------------------------------------
-
-  describe("getSessionAge", () => {
-    it("returns age in seconds for an existing session", async () => {
-      const session = await store.create("agent-1");
-
-      // Freshly created session should be ~0 seconds old
-      const age = store.getSessionAge(session.id);
-      expect(age).toBeDefined();
-      expect(age!).toBeLessThan(2);
-    });
-
-    it("returns undefined for a non-existent session", () => {
-      const age = store.getSessionAge("non-existent");
-      expect(age).toBeUndefined();
-    });
-  });
-
-  describe("cleanupExpiredSessions", () => {
-    it("deletes sessions older than TTL", async () => {
-      // Create a store with a very short TTL (1 second)
-      const shortTtlStore = new DefaultSessionStore({
-        dataDir: tempDir,
-        session: { ttl: 1 },
-      });
-      await shortTtlStore.init();
-
-      const session = await shortTtlStore.create("agent-1");
-
-      // Manually backdate the session's lastActiveAt by 2 seconds
-      // We access the private map through a cast to do this in testing
-      const sessions = (shortTtlStore as unknown as { sessions: Map<string, { lastActiveAt: Date }> }).sessions;
-      const stored = sessions.get(session.id)!;
-      stored.lastActiveAt = new Date(Date.now() - 2_000);
-
-      const deleted = await shortTtlStore.cleanupExpiredSessions();
-
-      expect(deleted).toContain(session.id);
-      expect(await shortTtlStore.get(session.id)).toBeUndefined();
-    });
-
-    it("keeps sessions that are within TTL", async () => {
-      const session = await store.create("agent-1");
-
-      // Default TTL is 24h, session is fresh — should not be cleaned up
-      const deleted = await store.cleanupExpiredSessions();
-
-      expect(deleted).not.toContain(session.id);
-      expect(await store.get(session.id)).toBeDefined();
-    });
-
-    it("removes transcript files for expired sessions", async () => {
-      const shortTtlStore = new DefaultSessionStore({
-        dataDir: tempDir,
-        session: { ttl: 1 },
-      });
-      await shortTtlStore.init();
-
-      const session = await shortTtlStore.create("agent-1");
-      await shortTtlStore.addMessage(session.id, userMessage("test message"));
-      await shortTtlStore.addMessage(session.id, assistantMessage("response"));
-
-      const transcriptFile = path.join(tempDir, `${session.id}.jsonl`);
-      // Verify transcript exists
-      await expect(fs.access(transcriptFile)).resolves.not.toThrow();
-
-      // Backdate and cleanup
-      const sessions = (shortTtlStore as unknown as { sessions: Map<string, { lastActiveAt: Date }> }).sessions;
-      sessions.get(session.id)!.lastActiveAt = new Date(Date.now() - 2_000);
-
-      await shortTtlStore.cleanupExpiredSessions();
-
-      // Transcript file should be gone
-      await expect(fs.access(transcriptFile)).rejects.toThrow();
-    });
-
-    it("cleans up key index for expired sessions", async () => {
-      const shortTtlStore = new DefaultSessionStore({
-        dataDir: tempDir,
-        session: { ttl: 1 },
-      });
-      await shortTtlStore.init();
-
-      const session = await shortTtlStore.create("agent-1", {
-        key: "cleanup-key",
-        transport: "discord",
-      });
-
-      // Backdate
-      const sessions = (shortTtlStore as unknown as { sessions: Map<string, { lastActiveAt: Date }> }).sessions;
-      sessions.get(session.id)!.lastActiveAt = new Date(Date.now() - 2_000);
-
-      await shortTtlStore.cleanupExpiredSessions();
-
-      expect(await shortTtlStore.findByKey("cleanup-key")).toBeUndefined();
-    });
-  });
-
-  describe("startCleanupTimer / stopCleanupTimer", () => {
-    it("runs periodic cleanup", async () => {
-      vi.useFakeTimers();
-
-      const shortStore = new DefaultSessionStore({
-        dataDir: tempDir,
-        session: { ttl: 1, cleanupInterval: 1 },
-      });
-      await shortStore.init();
-
-      const session = await shortStore.create("agent-1");
-
-      // Backdate the session
-      const sessions = (shortStore as unknown as { sessions: Map<string, { lastActiveAt: Date }> }).sessions;
-      sessions.get(session.id)!.lastActiveAt = new Date(Date.now() - 2_000);
-
-      shortStore.startCleanupTimer();
-
-      // Advance timer to trigger cleanup
-      await vi.advanceTimersByTimeAsync(1_000);
-
-      expect(await shortStore.get(session.id)).toBeUndefined();
-
-      shortStore.destroy();
-      vi.useRealTimers();
-    });
-
-    it("stopCleanupTimer prevents further cleanup", async () => {
-      vi.useFakeTimers();
-
-      const shortStore = new DefaultSessionStore({
-        dataDir: tempDir,
-        session: { ttl: 1, cleanupInterval: 1 },
-      });
-      await shortStore.init();
-
-      shortStore.startCleanupTimer();
-      shortStore.stopCleanupTimer();
-
-      const session = await shortStore.create("agent-1");
-
-      // Backdate the session
-      const sessions = (shortStore as unknown as { sessions: Map<string, { lastActiveAt: Date }> }).sessions;
-      sessions.get(session.id)!.lastActiveAt = new Date(Date.now() - 2_000);
-
-      // Advance timer — cleanup should NOT run because we stopped it
-      await vi.advanceTimersByTimeAsync(2_000);
-
-      // Session should still exist
-      expect(await shortStore.get(session.id)).toBeDefined();
-
-      shortStore.destroy();
-      vi.useRealTimers();
-    });
-  });
-
-  describe("destroy", () => {
-    it("stops cleanup timer", () => {
-      vi.useFakeTimers();
-
-      const timedStore = new DefaultSessionStore({
-        dataDir: tempDir,
-        session: { ttl: 1, cleanupInterval: 1 },
-      });
-      timedStore.startCleanupTimer();
-      timedStore.destroy();
-
-      // Should not throw or leak timers
-      vi.useRealTimers();
-    });
-  });
-
-  // -------------------------------------------------------------------------
   // clearMessages
   // -------------------------------------------------------------------------
 
@@ -477,134 +305,6 @@ describe("DefaultSessionStore", () => {
 
       const afterTimestamp = (await store.get(session.id))!.lastActiveAt.getTime();
       expect(afterTimestamp).toBeGreaterThan(beforeTimestamp);
-    });
-  });
-
-  describe("setMessages", () => {
-    it("replaces in-memory messages", async () => {
-      const session = await store.create("agent-1");
-      await store.addMessage(session.id, userMessage("old1"));
-      await store.addMessage(session.id, assistantMessage("old2"));
-
-      const newMessages = [
-        userMessage("new1"),
-        assistantMessage("new2"),
-        userMessage("new3"),
-      ];
-
-      await store.setMessages(session.id, newMessages);
-
-      const messages = await store.getMessages(session.id);
-      expect(messages).toHaveLength(3);
-      expect(messageText(messages[0])).toBe("new1");
-      expect(messageText(messages[1])).toBe("new2");
-      expect(messageText(messages[2])).toBe("new3");
-    });
-
-    it("overwrites transcript file on disk", async () => {
-      const session = await store.create("agent-1");
-      await store.addMessage(session.id, userMessage("old1"));
-      await store.addMessage(session.id, assistantMessage("old2"));
-
-      // Verify old messages are persisted
-      const beforeMessages = await store.getMessages(session.id);
-      expect(beforeMessages).toHaveLength(2);
-
-      const newMessages = [
-        userMessage("new1"),
-      ];
-
-      await store.setMessages(session.id, newMessages);
-
-      // Verify messages are overwritten
-      const afterMessages = await store.getMessages(session.id);
-      expect(afterMessages).toHaveLength(1);
-      expect(messageText(afterMessages[0])).toBe("new1");
-    });
-
-    it("persists after store restart", async () => {
-      const session = await store.create("agent-1");
-      await store.addMessage(session.id, userMessage("old"));
-
-      const newMessages = [
-        userMessage("compacted1"),
-        assistantMessage("compacted2"),
-      ];
-
-      await store.setMessages(session.id, newMessages);
-
-      // Create new store instance
-      const newStore = new DefaultSessionStore({ dataDir: tempDir });
-      await newStore.init();
-
-      const messages = await newStore.getMessages(session.id);
-      expect(messages).toHaveLength(2);
-      expect(messageText(messages[0])).toBe("compacted1");
-      expect(messageText(messages[1])).toBe("compacted2");
-    });
-
-    it("throws on non-existent session", async () => {
-      await expect(
-        store.setMessages("non-existent", [userMessage("test")]),
-      ).rejects.toThrow('Session "non-existent" not found');
-    });
-
-    it("updates lastActiveAt", async () => {
-      const session = await store.create("agent-1");
-
-      // Wait a tiny bit to ensure time difference
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      const beforeTimestamp = (await store.get(session.id))!.lastActiveAt.getTime();
-
-      await store.setMessages(session.id, [userMessage("test")]);
-
-      const afterTimestamp = (await store.get(session.id))!.lastActiveAt.getTime();
-      expect(afterTimestamp).toBeGreaterThan(beforeTimestamp);
-    });
-
-    it("handles empty message array", async () => {
-      const session = await store.create("agent-1");
-      await store.addMessage(session.id, userMessage("old"));
-
-      await store.setMessages(session.id, []);
-
-      const messages = await store.getMessages(session.id);
-      expect(messages).toHaveLength(0);
-    });
-  });
-
-  describe("setMetadata", () => {
-    it("merges patch into existing metadata and persists to index", async () => {
-      const session = await store.create("dev", {
-        transport: "discord",
-        channelId: "c-1",
-      });
-
-      await store.setMetadata(session.id, {
-        transport: "discord",
-        channelId: "c-1",
-        channelName: "general",
-        threadId: "t-7",
-      });
-
-      const got = await store.get(session.id);
-      expect(got?.metadata?.channelName).toBe("general");
-      expect(got?.metadata?.threadId).toBe("t-7");
-
-      // Reopen the store to confirm the patch survived persistence.
-      const reopened = new DefaultSessionStore({ dataDir: tempDir });
-      await reopened.init();
-      const reloaded = await reopened.get(session.id);
-      expect(reloaded?.metadata?.channelName).toBe("general");
-      expect(reloaded?.metadata?.threadId).toBe("t-7");
-      reopened.destroy();
-    });
-
-    it("throws on unknown sessionId", async () => {
-      await expect(store.setMetadata("nope", { transport: "discord" })).rejects.toThrow(
-        /not found/,
-      );
     });
   });
 
