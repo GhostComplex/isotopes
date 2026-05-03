@@ -21,8 +21,6 @@ export interface SessionMetadata {
   channelName?: string;
   guildName?: string;
   threadId?: string;
-  /** Reserved — currently unused; previously gated TTL cleanup. */
-  persistent?: boolean;
 }
 
 /** Persistent store for sessions and their message histories. */
