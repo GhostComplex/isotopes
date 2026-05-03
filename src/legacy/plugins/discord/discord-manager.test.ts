@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransportManager } from "./discord-manager.js";
-import { createMockSessionStore } from "../../core/test-helpers.js";
+import { createMockSessionStore } from "../../../test-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mock discord.js (same pattern as discord.test.ts)

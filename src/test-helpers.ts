@@ -1,7 +1,7 @@
-// src/core/test-helpers.ts — Shared test mocks for transport tests
+// src/test-helpers.ts — Shared test mocks for transport tests
 
 import { vi } from "vitest";
-import type { SessionStore } from "../../sessions/types.js";
+import type { SessionStore } from "./sessions/types.js";
 
 export function createMockSession() {
   let subscriber: ((event: Record<string, unknown>) => void) | null = null;
