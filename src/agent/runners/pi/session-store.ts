@@ -1,7 +1,3 @@
-// Pi-SDK-backed session persistence. Each session = one SessionManager (one JSONL file);
-// multi-session indexing/metadata kept locally in sessions.json.
-// SessionStoreManager memoizes one DefaultSessionStore per agentId.
-
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -398,37 +394,25 @@ export class DefaultSessionStore implements SessionStore {
 }
 
 // ---------------------------------------------------------------------------
-// SessionStoreManager — one DefaultSessionStore per agentId at
-// ~/.isotopes/agents/<id>/sessions/.
+// SessionStoreManager — one DefaultSessionStore per agentId.
 // ---------------------------------------------------------------------------
 
 const mgrLog = createLogger("session-store-manager");
 
 export interface SessionStoreManagerOptions {
-  /** Per-store session config (TTL, cleanup interval). */
   session?: SessionConfig;
-  /** Per-store maxSessions cap (defaults to DefaultSessionStore default). */
   maxSessions?: number;
-  /** Per-store maxTotalSizeMB cap (defaults to DefaultSessionStore default). */
   maxTotalSizeMB?: number;
-  /** Hook registry for lifecycle events. */
   hooks?: HookRegistry;
 }
 
-/**
- * Lazily creates and memoizes one DefaultSessionStore per normalized agentId.
- * Stores are not init()'d until requested.
- */
 export class SessionStoreManager {
   private stores = new Map<string, DefaultSessionStore>();
   private inits = new Map<string, Promise<DefaultSessionStore>>();
 
   constructor(private readonly opts: SessionStoreManagerOptions = {}) {}
 
-  /**
-   * Get or create the store for an agentId. Returns a fully init()'d store.
-   * Concurrent calls for the same agentId share one initialization.
-   */
+  /** Concurrent calls for the same agentId share one initialization. */
   async getOrCreate(agentId: string): Promise<DefaultSessionStore> {
     const key = normalizeAgentId(agentId);
 
@@ -460,21 +444,15 @@ export class SessionStoreManager {
     return init;
   }
 
-  /**
-   * Synchronous lookup — returns the store if it has already been created,
-   * otherwise undefined. Use this in hot paths that already know the store
-   * exists; otherwise prefer getOrCreate().
-   */
+  /** Sync; returns undefined if the store has not been created yet. */
   peek(agentId: string): DefaultSessionStore | undefined {
     return this.stores.get(normalizeAgentId(agentId));
   }
 
-  /** Snapshot of all currently-initialized stores keyed by normalizedId. */
   all(): Map<string, DefaultSessionStore> {
     return new Map(this.stores);
   }
 
-  /** Tear down every initialized store. Safe to call multiple times. */
   destroyAll(): void {
     for (const [key, store] of this.stores) {
       if (this.opts.hooks) {
@@ -486,7 +464,6 @@ export class SessionStoreManager {
     this.inits.clear();
   }
 
-  /** Convenience: directory path the store for `agentId` would use. */
   static dirFor(agentId: string): string {
     return getAgentSessionsDir(agentId);
   }
