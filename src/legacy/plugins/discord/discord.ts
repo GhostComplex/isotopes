@@ -792,7 +792,7 @@ export class DiscordTransport implements Transport {
 
       // Wrap the run in a Discord a2a stream context so any nested
       // call_agent tool call streams its sub-run to a dedicated thread,
-      // and the (threadId → runId) mapping flows back here for /stop routing.
+      // and the (threadId → sessionId) mapping flows back here for /stop routing.
       const streamCtx: DiscordA2AStreamContext = {
         parentChannelId: channel.id,
         showToolCalls: this.config.showToolCalls ?? true,

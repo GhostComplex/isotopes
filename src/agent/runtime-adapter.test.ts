@@ -80,7 +80,7 @@ describe("runAgent", () => {
     expect(result.errorMessage).toBe("boom");
   });
 
-  it("captures runId via onRunStart (not by scanning listRuns)", async () => {
+  it("does not scan listRuns to track the run", async () => {
     const rt = new AgentRuntime();
     rt.registerRunner("main", stubRunner(async function* () { yield buildAgentEnd("ok"); }));
     let scanCount = 0;
@@ -94,7 +94,7 @@ describe("runAgent", () => {
       log,
     });
 
-    // Should not be calling listRuns to find the runId — onRunStart wired it.
+    // Adapter should not need listRuns lookup — sessionId is in scope.
     expect(scanCount).toBe(0);
   });
 
@@ -116,7 +116,7 @@ describe("runAgent", () => {
     expect(seen).toEqual(["message_update", "agent_end"]);
   });
 
-  it("calls onToolComplete on turn_end and forwards drained text via runtime.steer", async () => {
+  it("calls onTurnEnd on turn_end and forwards drained text via runtime.steer", async () => {
     const rt = new AgentRuntime();
     rt.registerRunner("main", stubRunner(async function* () {
       yield {
