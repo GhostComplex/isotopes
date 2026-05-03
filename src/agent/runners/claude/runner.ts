@@ -139,9 +139,6 @@ function translateSdkMessage(msg: SDKMessage, toolNameById: Map<string, string>)
   return out;
 }
 
-// SDK-internal fields (partial, usage, provider, model) are type-asserted
-// because runAgent + call_agent tool only read delta / messages.
-
 function buildAssistantMessage(text: string, extras: { stopReason?: string; errorMessage?: string } = {}): AgentMessage {
   return {
     role: "assistant",
