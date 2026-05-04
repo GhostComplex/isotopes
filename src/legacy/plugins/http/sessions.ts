@@ -63,8 +63,15 @@ async function resolveSessionKey(
   agentId: string,
   urlKey: string,
 ): Promise<{ sessionKey: string; sessionId: string; session: Session } | undefined> {
-  const sessionKey = `${agentId}:${urlKey}`;
-  const session = await store.findByKey(sessionKey);
+  // Direct lookup first — transports (e.g. Discord) store keys without an
+  // agentId prefix, so the URL-supplied key may already be the stored form.
+  let session = await store.findByKey(urlKey);
+  let sessionKey = urlKey;
+  if (!session) {
+    // HTTP-API-created sessions are stored under `${agentId}:${userKey}`.
+    sessionKey = `${agentId}:${urlKey}`;
+    session = await store.findByKey(sessionKey);
+  }
   if (!session) return undefined;
   return { sessionKey, sessionId: session.id, session };
 }
