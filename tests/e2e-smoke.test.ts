@@ -1,6 +1,6 @@
 // tests/e2e-smoke.test.ts — E2E smoke test for agent tools (#246)
 //
-// Verifies that core tools work when wired through createWorkspaceTools,
+// Verifies that core tools work when wired through createAgentTools,
 // mirroring agent-init setup. Also tests tool policy and NO_REPLY suppression.
 
 import fs from "node:fs/promises";
@@ -9,10 +9,10 @@ import os from "node:os";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import {
-  createWorkspaceTools,
+  createAgentTools,
   applyToolPolicy,
 } from "../src/legacy/core/tools.js";
-import { createExecTools } from "../src/legacy/tools/exec.js";
+import { createExecTools, ProcessRegistry } from "../src/legacy/tools/exec.js";
 import { createWebFetchTool } from "../src/legacy/tools/web.js";
 
 async function callTool(tool: AgentTool, args: unknown): Promise<string> {
@@ -51,7 +51,7 @@ describe("workspace context", () => {
 
 describe("read tool (SDK)", () => {
   it("reads a file from the workspace", async () => {
-    const tools = createWorkspaceTools({ workspacePath: tmpDir });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
     const result = await callTool(findTool(tools, "read"), { path: "hello.txt" });
     expect(result).toContain("Hello, world!");
   });
@@ -62,7 +62,7 @@ describe("edit tool (SDK)", () => {
     const editFile = path.join(tmpDir, "editable.txt");
     await fs.writeFile(editFile, "foo bar baz\n");
 
-    const tools = createWorkspaceTools({ workspacePath: tmpDir });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
     await callTool(findTool(tools, "edit"), {
       path: editFile,
       edits: [{ oldText: "bar", newText: "qux" }],
@@ -116,7 +116,7 @@ describe("NO_REPLY suppression", () => {
 
 describe("tool policy deny", () => {
   it("removes denied tools", () => {
-    const tools = createWorkspaceTools({ workspacePath: tmpDir });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
     const filtered = applyToolPolicy(tools, { deny: ["read"] });
     const names = filtered.map((t) => t.name);
     expect(names).not.toContain("read");
@@ -134,13 +134,13 @@ describe("tool policy deny", () => {
   });
 
   it("allow list restricts to only specified tools", () => {
-    const tools = createWorkspaceTools({ workspacePath: tmpDir });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
     const filtered = applyToolPolicy(tools, { allow: ["read", "edit"] });
     expect(filtered.map((t) => t.name).sort()).toEqual(["edit", "read"]);
   });
 
   it("deny takes precedence over allow", () => {
-    const tools = createWorkspaceTools({ workspacePath: tmpDir });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
     const filtered = applyToolPolicy(tools, {
       allow: ["read", "edit"],
       deny: ["edit"],
@@ -153,12 +153,12 @@ describe("tool policy deny", () => {
 
 describe("full tool wiring", () => {
   it("registers all core tools without conflict", async () => {
-    const workspaceTools = createWorkspaceTools({
+    const all = createAgentTools({
       workspacePath: tmpDir,
+      agentId: "test",
+      processRegistry: new ProcessRegistry(),
       settings: { web: true },
     });
-    const execTools = createExecTools({ cwd: tmpDir });
-    const all = [...workspaceTools, ...execTools];
     const names = new Set(all.map((t) => t.name));
 
     expect(names.has("read")).toBe(true);

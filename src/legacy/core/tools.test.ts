@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   createTimeTool,
-  createWorkspaceTools,
+  createAgentTools,
   applyToolPolicy,
 } from "./tools.js";
 import { createWebFetchTool } from "../tools/web.js";
+import { ProcessRegistry } from "../tools/exec.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content.find((c) => c.type === "text");
@@ -36,9 +37,15 @@ describe("createTimeTool", () => {
   });
 });
 
-describe("createWorkspaceTools", () => {
-  it("registers fs tools + time + find + grep by default", () => {
-    const tools = createWorkspaceTools({ workspacePath: "/tmp/ws" });
+describe("createAgentTools", () => {
+  const baseOpts = () => ({
+    workspacePath: "/tmp/ws",
+    agentId: "test",
+    processRegistry: new ProcessRegistry(),
+  });
+
+  it("registers fs tools + find/grep + time + exec by default", () => {
+    const tools = createAgentTools(baseOpts());
     const names = tools.map((t) => t.name);
     expect(names).toContain("read");
     expect(names).toContain("write");
@@ -47,13 +54,11 @@ describe("createWorkspaceTools", () => {
     expect(names).toContain("find");
     expect(names).toContain("grep");
     expect(names).toContain("get_current_time");
+    expect(names).toContain("exec");
   });
 
   it("adds web tools when settings.web is true", () => {
-    const tools = createWorkspaceTools({
-      workspacePath: "/tmp/ws",
-      settings: { web: true },
-    });
+    const tools = createAgentTools({ ...baseOpts(), settings: { web: true } });
     const names = tools.map((t) => t.name);
     expect(names).toContain("web_fetch");
     expect(names).toContain("web_search");

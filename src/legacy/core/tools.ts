@@ -260,64 +260,24 @@ export function applyToolPolicy(
 }
 
 // ---------------------------------------------------------------------------
-// Workspace tool set
 // ---------------------------------------------------------------------------
-
-export interface CreateWorkspaceToolsOptions {
-  workspacePath: string;
-  settings?: AgentToolSettings;
-  /** Register the `spawn_agent` tool. Requires `runtime` + `parentAgentId`. */
-  spawnAgentEnabled?: boolean;
-  /** Filesystem backend for FS tools. Defaults to host fs. */
-  fs?: FsBridge;
-  parentAgentId?: string;
-  /** Unified runtime — required when spawnAgentEnabled is true. */
-  runtime?: AgentRuntime;
-  /** Pre-computed list of registered agent ids the LLM can address. */
-  spawnableAgentIds?: string[];
-}
-
-export function createWorkspaceTools(options: CreateWorkspaceToolsOptions): AgentTool[] {
-  const {
-    workspacePath,
-    settings,
-    spawnAgentEnabled = false,
-    fs = new HostFs(),
-    parentAgentId,
-    runtime,
-    spawnableAgentIds,
-  } = options;
-
-  const tools: AgentTool[] = [
-    ...createFsTools(workspacePath, fs),
-    createFindTool(workspacePath) as AgentTool,
-    createGrepTool(workspacePath) as AgentTool,
-    createTimeTool(),
-  ];
-  if (spawnAgentEnabled && runtime && parentAgentId) {
-    tools.push(createSpawnAgentTool({
-      runtime,
-      parentAgentId,
-      workspacePath,
-      ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
-    }));
-  }
-  if (settings?.web) {
-    tools.push(createWebFetchTool());
-    tools.push(createWebSearchTool());
-  }
-  return tools;
-}
+// Agent tool set
+// ---------------------------------------------------------------------------
 
 export interface CreateAgentToolsOptions {
   workspacePath: string;
   agentId: string;
   settings?: AgentToolSettings;
   parentAgentId?: string;
+  /** Required for the spawn_agent tool. */
   runtime?: AgentRuntime;
+  /** Pre-computed list of registered agent ids the LLM can address. */
   spawnableAgentIds?: string[];
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
+  /** Sandbox infra. When `agentSandboxConfig` resolves to "sandboxed", FS and
+   *  exec route through docker; spawn_agent is also disabled (host child
+   *  runners can't be confined). */
   sandboxExecutor?: SandboxExecutor;
   agentSandboxConfig?: SandboxConfig;
   allowedWorkspaces?: string[];
@@ -334,19 +294,27 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
     log.warn(`spawn_agent tool disabled for ${opts.agentId}: sandbox is active and child runners cannot be confined.`);
   }
 
-  const tools: AgentTool[] = [];
-  tools.push(...applyToolPolicy(
-    createWorkspaceTools({
+  const workspaceTools: AgentTool[] = [
+    ...createFsTools(opts.workspacePath, fs),
+    createFindTool(opts.workspacePath) as AgentTool,
+    createGrepTool(opts.workspacePath) as AgentTool,
+    createTimeTool(),
+  ];
+  if (spawnAgentEnabled && opts.runtime && opts.parentAgentId) {
+    workspaceTools.push(createSpawnAgentTool({
+      runtime: opts.runtime,
+      parentAgentId: opts.parentAgentId,
       workspacePath: opts.workspacePath,
-      settings: opts.settings,
-      spawnAgentEnabled,
-      fs,
-      ...(opts.parentAgentId ? { parentAgentId: opts.parentAgentId } : {}),
-      ...(opts.runtime ? { runtime: opts.runtime } : {}),
       ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
-    }),
-    opts.settings,
-  ));
+    }));
+  }
+  if (opts.settings?.web) {
+    workspaceTools.push(createWebFetchTool());
+    workspaceTools.push(createWebSearchTool());
+  }
+
+  const tools: AgentTool[] = [];
+  tools.push(...applyToolPolicy(workspaceTools, opts.settings));
   if (opts.transportContext) {
     tools.push(...createReactTools(opts.transportContext));
   }
