@@ -38,7 +38,6 @@ import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
 import { createAgentTools } from "../agent/tools.js";
 import { LazyTransportContext } from "../legacy/tools/react.js";
 import { ProcessRegistry } from "../legacy/tools/exec.js";
-import { SandboxExecutor } from "../sandbox/executor.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 
 const log = createLogger("agents:runtime");
@@ -75,7 +74,6 @@ export interface AddAgentOptions {
   provider?: ProviderConfigFile;
   globalTools?: AgentToolsConfigFile;
   sandbox?: SandboxConfigFile;
-  sandboxExecutor?: SandboxExecutor;
   transportContext?: LazyTransportContext;
   spawnableAgentIds?: string[];
   sessionStore: DefaultSessionStore;
@@ -235,7 +233,7 @@ export class AgentRuntime {
     agentConfig: import("./types.js").AgentConfig,
     opts: AddAgentOptions,
   ): Promise<AddAgentResult> {
-    const { agentFile, sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
+    const { agentFile, transportContext, spawnableAgentIds, sessionStore } = opts;
 
     let workspacePath: string;
     if (agentFile.workspace) {
@@ -261,7 +259,6 @@ export class AgentRuntime {
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,
       processRegistry,
-      sandboxExecutor,
       agentSandboxConfig: agentConfig.sandbox,
       transportContext,
       runtime: this,

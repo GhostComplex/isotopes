@@ -11,7 +11,7 @@ import {
 import { Type } from "typebox";
 import type { AgentToolSettings } from "../tools/types.js";
 import { HostFs, SandboxFs, type FsBridge } from "../sandbox/fs-bridge.js";
-import type { SandboxExecutor } from "../sandbox/executor.js";
+import { SandboxExecutor } from "../sandbox/executor.js";
 import { type SandboxConfig, shouldSandbox } from "../sandbox/config.js";
 import { createWebFetchTool, createWebSearchTool } from "../legacy/tools/web.js";
 import { createReactTools, type LazyTransportContext } from "../legacy/tools/react.js";
@@ -275,19 +275,28 @@ export interface CreateAgentToolsOptions {
   spawnableAgentIds?: string[];
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
-  /** Sandbox infra. When `agentSandboxConfig` resolves to "sandboxed", FS and
-   *  exec route through docker; spawn_agent and find/grep are also disabled
-   *  (host child runners can't be confined; pi find/grep spawn fd/rg on host
-   *  bypassing the docker boundary). */
-  sandboxExecutor?: SandboxExecutor;
+  /** When defined and resolves to a sandboxed mode, FS and exec route through
+   *  docker; spawn_agent and find/grep are also disabled (host child runners
+   *  can't be confined; pi find/grep spawn fd/rg on host bypassing docker). */
   agentSandboxConfig?: SandboxConfig;
 }
 
+/**
+ * The single SandboxExecutor instance shared by all sandboxed agents.
+ * Set once at boot via `configureToolsLayer`. Module-state matches reality:
+ * one daemon, one ContainerManager, one SandboxExecutor.
+ */
+let sandboxExecutorSingleton: SandboxExecutor | undefined;
+
+export function configureToolsLayer(opts: { sandboxExecutor?: SandboxExecutor }): void {
+  sandboxExecutorSingleton = opts.sandboxExecutor;
+}
+
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
-  const isSandboxed = !!(opts.sandboxExecutor && opts.agentSandboxConfig
+  const isSandboxed = !!(sandboxExecutorSingleton && opts.agentSandboxConfig
     && shouldSandbox(opts.agentSandboxConfig, false));
   const fs: FsBridge = isSandboxed
-    ? new SandboxFs(opts.sandboxExecutor!, opts.agentId)
+    ? new SandboxFs(sandboxExecutorSingleton!, opts.agentId)
     : new HostFs();
   const spawnAgentEnabled = !isSandboxed;
   if (isSandboxed) {
@@ -300,7 +309,7 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
     ...createExecTools({
       cwd: opts.workspacePath,
       registry: opts.processRegistry,
-      sandboxExecutor: opts.sandboxExecutor,
+      sandboxExecutor: sandboxExecutorSingleton,
       agentId: opts.agentId,
       isMainAgent: false,
       agentSandboxConfig: opts.agentSandboxConfig,

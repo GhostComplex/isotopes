@@ -11,6 +11,7 @@ import { ProcessRegistry } from "./legacy/tools/exec.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { ContainerManager } from "./sandbox/container.js";
 import { SandboxExecutor } from "./sandbox/executor.js";
+import { configureToolsLayer } from "./agent/tools.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
@@ -85,6 +86,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     sandboxExecutor = new SandboxExecutor(containerManager, baseSandbox!);
     log.info(`Sandbox executor initialized (image: ${dockerConfig.image})`);
   }
+  configureToolsLayer({ sandboxExecutor });
 
   const spawnableAgentIds = config.agents
     .filter((a) => a.spawnable === true && a.enabled !== false)
@@ -100,7 +102,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       provider: config.provider,
       globalTools: config.tools,
       sandbox: config.sandbox,
-      sandboxExecutor,
       transportContext: transportCtx,
       spawnableAgentIds,
       sessionStore,
