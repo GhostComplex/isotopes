@@ -294,32 +294,12 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
     log.warn(`spawn_agent tool disabled for ${opts.agentId}: sandbox is active and child runners cannot be confined.`);
   }
 
-  const workspaceTools: AgentTool[] = [
+  const tools: AgentTool[] = [
     ...createFsTools(opts.workspacePath, fs),
     createFindTool(opts.workspacePath) as AgentTool,
     createGrepTool(opts.workspacePath) as AgentTool,
     createTimeTool(),
-  ];
-  if (spawnAgentEnabled && opts.runtime && opts.parentAgentId) {
-    workspaceTools.push(createSpawnAgentTool({
-      runtime: opts.runtime,
-      parentAgentId: opts.parentAgentId,
-      workspacePath: opts.workspacePath,
-      ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
-    }));
-  }
-  if (opts.settings?.web) {
-    workspaceTools.push(createWebFetchTool());
-    workspaceTools.push(createWebSearchTool());
-  }
-
-  const tools: AgentTool[] = [];
-  tools.push(...applyToolPolicy(workspaceTools, opts.settings));
-  if (opts.transportContext) {
-    tools.push(...createReactTools(opts.transportContext));
-  }
-  tools.push(...applyToolPolicy(
-    createExecTools({
+    ...createExecTools({
       cwd: opts.workspacePath,
       registry: opts.processRegistry,
       sandboxExecutor: opts.sandboxExecutor,
@@ -328,7 +308,22 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
       agentSandboxConfig: opts.agentSandboxConfig,
       allowedWorkspaces: opts.allowedWorkspaces ?? [],
     }),
-    opts.settings,
-  ));
-  return tools;
+  ];
+  if (spawnAgentEnabled && opts.runtime && opts.parentAgentId) {
+    tools.push(createSpawnAgentTool({
+      runtime: opts.runtime,
+      parentAgentId: opts.parentAgentId,
+      workspacePath: opts.workspacePath,
+      ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
+    }));
+  }
+  if (opts.settings?.web) {
+    tools.push(createWebFetchTool());
+    tools.push(createWebSearchTool());
+  }
+  if (opts.transportContext) {
+    tools.push(...createReactTools(opts.transportContext));
+  }
+
+  return applyToolPolicy(tools, opts.settings);
 }
