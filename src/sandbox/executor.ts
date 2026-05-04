@@ -18,8 +18,6 @@ export interface SandboxExecOptions {
   workspacePath?: string;
   /** Execution timeout in milliseconds */
   timeout?: number;
-  /** Additional host paths to mount read-only inside the container */
-  allowedWorkspaces?: string[];
   /** Bytes piped to the command's stdin (e.g. file content for `cat > file`). */
   stdin?: Buffer | string;
 }
@@ -59,7 +57,7 @@ export class SandboxExecutor {
     command: string[],
     options?: SandboxExecOptions,
   ): Promise<ExecResult> {
-    const container = await this.ensureContainer(agentId, options?.workspacePath, options?.allowedWorkspaces);
+    const container = await this.ensureContainer(agentId, options?.workspacePath);
     const execOpts = options?.stdin !== undefined ? { stdin: options.stdin } : undefined;
 
     if (options?.timeout) {
@@ -83,7 +81,7 @@ export class SandboxExecutor {
     command: string[],
     options?: SandboxExecOptions,
   ): Promise<string[]> {
-    const container = await this.ensureContainer(agentId, options?.workspacePath, options?.allowedWorkspaces);
+    const container = await this.ensureContainer(agentId, options?.workspacePath);
     return this.containerManager.buildExecArgv(container.id, command);
   }
 
@@ -129,7 +127,6 @@ export class SandboxExecutor {
   private async ensureContainer(
     agentId: string,
     workspacePath?: string,
-    allowedWorkspaces?: string[],
   ): Promise<ContainerInfo> {
     const existing = this.containers.get(agentId);
 
@@ -163,7 +160,7 @@ export class SandboxExecutor {
       containerName,
       workspace,
       access,
-      allowedWorkspaces ?? [],
+      this.defaultConfig.mounts ?? [],
     );
 
     await this.containerManager.start(container.id);

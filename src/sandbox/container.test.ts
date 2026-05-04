@@ -164,24 +164,30 @@ describe("ContainerManager", () => {
       expect(args).toContain("512m");
     });
 
-    it("mounts allowedWorkspaces as read-only at host path", async () => {
+    it("emits user mounts as -v with optional :ro suffix", async () => {
       mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc\n" }));
 
-      await manager.create("test", "/workspace", "rw", ["/extra/foo", "/another/bar"]);
+      await manager.create("test", "/workspace", "rw", [
+        { host: "/host/data", container: "/data", readOnly: true },
+        { host: "/host/scratch", container: "/scratch", readOnly: false },
+      ]);
 
       const args = mockSpawn.mock.calls[0][1] as string[];
-      expect(args).toContain("/extra/foo:/extra/foo:ro");
-      expect(args).toContain("/another/bar:/another/bar:ro");
+      expect(args).toContain("/host/data:/data:ro");
+      expect(args).toContain("/host/scratch:/scratch");
     });
 
-    it("does not duplicate workspace mount when included in allowedWorkspaces", async () => {
+    it("does not duplicate workspace mount when included in mounts", async () => {
       mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc\n" }));
 
-      await manager.create("test", "/workspace", "rw", ["/workspace", "/extra"]);
+      await manager.create("test", "/workspace", "rw", [
+        { host: "/workspace", container: "/workspace", readOnly: true },
+        { host: "/extra", container: "/extra" },
+      ]);
 
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).not.toContain("/workspace:/workspace:ro");
-      expect(args).toContain("/extra:/extra:ro");
+      expect(args).toContain("/extra:/extra");
     });
   });
 
@@ -249,8 +255,8 @@ describe("ContainerManager", () => {
         { stdio: ["pipe", "pipe", "pipe"] },
       );
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe("hello world\n");
-      expect(result.stderr).toBe("");
+      expect(result.stdout.toString("utf8")).toBe("hello world\n");
+      expect(result.stderr.toString("utf8")).toBe("");
     });
 
     it("returns non-zero exit code on command failure", async () => {
@@ -259,7 +265,7 @@ describe("ContainerManager", () => {
       const result = await manager.exec("abc123", ["nonexistent"]);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toBe("command not found\n");
+      expect(result.stderr.toString("utf8")).toBe("command not found\n");
     });
 
     it("rejects on spawn-level errors (e.g. docker missing)", async () => {
@@ -304,7 +310,7 @@ describe("ContainerManager", () => {
       setImmediate(() => ee.emit("close", 0));
 
       const result = await promise;
-      expect(result.stdout).toBe("你好");
+      expect(result.stdout.toString("utf8")).toBe("你好");
     });
 
     it("flags truncation and appends marker when output exceeds 1MB", async () => {
@@ -316,7 +322,7 @@ describe("ContainerManager", () => {
 
       expect(result.truncated).toBe(true);
       expect(result.stdout.length).toBe(1024 * 1024 + "\n[output truncated at 1048576 bytes]".length);
-      expect(result.stdout.endsWith("[output truncated at 1048576 bytes]")).toBe(true);
+      expect(result.stdout.toString("utf8").endsWith("[output truncated at 1048576 bytes]")).toBe(true);
     });
 
   });

@@ -63,8 +63,6 @@ interface RunHandle {
 }
 
 export interface AgentRuntimeOptions {
-  /** Roots within which `cwd` arguments must resolve. Empty = no restriction. */
-  allowedWorkspaceRoots?: string[];
   /** Default LLM provider. */
   globalProvider?: ProviderConfig;
   /** Plugin hooks to fire around tool execution. */
@@ -112,7 +110,6 @@ interface Entry {
 }
 
 export class AgentRuntime {
-  private allowedRoots: string[];
   private entries = new Map<string, Entry>();
   private runs = new Map<string, RunHandle>();
   private toolRegistries = new Map<string, Map<string, AgentTool>>();
@@ -123,7 +120,6 @@ export class AgentRuntime {
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
-    this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
     if (opts.hooks) this.hooks = opts.hooks;
 
     if (opts.globalProvider) {
@@ -212,18 +208,6 @@ export class AgentRuntime {
     }
     if (!existsSync(normalized)) throw new Error(`Working directory does not exist: ${cwd}`);
     if (!statSync(normalized).isDirectory()) throw new Error(`Working directory is not a directory: ${cwd}`);
-    if (this.allowedRoots.length > 0) {
-      const isAllowed = this.allowedRoots.some((root) => {
-        let normalizedRoot: string;
-        try {
-          normalizedRoot = realpathSync(resolve(root));
-        } catch {
-          normalizedRoot = normalize(resolve(root));
-        }
-        return normalized === normalizedRoot || normalized.startsWith(normalizedRoot + "/");
-      });
-      if (!isAllowed) throw new Error(`Working directory outside allowed workspaces: ${cwd}`);
-    }
   }
 
   /** Single registration entry point. Branches on agent.runner. */
@@ -279,7 +263,6 @@ export class AgentRuntime {
       processRegistry,
       sandboxExecutor,
       agentSandboxConfig: agentConfig.sandbox,
-      allowedWorkspaces: agentFile.allowedWorkspaces ?? [],
       transportContext,
       runtime: this,
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),

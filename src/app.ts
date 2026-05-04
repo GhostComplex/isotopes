@@ -53,12 +53,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     throw new Error("config.provider is required (top-level provider config in isotopes.yaml)");
   }
 
-  const allowedRoots: string[] = [];
-  for (const a of config.agents) {
-    if (a.allowedWorkspaces?.length) allowedRoots.push(...a.allowedWorkspaces);
-  }
   const agentRuntime = new AgentRuntime({
-    allowedWorkspaceRoots: allowedRoots,
     globalProvider: config.provider,
     hooks: pluginManager.getHooks(),
   });

@@ -5,6 +5,8 @@ import {
   createWriteTool,
   createEditTool,
   createLsTool,
+  createFindTool,
+  createGrepTool,
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import type { AgentToolSettings } from "../tools/types.js";
@@ -274,11 +276,11 @@ export interface CreateAgentToolsOptions {
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
   /** Sandbox infra. When `agentSandboxConfig` resolves to "sandboxed", FS and
-   *  exec route through docker; spawn_agent is also disabled (host child
-   *  runners can't be confined). */
+   *  exec route through docker; spawn_agent and find/grep are also disabled
+   *  (host child runners can't be confined; pi find/grep spawn fd/rg on host
+   *  bypassing the docker boundary). */
   sandboxExecutor?: SandboxExecutor;
   agentSandboxConfig?: SandboxConfig;
-  allowedWorkspaces?: string[];
 }
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
@@ -302,9 +304,14 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
       agentId: opts.agentId,
       isMainAgent: false,
       agentSandboxConfig: opts.agentSandboxConfig,
-      allowedWorkspaces: opts.allowedWorkspaces ?? [],
     }),
   ];
+  if (!isSandboxed) {
+    // pi's find/grep spawn host fd/rg directly — only safe when sandbox is off
+    // (where we already trust host fs access).
+    tools.push(createFindTool(opts.workspacePath) as AgentTool);
+    tools.push(createGrepTool(opts.workspacePath) as AgentTool);
+  }
   if (spawnAgentEnabled && opts.runtime && opts.parentAgentId) {
     tools.push(createSpawnAgentTool({
       runtime: opts.runtime,

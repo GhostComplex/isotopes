@@ -33,12 +33,24 @@ export interface DockerConfig {
   noNewPrivileges?: boolean;
 }
 
+/** A bind mount applied when the container is created. */
+export interface Mount {
+  /** Absolute host path */
+  host: string;
+  /** Absolute container path (where this appears inside the container) */
+  container: string;
+  /** Mount as read-only. Default: false (rw) */
+  readOnly?: boolean;
+}
+
 /** Sandbox configuration for an agent */
 export interface SandboxConfig {
   /** Sandbox execution mode */
   mode: SandboxMode;
   /** Workspace mount access level. Default: "rw" */
   workspaceAccess?: WorkspaceAccess;
+  /** Additional bind mounts. Only applied when mode != "off". */
+  mounts?: Mount[];
   /** Docker configuration */
   docker?: DockerConfig;
 }
@@ -62,6 +74,16 @@ function validateSandboxConfig(config: SandboxConfig, label: string): void {
 
   if (config.workspaceAccess !== undefined) {
     check(VALID_WORKSPACE_ACCESS.has(config.workspaceAccess), `invalid workspaceAccess "${config.workspaceAccess}" (must be rw or ro)`);
+  }
+
+  if (config.mounts !== undefined) {
+    check(Array.isArray(config.mounts), "mounts must be an array");
+    for (let i = 0; i < config.mounts.length; i++) {
+      const m = config.mounts[i];
+      check(typeof m.host === "string" && m.host.startsWith("/"), `mounts[${i}].host must be an absolute path`);
+      check(typeof m.container === "string" && m.container.startsWith("/"), `mounts[${i}].container must be an absolute path`);
+      if (m.readOnly !== undefined) check(typeof m.readOnly === "boolean", `mounts[${i}].readOnly must be a boolean`);
+    }
   }
 
   if (config.docker) {
@@ -113,6 +135,7 @@ export function resolveSandboxConfig(
   const resolved: SandboxConfig = {
     mode: override?.mode ?? defaults?.mode ?? "off",
     workspaceAccess: override?.workspaceAccess ?? defaults?.workspaceAccess ?? "rw",
+    mounts: override?.mounts ?? defaults?.mounts,
     docker: mergeDockerConfig(defaults?.docker, override?.docker),
   };
 

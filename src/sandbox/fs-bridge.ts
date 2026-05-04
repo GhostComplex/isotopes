@@ -1,5 +1,5 @@
-// FsBridge — narrow interface for SDK FS tools (read/write/edit/ls), with
-// HostFs (node:fs) and SandboxFs (docker-exec writes, host reads) impls.
+// FsBridge — narrow interface for SDK FS tools (read/write/edit/ls).
+// HostFs (node:fs) for non-sandbox; SandboxFs (all ops via docker exec) for sandbox.
 
 import fs from "node:fs/promises";
 import type { ExecResult } from "./container.js";
@@ -15,7 +15,7 @@ export class FsError extends Error {
   }
 }
 
-/** Map a docker-exec stderr blob to a coarse fs error code. */
+/** Map a stderr blob to a coarse fs error code. */
 export function mapStderrToCode(stderr: string): FsErrorCode {
   const s = stderr.toLowerCase();
   if (s.includes("no such file") || s.includes("not found")) return "ENOENT";
@@ -60,48 +60,64 @@ export class HostFs implements FsBridge {
   }
 }
 
-/** Reads passthrough to host fs (bind mount); writes go through `docker exec`
- * so they're confined by the OS-level mount boundary. */
+/** All operations run inside the agent's container via `docker exec`.
+ * Containment = container mount view; paths outside mounts are invisible. */
 export class SandboxFs implements FsBridge {
   constructor(
     private executor: SandboxExecutor,
     private agentId: string,
   ) {}
 
-  readFile(p: string): Promise<Buffer> {
-    return fs.readFile(p);
-  }
-  readdir(p: string): Promise<string[]> {
-    return fs.readdir(p);
-  }
-  stat(p: string): Promise<{ isDirectory(): boolean }> {
-    return fs.stat(p);
-  }
-  async exists(p: string): Promise<boolean> {
-    try { await fs.stat(p); return true; } catch { return false; }
-  }
-  access(p: string): Promise<void> {
-    return fs.access(p);
+  async readFile(p: string): Promise<Buffer> {
+    const r = await this.executor.execute(this.agentId, ["cat", p]);
+    throwIfFailed(r, `readFile ${p}`);
+    return r.stdout;
   }
 
   async writeFile(p: string, content: string): Promise<void> {
-    const result = await this.executor.execute(
+    const r = await this.executor.execute(
       this.agentId,
       ["sh", "-c", `cat > ${shQuote(p)}`],
       { stdin: content },
     );
-    throwIfFailed(result, `writeFile ${p}`);
+    throwIfFailed(r, `writeFile ${p}`);
   }
 
   async mkdir(p: string): Promise<void> {
-    const result = await this.executor.execute(this.agentId, ["sh", "-c", `mkdir -p ${shQuote(p)}`]);
-    throwIfFailed(result, `mkdir ${p}`);
+    const r = await this.executor.execute(this.agentId, ["sh", "-c", `mkdir -p ${shQuote(p)}`]);
+    throwIfFailed(r, `mkdir ${p}`);
+  }
+
+  async stat(p: string): Promise<{ isDirectory(): boolean }> {
+    // %F prints "regular file" / "directory" / "symbolic link" / etc.
+    const r = await this.executor.execute(this.agentId, ["stat", "-c", "%F", p]);
+    throwIfFailed(r, `stat ${p}`);
+    const fileType = r.stdout.toString("utf8").trim();
+    return { isDirectory: () => fileType === "directory" };
+  }
+
+  async readdir(p: string): Promise<string[]> {
+    // -1A: one per line, include dotfiles, exclude . and ..
+    const r = await this.executor.execute(this.agentId, ["ls", "-1A", p]);
+    throwIfFailed(r, `readdir ${p}`);
+    return r.stdout.toString("utf8").split("\n").filter(Boolean);
+  }
+
+  async exists(p: string): Promise<boolean> {
+    const r = await this.executor.execute(this.agentId, ["test", "-e", p]);
+    return r.exitCode === 0;
+  }
+
+  async access(p: string): Promise<void> {
+    const r = await this.executor.execute(this.agentId, ["test", "-r", p]);
+    if (r.exitCode !== 0) throw new FsError("EACCES", `access ${p}: not readable`);
   }
 }
 
 function throwIfFailed(r: ExecResult, opLabel: string): void {
   if (r.exitCode === 0) return;
-  throw new FsError(mapStderrToCode(r.stderr), `${opLabel}: ${r.stderr.trim() || `exit ${r.exitCode}`}`);
+  const stderrText = r.stderr.toString("utf8");
+  throw new FsError(mapStderrToCode(stderrText), `${opLabel}: ${stderrText.trim() || `exit ${r.exitCode}`}`);
 }
 
 /** POSIX single-quote a string for safe inclusion in `sh -c` payloads. */

@@ -3,7 +3,7 @@
 // commands in sandbox containers.
 
 import { spawn } from "node:child_process";
-import type { DockerConfig, WorkspaceAccess } from "./config.js";
+import type { DockerConfig, Mount, WorkspaceAccess } from "./config.js";
 
 /** Cap collected stdout/stderr per `exec()` call to prevent OOM from runaway commands. */
 const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -33,10 +33,10 @@ export interface ContainerInfo {
 export interface ExecResult {
   /** Process exit code */
   exitCode: number;
-  /** Standard output */
-  stdout: string;
-  /** Standard error */
-  stderr: string;
+  /** Standard output (raw bytes — call `.toString("utf8")` if you want a string) */
+  stdout: Buffer;
+  /** Standard error (raw bytes) */
+  stderr: Buffer;
   /** True iff stdout or stderr was capped at EXEC_MAX_OUTPUT_BYTES. */
   truncated?: boolean;
 }
@@ -67,11 +67,11 @@ export class ContainerManager {
     name: string,
     workspacePath: string,
     access: WorkspaceAccess,
-    allowedWorkspaces: string[] = [],
+    mounts: Mount[] = [],
   ): Promise<ContainerInfo> {
-    const args = this.buildCreateArgs(name, workspacePath, access, allowedWorkspaces);
+    const args = this.buildCreateArgs(name, workspacePath, access, mounts);
     const { stdout } = await this.runDocker(args);
-    const containerId = stdout.trim();
+    const containerId = stdout.toString("utf8").trim();
 
     return {
       id: containerId,
@@ -150,7 +150,7 @@ export class ContainerManager {
         containerId,
       ]);
 
-      const line = stdout.trim();
+      const line = stdout.toString("utf8").trim();
       if (!line) return null;
 
       return parseInspectLine(line);
@@ -168,8 +168,6 @@ export class ContainerManager {
   private spawnDocker(args: string[], options?: { stdin?: Buffer | string }): Promise<ExecResult> {
     return new Promise<ExecResult>((resolve, reject) => {
       const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
-      // Accumulate as Buffers and decode once at close — avoids splitting
-      // multi-byte UTF-8 across chunk boundaries.
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
       let stdoutBytes = 0;
@@ -200,11 +198,13 @@ export class ContainerManager {
       });
       child.on("error", reject);
       child.on("close", (code) => {
-        const truncMarker = `\n[output truncated at ${EXEC_MAX_OUTPUT_BYTES} bytes]`;
-        let stdout = Buffer.concat(stdoutChunks).toString("utf8");
-        let stderr = Buffer.concat(stderrChunks).toString("utf8");
-        if (stdoutTruncated) stdout += truncMarker;
-        if (stderrTruncated) stderr += truncMarker;
+        const truncMarker = Buffer.from(`\n[output truncated at ${EXEC_MAX_OUTPUT_BYTES} bytes]`, "utf8");
+        const stdout = stdoutTruncated
+          ? Buffer.concat([...stdoutChunks, truncMarker])
+          : Buffer.concat(stdoutChunks);
+        const stderr = stderrTruncated
+          ? Buffer.concat([...stderrChunks, truncMarker])
+          : Buffer.concat(stderrChunks);
         resolve({
           exitCode: code ?? 0,
           stdout,
@@ -220,7 +220,7 @@ export class ContainerManager {
   private async runDocker(args: string[]): Promise<ExecResult> {
     const result = await this.spawnDocker(args);
     if (result.exitCode !== 0) {
-      throw new Error(`docker ${args[0]} failed (exit ${result.exitCode}): ${result.stderr.trim()}`);
+      throw new Error(`docker ${args[0]} failed (exit ${result.exitCode}): ${result.stderr.toString("utf8").trim()}`);
     }
     return result;
   }
@@ -232,22 +232,22 @@ export class ContainerManager {
     name: string,
     workspacePath: string,
     access: WorkspaceAccess,
-    allowedWorkspaces: string[],
+    mounts: Mount[],
   ): string[] {
     const args: string[] = ["create", "--name", name, "--init"];
 
     // Workspace volume mount — mounted at the same host path inside the
     // container so that absolute paths from the host resolve identically
     // (no /workspace ↔ host path translation needed in the fs bridge).
-    const mountSuffix = access === "ro" ? ":ro" : "";
-    args.push("-v", `${workspacePath}:${workspacePath}${mountSuffix}`);
+    const workspaceSuffix = access === "ro" ? ":ro" : "";
+    args.push("-v", `${workspacePath}:${workspacePath}${workspaceSuffix}`);
     args.push("-w", workspacePath);
 
-    // Additional read-only workspace mounts (parity with allowedWorkspaces
-    // file-tool access).
-    for (const ws of allowedWorkspaces) {
-      if (ws === workspacePath) continue;
-      args.push("-v", `${ws}:${ws}:ro`);
+    // User-configured additional mounts.
+    for (const m of mounts) {
+      if (m.host === workspacePath) continue;  // dedupe with workspace mount
+      const suffix = m.readOnly ? ":ro" : "";
+      args.push("-v", `${m.host}:${m.container}${suffix}`);
     }
 
     // Network mode

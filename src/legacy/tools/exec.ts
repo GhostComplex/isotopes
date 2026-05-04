@@ -232,8 +232,6 @@ export interface ExecToolOptions {
   isMainAgent?: boolean;
   /** Resolved sandbox config for this agent. Required for sandbox routing. */
   agentSandboxConfig?: SandboxConfig;
-  /** Additional host workspaces to mount read-only inside the sandbox container. */
-  allowedWorkspaces?: string[];
 }
 
 function jsonResult(value: unknown): AgentToolResult<undefined> {
@@ -253,7 +251,7 @@ const execSchema = Type.Object({
 export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof execSchema> {
   const { cwd = process.cwd() } = options;
   const registry = options.registry ?? new ProcessRegistry();
-  const { sandboxExecutor, agentId, agentSandboxConfig, isMainAgent, allowedWorkspaces } = options;
+  const { sandboxExecutor, agentId, agentSandboxConfig, isMainAgent } = options;
 
   const useSandbox = (): boolean =>
     !!(sandboxExecutor && agentId && agentSandboxConfig &&
@@ -277,7 +275,7 @@ export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof 
         let argv: string[] | undefined;
         if (useSandbox()) {
           try {
-            argv = await sandboxExecutor!.buildExecArgv(agentId!, ["sh", "-c", command], { workspacePath: cwd, allowedWorkspaces });
+            argv = await sandboxExecutor!.buildExecArgv(agentId!, ["sh", "-c", command], { workspacePath: cwd });
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             log.warn("Sandbox container creation failed for background exec", { command, error: msg });
@@ -307,12 +305,12 @@ export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof 
           const result = await sandboxExecutor!.execute(
             agentId!,
             ["sh", "-c", command],
-            { workspacePath: cwd, timeout: timeoutMs, allowedWorkspaces },
+            { workspacePath: cwd, timeout: timeoutMs },
           );
           log.info("Command executed (sandbox)", { command, cwd, exitCode: result.exitCode });
           return jsonResult({
-            stdout: result.stdout || "",
-            stderr: result.stderr || "",
+            stdout: result.stdout.toString("utf8"),
+            stderr: result.stderr.toString("utf8"),
             exit_code: result.exitCode,
           });
         } catch (err) {

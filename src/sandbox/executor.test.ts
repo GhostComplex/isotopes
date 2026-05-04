@@ -24,8 +24,8 @@ function createMockContainerManager(): ContainerManager {
     remove: vi.fn<ContainerManager["remove"]>().mockResolvedValue(undefined),
     exec: vi.fn<ContainerManager["exec"]>().mockResolvedValue({
       exitCode: 0,
-      stdout: "output\n",
-      stderr: "",
+      stdout: Buffer.from("output\n"),
+      stderr: Buffer.alloc(0),
     }),
     status: vi.fn<ContainerManager["status"]>().mockResolvedValue({
       id: "container-123",
@@ -77,7 +77,7 @@ describe("SandboxExecutor", () => {
         "hello",
       ], undefined);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe("output\n");
+      expect(result.stdout.toString("utf8")).toBe("output\n");
     });
 
     it("reuses existing running container", async () => {
@@ -158,17 +158,16 @@ describe("SandboxExecutor", () => {
       );
     });
 
-    it("passes allowedWorkspaces through to ContainerManager.create", async () => {
-      await executor.execute("agent-1", ["ls"], {
-        workspacePath: "/ws",
-        allowedWorkspaces: ["/extra/dir", "/another"],
-      });
+    it("passes mounts from defaultConfig through to ContainerManager.create", async () => {
+      // mounts now come from defaultConfig (set on the SandboxExecutor at construction),
+      // not per-call. Default config in this test has no mounts, so [] is expected.
+      await executor.execute("agent-1", ["ls"], { workspacePath: "/ws" });
 
       expect(mockManager.create).toHaveBeenCalledWith(
         "isotopes-sandbox-agent-1",
         "/ws",
         "rw",
-        ["/extra/dir", "/another"],
+        [],
       );
     });
 

@@ -67,8 +67,6 @@ export interface AgentConfigFile {
   sandbox?: SandboxConfigFile;
   heartbeat?: HeartbeatConfigFile;
   cron?: { tasks: CronTaskConfigFile[] };
-  /** Additional workspace paths allowed for spawned agent cwd. */
-  allowedWorkspaces?: string[];
   /** Default false. */
   spawnable?: boolean;
   /** "parent-reuse" (default) | "always-new". */
@@ -95,10 +93,18 @@ export interface SandboxDockerConfigFile {
   noNewPrivileges?: boolean;
 }
 
+/** Sandbox bind mount (only effective when sandbox.mode != "off"). */
+export interface SandboxMountConfigFile {
+  host: string;
+  container: string;
+  readOnly?: boolean;
+}
+
 /** Sandbox execution configuration in config file */
 export interface SandboxConfigFile {
   mode?: string;
   workspaceAccess?: string;
+  mounts?: SandboxMountConfigFile[];
   docker?: SandboxDockerConfigFile;
 }
 
@@ -245,6 +251,13 @@ function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
     mode: (file.mode ?? "off") as SandboxConfig["mode"],
     ...(file.workspaceAccess !== undefined && {
       workspaceAccess: file.workspaceAccess as SandboxConfig["workspaceAccess"],
+    }),
+    ...(file.mounts && {
+      mounts: file.mounts.map((m) => ({
+        host: m.host,
+        container: m.container,
+        ...(m.readOnly !== undefined && { readOnly: m.readOnly }),
+      })),
     }),
     ...(file.docker && {
       docker: {
