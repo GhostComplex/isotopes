@@ -434,8 +434,6 @@ describe("runtime.steer — wires onSession into RunHandle", () => {
 describe("AgentRuntime no longer exposes a per-session event bus", () => {
   it("removed runtime.on/emitSessionEvent/endSession/sessionListenerCount", () => {
     const rt = new AgentRuntime();
-    // These were removed in the #684 fix — fan-out lives in SessionStore (transcript bus)
-    // and live driver streams now go through runAgent's onEvent callback.
     expect((rt as unknown as { on?: unknown }).on).toBeUndefined();
     expect((rt as unknown as { emitSessionEvent?: unknown }).emitSessionEvent).toBeUndefined();
     expect((rt as unknown as { endSession?: unknown }).endSession).toBeUndefined();

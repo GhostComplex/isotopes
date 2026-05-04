@@ -194,7 +194,6 @@ addRoute("GET", "/api/sessions/:agentId/:key/messages", async (req, res, deps) =
 
 // ---------------------------------------------------------------------------
 // GET /api/sessions/:agentId/:key/stream — observer SSE for transcript appends
-// Single subscriber per sessionId; second connection rejected with 409.
 // ---------------------------------------------------------------------------
 
 addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => {
@@ -231,7 +230,7 @@ addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => 
     "Cache-Control": "no-cache",
     "Connection": "keep-alive",
   });
-  // Heartbeat every 25s to keep proxies from idling out.
+  // Heartbeat keeps proxies from idling out.
   const heartbeat = setInterval(() => {
     res.write(": ping\n\n");
   }, 25_000);

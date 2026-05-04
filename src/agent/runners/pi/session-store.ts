@@ -38,9 +38,8 @@ interface StoredSession extends Session {
   manager?: SessionManager;
 }
 
-/** Monkey-patch SessionManager.appendMessage to emit after each persisted entry.
- * Mirrors openclaw's session-tool-result-guard.ts:269 hot-path strategy:
- * any write — by transports (user input) or by the SDK (assistant/tool) — fans out. */
+/** Patch appendMessage to fan out every persisted entry — covers both
+ * transport-side user writes and SDK-side assistant/tool writes. */
 function installTranscriptEmitter(
   sm: SessionManager,
   sessionId: string,
@@ -52,7 +51,7 @@ function installTranscriptEmitter(
     try {
       emit({ sessionId, message: message as unknown as AgentMessage, messageId });
     } catch {
-      // listener errors don't propagate — they would corrupt SDK turn state
+      // swallow: a throw here would corrupt SDK turn state
     }
     return messageId;
   };
@@ -63,7 +62,7 @@ export class DefaultSessionStore implements SessionStore {
   private keyIndex = new Map<string, string>();
   private indexDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly INDEX_DEBOUNCE_MS = 1_000;
-  /** Single-attach: at most one transcript-bus listener per sessionId. */
+  /** At most one transcript-bus listener per sessionId. */
   private listeners = new Map<string, TranscriptListener>();
 
   constructor(private readonly dataDir: string) {}
@@ -234,7 +233,7 @@ export class DefaultSessionStore implements SessionStore {
     catch (err) { log.warn("Transcript listener threw", err); }
   }
 
-  /** Attach a single listener for transcript appends on a sessionId. Throws if already attached. */
+  /** Attach a single listener; throws if already attached. */
   attach(sessionId: string, listener: TranscriptListener): () => void {
     if (this.listeners.has(sessionId)) {
       throw new Error(`Session "${sessionId}" already attached`);

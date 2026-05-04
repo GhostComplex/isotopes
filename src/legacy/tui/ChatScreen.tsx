@@ -132,14 +132,12 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         }
       }
 
-      // Attach mode: --session <key> skips create, loads full history, subscribes to /stream.
       if (options.session) {
         sessionKeyRef.current = options.session;
         setAgentId(resolvedAgentId);
         const { items: history } = await api.getHistory(resolvedAgentId, options.session);
         const chatMessages = historyToChatMessages(history);
         setMessages(chatMessages);
-        // Open attach stream — single subscriber per session, /stream rejects 2nd.
         const attachAbort = new AbortController();
         attachAbortRef.current = attachAbort;
         void (async () => {
