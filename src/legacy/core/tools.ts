@@ -38,20 +38,6 @@ function textResult(text: string): AgentToolResult<undefined> {
 // Built-in tools
 // ---------------------------------------------------------------------------
 
-const echoSchema = Type.Object({
-  message: Type.String({ description: "The message to echo" }),
-});
-
-export function createEchoTool(): AgentTool<typeof echoSchema> {
-  return {
-    name: "echo",
-    label: "echo",
-    description: "Echoes the input message back",
-    parameters: echoSchema,
-    execute: async (_id, { message }) => textResult(message),
-  };
-}
-
 const timeSchema = Type.Object({
   timezone: Type.Optional(
     Type.String({ description: "IANA timezone (e.g., 'Asia/Shanghai'). Defaults to UTC." }),

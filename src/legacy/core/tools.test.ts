@@ -1,29 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
-  createEchoTool,
   createTimeTool,
   createWorkspaceTools,
   applyToolPolicy,
 } from "./tools.js";
+import { createWebFetchTool } from "../tools/web.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content.find((c) => c.type === "text");
   return (block as { text: string }).text;
 }
-
-describe("createEchoTool", () => {
-  const tool = createEchoTool();
-
-  it("has correct schema metadata", () => {
-    expect(tool.name).toBe("echo");
-    expect(tool.description).toBeTruthy();
-  });
-
-  it("echoes the input message", async () => {
-    const result = await tool.execute("call-1", { message: "hello world" });
-    expect(getText(result)).toBe("hello world");
-  });
-});
 
 describe("createTimeTool", () => {
   const tool = createTimeTool();
@@ -73,7 +59,7 @@ describe("createWorkspaceTools", () => {
 });
 
 describe("applyToolPolicy", () => {
-  const tools = [createEchoTool(), createTimeTool()];
+  const tools = [createTimeTool(), createWebFetchTool()];
 
   it("returns all tools when policy is undefined", () => {
     expect(applyToolPolicy(tools)).toHaveLength(2);
@@ -84,17 +70,17 @@ describe("applyToolPolicy", () => {
   });
 
   it("filters by allow list", () => {
-    const out = applyToolPolicy(tools, { allow: ["echo"] });
-    expect(out.map((t) => t.name)).toEqual(["echo"]);
-  });
-
-  it("filters by deny list", () => {
-    const out = applyToolPolicy(tools, { deny: ["echo"] });
+    const out = applyToolPolicy(tools, { allow: ["get_current_time"] });
     expect(out.map((t) => t.name)).toEqual(["get_current_time"]);
   });
 
+  it("filters by deny list", () => {
+    const out = applyToolPolicy(tools, { deny: ["get_current_time"] });
+    expect(out.map((t) => t.name)).toEqual(["web_fetch"]);
+  });
+
   it("deny takes precedence over allow", () => {
-    const out = applyToolPolicy(tools, { allow: ["echo"], deny: ["echo"] });
+    const out = applyToolPolicy(tools, { allow: ["get_current_time"], deny: ["get_current_time"] });
     expect(out).toEqual([]);
   });
 });
