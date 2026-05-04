@@ -170,6 +170,8 @@ export interface AttachedMessage {
   messageId: string;
 }
 
+/** Long-lived SSE reader. Server keeps the stream open with heartbeats and
+ * never sends an end marker — terminates only when `signal` is aborted. */
 export async function attachStream(
   agentId: string,
   sessionKey: string,
