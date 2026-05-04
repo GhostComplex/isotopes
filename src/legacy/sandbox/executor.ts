@@ -20,6 +20,8 @@ export interface SandboxExecOptions {
   timeout?: number;
   /** Additional host paths to mount read-only inside the container */
   allowedWorkspaces?: string[];
+  /** Bytes piped to the command's stdin (e.g. file content for `cat > file`). */
+  stdin?: Buffer | string;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,12 +60,13 @@ export class SandboxExecutor {
     options?: SandboxExecOptions,
   ): Promise<ExecResult> {
     const container = await this.ensureContainer(agentId, options?.workspacePath, options?.allowedWorkspaces);
+    const execOpts = options?.stdin !== undefined ? { stdin: options.stdin } : undefined;
 
     if (options?.timeout) {
-      return this.execWithTimeout(container.id, command, options.timeout);
+      return this.execWithTimeout(container.id, command, options.timeout, execOpts);
     }
 
-    return this.containerManager.exec(container.id, command);
+    return this.containerManager.exec(container.id, command, execOpts);
   }
 
   /**
@@ -177,13 +180,14 @@ export class SandboxExecutor {
     containerId: string,
     command: string[],
     timeoutMs: number,
+    options?: { stdin?: Buffer | string },
   ): Promise<ExecResult> {
     let timer: ReturnType<typeof setTimeout>;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(`Sandbox execution timed out after ${timeoutMs}ms`)), timeoutMs);
     });
     try {
-      return await Promise.race([this.containerManager.exec(containerId, command), timeout]);
+      return await Promise.race([this.containerManager.exec(containerId, command, options), timeout]);
     } finally {
       clearTimeout(timer!);
     }

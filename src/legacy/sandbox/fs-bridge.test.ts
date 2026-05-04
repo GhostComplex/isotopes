@@ -2,53 +2,16 @@
 //
 // SandboxExecutor is mocked. Reads are passthroughs to host fs (covered
 // implicitly by the type — we only verify the call shape doesn't throw).
-// Writes are routed through SandboxExecutor.execute / buildExecArgv.
+// Writes route through executor.execute with stdin option.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { spawn, type ChildProcess } from "node:child_process";
-import { EventEmitter } from "node:events";
-import { Writable, Readable } from "node:stream";
 import { SandboxFs, FsError, mapStderrToCode } from "./fs-bridge.js";
 import type { SandboxExecutor } from "./executor.js";
-
-vi.mock("node:child_process", async () => {
-  const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-  return { ...actual, spawn: vi.fn() };
-});
-
-const mockSpawn = vi.mocked(spawn);
 
 function makeExecutor(): SandboxExecutor {
   return {
     execute: vi.fn().mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" }),
-    buildExecArgv: vi.fn().mockResolvedValue(["docker", "exec", "-i", "ctr-1", "sh", "-c", "cat > '/abs/path'"]),
   } as unknown as SandboxExecutor;
-}
-
-/** Build a fake ChildProcess that exits with the given code/stderr after stdin.end. */
-function fakeChild(opts: { code: number; stderr?: string; capture?: { chunks: Buffer[] } }): ChildProcess {
-  const ee = new EventEmitter() as ChildProcess;
-  const stderrStream = Readable.from(opts.stderr ? [Buffer.from(opts.stderr)] : []);
-  const stdoutStream = Readable.from([]);
-  let stdinEnded = false;
-  const stdinStream = new Writable({
-    write(chunk, _enc, cb) {
-      if (opts.capture) opts.capture.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
-      cb();
-    },
-    final(cb) {
-      stdinEnded = true;
-      // Defer close until after stdin closes, mimicking docker exec behavior.
-      setImmediate(() => ee.emit("close", opts.code));
-      cb();
-    },
-  });
-  Object.defineProperty(ee, "stdin", { value: stdinStream });
-  Object.defineProperty(ee, "stdout", { value: stdoutStream });
-  Object.defineProperty(ee, "stderr", { value: stderrStream });
-  // Touch stdinEnded so eslint doesn't complain about unused
-  void stdinEnded;
-  return ee;
 }
 
 describe("SandboxFs", () => {
@@ -58,56 +21,43 @@ describe("SandboxFs", () => {
   beforeEach(() => {
     executor = makeExecutor();
     fs = new SandboxFs(executor, "agent-1");
-    mockSpawn.mockReset();
   });
 
   describe("writeFile", () => {
-    it("spawns docker exec via buildExecArgv and pipes content via stdin", async () => {
-      mockSpawn.mockReturnValue(fakeChild({ code: 0 }));
-
+    it("calls executor.execute with `cat > path` and pipes content via stdin", async () => {
       await fs.writeFile("/abs/path", "hello world");
 
-      expect(executor.buildExecArgv).toHaveBeenCalledWith("agent-1", [
-        "sh", "-c", "cat > '/abs/path'",
-      ]);
-      expect(mockSpawn).toHaveBeenCalledTimes(1);
-      const [bin, args] = mockSpawn.mock.calls[0];
-      expect(bin).toBe("docker");
-      expect(args).toEqual(["exec", "-i", "ctr-1", "sh", "-c", "cat > '/abs/path'"]);
+      expect(executor.execute).toHaveBeenCalledWith(
+        "agent-1",
+        ["sh", "-c", "cat > '/abs/path'"],
+        { stdin: "hello world" },
+      );
     });
 
-    it("rejects with FsError when docker exec exits non-zero", async () => {
-      mockSpawn.mockReturnValue(fakeChild({ code: 1, stderr: "Permission denied\n" }));
+    it("escapes single quotes in paths", async () => {
+      await fs.writeFile("/tmp/o'brien.txt", "x");
+
+      expect(executor.execute).toHaveBeenCalledWith(
+        "agent-1",
+        ["sh", "-c", `cat > '/tmp/o'\\''brien.txt'`],
+        { stdin: "x" },
+      );
+    });
+
+    it("throws FsError on non-zero exit", async () => {
+      vi.mocked(executor.execute).mockResolvedValueOnce({
+        exitCode: 1, stdout: "", stderr: "Permission denied\n",
+      });
 
       await expect(fs.writeFile("/abs/path", "x")).rejects.toMatchObject({
         name: "FsError",
         code: "EACCES",
       });
     });
-
-    it("escapes single quotes in paths", async () => {
-      mockSpawn.mockReturnValue(fakeChild({ code: 0 }));
-
-      await fs.writeFile("/tmp/o'brien.txt", "x");
-
-      expect(executor.buildExecArgv).toHaveBeenCalledWith("agent-1", [
-        "sh", "-c", `cat > '/tmp/o'\\''brien.txt'`,
-      ]);
-    });
-
-    it("encodes string input as utf-8", async () => {
-      const capture = { chunks: [] as Buffer[] };
-      mockSpawn.mockReturnValue(fakeChild({ code: 0, capture }));
-
-      await fs.writeFile("/abs/path", "héllo 😀");
-
-      const written = Buffer.concat(capture.chunks);
-      expect(written.toString("utf8")).toBe("héllo 😀");
-    });
   });
 
   describe("mkdir", () => {
-    it("invokes mkdir -p (always recursive)", async () => {
+    it("invokes mkdir -p (always recursive), no stdin", async () => {
       await fs.mkdir("/abs/dir/deep");
       expect(executor.execute).toHaveBeenCalledWith("agent-1", [
         "sh", "-c", `mkdir -p '/abs/dir/deep'`,
@@ -116,9 +66,7 @@ describe("SandboxFs", () => {
 
     it("throws FsError on non-zero exit", async () => {
       vi.mocked(executor.execute).mockResolvedValueOnce({
-        exitCode: 1,
-        stdout: "",
-        stderr: "mkdir: cannot create directory: File exists",
+        exitCode: 1, stdout: "", stderr: "mkdir: cannot create directory: File exists",
       });
       await expect(fs.mkdir("/abs/x")).rejects.toMatchObject({
         name: "FsError",

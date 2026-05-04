@@ -1,12 +1,9 @@
 // FsBridge — narrow interface for SDK FS tools (read/write/edit/ls), with
 // HostFs (node:fs) and SandboxFs (docker-exec writes, host reads) impls.
 
-import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
-import { createLogger } from "../../logging/logger.js";
+import type { ExecResult } from "./container.js";
 import type { SandboxExecutor } from "./executor.js";
-
-const log = createLogger("sandbox:fs-bridge");
 
 export type FsErrorCode = "ENOENT" | "EACCES" | "EEXIST" | "EISDIR" | "ENOTDIR" | "EUNKNOWN";
 
@@ -88,45 +85,23 @@ export class SandboxFs implements FsBridge {
   }
 
   async writeFile(p: string, content: string): Promise<void> {
-    await this.execWithStdin(["sh", "-c", `cat > ${shQuote(p)}`], Buffer.from(content, "utf8"), `writeFile ${p}`);
+    const result = await this.executor.execute(
+      this.agentId,
+      ["sh", "-c", `cat > ${shQuote(p)}`],
+      { stdin: content },
+    );
+    throwIfFailed(result, `writeFile ${p}`);
   }
 
   async mkdir(p: string): Promise<void> {
-    await this.exec(["sh", "-c", `mkdir -p ${shQuote(p)}`], `mkdir ${p}`);
+    const result = await this.executor.execute(this.agentId, ["sh", "-c", `mkdir -p ${shQuote(p)}`]);
+    throwIfFailed(result, `mkdir ${p}`);
   }
+}
 
-  private async exec(command: string[], opLabel: string): Promise<void> {
-    const result = await this.executor.execute(this.agentId, command);
-    if (result.exitCode !== 0) {
-      const code = mapStderrToCode(result.stderr);
-      log.debug(`Sandbox fs op failed`, { op: opLabel, exitCode: result.exitCode, code, stderr: result.stderr });
-      throw new FsError(code, `${opLabel}: ${result.stderr.trim() || `exit ${result.exitCode}`}`);
-    }
-  }
-
-  private async execWithStdin(command: string[], stdin: Buffer, opLabel: string): Promise<void> {
-    const argv = await this.executor.buildExecArgv(this.agentId, command);
-    const [bin, ...rest] = argv;
-
-    return new Promise<void>((resolve, reject) => {
-      const child = spawn(bin, rest, { stdio: ["pipe", "pipe", "pipe"] });
-      let stderr = "";
-      child.stderr?.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-      child.on("error", (err) => reject(err));
-      child.on("close", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          const mapped = mapStderrToCode(stderr);
-          log.debug(`Sandbox fs op failed`, { op: opLabel, exitCode: code, code: mapped, stderr });
-          reject(new FsError(mapped, `${opLabel}: ${stderr.trim() || `exit ${code}`}`));
-        }
-      });
-      child.stdin?.end(stdin);
-    });
-  }
+function throwIfFailed(r: ExecResult, opLabel: string): void {
+  if (r.exitCode === 0) return;
+  throw new FsError(mapStderrToCode(r.stderr), `${opLabel}: ${r.stderr.trim() || `exit ${r.exitCode}`}`);
 }
 
 /** POSIX single-quote a string for safe inclusion in `sh -c` payloads. */

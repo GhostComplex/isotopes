@@ -2,11 +2,14 @@
 // Wraps Docker CLI commands for creating, starting, stopping, and executing
 // commands in sandbox containers.
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import type { DockerConfig, WorkspaceAccess } from "./config.js";
 
 const execFileAsync = promisify(execFile);
+
+/** Cap collected stdout/stderr per `exec()` call to prevent OOM from runaway commands. */
+const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -119,23 +122,34 @@ export class ContainerManager {
    * @param command - Command and arguments
    * @returns ExecResult with exit code, stdout, and stderr
    */
-  async exec(containerId: string, command: string[]): Promise<ExecResult> {
-    try {
+  async exec(
+    containerId: string,
+    command: string[],
+    options?: { stdin?: Buffer | string },
+  ): Promise<ExecResult> {
+    return new Promise<ExecResult>((resolve, reject) => {
       const argv = this.buildExecArgv(containerId, command);
-      const { stdout, stderr } = await execFileAsync(argv[0], argv.slice(1));
+      const child = spawn(argv[0], argv.slice(1), { stdio: ["pipe", "pipe", "pipe"] });
 
-      return { exitCode: 0, stdout, stderr };
-    } catch (error: unknown) {
-      // execFile throws on non-zero exit codes
-      if (isExecError(error)) {
-        return {
-          exitCode: error.code ?? 1,
-          stdout: error.stdout ?? "",
-          stderr: error.stderr ?? "",
-        };
-      }
-      throw error;
-    }
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        if (stdout.length < EXEC_MAX_OUTPUT_BYTES) {
+          stdout += chunk.toString().slice(0, EXEC_MAX_OUTPUT_BYTES - stdout.length);
+        }
+      });
+      child.stderr.on("data", (chunk: Buffer) => {
+        if (stderr.length < EXEC_MAX_OUTPUT_BYTES) {
+          stderr += chunk.toString().slice(0, EXEC_MAX_OUTPUT_BYTES - stderr.length);
+        }
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        resolve({ exitCode: code ?? 0, stdout, stderr });
+      });
+
+      child.stdin.end(options?.stdin ?? "");
+    });
   }
 
   /**
@@ -251,16 +265,6 @@ export class ContainerManager {
 // ---------------------------------------------------------------------------
 // Parsing helpers
 // ---------------------------------------------------------------------------
-
-interface ExecFileError {
-  code?: number;
-  stdout?: string;
-  stderr?: string;
-}
-
-function isExecError(error: unknown): error is ExecFileError {
-  return typeof error === "object" && error !== null && "code" in error;
-}
 
 /**
  * Parse a line from `docker inspect --format`.

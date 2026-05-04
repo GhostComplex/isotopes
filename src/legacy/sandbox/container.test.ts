@@ -1,19 +1,47 @@
 // src/sandbox/container.test.ts — Unit tests for ContainerManager
-// Docker CLI calls are mocked via vi.mock("node:child_process").
+// Lifecycle docker calls are mocked via vi.mock("node:util") for execFile;
+// `exec()` uses spawn directly (mocked via vi.mock("node:child_process")).
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { spawn, type ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { Readable, Writable } from "node:stream";
 import { ContainerManager } from "./container.js";
 import type { DockerConfig } from "./config.js";
-
-// ---------------------------------------------------------------------------
-// Mock child_process.execFile
-// ---------------------------------------------------------------------------
 
 const mockExecFile = vi.hoisted(() => vi.fn());
 
 vi.mock("node:util", () => ({
   promisify: () => mockExecFile,
 }));
+
+vi.mock("node:child_process", async () => {
+  const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+  return { ...actual, spawn: vi.fn() };
+});
+
+const mockSpawn = vi.mocked(spawn);
+
+/** Build a fake ChildProcess that emits stdout/stderr then closes with `code` after stdin.end. */
+function fakeChild(opts: { code: number; stdout?: string; stderr?: string; capture?: { chunks: Buffer[] } }): ChildProcess {
+  const ee = new EventEmitter() as ChildProcess;
+  const stdoutStream = Readable.from(opts.stdout ? [Buffer.from(opts.stdout)] : []);
+  const stderrStream = Readable.from(opts.stderr ? [Buffer.from(opts.stderr)] : []);
+  const stdinStream = new Writable({
+    write(chunk, _enc, cb) {
+      if (opts.capture) opts.capture.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
+      cb();
+    },
+    final(cb) {
+      setImmediate(() => ee.emit("close", opts.code));
+      cb();
+    },
+  });
+  Object.defineProperty(ee, "stdin", { value: stdinStream });
+  Object.defineProperty(ee, "stdout", { value: stdoutStream });
+  Object.defineProperty(ee, "stderr", { value: stderrStream });
+  return ee;
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -29,6 +57,7 @@ describe("ContainerManager", () => {
 
   beforeEach(() => {
     mockExecFile.mockReset();
+    mockSpawn.mockReset();
     manager = new ContainerManager(defaultDockerConfig);
   });
 
@@ -217,28 +246,23 @@ describe("ContainerManager", () => {
   });
 
   describe("exec", () => {
-    it("calls docker exec with command and returns result", async () => {
-      mockExecFile.mockResolvedValue({
-        stdout: "hello world\n",
-        stderr: "",
-      });
+    it("spawns docker exec and returns stdout/stderr/exitCode", async () => {
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "hello world\n" }));
 
       const result = await manager.exec("abc123", ["echo", "hello world"]);
 
-      expect(mockExecFile).toHaveBeenCalledWith("docker", [
-        "exec", "-i", "abc123", "echo", "hello world",
-      ]);
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "docker",
+        ["exec", "-i", "abc123", "echo", "hello world"],
+        { stdio: ["pipe", "pipe", "pipe"] },
+      );
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe("hello world\n");
       expect(result.stderr).toBe("");
     });
 
     it("returns non-zero exit code on command failure", async () => {
-      mockExecFile.mockRejectedValue({
-        code: 1,
-        stdout: "",
-        stderr: "command not found\n",
-      });
+      mockSpawn.mockReturnValue(fakeChild({ code: 1, stderr: "command not found\n" }));
 
       const result = await manager.exec("abc123", ["nonexistent"]);
 
@@ -246,12 +270,25 @@ describe("ContainerManager", () => {
       expect(result.stderr).toBe("command not found\n");
     });
 
-    it("re-throws non-exec errors", async () => {
-      mockExecFile.mockRejectedValue(new Error("Docker daemon not running"));
+    it("rejects on spawn-level errors (e.g. docker missing)", async () => {
+      const ee = new EventEmitter() as ChildProcess;
+      Object.defineProperty(ee, "stdin", { value: new Writable({ write(_c, _e, cb) { cb(); }, final(cb) { cb(); } }) });
+      Object.defineProperty(ee, "stdout", { value: Readable.from([]) });
+      Object.defineProperty(ee, "stderr", { value: Readable.from([]) });
+      mockSpawn.mockReturnValue(ee);
+      setImmediate(() => ee.emit("error", new Error("Docker daemon not running")));
 
-      await expect(manager.exec("abc123", ["echo"])).rejects.toThrow(
-        "Docker daemon not running",
-      );
+      await expect(manager.exec("abc123", ["echo"])).rejects.toThrow("Docker daemon not running");
+    });
+
+    it("pipes stdin when options.stdin is provided", async () => {
+      const capture = { chunks: [] as Buffer[] };
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, capture }));
+
+      await manager.exec("abc123", ["sh", "-c", "cat > /tmp/x"], { stdin: "file body" });
+
+      const written = Buffer.concat(capture.chunks);
+      expect(written.toString("utf8")).toBe("file body");
     });
   });
 
