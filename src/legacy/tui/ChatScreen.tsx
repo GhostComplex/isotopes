@@ -311,6 +311,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     if (slash) {
       const handled = dispatch(slash.command, slash.args, {
         onNewChat: () => {
+          if (options.session) {
+            setMessages((prev) => [...prev, { role: "system", content: "/new is disabled in --session attach mode (would delete the attached session). Exit and relaunch without --session.", timestamp: new Date() }]);
+            return;
+          }
           setMessages([]);
           settledRef.current = [];
           setIsStreaming(true);
