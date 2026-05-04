@@ -44,15 +44,13 @@ describe("createAgentTools", () => {
     processRegistry: new ProcessRegistry(),
   });
 
-  it("registers fs tools + find/grep + time + exec by default", () => {
+  it("registers fs tools + time + exec by default", () => {
     const tools = createAgentTools(baseOpts());
     const names = tools.map((t) => t.name);
     expect(names).toContain("read");
     expect(names).toContain("write");
     expect(names).toContain("edit");
     expect(names).toContain("ls");
-    expect(names).toContain("find");
-    expect(names).toContain("grep");
     expect(names).toContain("get_current_time");
     expect(names).toContain("exec");
   });

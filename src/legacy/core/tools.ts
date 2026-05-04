@@ -5,8 +5,6 @@ import {
   createWriteTool,
   createEditTool,
   createLsTool,
-  createFindTool,
-  createGrepTool,
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import type { AgentToolSettings } from "../../tools/types.js";
@@ -307,14 +305,6 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
       allowedWorkspaces: opts.allowedWorkspaces ?? [],
     }),
   ];
-  if (!isSandboxed) {
-    // pi's find/grep shell out to host fd/ripgrep on absolute paths without
-    // workspace clamping — they bypass sandbox containment. Only register
-    // when no sandbox is active. Sandboxed agents can still use `exec` with
-    // `fd`/`rg` directly (which goes through docker).
-    tools.push(createFindTool(opts.workspacePath) as AgentTool);
-    tools.push(createGrepTool(opts.workspacePath) as AgentTool);
-  }
   if (spawnAgentEnabled && opts.runtime && opts.parentAgentId) {
     tools.push(createSpawnAgentTool({
       runtime: opts.runtime,
