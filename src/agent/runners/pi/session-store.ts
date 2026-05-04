@@ -38,8 +38,6 @@ interface StoredSession extends Session {
   manager?: SessionManager;
 }
 
-/** Patch appendMessage to fan out every persisted entry — covers both
- * transport-side user writes and SDK-side assistant/tool writes. */
 function installTranscriptEmitter(
   sm: SessionManager,
   sessionId: string,
@@ -49,8 +47,7 @@ function installTranscriptEmitter(
   sm.appendMessage = (message: PiMessage) => {
     const messageId = original(message);
     try {
-      // PiMessage and AgentMessage are structurally compatible — they share
-      // the role/content shape that pi-agent-core re-exports under both names.
+      // PiMessage === AgentMessage structurally; pi-agent-core re-exports both names.
       emit({ sessionId, message: message as unknown as AgentMessage, messageId });
     } catch {
       // swallow: a throw here would corrupt SDK turn state
