@@ -1,29 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
-  createEchoTool,
   createTimeTool,
-  createWorkspaceToolsWithGuards,
+  createAgentTools,
   applyToolPolicy,
 } from "./tools.js";
+import { createWebFetchTool } from "../tools/web.js";
+import { ProcessRegistry } from "../tools/exec.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content.find((c) => c.type === "text");
   return (block as { text: string }).text;
 }
-
-describe("createEchoTool", () => {
-  const tool = createEchoTool();
-
-  it("has correct schema metadata", () => {
-    expect(tool.name).toBe("echo");
-    expect(tool.description).toBeTruthy();
-  });
-
-  it("echoes the input message", async () => {
-    const result = await tool.execute("call-1", { message: "hello world" });
-    expect(getText(result)).toBe("hello world");
-  });
-});
 
 describe("createTimeTool", () => {
   const tool = createTimeTool();
@@ -50,22 +37,26 @@ describe("createTimeTool", () => {
   });
 });
 
-describe("createWorkspaceToolsWithGuards", () => {
-  it("registers fs tools + time by default", () => {
-    const tools = createWorkspaceToolsWithGuards({ workspacePath: "/tmp/ws" });
+describe("createAgentTools", () => {
+  const baseOpts = () => ({
+    workspacePath: "/tmp/ws",
+    agentId: "test",
+    processRegistry: new ProcessRegistry(),
+  });
+
+  it("registers fs tools + time + exec by default", () => {
+    const tools = createAgentTools(baseOpts());
     const names = tools.map((t) => t.name);
     expect(names).toContain("read");
     expect(names).toContain("write");
     expect(names).toContain("edit");
     expect(names).toContain("ls");
     expect(names).toContain("get_current_time");
+    expect(names).toContain("exec");
   });
 
   it("adds web tools when settings.web is true", () => {
-    const tools = createWorkspaceToolsWithGuards({
-      workspacePath: "/tmp/ws",
-      settings: { web: true },
-    });
+    const tools = createAgentTools({ ...baseOpts(), settings: { web: true } });
     const names = tools.map((t) => t.name);
     expect(names).toContain("web_fetch");
     expect(names).toContain("web_search");
@@ -73,7 +64,7 @@ describe("createWorkspaceToolsWithGuards", () => {
 });
 
 describe("applyToolPolicy", () => {
-  const tools = [createEchoTool(), createTimeTool()];
+  const tools = [createTimeTool(), createWebFetchTool()];
 
   it("returns all tools when policy is undefined", () => {
     expect(applyToolPolicy(tools)).toHaveLength(2);
@@ -84,17 +75,17 @@ describe("applyToolPolicy", () => {
   });
 
   it("filters by allow list", () => {
-    const out = applyToolPolicy(tools, { allow: ["echo"] });
-    expect(out.map((t) => t.name)).toEqual(["echo"]);
-  });
-
-  it("filters by deny list", () => {
-    const out = applyToolPolicy(tools, { deny: ["echo"] });
+    const out = applyToolPolicy(tools, { allow: ["get_current_time"] });
     expect(out.map((t) => t.name)).toEqual(["get_current_time"]);
   });
 
+  it("filters by deny list", () => {
+    const out = applyToolPolicy(tools, { deny: ["get_current_time"] });
+    expect(out.map((t) => t.name)).toEqual(["web_fetch"]);
+  });
+
   it("deny takes precedence over allow", () => {
-    const out = applyToolPolicy(tools, { allow: ["echo"], deny: ["echo"] });
+    const out = applyToolPolicy(tools, { allow: ["get_current_time"], deny: ["get_current_time"] });
     expect(out).toEqual([]);
   });
 });

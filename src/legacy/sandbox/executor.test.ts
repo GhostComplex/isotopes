@@ -75,7 +75,7 @@ describe("SandboxExecutor", () => {
       expect(mockManager.exec).toHaveBeenCalledWith("container-123", [
         "echo",
         "hello",
-      ]);
+      ], undefined);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe("output\n");
     });

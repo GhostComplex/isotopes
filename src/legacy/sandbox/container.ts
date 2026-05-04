@@ -2,11 +2,11 @@
 // Wraps Docker CLI commands for creating, starting, stopping, and executing
 // commands in sandbox containers.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import type { DockerConfig, WorkspaceAccess } from "./config.js";
 
-const execFileAsync = promisify(execFile);
+/** Cap collected stdout/stderr per `exec()` call to prevent OOM from runaway commands. */
+const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +37,8 @@ export interface ExecResult {
   stdout: string;
   /** Standard error */
   stderr: string;
+  /** True iff stdout or stderr was capped at EXEC_MAX_OUTPUT_BYTES. */
+  truncated?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,8 +70,7 @@ export class ContainerManager {
     allowedWorkspaces: string[] = [],
   ): Promise<ContainerInfo> {
     const args = this.buildCreateArgs(name, workspacePath, access, allowedWorkspaces);
-
-    const { stdout } = await execFileAsync("docker", args);
+    const { stdout } = await this.runDocker(args);
     const containerId = stdout.trim();
 
     return {
@@ -85,7 +86,7 @@ export class ContainerManager {
    * Start a stopped or created container.
    */
   async start(containerId: string): Promise<void> {
-    await execFileAsync("docker", ["start", containerId]);
+    await this.runDocker(["start", containerId]);
   }
 
   /**
@@ -95,7 +96,7 @@ export class ContainerManager {
    * @param timeout - Seconds to wait before killing (default: 10)
    */
   async stop(containerId: string, timeout = 10): Promise<void> {
-    await execFileAsync("docker", ["stop", "-t", String(timeout), containerId]);
+    await this.runDocker(["stop", "-t", String(timeout), containerId]);
   }
 
   /**
@@ -108,8 +109,7 @@ export class ContainerManager {
     const args = ["rm"];
     if (force) args.push("--force");
     args.push(containerId);
-
-    await execFileAsync("docker", args);
+    await this.runDocker(args);
   }
 
   /**
@@ -117,25 +117,14 @@ export class ContainerManager {
    *
    * @param containerId - Container to execute in
    * @param command - Command and arguments
-   * @returns ExecResult with exit code, stdout, and stderr
+   * @returns ExecResult with exit code, stdout, and stderr (does not throw on non-zero)
    */
-  async exec(containerId: string, command: string[]): Promise<ExecResult> {
-    try {
-      const argv = this.buildExecArgv(containerId, command);
-      const { stdout, stderr } = await execFileAsync(argv[0], argv.slice(1));
-
-      return { exitCode: 0, stdout, stderr };
-    } catch (error: unknown) {
-      // execFile throws on non-zero exit codes
-      if (isExecError(error)) {
-        return {
-          exitCode: error.code ?? 1,
-          stdout: error.stdout ?? "",
-          stderr: error.stderr ?? "",
-        };
-      }
-      throw error;
-    }
+  async exec(
+    containerId: string,
+    command: string[],
+    options?: { stdin?: Buffer | string },
+  ): Promise<ExecResult> {
+    return this.spawnDocker(["exec", "-i", containerId, ...command], options);
   }
 
   /**
@@ -154,7 +143,7 @@ export class ContainerManager {
    */
   async status(containerId: string): Promise<ContainerInfo | null> {
     try {
-      const { stdout } = await execFileAsync("docker", [
+      const { stdout } = await this.runDocker([
         "inspect",
         "--format",
         '{{.Id}}\t{{.Name}}\t{{.State.Status}}\t{{.Config.Image}}\t{{.Created}}',
@@ -174,6 +163,67 @@ export class ContainerManager {
   // -----------------------------------------------------------------------
   // Private helpers
   // -----------------------------------------------------------------------
+
+  /** Spawn `docker <args>`; resolve with collected output, never throws on exit code. */
+  private spawnDocker(args: string[], options?: { stdin?: Buffer | string }): Promise<ExecResult> {
+    return new Promise<ExecResult>((resolve, reject) => {
+      const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
+      // Accumulate as Buffers and decode once at close — avoids splitting
+      // multi-byte UTF-8 across chunk boundaries.
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let stdoutTruncated = false;
+      let stderrTruncated = false;
+      child.stdout.on("data", (chunk: Buffer) => {
+        if (stdoutBytes >= EXEC_MAX_OUTPUT_BYTES) { stdoutTruncated = true; return; }
+        if (stdoutBytes + chunk.length > EXEC_MAX_OUTPUT_BYTES) {
+          stdoutChunks.push(chunk.subarray(0, EXEC_MAX_OUTPUT_BYTES - stdoutBytes));
+          stdoutBytes = EXEC_MAX_OUTPUT_BYTES;
+          stdoutTruncated = true;
+        } else {
+          stdoutChunks.push(chunk);
+          stdoutBytes += chunk.length;
+        }
+      });
+      child.stderr.on("data", (chunk: Buffer) => {
+        if (stderrBytes >= EXEC_MAX_OUTPUT_BYTES) { stderrTruncated = true; return; }
+        if (stderrBytes + chunk.length > EXEC_MAX_OUTPUT_BYTES) {
+          stderrChunks.push(chunk.subarray(0, EXEC_MAX_OUTPUT_BYTES - stderrBytes));
+          stderrBytes = EXEC_MAX_OUTPUT_BYTES;
+          stderrTruncated = true;
+        } else {
+          stderrChunks.push(chunk);
+          stderrBytes += chunk.length;
+        }
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        const truncMarker = `\n[output truncated at ${EXEC_MAX_OUTPUT_BYTES} bytes]`;
+        let stdout = Buffer.concat(stdoutChunks).toString("utf8");
+        let stderr = Buffer.concat(stderrChunks).toString("utf8");
+        if (stdoutTruncated) stdout += truncMarker;
+        if (stderrTruncated) stderr += truncMarker;
+        resolve({
+          exitCode: code ?? 0,
+          stdout,
+          stderr,
+          ...(stdoutTruncated || stderrTruncated ? { truncated: true } : {}),
+        });
+      });
+      child.stdin.end(options?.stdin ?? "");
+    });
+  }
+
+  /** Like spawnDocker, but throws on non-zero exit. Used by lifecycle commands. */
+  private async runDocker(args: string[]): Promise<ExecResult> {
+    const result = await this.spawnDocker(args);
+    if (result.exitCode !== 0) {
+      throw new Error(`docker ${args[0]} failed (exit ${result.exitCode}): ${result.stderr.trim()}`);
+    }
+    return result;
+  }
 
   /**
    * Build the `docker create` argument list.
@@ -251,16 +301,6 @@ export class ContainerManager {
 // ---------------------------------------------------------------------------
 // Parsing helpers
 // ---------------------------------------------------------------------------
-
-interface ExecFileError {
-  code?: number;
-  stdout?: string;
-  stderr?: string;
-}
-
-function isExecError(error: unknown): error is ExecFileError {
-  return typeof error === "object" && error !== null && "code" in error;
-}
 
 /**
  * Parse a line from `docker inspect --format`.

@@ -9,7 +9,8 @@ import { createLogger } from "./logging/logger.js";
 import { LazyTransportContext } from "./legacy/tools/react.js";
 import { ProcessRegistry } from "./legacy/tools/exec.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { ContainerManager, SandboxExecutor } from "./legacy/sandbox/index.js";
+import { ContainerManager } from "./legacy/sandbox/container.js";
+import { SandboxExecutor } from "./legacy/sandbox/executor.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
