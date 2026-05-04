@@ -518,8 +518,8 @@ describe("createExecTools", () => {
 // Sandbox routing
 // ---------------------------------------------------------------------------
 
-import type { SandboxExecutor } from "../sandbox/executor.js";
-import type { SandboxConfig } from "../sandbox/config.js";
+import type { SandboxExecutor } from "../../sandbox/executor.js";
+import type { SandboxConfig } from "../../sandbox/config.js";
 
 function makeMockSandboxExecutor(overrides?: Partial<SandboxExecutor>): SandboxExecutor {
   return {

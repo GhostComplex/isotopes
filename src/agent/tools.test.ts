@@ -4,8 +4,8 @@ import {
   createAgentTools,
   applyToolPolicy,
 } from "./tools.js";
-import { createWebFetchTool } from "../tools/web.js";
-import { ProcessRegistry } from "../tools/exec.js";
+import { createWebFetchTool } from "../legacy/tools/web.js";
+import { ProcessRegistry } from "../legacy/tools/exec.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content.find((c) => c.type === "text");

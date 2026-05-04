@@ -16,7 +16,7 @@ import type {
   PeerKind,
 } from "./gateway/types.js";
 import type { CronActionConfig } from "./automation/types.js";
-import { resolveSandboxConfig, type SandboxConfig } from "./legacy/sandbox/config.js";
+import { resolveSandboxConfig, type SandboxConfig } from "./sandbox/config.js";
 import type { PluginConfigEntry } from "./legacy/plugins/types.js";
 
 

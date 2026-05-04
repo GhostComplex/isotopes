@@ -7,21 +7,21 @@ import {
   createLsTool,
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import type { AgentToolSettings } from "../../tools/types.js";
+import type { AgentToolSettings } from "../tools/types.js";
 import { HostFs, SandboxFs, type FsBridge } from "../sandbox/fs-bridge.js";
 import type { SandboxExecutor } from "../sandbox/executor.js";
 import { type SandboxConfig, shouldSandbox } from "../sandbox/config.js";
-import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import { createReactTools, type LazyTransportContext } from "../tools/react.js";
-import { createExecTools, ProcessRegistry } from "../tools/exec.js";
-import type { AgentRuntime } from "../../agent/runtime.js";
-import { RunValidationError } from "../../agent/types.js";
-import type { RunRequest } from "../../agent/types.js";
-import { getMessageContext } from "../transport/context.js";
-import { getDiscordA2AStreamContext } from "../plugins/discord/a2a-stream-context.js";
-import { DiscordA2ASink } from "../plugins/discord/discord-a2a-sink.js";
-import { getAgentEndMeta } from "../../agent/runners/pi/messages.js";
-import { createLogger } from "../../logging/logger.js";
+import { createWebFetchTool, createWebSearchTool } from "../legacy/tools/web.js";
+import { createReactTools, type LazyTransportContext } from "../legacy/tools/react.js";
+import { createExecTools, ProcessRegistry } from "../legacy/tools/exec.js";
+import type { AgentRuntime } from "./runtime.js";
+import { RunValidationError } from "./types.js";
+import type { RunRequest } from "./types.js";
+import { getMessageContext } from "../legacy/transport/context.js";
+import { getDiscordA2AStreamContext } from "../legacy/plugins/discord/a2a-stream-context.js";
+import { DiscordA2ASink } from "../legacy/plugins/discord/discord-a2a-sink.js";
+import { getAgentEndMeta } from "./runners/pi/messages.js";
+import { createLogger } from "../logging/logger.js";
 
 const log = createLogger("tools");
 

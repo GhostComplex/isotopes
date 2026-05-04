@@ -6,8 +6,8 @@ import { promisify } from "node:util";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type, type Static } from "typebox";
 import { createLogger } from "../../logging/logger.js";
-import type { SandboxExecutor } from "../sandbox/executor.js";
-import type { SandboxConfig } from "../sandbox/config.js";
+import type { SandboxExecutor } from "../../sandbox/executor.js";
+import type { SandboxConfig } from "../../sandbox/config.js";
 
 const execAsync = promisify(exec);
 const log = createLogger("tools:exec");

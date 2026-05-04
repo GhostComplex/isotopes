@@ -35,10 +35,10 @@ import {
 import { ensureWorkspaceStructure } from "./workspace.js";
 import { seedWorkspaceTemplates } from "../legacy/workspace/templates.js";
 import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
-import { createAgentTools } from "../legacy/core/tools.js";
+import { createAgentTools } from "../agent/tools.js";
 import { LazyTransportContext } from "../legacy/tools/react.js";
 import { ProcessRegistry } from "../legacy/tools/exec.js";
-import { SandboxExecutor } from "../legacy/sandbox/executor.js";
+import { SandboxExecutor } from "../sandbox/executor.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 
 const log = createLogger("agents:runtime");
