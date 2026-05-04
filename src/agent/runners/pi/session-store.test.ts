@@ -333,14 +333,31 @@ describe("DefaultSessionStore", () => {
       expect(seen).toHaveLength(1);
     });
 
-    it("rejects a second attach to the same sessionId", async () => {
+    it("fans out to multiple subscribers", async () => {
       const session = await store.create("agent-1");
-      const unsub = store.attach(session.id, () => {});
-      expect(() => store.attach(session.id, () => {})).toThrow(/already attached/);
-      unsub();
-      // After unsub, re-attach is allowed.
-      const unsub2 = store.attach(session.id, () => {});
-      unsub2();
+      const a: number[] = [];
+      const b: number[] = [];
+      const ua = store.attach(session.id, () => a.push(1));
+      const ub = store.attach(session.id, () => b.push(1));
+      try {
+        await store.addMessage(session.id, userMessage("hi"));
+      } finally { ua(); ub(); }
+      expect(a).toHaveLength(1);
+      expect(b).toHaveLength(1);
+    });
+
+    it("unsubscribe stops only that listener", async () => {
+      const session = await store.create("agent-1");
+      const a: number[] = [];
+      const b: number[] = [];
+      const ua = store.attach(session.id, () => a.push(1));
+      const ub = store.attach(session.id, () => b.push(1));
+      await store.addMessage(session.id, userMessage("first"));
+      ua();
+      await store.addMessage(session.id, userMessage("second"));
+      ub();
+      expect(a).toHaveLength(1);
+      expect(b).toHaveLength(2);
     });
 
     it("does not emit after unsubscribe", async () => {

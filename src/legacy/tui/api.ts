@@ -177,7 +177,6 @@ export async function attachStream(
   signal: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/stream`, { signal });
-  if (res.status === 409) throw new Error("Session already attached by another viewer");
   if (!res.ok) throw new Error(`API stream: ${res.status} ${res.statusText}`);
 
   const reader = res.body?.getReader();

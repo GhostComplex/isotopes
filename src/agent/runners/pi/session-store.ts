@@ -62,8 +62,8 @@ export class DefaultSessionStore implements SessionStore {
   private keyIndex = new Map<string, string>();
   private indexDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly INDEX_DEBOUNCE_MS = 1_000;
-  /** At most one transcript-bus listener per sessionId. */
-  private listeners = new Map<string, TranscriptListener>();
+  /** Transcript-bus listeners per sessionId. */
+  private listeners = new Map<string, Set<TranscriptListener>>();
 
   constructor(private readonly dataDir: string) {}
 
@@ -227,22 +227,25 @@ export class DefaultSessionStore implements SessionStore {
   }
 
   private emitTranscript(update: TranscriptUpdate): void {
-    const listener = this.listeners.get(update.sessionId);
-    if (!listener) return;
-    try { listener(update); }
-    catch (err) { log.warn("Transcript listener threw", err); }
+    const set = this.listeners.get(update.sessionId);
+    if (!set) return;
+    for (const fn of set) {
+      try { fn(update); }
+      catch (err) { log.warn("Transcript listener threw", err); }
+    }
   }
 
-  /** Attach a single listener; throws if already attached. */
+  /** Attach a transcript-bus listener. Multiple listeners per session are allowed. */
   attach(sessionId: string, listener: TranscriptListener): () => void {
-    if (this.listeners.has(sessionId)) {
-      throw new Error(`Session "${sessionId}" already attached`);
+    let set = this.listeners.get(sessionId);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(sessionId, set);
     }
-    this.listeners.set(sessionId, listener);
+    set.add(listener);
     return () => {
-      if (this.listeners.get(sessionId) === listener) {
-        this.listeners.delete(sessionId);
-      }
+      set!.delete(listener);
+      if (set!.size === 0) this.listeners.delete(sessionId);
     };
   }
 }

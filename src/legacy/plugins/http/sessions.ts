@@ -212,18 +212,12 @@ addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => 
     return;
   }
 
-  let unsub: (() => void) | undefined;
-  try {
-    unsub = store.attach(resolved.sessionId, (update) => {
-      res.write(`event: message\ndata: ${JSON.stringify({
-        message: update.message,
-        messageId: update.messageId,
-      })}\n\n`);
-    });
-  } catch (err) {
-    sendError(res, 409, err instanceof Error ? err.message : String(err));
-    return;
-  }
+  const unsub = store.attach(resolved.sessionId, (update) => {
+    res.write(`event: message\ndata: ${JSON.stringify({
+      message: update.message,
+      messageId: update.messageId,
+    })}\n\n`);
+  });
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -237,7 +231,7 @@ addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => 
 
   const cleanup = () => {
     clearInterval(heartbeat);
-    unsub?.();
+    unsub();
   };
   res.on("close", cleanup);
   req.on("aborted", cleanup);

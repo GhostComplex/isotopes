@@ -44,7 +44,7 @@ export interface SessionStore {
   clearMessages(sessionId: string): Promise<void>;
   /** Get the underlying SDK SessionManager for a session (for AgentSession creation). */
   getSessionManager(sessionId: string): Promise<import("@mariozechner/pi-coding-agent").SessionManager | undefined>;
-  /** Subscribe to transcript appends for a sessionId. At most one listener per session;
-   * throws if already attached. Returns an unsubscribe function. */
+  /** Subscribe to transcript appends for a sessionId. Multiple listeners allowed.
+   * Returns an unsubscribe function. */
   attach(sessionId: string, listener: TranscriptListener): () => void;
 }
