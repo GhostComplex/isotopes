@@ -5,6 +5,8 @@ import {
   createWriteTool,
   createEditTool,
   createLsTool,
+  createFindTool,
+  createGrepTool,
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import type { AgentToolSettings } from "../../tools/types.js";
@@ -288,6 +290,10 @@ export function createWorkspaceTools(options: CreateWorkspaceToolsOptions): Agen
 
   const tools: AgentTool[] = [
     ...createFsTools(workspacePath, fs),
+    // find/grep use pi defaults (host `fd` / `ripgrep`); the bind mount makes
+    // host paths == container paths, so reads from host are always correct.
+    createFindTool(workspacePath) as AgentTool,
+    createGrepTool(workspacePath) as AgentTool,
     createTimeTool(),
   ];
   if (spawnAgentEnabled && runtime && parentAgentId) {

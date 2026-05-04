@@ -37,13 +37,15 @@ describe("createTimeTool", () => {
 });
 
 describe("createWorkspaceTools", () => {
-  it("registers fs tools + time by default", () => {
+  it("registers fs tools + time + find + grep by default", () => {
     const tools = createWorkspaceTools({ workspacePath: "/tmp/ws" });
     const names = tools.map((t) => t.name);
     expect(names).toContain("read");
     expect(names).toContain("write");
     expect(names).toContain("edit");
     expect(names).toContain("ls");
+    expect(names).toContain("find");
+    expect(names).toContain("grep");
     expect(names).toContain("get_current_time");
   });
 
