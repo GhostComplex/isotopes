@@ -312,9 +312,30 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
   const { agentId, key: urlKey } = req.params;
   const sessionKey = `${agentId}:${urlKey}`;
 
-  const active = activeSessions.get(sessionKey);
+  let active = activeSessions.get(sessionKey);
   if (!active) {
-    sendError(res, 404, `Active session not found — create or resume it first`);
+    // Session may exist in the store but was never registered via the HTTP create
+    // path (e.g. transport-driven sessions like Discord). Look it up and register
+    // on demand so HTTP clients can send into it.
+    if (deps.sessionStoreManager) {
+      const store = deps.sessionStoreManager.peek(agentId);
+      if (store) {
+        const resolved = await resolveSessionKey(store, agentId, urlKey);
+        if (resolved) {
+          active = {
+            sessionKey: resolved.sessionKey,
+            sessionId: resolved.sessionId,
+            agentId,
+            lastActivity: Date.now(),
+            pendingMessages: [],
+          };
+          activeSessions.set(resolved.sessionKey, active);
+        }
+      }
+    }
+  }
+  if (!active) {
+    sendError(res, 404, `Session not found`);
     return;
   }
   active.lastActivity = Date.now();
