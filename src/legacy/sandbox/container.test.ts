@@ -307,6 +307,18 @@ describe("ContainerManager", () => {
       expect(result.stdout).toBe("你好");
     });
 
+    it("flags truncation and appends marker when output exceeds 1MB", async () => {
+      // Generate 1.5 MB of output to overflow EXEC_MAX_OUTPUT_BYTES (1 MB).
+      const huge = "x".repeat(1024 * 1024 + 512 * 1024);
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: huge }));
+
+      const result = await manager.exec("abc123", ["cat", "/big/file"]);
+
+      expect(result.truncated).toBe(true);
+      expect(result.stdout.length).toBe(1024 * 1024 + "\n[output truncated at 1048576 bytes]".length);
+      expect(result.stdout.endsWith("[output truncated at 1048576 bytes]")).toBe(true);
+    });
+
   });
 
   describe("buildExecArgv", () => {

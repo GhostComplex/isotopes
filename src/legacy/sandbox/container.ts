@@ -37,6 +37,8 @@ export interface ExecResult {
   stdout: string;
   /** Standard error */
   stderr: string;
+  /** True iff stdout or stderr was capped at EXEC_MAX_OUTPUT_BYTES. */
+  truncated?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,28 +174,42 @@ export class ContainerManager {
       const stderrChunks: Buffer[] = [];
       let stdoutBytes = 0;
       let stderrBytes = 0;
+      let stdoutTruncated = false;
+      let stderrTruncated = false;
       child.stdout.on("data", (chunk: Buffer) => {
-        if (stdoutBytes >= EXEC_MAX_OUTPUT_BYTES) return;
-        const slice = stdoutBytes + chunk.length > EXEC_MAX_OUTPUT_BYTES
-          ? chunk.subarray(0, EXEC_MAX_OUTPUT_BYTES - stdoutBytes)
-          : chunk;
-        stdoutChunks.push(slice);
-        stdoutBytes += slice.length;
+        if (stdoutBytes >= EXEC_MAX_OUTPUT_BYTES) { stdoutTruncated = true; return; }
+        if (stdoutBytes + chunk.length > EXEC_MAX_OUTPUT_BYTES) {
+          stdoutChunks.push(chunk.subarray(0, EXEC_MAX_OUTPUT_BYTES - stdoutBytes));
+          stdoutBytes = EXEC_MAX_OUTPUT_BYTES;
+          stdoutTruncated = true;
+        } else {
+          stdoutChunks.push(chunk);
+          stdoutBytes += chunk.length;
+        }
       });
       child.stderr.on("data", (chunk: Buffer) => {
-        if (stderrBytes >= EXEC_MAX_OUTPUT_BYTES) return;
-        const slice = stderrBytes + chunk.length > EXEC_MAX_OUTPUT_BYTES
-          ? chunk.subarray(0, EXEC_MAX_OUTPUT_BYTES - stderrBytes)
-          : chunk;
-        stderrChunks.push(slice);
-        stderrBytes += slice.length;
+        if (stderrBytes >= EXEC_MAX_OUTPUT_BYTES) { stderrTruncated = true; return; }
+        if (stderrBytes + chunk.length > EXEC_MAX_OUTPUT_BYTES) {
+          stderrChunks.push(chunk.subarray(0, EXEC_MAX_OUTPUT_BYTES - stderrBytes));
+          stderrBytes = EXEC_MAX_OUTPUT_BYTES;
+          stderrTruncated = true;
+        } else {
+          stderrChunks.push(chunk);
+          stderrBytes += chunk.length;
+        }
       });
       child.on("error", reject);
       child.on("close", (code) => {
+        const truncMarker = `\n[output truncated at ${EXEC_MAX_OUTPUT_BYTES} bytes]`;
+        let stdout = Buffer.concat(stdoutChunks).toString("utf8");
+        let stderr = Buffer.concat(stderrChunks).toString("utf8");
+        if (stdoutTruncated) stdout += truncMarker;
+        if (stderrTruncated) stderr += truncMarker;
         resolve({
           exitCode: code ?? 0,
-          stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-          stderr: Buffer.concat(stderrChunks).toString("utf8"),
+          stdout,
+          stderr,
+          ...(stdoutTruncated || stderrTruncated ? { truncated: true } : {}),
         });
       });
       child.stdin.end(options?.stdin ?? "");
