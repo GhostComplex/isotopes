@@ -402,7 +402,7 @@ export class DiscordTransport implements Transport {
       }
       const agentId = this.resolveAgentId(msg);
       const sessionStore = this.getSessionStore(agentId);
-      const sessionKey = this.getSessionKey(msg, agentId);
+      const sessionKey = this.getSessionKey(msg);
       const session = await sessionStore.findByKey(sessionKey);
       const runtimeForCheck = this.config.agentRuntime;
       const isActive = runtimeForCheck && session
@@ -464,7 +464,7 @@ export class DiscordTransport implements Transport {
     if (this.commandHandler.isCommand(content)) {
       const agentId = this.resolveAgentId(msg);
       const sessionStore = this.getSessionStore(agentId);
-      const sessionKey = this.getSessionKey(msg, agentId);
+      const sessionKey = this.getSessionKey(msg);
       const session = await sessionStore.findByKey(sessionKey);
 
       if (!this.config.agentRuntime) {
@@ -505,7 +505,7 @@ export class DiscordTransport implements Transport {
     }
 
     const sessionStore = this.getSessionStore(agentId);
-    const sessionKey = this.getSessionKey(msg, agentId);
+    const sessionKey = this.getSessionKey(msg);
     const session = await this.findOrCreateSession(sessionStore, sessionKey, agentId, msg);
 
     // 6.5. If session is currently active (in a prompt turn), buffer this message instead.
@@ -660,16 +660,16 @@ export class DiscordTransport implements Transport {
     return this.config.sessionStoreForAgent?.(agentId) ?? this.config.sessionStore;
   }
 
-  private getSessionKey(msg: DiscordMessage, agentId: string): string {
+  private getSessionKey(msg: DiscordMessage): string {
     const botId = this.client.user?.id ?? "unknown";
 
     if (msg.thread) {
-      return buildSessionKey("discord", botId, "thread", msg.thread.id, agentId);
+      return buildSessionKey("discord", botId, "thread", msg.thread.id);
     }
     if (!msg.guild) {
-      return buildSessionKey("discord", botId, "dm", msg.author.id, agentId);
+      return buildSessionKey("discord", botId, "dm", msg.author.id);
     }
-    return buildSessionKey("discord", botId, "channel", msg.channelId, agentId);
+    return buildSessionKey("discord", botId, "channel", msg.channelId);
   }
 
   private async findOrCreateSession(
