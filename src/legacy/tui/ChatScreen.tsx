@@ -107,6 +107,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const [error, setError] = useState<string | null>(null);
   const sessionKeyRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const attachAbortRef = useRef<AbortController | null>(null);
   const pendingSteerRef = useRef<ChatMessage[]>([]);
   const settledRef = useRef<ChatMessage[]>([]);
   const autoMessageSent = useRef(false);
@@ -131,6 +132,32 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         }
       }
 
+      if (options.session) {
+        sessionKeyRef.current = options.session;
+        setAgentId(resolvedAgentId);
+        const { items: history } = await api.getHistory(resolvedAgentId, options.session);
+        const chatMessages = historyToChatMessages(history);
+        setMessages(chatMessages);
+        const attachAbort = new AbortController();
+        attachAbortRef.current = attachAbort;
+        void (async () => {
+          try {
+            await api.attachStream(resolvedAgentId, options.session!, (m) => {
+              const converted = historyToChatMessages([m.message as { role: string; content: unknown; toolCallId?: string }]);
+              if (converted.length > 0) {
+                setMessages((prev) => [...prev, ...converted]);
+              }
+            }, attachAbort.signal);
+          } catch (err) {
+            if (!attachAbort.signal.aborted) {
+              setError(`Attach failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
+        })();
+        setAgentReady(true);
+        return;
+      }
+
       const session = await api.createSession(resolvedAgentId, "tui:main");
       sessionKeyRef.current = session.key;
       setAgentId(session.agentId);
@@ -151,12 +178,13 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [options.session]);
 
   useEffect(() => {
     void initAgent(options.agent);
     return () => {
       abortRef.current?.abort();
+      attachAbortRef.current?.abort();
     };
   }, []);
 
@@ -169,6 +197,28 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
   const sendMessage = async (text: string) => {
     if (!sessionKeyRef.current || isStreaming) return;
+
+    // Attach mode: attachStream is the single source of truth for UI updates.
+    // Skip local user echo and inline streaming preview — the persisted
+    // user message + assistant response will arrive via the bus.
+    if (options.session) {
+      setIsStreaming(true);
+      const abort = new AbortController();
+      abortRef.current = abort;
+      try {
+        await api.sendMessage(agentId, sessionKeyRef.current, text, () => {}, abort.signal);
+      } catch (err) {
+        if (!abort.signal.aborted) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
+        }
+      } finally {
+        abortRef.current = null;
+        setIsStreaming(false);
+      }
+      return;
+    }
+
     const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
     setIsStreaming(true);
@@ -261,6 +311,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     if (slash) {
       const handled = dispatch(slash.command, slash.args, {
         onNewChat: () => {
+          if (options.session) {
+            setMessages((prev) => [...prev, { role: "system", content: "/new is disabled in --session attach mode (would delete the attached session). Exit and relaunch without --session.", timestamp: new Date() }]);
+            return;
+          }
           setMessages([]);
           settledRef.current = [];
           setIsStreaming(true);

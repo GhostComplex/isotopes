@@ -8,6 +8,8 @@ import type {
   Session,
   SessionMetadata,
   SessionStore,
+  TranscriptListener,
+  TranscriptUpdate,
 } from "../../../sessions/types.js";
 import {
   ensureAgentSessionsDir,
@@ -36,11 +38,31 @@ interface StoredSession extends Session {
   manager?: SessionManager;
 }
 
+function installTranscriptEmitter(
+  sm: SessionManager,
+  sessionId: string,
+  emit: (update: TranscriptUpdate) => void,
+): void {
+  const original = sm.appendMessage.bind(sm);
+  sm.appendMessage = (message: PiMessage) => {
+    const messageId = original(message);
+    try {
+      // PiMessage === AgentMessage structurally; pi-agent-core re-exports both names.
+      emit({ sessionId, message: message as unknown as AgentMessage, messageId });
+    } catch {
+      // swallow: a throw here would corrupt SDK turn state
+    }
+    return messageId;
+  };
+}
+
 export class DefaultSessionStore implements SessionStore {
   private sessions = new Map<string, StoredSession>();
   private keyIndex = new Map<string, string>();
   private indexDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly INDEX_DEBOUNCE_MS = 1_000;
+  /** Transcript-bus listeners per sessionId. */
+  private listeners = new Map<string, Set<TranscriptListener>>();
 
   constructor(private readonly dataDir: string) {}
 
@@ -54,7 +76,7 @@ export class DefaultSessionStore implements SessionStore {
       throw new Error(`Session with key already exists: ${metadata.key}`);
     }
     const id = randomUUID();
-    const manager = SessionManager.open(this.transcriptFile(id));
+    const manager = this.openPatchedManager(id);
     const session: StoredSession = { id, agentId, metadata, lastActiveAt: new Date(), manager };
     this.sessions.set(id, session);
     if (metadata?.key) this.keyIndex.set(metadata.key, id);
@@ -118,7 +140,7 @@ export class DefaultSessionStore implements SessionStore {
     if (!session) throw new Error(`Session "${sessionId}" not found`);
     session.lastActiveAt = new Date();
     await fs.writeFile(this.transcriptFile(sessionId), "");
-    session.manager = SessionManager.open(this.transcriptFile(sessionId));
+    session.manager = this.openPatchedManager(sessionId);
     await this.persistIndex();
   }
 
@@ -195,9 +217,40 @@ export class DefaultSessionStore implements SessionStore {
 
   private ensureManager(session: StoredSession): SessionManager {
     if (!session.manager) {
-      session.manager = SessionManager.open(this.transcriptFile(session.id));
+      session.manager = this.openPatchedManager(session.id);
     }
     return session.manager;
+  }
+
+  /** Single source of truth for opening a SessionManager — patches it
+   * with the transcript emitter exactly once. */
+  private openPatchedManager(sessionId: string): SessionManager {
+    const sm = SessionManager.open(this.transcriptFile(sessionId));
+    installTranscriptEmitter(sm, sessionId, (u) => this.emitTranscript(u));
+    return sm;
+  }
+
+  private emitTranscript(update: TranscriptUpdate): void {
+    const set = this.listeners.get(update.sessionId);
+    if (!set) return;
+    for (const fn of set) {
+      try { fn(update); }
+      catch (err) { log.warn("Transcript listener threw", err); }
+    }
+  }
+
+  /** Subscribe a transcript-bus listener. Multiple listeners per session are allowed. */
+  subscribe(sessionId: string, listener: TranscriptListener): () => void {
+    let set = this.listeners.get(sessionId);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(sessionId, set);
+    }
+    set.add(listener);
+    return () => {
+      set!.delete(listener);
+      if (set!.size === 0) this.listeners.delete(sessionId);
+    };
   }
 }
 

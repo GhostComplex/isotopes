@@ -6,6 +6,7 @@ import { userMessage, assistantMessage, getAgentEndMeta } from "./runners/pi/mes
 import type { Logger } from "../logging/logger.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import { runWithMessageContext } from "../legacy/transport/context.js";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
 export interface RunAgentOptions {
   to: string;
@@ -16,6 +17,8 @@ export interface RunAgentOptions {
   hooks?: HookRegistry;
   /** Fires at every turn boundary; non-null return is steered into the next turn. */
   onTurnEnd?: () => Promise<string | null>;
+  /** Fires for every event yielded by runtime.run. Use to render streaming UI in the driving caller. */
+  onEvent?: (event: AgentEvent) => void;
 }
 
 export interface RunAgentResult {
@@ -27,7 +30,7 @@ export async function runAgent(
   runtime: AgentRuntime,
   opts: RunAgentOptions,
 ): Promise<RunAgentResult> {
-  const { to, sessionId, content, cwd, log, hooks, onTurnEnd } = opts;
+  const { to, sessionId, content, cwd, log, hooks, onTurnEnd, onEvent } = opts;
 
   if (hooks && content) {
     await hooks.emit("message_received", {
@@ -52,6 +55,10 @@ export async function runAgent(
       { transport: "internal", channelKey: sessionId, agentId: to, parentSessionId: sessionId },
       async () => {
         for await (const event of stream) {
+          if (onEvent) {
+            try { onEvent(event); }
+            catch (err) { log.warn("onEvent callback threw", { error: err }); }
+          }
           if (event.type === "message_update") {
             const ame = event.assistantMessageEvent;
             if (ame.type === "text_delta") responseText += ame.delta;

@@ -98,7 +98,7 @@ describe("runAgent", () => {
     expect(scanCount).toBe(0);
   });
 
-  it("emits every AgentEvent to runtime.on(sessionId)", async () => {
+  it("calls onEvent for every AgentEvent yielded by runtime.run", async () => {
     const rt = new AgentRuntime();
     rt.registerRunner("main", stubRunner(async function* () {
       yield buildTextDelta("hi");
@@ -106,12 +106,13 @@ describe("runAgent", () => {
     }));
 
     const seen: AgentEvent["type"][] = [];
-    const unsub = rt.on("s4", (e) => seen.push(e.type));
-    try {
-      await runAgent(rt, { to: "main", sessionId: "s4", content: "hi", log });
-    } finally {
-      unsub();
-    }
+    await runAgent(rt, {
+      to: "main",
+      sessionId: "s4",
+      content: "hi",
+      log,
+      onEvent: (e) => seen.push(e.type),
+    });
 
     expect(seen).toEqual(["message_update", "agent_end"]);
   });

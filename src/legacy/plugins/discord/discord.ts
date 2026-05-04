@@ -737,18 +737,6 @@ export class DiscordTransport implements Transport {
       throw new Error("DiscordTransport.runAgentAndRespond requires agentRuntime");
     }
 
-    const unsubBus = runtime.on(sessionId, (e) => {
-      if (e.type === "message_update" && streamBuffer) {
-        const ame = e.assistantMessageEvent;
-        if (ame.type === "text_delta" && ame.delta.length > 0) {
-          void streamBuffer.append(ame.delta);
-        }
-      }
-      if (this.config.showToolCalls && e.type === "tool_execution_start") {
-        toolSummaries.push(`🔧 ${e.toolName}`);
-      }
-    });
-
     try {
       // Create segmented stream buffer that sends new messages at sentence boundaries
       streamBuffer = new SegmentedStreamBuffer(async (text: string) => {
@@ -777,6 +765,17 @@ export class DiscordTransport implements Transport {
           content: "",
           ...(cwd ? { cwd } : {}),
           log,
+          onEvent: (e) => {
+            if (e.type === "message_update" && streamBuffer) {
+              const ame = e.assistantMessageEvent;
+              if (ame.type === "text_delta" && ame.delta.length > 0) {
+                void streamBuffer.append(ame.delta);
+              }
+            }
+            if (this.config.showToolCalls && e.type === "tool_execution_start") {
+              toolSummaries.push(`🔧 ${e.toolName}`);
+            }
+          },
           onTurnEnd: async () => {
             const pending = this.pendingMessages.get(sessionId);
             if (!pending?.length) return null;
@@ -849,8 +848,6 @@ export class DiscordTransport implements Transport {
         log.debug("Failed to send error message to Discord", sendErr);
       }
     } finally {
-      unsubBus();
-      runtime.endSession(sessionId);
       typing.stop();
       this.pendingMessages.delete(sessionId);
     }
