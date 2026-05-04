@@ -49,6 +49,8 @@ function installTranscriptEmitter(
   sm.appendMessage = (message: PiMessage) => {
     const messageId = original(message);
     try {
+      // PiMessage and AgentMessage are structurally compatible — they share
+      // the role/content shape that pi-agent-core re-exports under both names.
       emit({ sessionId, message: message as unknown as AgentMessage, messageId });
     } catch {
       // swallow: a throw here would corrupt SDK turn state

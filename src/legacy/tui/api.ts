@@ -191,7 +191,7 @@ export async function attachStream(
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
+    const lines = buffer.split(/\r?\n/);
     buffer = lines.pop() ?? "";
     for (const line of lines) {
       if (line.startsWith(":")) continue; // heartbeat comment
@@ -205,7 +205,10 @@ export async function attachStream(
           try {
             const parsed = JSON.parse(dataLines.join("\n")) as AttachedMessage;
             onMessage(parsed);
-          } catch { /* malformed, skip */ }
+          } catch (err) {
+             
+            console.error("attachStream: malformed JSON", err);
+          }
         }
         currentEvent = "";
         dataLines = [];

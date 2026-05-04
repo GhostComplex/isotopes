@@ -197,6 +197,28 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
 
   const sendMessage = async (text: string) => {
     if (!sessionKeyRef.current || isStreaming) return;
+
+    // Attach mode: attachStream is the single source of truth for UI updates.
+    // Skip local user echo and inline streaming preview — the persisted
+    // user message + assistant response will arrive via the bus.
+    if (options.session) {
+      setIsStreaming(true);
+      const abort = new AbortController();
+      abortRef.current = abort;
+      try {
+        await api.sendMessage(agentId, sessionKeyRef.current, text, () => {}, abort.signal);
+      } catch (err) {
+        if (!abort.signal.aborted) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
+        }
+      } finally {
+        abortRef.current = null;
+        setIsStreaming(false);
+      }
+      return;
+    }
+
     const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
     setIsStreaming(true);

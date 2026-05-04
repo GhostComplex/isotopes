@@ -212,6 +212,15 @@ addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => 
     return;
   }
 
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+  });
+  // Initial flush — without this, buffering proxies (nginx default) hold the
+  // response until the first event, which can be 25s on a quiet session.
+  res.write(": connected\n\n");
+
   const unsub = store.attach(resolved.sessionId, (update) => {
     res.write(`event: message\ndata: ${JSON.stringify({
       message: update.message,
@@ -219,12 +228,6 @@ addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => 
     })}\n\n`);
   });
 
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
-  });
-  // Heartbeat keeps proxies from idling out.
   const heartbeat = setInterval(() => {
     res.write(": ping\n\n");
   }, 25_000);
