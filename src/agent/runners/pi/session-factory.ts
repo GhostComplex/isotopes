@@ -89,8 +89,8 @@ export async function createPiSession(
     authStorage: deps.authStorage,
     modelRegistry: deps.modelRegistry,
     model: resolveModel(deps.globalProvider, agent.config.model),
-    // `tools: []` is an empty allowlist — disables all SDK built-ins.
-    tools: [],
+    // Disable SDK built-ins (read/bash/edit/write); customTools are unaffected.
+    noTools: "builtin",
     customTools,
     sessionManager,
     settingsManager: SettingsManager.inMemory(),
