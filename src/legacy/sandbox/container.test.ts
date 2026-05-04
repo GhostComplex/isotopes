@@ -1,6 +1,5 @@
 // src/sandbox/container.test.ts — Unit tests for ContainerManager
-// Lifecycle docker calls are mocked via vi.mock("node:util") for execFile;
-// `exec()` uses spawn directly (mocked via vi.mock("node:child_process")).
+// All docker calls go through spawn (mocked via vi.mock("node:child_process")).
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -8,12 +7,6 @@ import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
 import { ContainerManager } from "./container.js";
 import type { DockerConfig } from "./config.js";
-
-const mockExecFile = vi.hoisted(() => vi.fn());
-
-vi.mock("node:util", () => ({
-  promisify: () => mockExecFile,
-}));
 
 vi.mock("node:child_process", async () => {
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
@@ -56,18 +49,17 @@ describe("ContainerManager", () => {
   let manager: ContainerManager;
 
   beforeEach(() => {
-    mockExecFile.mockReset();
     mockSpawn.mockReset();
     manager = new ContainerManager(defaultDockerConfig);
   });
 
   describe("create", () => {
     it("calls docker create with correct arguments", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
 
       const result = await manager.create("test-container", "/home/user/workspace", "rw");
 
-      expect(mockExecFile).toHaveBeenCalledWith("docker", [
+      expect(mockSpawn).toHaveBeenCalledWith("docker", [
         "create",
         "--name", "test-container",
         "--init",
@@ -77,7 +69,7 @@ describe("ContainerManager", () => {
         "--security-opt", "no-new-privileges",
         "isotopes-sandbox:latest",
         "tail", "-f", "/dev/null",
-      ]);
+      ], { stdio: ["pipe", "pipe", "pipe"] });
 
       expect(result.id).toBe("abc123");
       expect(result.name).toBe("test-container");
@@ -86,7 +78,7 @@ describe("ContainerManager", () => {
     });
 
     it("emits hardening flags when DockerConfig provides them", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
 
       const hardened: DockerConfig = {
         ...defaultDockerConfig,
@@ -99,7 +91,7 @@ describe("ContainerManager", () => {
 
       await m.create("hardened", "/workspace", "rw");
 
-      const args = mockExecFile.mock.calls[0][1] as string[];
+      const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("--init");
       expect(args).toContain("--pids-limit");
       expect(args).toContain("256");
@@ -112,32 +104,32 @@ describe("ContainerManager", () => {
     });
 
     it("omits --pids-limit when set to 0", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
       const cfg: DockerConfig = { ...defaultDockerConfig, pidsLimit: 0 };
       await new ContainerManager(cfg).create("t", "/w", "rw");
-      const args = mockExecFile.mock.calls[0][1] as string[];
+      const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).not.toContain("--pids-limit");
     });
 
     it("omits --security-opt when noNewPrivileges is false", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
       const cfg: DockerConfig = { ...defaultDockerConfig, noNewPrivileges: false };
       await new ContainerManager(cfg).create("t", "/w", "rw");
-      const args = mockExecFile.mock.calls[0][1] as string[];
+      const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).not.toContain("--security-opt");
     });
 
     it("adds :ro suffix for read-only workspace access", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
 
       await manager.create("test-container", "/workspace", "ro");
 
-      const args = mockExecFile.mock.calls[0][1] as string[];
+      const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("/workspace:/workspace:ro");
     });
 
     it("includes extra hosts in create args", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
 
       const configWithHosts: DockerConfig = {
         ...defaultDockerConfig,
@@ -147,14 +139,14 @@ describe("ContainerManager", () => {
 
       await m.create("test", "/workspace", "rw");
 
-      const args = mockExecFile.mock.calls[0][1] as string[];
+      const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("--add-host");
       expect(args).toContain("host.docker.internal:host-gateway");
       expect(args).toContain("myhost:192.168.1.1");
     });
 
     it("includes CPU and memory limits in create args", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "abc123\n", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
 
       const configWithLimits: DockerConfig = {
         ...defaultDockerConfig,
@@ -165,7 +157,7 @@ describe("ContainerManager", () => {
 
       await m.create("test", "/workspace", "rw");
 
-      const args = mockExecFile.mock.calls[0][1] as string[];
+      const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("--cpus");
       expect(args).toContain("1.5");
       expect(args).toContain("--memory");
@@ -173,21 +165,21 @@ describe("ContainerManager", () => {
     });
 
     it("mounts allowedWorkspaces as read-only at host path", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "abc\n", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc\n" }));
 
       await manager.create("test", "/workspace", "rw", ["/extra/foo", "/another/bar"]);
 
-      const args = mockExecFile.mock.calls[0][1] as string[];
+      const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("/extra/foo:/extra/foo:ro");
       expect(args).toContain("/another/bar:/another/bar:ro");
     });
 
     it("does not duplicate workspace mount when included in allowedWorkspaces", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "abc\n", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc\n" }));
 
       await manager.create("test", "/workspace", "rw", ["/workspace", "/extra"]);
 
-      const args = mockExecFile.mock.calls[0][1] as string[];
+      const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).not.toContain("/workspace:/workspace:ro");
       expect(args).toContain("/extra:/extra:ro");
     });
@@ -195,53 +187,53 @@ describe("ContainerManager", () => {
 
   describe("start", () => {
     it("calls docker start with container ID", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "" }));
 
       await manager.start("abc123");
 
-      expect(mockExecFile).toHaveBeenCalledWith("docker", ["start", "abc123"]);
+      expect(mockSpawn).toHaveBeenCalledWith("docker", ["start", "abc123"], { stdio: ["pipe", "pipe", "pipe"] });
     });
   });
 
   describe("stop", () => {
     it("calls docker stop with default timeout", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "" }));
 
       await manager.stop("abc123");
 
-      expect(mockExecFile).toHaveBeenCalledWith("docker", [
+      expect(mockSpawn).toHaveBeenCalledWith("docker", [
         "stop", "-t", "10", "abc123",
-      ]);
+      ], { stdio: ["pipe", "pipe", "pipe"] });
     });
 
     it("calls docker stop with custom timeout", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "" }));
 
       await manager.stop("abc123", 30);
 
-      expect(mockExecFile).toHaveBeenCalledWith("docker", [
+      expect(mockSpawn).toHaveBeenCalledWith("docker", [
         "stop", "-t", "30", "abc123",
-      ]);
+      ], { stdio: ["pipe", "pipe", "pipe"] });
     });
   });
 
   describe("remove", () => {
     it("calls docker rm without force by default", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "" }));
 
       await manager.remove("abc123");
 
-      expect(mockExecFile).toHaveBeenCalledWith("docker", ["rm", "abc123"]);
+      expect(mockSpawn).toHaveBeenCalledWith("docker", ["rm", "abc123"], { stdio: ["pipe", "pipe", "pipe"] });
     });
 
     it("calls docker rm with force flag", async () => {
-      mockExecFile.mockResolvedValue({ stdout: "", stderr: "" });
+      mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "" }));
 
       await manager.remove("abc123", true);
 
-      expect(mockExecFile).toHaveBeenCalledWith("docker", [
+      expect(mockSpawn).toHaveBeenCalledWith("docker", [
         "rm", "--force", "abc123",
-      ]);
+      ], { stdio: ["pipe", "pipe", "pipe"] });
     });
   });
 
@@ -301,10 +293,10 @@ describe("ContainerManager", () => {
 
   describe("status", () => {
     it("returns container info when container exists", async () => {
-      mockExecFile.mockResolvedValue({
+      mockSpawn.mockReturnValue(fakeChild({
+        code: 0,
         stdout: "abc123\t/test-container\trunning\tisotopes-sandbox:latest\t2026-04-09T10:00:00Z\n",
-        stderr: "",
-      });
+      }));
 
       const info = await manager.status("abc123");
 
@@ -316,10 +308,10 @@ describe("ContainerManager", () => {
     });
 
     it("strips leading / from container name", async () => {
-      mockExecFile.mockResolvedValue({
+      mockSpawn.mockReturnValue(fakeChild({
+        code: 0,
         stdout: "abc123\t/my-container\trunning\ttest:latest\t2026-04-09T10:00:00Z\n",
-        stderr: "",
-      });
+      }));
 
       const info = await manager.status("abc123");
 
@@ -327,7 +319,7 @@ describe("ContainerManager", () => {
     });
 
     it("returns null when container does not exist", async () => {
-      mockExecFile.mockRejectedValue(new Error("No such container"));
+      mockSpawn.mockReturnValue(fakeChild({ code: 1, stderr: "No such container" }));
 
       const info = await manager.status("nonexistent");
 
@@ -346,10 +338,10 @@ describe("ContainerManager", () => {
       ["paused", "paused"],
       ["dead", "exited"],
     ] as const)("normalizes '%s' to '%s'", async (dockerStatus, expected) => {
-      mockExecFile.mockResolvedValue({
+      mockSpawn.mockReturnValue(fakeChild({
+        code: 0,
         stdout: `abc123\t/test\t${dockerStatus}\ttest:latest\t2026-04-09T10:00:00Z\n`,
-        stderr: "",
-      });
+      }));
 
       const info = await manager.status("abc123");
 
