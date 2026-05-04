@@ -38,7 +38,7 @@ import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
 import { createAgentTools } from "../legacy/core/tools.js";
 import { LazyTransportContext } from "../legacy/tools/react.js";
 import { ProcessRegistry } from "../legacy/tools/exec.js";
-import { SandboxExecutor, SandboxFs, HostFs, shouldSandbox } from "../legacy/sandbox/index.js";
+import { SandboxExecutor } from "../legacy/sandbox/index.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 
 const log = createLogger("agents:runtime");
@@ -330,21 +330,10 @@ export class AgentRuntime {
     await reconcileWorkspaceState(workspacePath);
     await ensureWorkspaceStructure(workspacePath);
 
-    const isSandboxed = !!(sandboxExecutor && agentConfig.sandbox && shouldSandbox(agentConfig.sandbox, false));
-    const fs = isSandboxed ? new SandboxFs(sandboxExecutor!, agentConfig.id) : new HostFs();
-
-    // Agent spawns host-side child runners that bypass docker.
-    const spawnAgentEnabled = !isSandboxed;
-    if (isSandboxed) {
-      log.warn(`spawn_agent tool disabled for ${agentConfig.id}: sandbox is active and child runners cannot be confined.`);
-    }
-
     const processRegistry = new ProcessRegistry();
     const tools: AgentTool[] = createAgentTools({
       workspacePath,
       settings: agentConfig.toolSettings,
-      spawnAgentEnabled,
-      fs,
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,
       processRegistry,

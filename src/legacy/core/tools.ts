@@ -8,9 +8,9 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import type { AgentToolSettings } from "../../tools/types.js";
-import { HostFs, type FsBridge } from "../sandbox/fs-bridge.js";
+import { HostFs, SandboxFs, type FsBridge } from "../sandbox/fs-bridge.js";
 import type { SandboxExecutor } from "../sandbox/executor.js";
-import type { SandboxConfig } from "../sandbox/config.js";
+import { type SandboxConfig, shouldSandbox } from "../sandbox/config.js";
 import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
 import { createReactTools, type LazyTransportContext } from "../tools/react.js";
 import { createExecTools, ProcessRegistry } from "../tools/exec.js";
@@ -289,7 +289,7 @@ export interface CreateWorkspaceToolsOptions {
   spawnableAgentIds?: string[];
 }
 
-export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOptions): AgentTool[] {
+export function createWorkspaceTools(options: CreateWorkspaceToolsOptions): AgentTool[] {
   const {
     workspacePath,
     settings,
@@ -319,19 +319,45 @@ export function createWorkspaceToolsWithGuards(options: CreateWorkspaceToolsOpti
   return tools;
 }
 
-export interface CreateAgentToolsOptions extends CreateWorkspaceToolsOptions {
+export interface CreateAgentToolsOptions {
+  workspacePath: string;
+  agentId: string;
+  settings?: AgentToolSettings;
+  parentAgentId?: string;
+  runtime?: AgentRuntime;
+  spawnableAgentIds?: string[];
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
+  /** Sandbox infra. When `agentSandboxConfig` resolves to "sandboxed", FS and
+   *  exec route through docker; spawn_agent is also disabled (host child
+   *  runners can't be confined). */
   sandboxExecutor?: SandboxExecutor;
   agentSandboxConfig?: SandboxConfig;
   allowedWorkspaces?: string[];
-  agentId: string;
 }
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
+  const isSandboxed = !!(opts.sandboxExecutor && opts.agentSandboxConfig
+    && shouldSandbox(opts.agentSandboxConfig, false));
+  const fs: FsBridge = isSandboxed
+    ? new SandboxFs(opts.sandboxExecutor!, opts.agentId)
+    : new HostFs();
+  const spawnAgentEnabled = !isSandboxed;
+  if (isSandboxed) {
+    log.warn(`spawn_agent tool disabled for ${opts.agentId}: sandbox is active and child runners cannot be confined.`);
+  }
+
   const tools: AgentTool[] = [];
   tools.push(...applyToolPolicy(
-    createWorkspaceToolsWithGuards(opts),
+    createWorkspaceTools({
+      workspacePath: opts.workspacePath,
+      settings: opts.settings,
+      spawnAgentEnabled,
+      fs,
+      ...(opts.parentAgentId ? { parentAgentId: opts.parentAgentId } : {}),
+      ...(opts.runtime ? { runtime: opts.runtime } : {}),
+      ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
+    }),
     opts.settings,
   ));
   if (opts.transportContext) {

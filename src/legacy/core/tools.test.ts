@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   createEchoTool,
   createTimeTool,
-  createWorkspaceToolsWithGuards,
+  createWorkspaceTools,
   applyToolPolicy,
 } from "./tools.js";
 
@@ -50,9 +50,9 @@ describe("createTimeTool", () => {
   });
 });
 
-describe("createWorkspaceToolsWithGuards", () => {
+describe("createWorkspaceTools", () => {
   it("registers fs tools + time by default", () => {
-    const tools = createWorkspaceToolsWithGuards({ workspacePath: "/tmp/ws" });
+    const tools = createWorkspaceTools({ workspacePath: "/tmp/ws" });
     const names = tools.map((t) => t.name);
     expect(names).toContain("read");
     expect(names).toContain("write");
@@ -62,7 +62,7 @@ describe("createWorkspaceToolsWithGuards", () => {
   });
 
   it("adds web tools when settings.web is true", () => {
-    const tools = createWorkspaceToolsWithGuards({
+    const tools = createWorkspaceTools({
       workspacePath: "/tmp/ws",
       settings: { web: true },
     });
