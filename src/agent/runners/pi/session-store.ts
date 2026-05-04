@@ -77,8 +77,7 @@ export class DefaultSessionStore implements SessionStore {
       throw new Error(`Session with key already exists: ${metadata.key}`);
     }
     const id = randomUUID();
-    const manager = SessionManager.open(this.transcriptFile(id));
-    installTranscriptEmitter(manager, id, (u) => this.emitTranscript(u));
+    const manager = this.openPatchedManager(id);
     const session: StoredSession = { id, agentId, metadata, lastActiveAt: new Date(), manager };
     this.sessions.set(id, session);
     if (metadata?.key) this.keyIndex.set(metadata.key, id);
@@ -142,8 +141,7 @@ export class DefaultSessionStore implements SessionStore {
     if (!session) throw new Error(`Session "${sessionId}" not found`);
     session.lastActiveAt = new Date();
     await fs.writeFile(this.transcriptFile(sessionId), "");
-    session.manager = SessionManager.open(this.transcriptFile(sessionId));
-    installTranscriptEmitter(session.manager, sessionId, (u) => this.emitTranscript(u));
+    session.manager = this.openPatchedManager(sessionId);
     await this.persistIndex();
   }
 
@@ -220,10 +218,17 @@ export class DefaultSessionStore implements SessionStore {
 
   private ensureManager(session: StoredSession): SessionManager {
     if (!session.manager) {
-      session.manager = SessionManager.open(this.transcriptFile(session.id));
-      installTranscriptEmitter(session.manager, session.id, (u) => this.emitTranscript(u));
+      session.manager = this.openPatchedManager(session.id);
     }
     return session.manager;
+  }
+
+  /** Single source of truth for opening a SessionManager — patches it
+   * with the transcript emitter exactly once. */
+  private openPatchedManager(sessionId: string): SessionManager {
+    const sm = SessionManager.open(this.transcriptFile(sessionId));
+    installTranscriptEmitter(sm, sessionId, (u) => this.emitTranscript(u));
+    return sm;
   }
 
   private emitTranscript(update: TranscriptUpdate): void {
