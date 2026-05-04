@@ -63,12 +63,8 @@ export class HostFs implements FsBridge {
   }
 }
 
-/**
- * Reads passthrough to host fs (the bind mount makes container writes visible
- * on host — confining reads adds a docker-exec round-trip with no security
- * gain). Writes shell out via the agent's container so they land subject to
- * the OS-level mount boundary, not just JS path validation.
- */
+/** Reads passthrough to host fs (bind mount); writes go through `docker exec`
+ * so they're confined by the OS-level mount boundary. */
 export class SandboxFs implements FsBridge {
   constructor(
     private executor: SandboxExecutor,
