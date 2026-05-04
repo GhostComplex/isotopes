@@ -166,21 +166,35 @@ export class ContainerManager {
   private spawnDocker(args: string[], options?: { stdin?: Buffer | string }): Promise<ExecResult> {
     return new Promise<ExecResult>((resolve, reject) => {
       const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
-      let stdout = "";
-      let stderr = "";
+      // Accumulate as Buffers and decode once at close — avoids splitting
+      // multi-byte UTF-8 across chunk boundaries.
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
       child.stdout.on("data", (chunk: Buffer) => {
-        if (stdout.length < EXEC_MAX_OUTPUT_BYTES) {
-          stdout += chunk.toString().slice(0, EXEC_MAX_OUTPUT_BYTES - stdout.length);
-        }
+        if (stdoutBytes >= EXEC_MAX_OUTPUT_BYTES) return;
+        const slice = stdoutBytes + chunk.length > EXEC_MAX_OUTPUT_BYTES
+          ? chunk.subarray(0, EXEC_MAX_OUTPUT_BYTES - stdoutBytes)
+          : chunk;
+        stdoutChunks.push(slice);
+        stdoutBytes += slice.length;
       });
       child.stderr.on("data", (chunk: Buffer) => {
-        if (stderr.length < EXEC_MAX_OUTPUT_BYTES) {
-          stderr += chunk.toString().slice(0, EXEC_MAX_OUTPUT_BYTES - stderr.length);
-        }
+        if (stderrBytes >= EXEC_MAX_OUTPUT_BYTES) return;
+        const slice = stderrBytes + chunk.length > EXEC_MAX_OUTPUT_BYTES
+          ? chunk.subarray(0, EXEC_MAX_OUTPUT_BYTES - stderrBytes)
+          : chunk;
+        stderrChunks.push(slice);
+        stderrBytes += slice.length;
       });
       child.on("error", reject);
       child.on("close", (code) => {
-        resolve({ exitCode: code ?? 0, stdout, stderr });
+        resolve({
+          exitCode: code ?? 0,
+          stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+          stderr: Buffer.concat(stderrChunks).toString("utf8"),
+        });
       });
       child.stdin.end(options?.stdin ?? "");
     });

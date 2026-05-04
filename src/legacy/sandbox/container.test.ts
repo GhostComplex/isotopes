@@ -282,6 +282,31 @@ describe("ContainerManager", () => {
       const written = Buffer.concat(capture.chunks);
       expect(written.toString("utf8")).toBe("file body");
     });
+    it("preserves multi-byte UTF-8 split across chunk boundaries", async () => {
+      // "你好" is 6 bytes (E4 BD A0  E5 A5 BD); split mid-character.
+      const bytes = Buffer.from("你好", "utf8");
+      const part1 = bytes.subarray(0, 4);  // mid-second-char
+      const part2 = bytes.subarray(4);
+
+      const ee = new EventEmitter() as ChildProcess;
+      const stdout = new Readable({ read() {} });
+      const stderr = Readable.from([]);
+      const stdin = new Writable({ write(_c, _e, cb) { cb(); }, final(cb) { cb(); } });
+      Object.defineProperty(ee, "stdin", { value: stdin });
+      Object.defineProperty(ee, "stdout", { value: stdout });
+      Object.defineProperty(ee, "stderr", { value: stderr });
+      mockSpawn.mockReturnValue(ee);
+
+      const promise = manager.exec("abc123", ["echo", "你好"]);
+      stdout.push(part1);
+      stdout.push(part2);
+      stdout.push(null);
+      setImmediate(() => ee.emit("close", 0));
+
+      const result = await promise;
+      expect(result.stdout).toBe("你好");
+    });
+
   });
 
   describe("buildExecArgv", () => {
