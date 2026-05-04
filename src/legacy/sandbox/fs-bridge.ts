@@ -1,15 +1,5 @@
-// src/sandbox/fs-bridge.ts — Filesystem bridge used by SDK FS tools (read/write/edit/ls).
-//
-// `FsBridge` is the narrow interface those tools actually need. We provide two
-// implementations:
-//   - `HostFs`     — wraps node:fs/promises (default).
-//   - `SandboxFs`  — reads pass through to host fs (workspace bind mount makes
-//                    container writes visible on host); writes go through
-//                    `docker exec` so they land inside the container's mount view.
-//
-// The bridge has its own shape rather than mimicking node:fs because its only
-// consumer (createFsTools) needs exactly the surface below. A nodeFs-shaped
-// bridge would force every method to be re-translated at the consumer.
+// FsBridge — narrow interface for SDK FS tools (read/write/edit/ls), with
+// HostFs (node:fs) and SandboxFs (docker-exec writes, host reads) impls.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -18,16 +8,9 @@ import type { SandboxExecutor } from "./executor.js";
 
 const log = createLogger("sandbox:fs-bridge");
 
-// ---------------------------------------------------------------------------
-// FsError
-// ---------------------------------------------------------------------------
-
 export type FsErrorCode = "ENOENT" | "EACCES" | "EEXIST" | "EISDIR" | "ENOTDIR" | "EUNKNOWN";
 
-/**
- * Mimics NodeJS.ErrnoException's `.code` field so handlers checking
- * `err.code === "ENOENT"` keep working uniformly across host and sandbox.
- */
+/** Mimics NodeJS.ErrnoException's `.code` so `err.code === "ENOENT"` works uniformly. */
 export class FsError extends Error {
   constructor(public code: FsErrorCode, message: string) {
     super(message);
@@ -46,10 +29,6 @@ export function mapStderrToCode(stderr: string): FsErrorCode {
   return "EUNKNOWN";
 }
 
-// ---------------------------------------------------------------------------
-// FsBridge — narrow interface used by SDK FS tool factories.
-// ---------------------------------------------------------------------------
-
 export interface FsBridge {
   readFile(absolutePath: string): Promise<Buffer>;
   writeFile(absolutePath: string, content: string): Promise<void>;
@@ -59,10 +38,6 @@ export interface FsBridge {
   exists(absolutePath: string): Promise<boolean>;
   access(absolutePath: string): Promise<void>;
 }
-
-// ---------------------------------------------------------------------------
-// HostFs — node:fs-backed bridge.
-// ---------------------------------------------------------------------------
 
 export class HostFs implements FsBridge {
   readFile(p: string): Promise<Buffer> {
@@ -88,28 +63,17 @@ export class HostFs implements FsBridge {
   }
 }
 
-// ---------------------------------------------------------------------------
-// SandboxFs — docker-exec-routed bridge.
-// ---------------------------------------------------------------------------
-
 /**
- * Mutations (writeFile/mkdir) shell out via the agent's container using
- * `docker exec`. Reads pass through to host fs directly because the bind
- * mount makes container writes visible on the host; confining reads inside
- * the container would just add a docker-exec round-trip for no security
- * benefit (reads have no side effect to confine).
- *
- * All paths are absolute host paths. The mount strategy mounts the workspace
- * (and any allowedWorkspaces) at the same path inside the container, so no
- * translation is required.
+ * Reads passthrough to host fs (the bind mount makes container writes visible
+ * on host — confining reads adds a docker-exec round-trip with no security
+ * gain). Writes shell out via the agent's container so they land subject to
+ * the OS-level mount boundary, not just JS path validation.
  */
 export class SandboxFs implements FsBridge {
   constructor(
     private executor: SandboxExecutor,
     private agentId: string,
   ) {}
-
-  // Reads — passthrough.
 
   readFile(p: string): Promise<Buffer> {
     return fs.readFile(p);
@@ -127,8 +91,6 @@ export class SandboxFs implements FsBridge {
     return fs.access(p);
   }
 
-  // Writes — routed through `docker exec`.
-
   async writeFile(p: string, content: string): Promise<void> {
     await this.execWithStdin(["sh", "-c", `cat > ${shQuote(p)}`], Buffer.from(content, "utf8"), `writeFile ${p}`);
   }
@@ -136,8 +98,6 @@ export class SandboxFs implements FsBridge {
   async mkdir(p: string): Promise<void> {
     await this.exec(["sh", "-c", `mkdir -p ${shQuote(p)}`], `mkdir ${p}`);
   }
-
-  // Internals.
 
   private async exec(command: string[], opLabel: string): Promise<void> {
     const result = await this.executor.execute(this.agentId, command);
@@ -172,10 +132,6 @@ export class SandboxFs implements FsBridge {
     });
   }
 }
-
-// ---------------------------------------------------------------------------
-// Shell quoting
-// ---------------------------------------------------------------------------
 
 /** POSIX single-quote a string for safe inclusion in `sh -c` payloads. */
 function shQuote(s: string): string {
