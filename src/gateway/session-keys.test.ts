@@ -41,8 +41,6 @@ describe("buildSessionKey", () => {
   });
 
   it("produces same key for different agents — agentId is not part of the key", () => {
-    // (agentId, sessionKey) pair is the unique identifier; agentId namespacing
-    // happens at the per-agent SessionStore layer, not in the key string.
     const k1 = buildSessionKey("discord", "b1", "channel", "ch1");
     const k2 = buildSessionKey("discord", "b1", "channel", "ch1");
     expect(k1).toBe(k2);

@@ -38,8 +38,7 @@ const MAX_SESSIONS = 100;
 const MAX_PENDING_MESSAGES = 50;
 const MAX_STEER_MESSAGE_LEN = 10_000;
 
-/** Index activeSessions by (agentId, sessionKey) — sessionKey alone is per-agent
- * unique only, two agents can legally hold the same key. */
+/** sessionKey alone is per-agent unique; two agents can legally hold the same key. */
 const activeKey = (agentId: string, sessionKey: string) => `${agentId}\x00${sessionKey}`;
 
 function evictStaleSessions() {
