@@ -290,8 +290,6 @@ export function createWorkspaceTools(options: CreateWorkspaceToolsOptions): Agen
 
   const tools: AgentTool[] = [
     ...createFsTools(workspacePath, fs),
-    // find/grep use pi defaults (host `fd` / `ripgrep`); the bind mount makes
-    // host paths == container paths, so reads from host are always correct.
     createFindTool(workspacePath) as AgentTool,
     createGrepTool(workspacePath) as AgentTool,
     createTimeTool(),
@@ -320,9 +318,6 @@ export interface CreateAgentToolsOptions {
   spawnableAgentIds?: string[];
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
-  /** Sandbox infra. When `agentSandboxConfig` resolves to "sandboxed", FS and
-   *  exec route through docker; spawn_agent is also disabled (host child
-   *  runners can't be confined). */
   sandboxExecutor?: SandboxExecutor;
   agentSandboxConfig?: SandboxConfig;
   allowedWorkspaces?: string[];
