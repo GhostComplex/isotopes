@@ -221,7 +221,7 @@ addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => 
   // response until the first event, which can be 25s on a quiet session.
   res.write(": connected\n\n");
 
-  const unsub = store.attach(resolved.sessionId, (update) => {
+  const unsubscribe = store.subscribe(resolved.sessionId, (update) => {
     res.write(`event: message\ndata: ${JSON.stringify({
       message: update.message,
       messageId: update.messageId,
@@ -234,7 +234,7 @@ addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => 
 
   const cleanup = () => {
     clearInterval(heartbeat);
-    unsub();
+    unsubscribe();
   };
   res.on("close", cleanup);
   req.on("aborted", cleanup);

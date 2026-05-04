@@ -308,15 +308,15 @@ describe("DefaultSessionStore", () => {
     });
   });
 
-  describe("transcript bus (attach)", () => {
+  describe("transcript bus (subscribe)", () => {
     it("emits a TranscriptUpdate when addMessage appends", async () => {
       const session = await store.create("agent-1");
       const seen: Array<{ messageId: string }> = [];
-      const unsub = store.attach(session.id, (u) => seen.push({ messageId: u.messageId }));
+      const unsubscribe = store.subscribe(session.id, (u) => seen.push({ messageId: u.messageId }));
       try {
         await store.addMessage(session.id, userMessage("hello"));
         await store.addMessage(session.id, assistantMessage("hi"));
-      } finally { unsub(); }
+      } finally { unsubscribe(); }
       expect(seen).toHaveLength(2);
       expect(seen[0].messageId).toBeTruthy();
     });
@@ -324,12 +324,12 @@ describe("DefaultSessionStore", () => {
     it("emits when SDK writes via the shared SessionManager (post-getSessionManager)", async () => {
       const session = await store.create("agent-1");
       const seen: number[] = [];
-      const unsub = store.attach(session.id, () => seen.push(1));
+      const unsubscribe = store.subscribe(session.id, () => seen.push(1));
       try {
         const sm = await store.getSessionManager(session.id);
         // Simulate SDK-side write through the patched appendMessage.
         sm!.appendMessage(userMessage("from-sdk") as never);
-      } finally { unsub(); }
+      } finally { unsubscribe(); }
       expect(seen).toHaveLength(1);
     });
 
@@ -337,8 +337,8 @@ describe("DefaultSessionStore", () => {
       const session = await store.create("agent-1");
       const a: number[] = [];
       const b: number[] = [];
-      const ua = store.attach(session.id, () => a.push(1));
-      const ub = store.attach(session.id, () => b.push(1));
+      const ua = store.subscribe(session.id, () => a.push(1));
+      const ub = store.subscribe(session.id, () => b.push(1));
       try {
         await store.addMessage(session.id, userMessage("hi"));
       } finally { ua(); ub(); }
@@ -350,8 +350,8 @@ describe("DefaultSessionStore", () => {
       const session = await store.create("agent-1");
       const a: number[] = [];
       const b: number[] = [];
-      const ua = store.attach(session.id, () => a.push(1));
-      const ub = store.attach(session.id, () => b.push(1));
+      const ua = store.subscribe(session.id, () => a.push(1));
+      const ub = store.subscribe(session.id, () => b.push(1));
       await store.addMessage(session.id, userMessage("first"));
       ua();
       await store.addMessage(session.id, userMessage("second"));
@@ -363,9 +363,9 @@ describe("DefaultSessionStore", () => {
     it("does not emit after unsubscribe", async () => {
       const session = await store.create("agent-1");
       const seen: number[] = [];
-      const unsub = store.attach(session.id, () => seen.push(1));
+      const unsubscribe = store.subscribe(session.id, () => seen.push(1));
       await store.addMessage(session.id, userMessage("a"));
-      unsub();
+      unsubscribe();
       await store.addMessage(session.id, userMessage("b"));
       expect(seen).toHaveLength(1);
     });
@@ -375,8 +375,8 @@ describe("DefaultSessionStore", () => {
       const b = await store.create("agent-1");
       const seenA: number[] = [];
       const seenB: number[] = [];
-      const ua = store.attach(a.id, () => seenA.push(1));
-      const ub = store.attach(b.id, () => seenB.push(1));
+      const ua = store.subscribe(a.id, () => seenA.push(1));
+      const ub = store.subscribe(b.id, () => seenB.push(1));
       try {
         await store.addMessage(a.id, userMessage("for-a"));
         await store.addMessage(b.id, userMessage("for-b"));
@@ -388,10 +388,10 @@ describe("DefaultSessionStore", () => {
 
     it("listener errors do not propagate (turn state safe)", async () => {
       const session = await store.create("agent-1");
-      const unsub = store.attach(session.id, () => { throw new Error("boom"); });
+      const unsubscribe = store.subscribe(session.id, () => { throw new Error("boom"); });
       try {
         await expect(store.addMessage(session.id, userMessage("hi"))).resolves.not.toThrow();
-      } finally { unsub(); }
+      } finally { unsubscribe(); }
     });
   });
 

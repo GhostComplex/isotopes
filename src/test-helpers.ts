@@ -59,6 +59,6 @@ export function createMockSessionStore(sessionId = "session-123"): SessionStore 
       loadMessages: vi.fn().mockReturnValue([]),
       appendMessage: vi.fn(),
     }),
-    attach: vi.fn().mockReturnValue(() => {}),
+    subscribe: vi.fn().mockReturnValue(() => {}),
   };
 }

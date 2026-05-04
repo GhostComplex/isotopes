@@ -46,5 +46,5 @@ export interface SessionStore {
   getSessionManager(sessionId: string): Promise<import("@mariozechner/pi-coding-agent").SessionManager | undefined>;
   /** Subscribe to transcript appends for a sessionId. Multiple listeners allowed.
    * Returns an unsubscribe function. */
-  attach(sessionId: string, listener: TranscriptListener): () => void;
+  subscribe(sessionId: string, listener: TranscriptListener): () => void;
 }

@@ -239,8 +239,8 @@ export class DefaultSessionStore implements SessionStore {
     }
   }
 
-  /** Attach a transcript-bus listener. Multiple listeners per session are allowed. */
-  attach(sessionId: string, listener: TranscriptListener): () => void {
+  /** Subscribe a transcript-bus listener. Multiple listeners per session are allowed. */
+  subscribe(sessionId: string, listener: TranscriptListener): () => void {
     let set = this.listeners.get(sessionId);
     if (!set) {
       set = new Set();
