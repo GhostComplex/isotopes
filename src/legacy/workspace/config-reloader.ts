@@ -3,7 +3,7 @@
 
 import { createLogger } from "../../logging/logger.js";
 import { loadConfig, type IsotopesConfigFile } from "../../config.js";
-import { WorkspaceWatcher, type FileChange } from "./watcher.js";
+import { WorkspaceWatcher, type FileChange } from "../../agent/workspace/watcher.js";
 
 const log = createLogger("config-reloader");
 

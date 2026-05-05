@@ -1,25 +1,5 @@
-// src/workspace/index.ts — Barrel exports for the workspace module
-
-export { WorkspaceWatcher, globToRegExp, matchesPatterns, matchesIgnorePatterns } from "./watcher.js";
-export type {
-  WatcherConfig,
-  FileChange,
-  ChangeHandler,
-} from "./watcher.js";
+// src/legacy/workspace/index.ts — Remaining workspace infrastructure (config reloader)
+// State, templates, and watcher have moved to src/agent/workspace/.
 
 export { ConfigReloader } from "./config-reloader.js";
 export type { ConfigReloadListener } from "./config-reloader.js";
-
-export {
-  seedWorkspaceTemplates,
-  isBrandNewWorkspace,
-  getWorkspaceTemplates,
-} from "./templates.js";
-export type { WorkspaceTemplate } from "./templates.js";
-
-export {
-  readWorkspaceState,
-  writeWorkspaceState,
-  reconcileWorkspaceState,
-} from "./state.js";
-export type { WorkspaceState } from "./state.js";

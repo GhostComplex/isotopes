@@ -13,7 +13,7 @@ import * as path from "node:path";
 import type { ProviderConfig, RegisteredAgent } from "../../types.js";
 import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
-import { buildAgentSystemPrompt } from "../../workspace.js";
+import { buildAgentSystemPrompt } from "../../workspace/context.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");

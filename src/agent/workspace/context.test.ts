@@ -8,7 +8,7 @@ import {
   loadWorkspaceContext,
   buildSystemPrompt,
   ensureWorkspaceStructure,
-} from "./workspace.js";
+} from "./context.js";
 
 describe("Workspace", () => {
   let tempDir: string;

@@ -32,9 +32,9 @@ import {
   ensureWorkspaceDir,
   resolveExplicitWorkspacePath,
 } from "../paths.js";
-import { ensureWorkspaceStructure } from "./workspace.js";
-import { seedWorkspaceTemplates } from "../legacy/workspace/templates.js";
-import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
+import { ensureWorkspaceStructure } from "./workspace/context.js";
+import { seedWorkspaceTemplates } from "./workspace/templates.js";
+import { reconcileWorkspaceState } from "./workspace/state.js";
 import { createAgentTools } from "./tools/index.js";
 import { LazyTransportContext } from "../legacy/tools/react.js";
 import { ProcessRegistry } from "../legacy/tools/exec.js";
