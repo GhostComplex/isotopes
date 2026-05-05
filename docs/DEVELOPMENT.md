@@ -99,9 +99,6 @@ src/
 │   ├── config.ts           # Sandbox configuration
 │   ├── container.ts        # Docker container management
 │   └── executor.ts         # Sandboxed tool execution
-├── workspace/          # Workspace file watching
-│   ├── watcher.ts          # File system watcher
-│   └── config-reloader.ts  # Hot-reload on config changes
 ├── version.ts          # VERSION constant
 └── cli.ts              # CLI entry point
 ```
