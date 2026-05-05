@@ -304,6 +304,9 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
       "Define `sandbox.docker` in isotopes.yaml (top-level or agents.defaults.sandbox).",
     );
   }
+  if (isSandboxed && opts.agentSandboxConfig?.mounts) {
+    sandboxExecutor!.registerAgentMounts(opts.agentId, opts.agentSandboxConfig.mounts);
+  }
   const fs: FsBridge = isSandboxed
     ? new SandboxFs(sandboxExecutor!, opts.agentId)
     : new HostFs();

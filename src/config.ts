@@ -224,15 +224,7 @@ export function resolveSandboxConfigFromFile(
     throw new Error(
       `agent "${agentId}": sandbox.docker is not supported at the per-agent level. ` +
         `Move docker config to the agents-level (agents.defaults.sandbox.docker or top-level sandbox.docker); ` +
-        `each agent may only override sandbox.enabled and sandbox.workspaceAccess.`,
-    );
-  }
-
-  if (agentSandbox?.mounts) {
-    throw new Error(
-      `agent "${agentId}": sandbox.mounts is not supported at the per-agent level. ` +
-        `The runtime maintains one container per agent built from base mounts; per-agent overrides would be silently ignored. ` +
-        `Move mounts to agents.defaults.sandbox.mounts or top-level sandbox.mounts.`,
+        `each agent may only override sandbox.enabled, sandbox.workspaceAccess, and sandbox.mounts.`,
     );
   }
 

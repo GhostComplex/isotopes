@@ -2,7 +2,7 @@
 
 import { createLogger } from "../logging/logger.js";
 import { ContainerManager, type ContainerInfo, type ExecResult } from "./container.js";
-import { type SandboxConfig, type WorkspaceAccess } from "./config.js";
+import { type Mount, type SandboxConfig, type WorkspaceAccess } from "./config.js";
 
 const log = createLogger("sandbox:executor");
 
@@ -18,6 +18,7 @@ export interface SandboxExecOptions {
 export class SandboxExecutor {
   private containers: Map<string, ContainerInfo> = new Map();
   private inflight: Map<string, Promise<ContainerInfo>> = new Map();
+  private agentMounts: Map<string, Mount[]> = new Map();
 
   constructor(
     private containerManager: ContainerManager,
@@ -28,6 +29,11 @@ export class SandboxExecutor {
   static fromConfig(config: SandboxConfig): SandboxExecutor | undefined {
     if (!config.docker) return undefined;
     return new SandboxExecutor(new ContainerManager(config.docker), config);
+  }
+
+  /** Override the mounts used when this agent's container is created. Replaces defaults entirely. */
+  registerAgentMounts(agentId: string, mounts: Mount[]): void {
+    this.agentMounts.set(agentId, mounts);
   }
 
   async execute(
@@ -107,7 +113,7 @@ export class SandboxExecutor {
       containerName,
       workspace,
       access,
-      this.defaultConfig.mounts ?? [],
+      this.agentMounts.get(agentId) ?? this.defaultConfig.mounts ?? [],
     );
 
     await this.containerManager.start(container.id);
