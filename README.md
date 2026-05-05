@@ -99,7 +99,7 @@ agents:
     # compaction:
     #   mode: safeguard              # off | safeguard | aggressive
     # sandbox:
-    #   mode: non-main              # off | non-main | all
+    #   enabled: true               # route exec/file tools through Docker
 
 channels:
   discord:

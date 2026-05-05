@@ -518,8 +518,8 @@ describe("createExecTools", () => {
 // Sandbox routing
 // ---------------------------------------------------------------------------
 
-import type { SandboxExecutor } from "../sandbox/executor.js";
-import type { SandboxConfig } from "../sandbox/config.js";
+import type { SandboxExecutor } from "../../sandbox/executor.js";
+import type { SandboxConfig } from "../../sandbox/config.js";
 
 function makeMockSandboxExecutor(overrides?: Partial<SandboxExecutor>): SandboxExecutor {
   return {
@@ -534,7 +534,7 @@ function makeMockSandboxExecutor(overrides?: Partial<SandboxExecutor>): SandboxE
 }
 
 const sandboxConfig: SandboxConfig = {
-  mode: "all",
+  enabled: true,
   workspaceAccess: "rw",
   docker: { image: "isotopes-sandbox:latest" },
 };
@@ -546,7 +546,6 @@ describe("exec tool sandbox routing", () => {
       cwd: "/ws",
       sandboxExecutor: executor,
       agentId: "agent-1",
-      isMainAgent: false,
       agentSandboxConfig: sandboxConfig,
     });
 
@@ -625,35 +624,6 @@ describe("exec tool sandbox routing", () => {
     registry.clear();
   });
 
-  it("threads allowedWorkspaces through to SandboxExecutor (foreground + background)", async () => {
-    const executor = makeMockSandboxExecutor();
-    const registry = new ProcessRegistry();
-    const tool = createExecTool({
-      cwd: "/ws",
-      registry,
-      sandboxExecutor: executor,
-      agentId: "agent-1",
-      agentSandboxConfig: sandboxConfig,
-      allowedWorkspaces: ["/extra/foo", "/extra/bar"],
-    });
-
-    await callTool(tool, { command: "ls" });
-    expect(executor.execute).toHaveBeenCalledWith(
-      "agent-1",
-      ["sh", "-c", "ls"],
-      { workspacePath: "/ws", timeout: expect.any(Number), allowedWorkspaces: ["/extra/foo", "/extra/bar"] },
-    );
-
-    await callTool(tool, { command: "sleep 3", background: true });
-    expect(executor.buildExecArgv).toHaveBeenCalledWith(
-      "agent-1",
-      ["sh", "-c", "sleep 3"],
-      { workspacePath: "/ws", allowedWorkspaces: ["/extra/foo", "/extra/bar"] },
-    );
-
-    registry.clear();
-  });
-
   it("returns sandbox-error JSON when buildExecArgv fails (background)", async () => {
     const executor = makeMockSandboxExecutor({
       buildExecArgv: vi.fn(async () => {
@@ -682,8 +652,7 @@ describe("exec tool sandbox routing", () => {
       cwd: "/tmp",
       sandboxExecutor: executor,
       agentId: "agent-1",
-      isMainAgent: true,
-      agentSandboxConfig: { mode: "non-main" },
+      agentSandboxConfig: { enabled: false },
     });
 
     const result = JSON.parse(await callTool(tool, { command: "echo host" }) as string);

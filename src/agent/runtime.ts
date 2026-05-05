@@ -35,10 +35,9 @@ import {
 import { ensureWorkspaceStructure } from "./workspace.js";
 import { seedWorkspaceTemplates } from "../legacy/workspace/templates.js";
 import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
-import { createAgentTools } from "../legacy/core/tools.js";
+import { createAgentTools } from "./tools/index.js";
 import { LazyTransportContext } from "../legacy/tools/react.js";
 import { ProcessRegistry } from "../legacy/tools/exec.js";
-import { SandboxExecutor } from "../legacy/sandbox/executor.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 
 const log = createLogger("agents:runtime");
@@ -63,8 +62,6 @@ interface RunHandle {
 }
 
 export interface AgentRuntimeOptions {
-  /** Roots within which `cwd` arguments must resolve. Empty = no restriction. */
-  allowedWorkspaceRoots?: string[];
   /** Default LLM provider. */
   globalProvider?: ProviderConfig;
   /** Plugin hooks to fire around tool execution. */
@@ -77,7 +74,6 @@ export interface AddAgentOptions {
   provider?: ProviderConfigFile;
   globalTools?: AgentToolsConfigFile;
   sandbox?: SandboxConfigFile;
-  sandboxExecutor?: SandboxExecutor;
   transportContext?: LazyTransportContext;
   spawnableAgentIds?: string[];
   sessionStore: DefaultSessionStore;
@@ -112,7 +108,6 @@ interface Entry {
 }
 
 export class AgentRuntime {
-  private allowedRoots: string[];
   private entries = new Map<string, Entry>();
   private runs = new Map<string, RunHandle>();
   private toolRegistries = new Map<string, Map<string, AgentTool>>();
@@ -123,7 +118,6 @@ export class AgentRuntime {
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
-    this.allowedRoots = opts.allowedWorkspaceRoots ?? [];
     if (opts.hooks) this.hooks = opts.hooks;
 
     if (opts.globalProvider) {
@@ -212,18 +206,6 @@ export class AgentRuntime {
     }
     if (!existsSync(normalized)) throw new Error(`Working directory does not exist: ${cwd}`);
     if (!statSync(normalized).isDirectory()) throw new Error(`Working directory is not a directory: ${cwd}`);
-    if (this.allowedRoots.length > 0) {
-      const isAllowed = this.allowedRoots.some((root) => {
-        let normalizedRoot: string;
-        try {
-          normalizedRoot = realpathSync(resolve(root));
-        } catch {
-          normalizedRoot = normalize(resolve(root));
-        }
-        return normalized === normalizedRoot || normalized.startsWith(normalizedRoot + "/");
-      });
-      if (!isAllowed) throw new Error(`Working directory outside allowed workspaces: ${cwd}`);
-    }
   }
 
   /** Single registration entry point. Branches on agent.runner. */
@@ -251,7 +233,7 @@ export class AgentRuntime {
     agentConfig: import("./types.js").AgentConfig,
     opts: AddAgentOptions,
   ): Promise<AddAgentResult> {
-    const { agentFile, sandboxExecutor, transportContext, spawnableAgentIds, sessionStore } = opts;
+    const { agentFile, transportContext, spawnableAgentIds, sessionStore } = opts;
 
     let workspacePath: string;
     if (agentFile.workspace) {
@@ -277,9 +259,7 @@ export class AgentRuntime {
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,
       processRegistry,
-      sandboxExecutor,
       agentSandboxConfig: agentConfig.sandbox,
-      allowedWorkspaces: agentFile.allowedWorkspaces ?? [],
       transportContext,
       runtime: this,
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),

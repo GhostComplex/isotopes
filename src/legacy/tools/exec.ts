@@ -6,8 +6,8 @@ import { promisify } from "node:util";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type, type Static } from "typebox";
 import { createLogger } from "../../logging/logger.js";
-import type { SandboxExecutor } from "../sandbox/executor.js";
-import type { SandboxConfig } from "../sandbox/config.js";
+import type { SandboxExecutor } from "../../sandbox/executor.js";
+import type { SandboxConfig } from "../../sandbox/config.js";
 
 const execAsync = promisify(exec);
 const log = createLogger("tools:exec");
@@ -227,13 +227,8 @@ export interface ExecToolOptions {
   sandboxExecutor?: SandboxExecutor;
   /** Agent ID owning this exec tool (required for sandbox routing). */
   agentId?: string;
-  /** Whether this agent counts as the "main" agent for `mode: "non-main"`.
-   *  Defaults to false (multi-agent setups have no primary). */
-  isMainAgent?: boolean;
   /** Resolved sandbox config for this agent. Required for sandbox routing. */
   agentSandboxConfig?: SandboxConfig;
-  /** Additional host workspaces to mount read-only inside the sandbox container. */
-  allowedWorkspaces?: string[];
 }
 
 function jsonResult(value: unknown): AgentToolResult<undefined> {
@@ -253,11 +248,11 @@ const execSchema = Type.Object({
 export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof execSchema> {
   const { cwd = process.cwd() } = options;
   const registry = options.registry ?? new ProcessRegistry();
-  const { sandboxExecutor, agentId, agentSandboxConfig, isMainAgent, allowedWorkspaces } = options;
+  const { sandboxExecutor, agentId, agentSandboxConfig } = options;
 
   const useSandbox = (): boolean =>
     !!(sandboxExecutor && agentId && agentSandboxConfig &&
-       sandboxExecutor.shouldExecuteInSandbox(agentId, isMainAgent ?? false, agentSandboxConfig));
+       sandboxExecutor.shouldExecuteInSandbox(agentId, agentSandboxConfig));
 
   return {
     name: "exec",
@@ -277,7 +272,7 @@ export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof 
         let argv: string[] | undefined;
         if (useSandbox()) {
           try {
-            argv = await sandboxExecutor!.buildExecArgv(agentId!, ["sh", "-c", command], { workspacePath: cwd, allowedWorkspaces });
+            argv = await sandboxExecutor!.buildExecArgv(agentId!, ["sh", "-c", command], { workspacePath: cwd });
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             log.warn("Sandbox container creation failed for background exec", { command, error: msg });
@@ -307,12 +302,12 @@ export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof 
           const result = await sandboxExecutor!.execute(
             agentId!,
             ["sh", "-c", command],
-            { workspacePath: cwd, timeout: timeoutMs, allowedWorkspaces },
+            { workspacePath: cwd, timeout: timeoutMs },
           );
           log.info("Command executed (sandbox)", { command, cwd, exitCode: result.exitCode });
           return jsonResult({
-            stdout: result.stdout || "",
-            stderr: result.stderr || "",
+            stdout: result.stdout.toString("utf8"),
+            stderr: result.stderr.toString("utf8"),
             exit_code: result.exitCode,
           });
         } catch (err) {

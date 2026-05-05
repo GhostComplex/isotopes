@@ -8,7 +8,7 @@ import type { ProviderType } from "./agent/types.js";
 import type {
   AgentConfig,
 } from "./agent/types.js";
-import type { AgentToolSettings } from "./tools/types.js";
+import type { AgentToolSettings } from "./agent/tools/types.js";
 import type {
   Binding,
   BindingPeer,
@@ -16,7 +16,7 @@ import type {
   PeerKind,
 } from "./gateway/types.js";
 import type { CronActionConfig } from "./automation/types.js";
-import { resolveSandboxConfig, type SandboxConfig } from "./legacy/sandbox/config.js";
+import { resolveSandboxConfig, type SandboxConfig } from "./sandbox/config.js";
 import type { PluginConfigEntry } from "./legacy/plugins/types.js";
 
 
@@ -67,8 +67,6 @@ export interface AgentConfigFile {
   sandbox?: SandboxConfigFile;
   heartbeat?: HeartbeatConfigFile;
   cron?: { tasks: CronTaskConfigFile[] };
-  /** Additional workspace paths allowed for spawned agent cwd. */
-  allowedWorkspaces?: string[];
   /** Default false. */
   spawnable?: boolean;
   /** "parent-reuse" (default) | "always-new". */
@@ -82,7 +80,6 @@ export interface AgentToolsConfigFile {
   deny?: string[];
 }
 
-/** Sandbox Docker configuration in config file */
 export interface SandboxDockerConfigFile {
   image?: string;
   network?: string;
@@ -90,15 +87,19 @@ export interface SandboxDockerConfigFile {
   cpuLimit?: number;
   memoryLimit?: string;
   pidsLimit?: number;
-  capDrop?: string[];
-  capAdd?: string[];
   noNewPrivileges?: boolean;
 }
 
-/** Sandbox execution configuration in config file */
+export interface SandboxMountConfigFile {
+  host: string;
+  container: string;
+  readOnly?: boolean;
+}
+
 export interface SandboxConfigFile {
-  mode?: string;
+  enabled?: boolean;
   workspaceAccess?: string;
+  mounts?: SandboxMountConfigFile[];
   docker?: SandboxDockerConfigFile;
 }
 
@@ -223,7 +224,7 @@ export function resolveSandboxConfigFromFile(
     throw new Error(
       `agent "${agentId}": sandbox.docker is not supported at the per-agent level. ` +
         `Move docker config to the agents-level (agents.defaults.sandbox.docker or top-level sandbox.docker); ` +
-        `each agent may only override sandbox.mode and sandbox.workspaceAccess.`,
+        `each agent may only override sandbox.enabled and sandbox.workspaceAccess.`,
     );
   }
 
@@ -237,14 +238,18 @@ export function resolveSandboxConfigFromFile(
   return resolveSandboxConfig(agentId, defaults, override);
 }
 
-/**
- * Convert a config-file sandbox entry to a typed SandboxConfig.
- */
 function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
   return {
-    mode: (file.mode ?? "off") as SandboxConfig["mode"],
+    enabled: file.enabled ?? false,
     ...(file.workspaceAccess !== undefined && {
       workspaceAccess: file.workspaceAccess as SandboxConfig["workspaceAccess"],
+    }),
+    ...(file.mounts && {
+      mounts: file.mounts.map((m) => ({
+        host: m.host,
+        container: m.container,
+        ...(m.readOnly !== undefined && { readOnly: m.readOnly }),
+      })),
     }),
     ...(file.docker && {
       docker: {
@@ -256,8 +261,6 @@ function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
         ...(file.docker.cpuLimit !== undefined && { cpuLimit: file.docker.cpuLimit }),
         ...(file.docker.memoryLimit !== undefined && { memoryLimit: file.docker.memoryLimit }),
         ...(file.docker.pidsLimit !== undefined && { pidsLimit: file.docker.pidsLimit }),
-        ...(file.docker.capDrop !== undefined && { capDrop: file.docker.capDrop }),
-        ...(file.docker.capAdd !== undefined && { capAdd: file.docker.capAdd }),
         ...(file.docker.noNewPrivileges !== undefined && { noNewPrivileges: file.docker.noNewPrivileges }),
       },
     }),

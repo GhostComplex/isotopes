@@ -24,8 +24,8 @@ function createMockContainerManager(): ContainerManager {
     remove: vi.fn<ContainerManager["remove"]>().mockResolvedValue(undefined),
     exec: vi.fn<ContainerManager["exec"]>().mockResolvedValue({
       exitCode: 0,
-      stdout: "output\n",
-      stderr: "",
+      stdout: Buffer.from("output\n"),
+      stderr: Buffer.alloc(0),
     }),
     status: vi.fn<ContainerManager["status"]>().mockResolvedValue({
       id: "container-123",
@@ -46,7 +46,7 @@ function createMockContainerManager(): ContainerManager {
 
 describe("SandboxExecutor", () => {
   const defaultConfig: SandboxConfig = {
-    mode: "all",
+    enabled: true,
     workspaceAccess: "rw",
     docker: { image: "isotopes-sandbox:latest", network: "bridge" },
   };
@@ -77,7 +77,34 @@ describe("SandboxExecutor", () => {
         "hello",
       ], undefined);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe("output\n");
+      expect(result.stdout.toString("utf8")).toBe("output\n");
+    });
+
+    it("reaps an orphan container left from a previous process", async () => {
+      vi.mocked(mockManager.status).mockResolvedValueOnce({
+        id: "orphan-id",
+        name: "isotopes-sandbox-agent-1",
+        status: "exited",
+        image: "isotopes-sandbox:latest",
+        createdAt: new Date(),
+      });
+
+      await executor.execute("agent-1", ["echo", "hello"]);
+
+      expect(mockManager.status).toHaveBeenCalledWith("isotopes-sandbox-agent-1");
+      expect(mockManager.stop).toHaveBeenCalledWith("orphan-id", 5);
+      expect(mockManager.remove).toHaveBeenCalledWith("orphan-id", true);
+      expect(mockManager.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("dedupes concurrent ensureContainer calls for the same agent", async () => {
+      await Promise.all([
+        executor.execute("agent-1", ["echo", "a"]),
+        executor.execute("agent-1", ["echo", "b"]),
+        executor.execute("agent-1", ["echo", "c"]),
+      ]);
+      expect(mockManager.create).toHaveBeenCalledTimes(1);
+      expect(mockManager.exec).toHaveBeenCalledTimes(3);
     });
 
     it("reuses existing running container", async () => {
@@ -158,17 +185,14 @@ describe("SandboxExecutor", () => {
       );
     });
 
-    it("passes allowedWorkspaces through to ContainerManager.create", async () => {
-      await executor.execute("agent-1", ["ls"], {
-        workspacePath: "/ws",
-        allowedWorkspaces: ["/extra/dir", "/another"],
-      });
+    it("passes mounts from defaultConfig to ContainerManager.create", async () => {
+      await executor.execute("agent-1", ["ls"], { workspacePath: "/ws" });
 
       expect(mockManager.create).toHaveBeenCalledWith(
         "isotopes-sandbox-agent-1",
         "/ws",
         "rw",
-        ["/extra/dir", "/another"],
+        [],
       );
     });
 
@@ -213,26 +237,18 @@ describe("SandboxExecutor", () => {
   });
 
   describe("shouldExecuteInSandbox", () => {
-    it("returns true for mode 'all' regardless of main agent", () => {
-      expect(executor.shouldExecuteInSandbox("agent-1", true)).toBe(true);
-      expect(executor.shouldExecuteInSandbox("agent-1", false)).toBe(true);
+    it("returns true when default config is enabled", () => {
+      expect(executor.shouldExecuteInSandbox("agent-1")).toBe(true);
     });
 
-    it("returns false for main agent when default mode is 'non-main'", () => {
-      const nonMainExecutor = new SandboxExecutor(mockManager, {
-        mode: "non-main",
-      });
-
-      expect(nonMainExecutor.shouldExecuteInSandbox("agent-1", true)).toBe(false);
-      expect(nonMainExecutor.shouldExecuteInSandbox("agent-1", false)).toBe(true);
+    it("returns false when default config is disabled", () => {
+      const offExecutor = new SandboxExecutor(mockManager, { enabled: false });
+      expect(offExecutor.shouldExecuteInSandbox("agent-1")).toBe(false);
     });
 
     it("uses agent-level config override when provided", () => {
-      const agentOverride: SandboxConfig = { mode: "off" };
-
-      expect(
-        executor.shouldExecuteInSandbox("agent-1", false, agentOverride),
-      ).toBe(false);
+      const agentOverride: SandboxConfig = { enabled: false };
+      expect(executor.shouldExecuteInSandbox("agent-1", agentOverride)).toBe(false);
     });
   });
 

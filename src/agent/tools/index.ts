@@ -7,20 +7,20 @@ import {
   createLsTool,
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import type { AgentToolSettings } from "../../tools/types.js";
-import { HostFs, SandboxFs, type FsBridge } from "../sandbox/fs-bridge.js";
-import type { SandboxExecutor } from "../sandbox/executor.js";
-import { type SandboxConfig, shouldSandbox } from "../sandbox/config.js";
-import { createWebFetchTool, createWebSearchTool } from "../tools/web.js";
-import { createReactTools, type LazyTransportContext } from "../tools/react.js";
-import { createExecTools, ProcessRegistry } from "../tools/exec.js";
-import type { AgentRuntime } from "../../agent/runtime.js";
-import { RunValidationError } from "../../agent/types.js";
-import type { RunRequest } from "../../agent/types.js";
-import { getMessageContext } from "../transport/context.js";
-import { getDiscordA2AStreamContext } from "../plugins/discord/a2a-stream-context.js";
-import { DiscordA2ASink } from "../plugins/discord/discord-a2a-sink.js";
-import { getAgentEndMeta } from "../../agent/runners/pi/messages.js";
+import type { AgentToolSettings } from "./types.js";
+import { HostFs, SandboxFs, type FsBridge } from "../../sandbox/fs-bridge.js";
+import { SandboxExecutor } from "../../sandbox/executor.js";
+import { type SandboxConfig, shouldSandbox } from "../../sandbox/config.js";
+import { createWebFetchTool, createWebSearchTool } from "../../legacy/tools/web.js";
+import { createReactTools, type LazyTransportContext } from "../../legacy/tools/react.js";
+import { createExecTools, ProcessRegistry } from "../../legacy/tools/exec.js";
+import type { AgentRuntime } from "../runtime.js";
+import { RunValidationError } from "../types.js";
+import type { RunRequest } from "../types.js";
+import { getMessageContext } from "../../legacy/transport/context.js";
+import { getDiscordA2AStreamContext } from "../../legacy/plugins/discord/a2a-stream-context.js";
+import { DiscordA2ASink } from "../../legacy/plugins/discord/discord-a2a-sink.js";
+import { getAgentEndMeta } from "../runners/pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("tools");
@@ -273,19 +273,39 @@ export interface CreateAgentToolsOptions {
   spawnableAgentIds?: string[];
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
-  /** Sandbox infra. When `agentSandboxConfig` resolves to "sandboxed", FS and
-   *  exec route through docker; spawn_agent is also disabled (host child
-   *  runners can't be confined). */
-  sandboxExecutor?: SandboxExecutor;
   agentSandboxConfig?: SandboxConfig;
-  allowedWorkspaces?: string[];
+}
+
+let sandboxExecutor: SandboxExecutor | undefined;
+
+export function configureToolsLayer(opts: { sandboxBaseConfig?: SandboxConfig }): void {
+  if (!opts.sandboxBaseConfig) return;
+  sandboxExecutor = SandboxExecutor.fromConfig(opts.sandboxBaseConfig);
+  if (sandboxExecutor) {
+    log.info(`Sandbox executor initialized (image: ${opts.sandboxBaseConfig.docker?.image})`);
+  }
+}
+
+export async function shutdownToolsLayer(): Promise<void> {
+  if (sandboxExecutor) {
+    try {
+      await sandboxExecutor.cleanup();
+    } finally {
+      sandboxExecutor = undefined;
+    }
+  }
 }
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
-  const isSandboxed = !!(opts.sandboxExecutor && opts.agentSandboxConfig
-    && shouldSandbox(opts.agentSandboxConfig, false));
+  const isSandboxed = !!(opts.agentSandboxConfig && shouldSandbox(opts.agentSandboxConfig));
+  if (isSandboxed && !sandboxExecutor) {
+    throw new Error(
+      `agent "${opts.agentId}" requires sandbox but no sandbox infrastructure is configured. ` +
+      "Define `sandbox.docker` in isotopes.yaml (top-level or agents.defaults.sandbox).",
+    );
+  }
   const fs: FsBridge = isSandboxed
-    ? new SandboxFs(opts.sandboxExecutor!, opts.agentId)
+    ? new SandboxFs(sandboxExecutor!, opts.agentId)
     : new HostFs();
   const spawnAgentEnabled = !isSandboxed;
   if (isSandboxed) {
@@ -298,11 +318,9 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
     ...createExecTools({
       cwd: opts.workspacePath,
       registry: opts.processRegistry,
-      sandboxExecutor: opts.sandboxExecutor,
+      sandboxExecutor: sandboxExecutor,
       agentId: opts.agentId,
-      isMainAgent: false,
       agentSandboxConfig: opts.agentSandboxConfig,
-      allowedWorkspaces: opts.allowedWorkspaces ?? [],
     }),
   ];
   if (spawnAgentEnabled && opts.runtime && opts.parentAgentId) {
