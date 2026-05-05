@@ -80,6 +80,23 @@ describe("SandboxExecutor", () => {
       expect(result.stdout.toString("utf8")).toBe("output\n");
     });
 
+    it("reaps an orphan container left from a previous process", async () => {
+      vi.mocked(mockManager.status).mockResolvedValueOnce({
+        id: "orphan-id",
+        name: "isotopes-sandbox-agent-1",
+        status: "exited",
+        image: "isotopes-sandbox:latest",
+        createdAt: new Date(),
+      });
+
+      await executor.execute("agent-1", ["echo", "hello"]);
+
+      expect(mockManager.status).toHaveBeenCalledWith("isotopes-sandbox-agent-1");
+      expect(mockManager.stop).toHaveBeenCalledWith("orphan-id", 5);
+      expect(mockManager.remove).toHaveBeenCalledWith("orphan-id", true);
+      expect(mockManager.create).toHaveBeenCalledTimes(1);
+    });
+
     it("reuses existing running container", async () => {
       // First execution creates the container
       await executor.execute("agent-1", ["echo", "first"]);
