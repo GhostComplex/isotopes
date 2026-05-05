@@ -69,11 +69,7 @@ export class ContainerManager {
     return this.spawnDocker(["exec", "-i", containerId, ...command], options);
   }
 
-  /**
-   * Argv to run a command inside the container as a host-side `docker exec`
-   * child process. Used by background-process spawning so stdin/stdout/stderr
-   * and SIGTERM all flow through the host child handle.
-   */
+  /** Returns argv (not a spawned process) so callers can manage their own ChildProcess for long-running tasks. */
   buildExecArgv(containerId: string, command: string[]): string[] {
     return ["docker", "exec", "-i", containerId, ...command];
   }
