@@ -42,10 +42,13 @@ function validateSandboxConfig(config: SandboxConfig, label: string): void {
   }
 
   if (config.mounts !== undefined) {
+    const seen = new Set<string>();
     for (let i = 0; i < config.mounts.length; i++) {
       const m = config.mounts[i];
       check(m.host.startsWith("/"), `mounts[${i}].host must be an absolute path`);
       check(m.container.startsWith("/"), `mounts[${i}].container must be an absolute path`);
+      check(!seen.has(m.container), `mounts[${i}].container "${m.container}" duplicates an earlier mount`);
+      seen.add(m.container);
     }
   }
 

@@ -194,6 +194,16 @@ describe("Sandbox Config", () => {
       expect(cfg.docker?.noNewPrivileges).toBe(false);
     });
 
+    it("throws when base + agent mounts produce duplicate container paths", () => {
+      expect(() =>
+        resolveSandboxConfig(
+          "test-agent",
+          { enabled: true, mounts: [{ host: "/a", container: "/foo" }] },
+          { enabled: true, mounts: [{ host: "/b", container: "/foo" }] },
+        ),
+      ).toThrow(/mounts\[1\]\.container "\/foo" duplicates/);
+    });
+
     it("throws on negative pidsLimit", () => {
       expect(() =>
         resolveSandboxConfig("test-agent", {
