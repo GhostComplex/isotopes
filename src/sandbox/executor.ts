@@ -17,6 +17,7 @@ export interface SandboxExecOptions {
  */
 export class SandboxExecutor {
   private containers: Map<string, ContainerInfo> = new Map();
+  private inflight: Map<string, Promise<ContainerInfo>> = new Map();
 
   constructor(
     private containerManager: ContainerManager,
@@ -61,6 +62,18 @@ export class SandboxExecutor {
   }
 
   private async ensureContainer(
+    agentId: string,
+    workspacePath?: string,
+  ): Promise<ContainerInfo> {
+    const pending = this.inflight.get(agentId);
+    if (pending) return pending;
+    const promise = this.doEnsureContainer(agentId, workspacePath);
+    this.inflight.set(agentId, promise);
+    try { return await promise; }
+    finally { this.inflight.delete(agentId); }
+  }
+
+  private async doEnsureContainer(
     agentId: string,
     workspacePath?: string,
   ): Promise<ContainerInfo> {

@@ -97,6 +97,16 @@ describe("SandboxExecutor", () => {
       expect(mockManager.create).toHaveBeenCalledTimes(1);
     });
 
+    it("dedupes concurrent ensureContainer calls for the same agent", async () => {
+      await Promise.all([
+        executor.execute("agent-1", ["echo", "a"]),
+        executor.execute("agent-1", ["echo", "b"]),
+        executor.execute("agent-1", ["echo", "c"]),
+      ]);
+      expect(mockManager.create).toHaveBeenCalledTimes(1);
+      expect(mockManager.exec).toHaveBeenCalledTimes(3);
+    });
+
     it("reuses existing running container", async () => {
       // First execution creates the container
       await executor.execute("agent-1", ["echo", "first"]);
