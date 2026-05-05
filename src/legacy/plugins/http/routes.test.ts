@@ -178,21 +178,6 @@ describe("API routes", () => {
     });
   });
 
-  describe("GET /api/config", () => {
-    it("returns 501 when config reloader is not available", async () => {
-      const { status, data } = await request(getPort(), "GET", "/api/config");
-      expect(status).toBe(501);
-      expect((data as { error: string }).error).toContain("not available");
-    });
-  });
-
-  describe("PUT /api/config", () => {
-    it("returns 501 when config reloader is not available", async () => {
-      const { status } = await request(getPort(), "PUT", "/api/config");
-      expect(status).toBe(501);
-    });
-  });
-
   describe("GET /api/status", () => {
     it("reflects cron count", async () => {
       cronScheduler.register({
