@@ -146,19 +146,6 @@ channels:
       #   defaultAgentId: helper
 
 # =============================================================================
-# BINDINGS — agent ↔ channel routing
-# More specific match wins (channel + accountId + peer > channel + accountId > channel)
-# =============================================================================
-# bindings:
-#   - agentId: main
-#     match:
-#       channel: discord
-#       accountId: main
-#       peer:
-#         kind: group               # group | dm | thread
-#         id: "1480866703880487034"
-
-# =============================================================================
 # Built-in runners (claude / subagent) live alongside user agents — both are
 # enabled and spawnable by default. Override only if you need to opt out.
 # =============================================================================
