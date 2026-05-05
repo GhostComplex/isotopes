@@ -298,14 +298,13 @@ export async function shutdownToolsLayer(): Promise<void> {
 }
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
-  const wantsSandbox = !!(opts.agentSandboxConfig && shouldSandbox(opts.agentSandboxConfig, false));
-  if (wantsSandbox && !sandboxExecutor) {
+  const isSandboxed = !!(opts.agentSandboxConfig && shouldSandbox(opts.agentSandboxConfig, false));
+  if (isSandboxed && !sandboxExecutor) {
     throw new Error(
       `agent "${opts.agentId}" requires sandbox but no sandbox infrastructure is configured. ` +
       "Define `sandbox.docker` in isotopes.yaml (top-level or agents.defaults.sandbox).",
     );
   }
-  const isSandboxed = wantsSandbox;
   const fs: FsBridge = isSandboxed
     ? new SandboxFs(sandboxExecutor!, opts.agentId)
     : new HostFs();
