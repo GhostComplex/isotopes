@@ -22,6 +22,7 @@ describe("DefaultSessionStore", () => {
   });
 
   afterEach(async () => {
+    store.destroy();
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
