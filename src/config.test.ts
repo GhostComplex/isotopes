@@ -398,14 +398,16 @@ agents:
       expect(config!.docker?.image).toBe("team:latest");
     });
 
-    it("rejects per-agent sandbox.docker with a clear error", () => {
-      expect(() =>
-        resolveSandboxConfigFromFile(
-          "test-agent",
-          { enabled: true, docker: { image: "agent-specific:latest" } },
-          { enabled: true, docker: { image: "team:latest" } },
-        ),
-      ).toThrow(/sandbox\.docker is not supported at the per-agent level/);
+    it("per-agent docker fields override base docker fields (per-field merge)", () => {
+      const config = resolveSandboxConfigFromFile(
+        "test-agent",
+        { enabled: true, docker: { image: "agent-specific:latest" } },
+        { enabled: true, docker: { image: "team:latest", network: "host", cpuLimit: 2 } },
+      );
+      // override `image` from agent, inherit `network` and `cpuLimit` from base
+      expect(config!.docker?.image).toBe("agent-specific:latest");
+      expect(config!.docker?.network).toBe("host");
+      expect(config!.docker?.cpuLimit).toBe(2);
     });
 
     it("per-agent mounts concat onto base mounts", () => {

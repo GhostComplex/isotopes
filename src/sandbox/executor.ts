@@ -2,7 +2,7 @@
 
 import { createLogger } from "../logging/logger.js";
 import { ContainerManager, type ContainerInfo, type ExecResult } from "./container.js";
-import { type Mount, type SandboxConfig, type WorkspaceAccess } from "./config.js";
+import { type DockerConfig, type Mount, type SandboxConfig, type WorkspaceAccess } from "./config.js";
 
 const log = createLogger("sandbox:executor");
 
@@ -19,6 +19,7 @@ export class SandboxExecutor {
   private containers: Map<string, ContainerInfo> = new Map();
   private inflight: Map<string, Promise<ContainerInfo>> = new Map();
   private agentMounts: Map<string, Mount[]> = new Map();
+  private agentDocker: Map<string, DockerConfig> = new Map();
 
   constructor(
     private containerManager: ContainerManager,
@@ -28,12 +29,17 @@ export class SandboxExecutor {
   /** Returns an executor when sandbox docker config is present, else undefined. */
   static fromConfig(config: SandboxConfig): SandboxExecutor | undefined {
     if (!config.docker) return undefined;
-    return new SandboxExecutor(new ContainerManager(config.docker), config);
+    return new SandboxExecutor(new ContainerManager(), config);
   }
 
   /** Override the mounts used when this agent's container is created. Replaces defaults entirely. */
   registerAgentMounts(agentId: string, mounts: Mount[]): void {
     this.agentMounts.set(agentId, mounts);
+  }
+
+  /** Override the docker config used when this agent's container is created. */
+  registerAgentDocker(agentId: string, docker: DockerConfig): void {
+    this.agentDocker.set(agentId, docker);
   }
 
   async execute(
@@ -109,11 +115,17 @@ export class SandboxExecutor {
       await this.safeRemove(orphan.id);
     }
 
+    const docker = this.agentDocker.get(agentId) ?? this.defaultConfig.docker;
+    if (!docker) {
+      throw new Error(`agent "${agentId}" sandboxed but no docker config available (neither base nor per-agent)`);
+    }
+
     const container = await this.containerManager.create(
       containerName,
       workspace,
       access,
       this.agentMounts.get(agentId) ?? [],
+      docker,
     );
 
     await this.containerManager.start(container.id);

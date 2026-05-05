@@ -220,14 +220,6 @@ export function resolveSandboxConfigFromFile(
 ): SandboxConfig | undefined {
   if (!agentSandbox && !defaultSandbox) return undefined;
 
-  if (agentSandbox?.docker) {
-    throw new Error(
-      `agent "${agentId}": sandbox.docker is not supported at the per-agent level. ` +
-        `Move docker config to the agents-level (agents.defaults.sandbox.docker or top-level sandbox.docker); ` +
-        `each agent may only override sandbox.enabled, sandbox.workspaceAccess, and sandbox.mounts.`,
-    );
-  }
-
   const defaults = defaultSandbox
     ? toSandboxConfig(defaultSandbox)
     : undefined;

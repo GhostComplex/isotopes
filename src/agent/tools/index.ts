@@ -307,6 +307,9 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   if (isSandboxed && opts.agentSandboxConfig?.mounts) {
     sandboxExecutor!.registerAgentMounts(opts.agentId, opts.agentSandboxConfig.mounts);
   }
+  if (isSandboxed && opts.agentSandboxConfig?.docker) {
+    sandboxExecutor!.registerAgentDocker(opts.agentId, opts.agentSandboxConfig.docker);
+  }
   const fs: FsBridge = isSandboxed
     ? new SandboxFs(sandboxExecutor!, opts.agentId)
     : new HostFs();

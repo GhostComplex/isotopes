@@ -70,6 +70,7 @@ describe("SandboxExecutor", () => {
         "/home/user/workspace",
         "rw",
         [],
+        defaultConfig.docker,
       );
       expect(mockManager.start).toHaveBeenCalledWith("container-123");
       expect(mockManager.exec).toHaveBeenCalledWith("container-123", [
@@ -174,6 +175,19 @@ describe("SandboxExecutor", () => {
       expect(mockManager.create).toHaveBeenCalledTimes(2);
     });
 
+    it("uses per-agent docker when registered, overriding default docker", async () => {
+      executor.registerAgentDocker("agent-1", { image: "custom:v2", network: "host" });
+      await executor.execute("agent-1", ["ls"], { workspacePath: "/ws" });
+
+      expect(mockManager.create).toHaveBeenCalledWith(
+        "isotopes-sandbox-agent-1",
+        "/ws",
+        "rw",
+        [],
+        { image: "custom:v2", network: "host" },
+      );
+    });
+
     it("uses per-agent mounts when registered, overriding defaults", async () => {
       executor.registerAgentMounts("agent-1", [
         { host: "/agent/foo", container: "/foo", readOnly: true },
@@ -185,6 +199,7 @@ describe("SandboxExecutor", () => {
         "/ws",
         "rw",
         [{ host: "/agent/foo", container: "/foo", readOnly: true }],
+        defaultConfig.docker,
       );
     });
 
@@ -196,6 +211,7 @@ describe("SandboxExecutor", () => {
         "/tmp",
         "rw",
         [],
+        defaultConfig.docker,
       );
     });
 
@@ -207,6 +223,7 @@ describe("SandboxExecutor", () => {
         "/ws",
         "rw",
         [],
+        defaultConfig.docker,
       );
     });
 
@@ -233,6 +250,7 @@ describe("SandboxExecutor", () => {
         "/ws",
         "rw",
         [],
+        defaultConfig.docker,
       );
       expect(mockManager.start).toHaveBeenCalled();
       expect(mockManager.buildExecArgv).toHaveBeenCalledWith("container-123", [
