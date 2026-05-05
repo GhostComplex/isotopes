@@ -42,12 +42,6 @@ export class SandboxExecutor {
     return this.containerManager.exec(container.id, command, execOpts);
   }
 
-  /**
-   * Host-side argv that runs `command` inside the agent's container via
-   * `docker exec`. Used for background processes — caller spawns this argv
-   * directly so it can track ChildProcess and signal it (docker forwards
-   * SIGTERM via --sig-proxy=true).
-   */
   async buildExecArgv(
     agentId: string,
     command: string[],
