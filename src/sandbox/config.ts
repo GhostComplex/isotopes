@@ -100,7 +100,3 @@ function mergeDockerConfig(defaults?: DockerConfig, override?: DockerConfig): Do
     noNewPrivileges: override?.noNewPrivileges ?? defaults?.noNewPrivileges ?? DEFAULT_DOCKER_CONFIG.noNewPrivileges,
   };
 }
-
-export function shouldSandbox(config: SandboxConfig): boolean {
-  return config.enabled;
-}

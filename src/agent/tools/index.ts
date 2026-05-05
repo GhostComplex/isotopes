@@ -10,7 +10,7 @@ import { Type } from "typebox";
 import type { AgentToolSettings } from "./types.js";
 import { HostFs, SandboxFs, type FsBridge } from "../../sandbox/fs-bridge.js";
 import { SandboxExecutor } from "../../sandbox/executor.js";
-import { type SandboxConfig, shouldSandbox } from "../../sandbox/config.js";
+import { type SandboxConfig } from "../../sandbox/config.js";
 import { createWebFetchTool, createWebSearchTool } from "../../legacy/tools/web.js";
 import { createReactTools, type LazyTransportContext } from "../../legacy/tools/react.js";
 import { createExecTools, ProcessRegistry } from "../../legacy/tools/exec.js";
@@ -297,7 +297,7 @@ export async function shutdownToolsLayer(): Promise<void> {
 }
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
-  const isSandboxed = !!(opts.agentSandboxConfig && shouldSandbox(opts.agentSandboxConfig));
+  const isSandboxed = !!opts.agentSandboxConfig?.enabled;
   if (isSandboxed && !sandboxExecutor) {
     throw new Error(
       `agent "${opts.agentId}" requires sandbox but no sandbox infrastructure is configured. ` +

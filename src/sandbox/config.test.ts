@@ -1,7 +1,7 @@
 // src/sandbox/config.test.ts — Unit tests for sandbox config resolution
 
 import { describe, it, expect } from "vitest";
-import { resolveSandboxConfig, shouldSandbox } from "./config.js";
+import { resolveSandboxConfig } from "./config.js";
 import type { SandboxConfig } from "./config.js";
 
 describe("Sandbox Config", () => {
@@ -201,16 +201,6 @@ describe("Sandbox Config", () => {
           docker: { image: "test:latest", pidsLimit: -1 },
         }),
       ).toThrow("docker.pidsLimit must be a non-negative integer");
-    });
-  });
-
-  describe("shouldSandbox", () => {
-    it("returns false when disabled", () => {
-      expect(shouldSandbox({ enabled: false })).toBe(false);
-    });
-
-    it("returns true when enabled", () => {
-      expect(shouldSandbox({ enabled: true })).toBe(true);
     });
   });
 });
