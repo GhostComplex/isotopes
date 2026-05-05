@@ -53,9 +53,6 @@ const EXISTING_CONTENT_FILES = [
   "HEARTBEAT.md",
 ];
 
-/** Get the workspace templates for an agent. Subagents are ephemeral
- * task-runners — they get only SOUL.md so they aren't polluted by
- * persistent-identity, user-profile, delegation, or daemon-loop context. */
 export function getWorkspaceTemplates(agentId?: string): WorkspaceTemplate[] {
   if (agentId === "subagent") {
     return [{ filename: "AGENTS.md", content: loadTemplate("AGENTS.subagent.md") }];
