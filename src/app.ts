@@ -1,5 +1,4 @@
 import {
-  toAgentConfig,
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
@@ -9,9 +8,7 @@ import { createLogger } from "./logging/logger.js";
 import { LazyTransportContext } from "./legacy/tools/react.js";
 import { ProcessRegistry } from "./legacy/tools/exec.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { ContainerManager } from "./sandbox/container.js";
-import { SandboxExecutor } from "./sandbox/executor.js";
-import { configureToolsLayer } from "./agent/tools.js";
+import { configureToolsLayer, shutdownToolsLayer } from "./agent/tools.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
@@ -64,29 +61,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const processRegistries = new Map<string, ProcessRegistry>();
   const toolRegistries = new Map<string, AgentTool[]>();
 
-  let sandboxExecutor: SandboxExecutor | undefined;
   const baseSandboxFile = config.agentDefaults?.sandbox ?? config.sandbox;
-  const resolvedAgentConfigs = config.agents.map((a) =>
-    toAgentConfig(a, config.agentDefaults, config.provider, config.tools, config.sandbox),
-  );
-  const anySandboxed = resolvedAgentConfigs.some((c) => c.sandbox && c.sandbox.mode !== "off");
-  if (anySandboxed) {
-    if (!baseSandboxFile) {
-      throw new Error(
-        "Sandbox is enabled for at least one agent but no agents-level sandbox config was found. " +
-          "Define `agents.defaults.sandbox` or top-level `sandbox` with a docker config.",
-      );
-    }
-    const baseSandbox = resolveSandboxConfigFromFile("<agents-defaults>", undefined, baseSandboxFile);
-    const dockerConfig = baseSandbox?.docker;
-    if (!dockerConfig) {
-      throw new Error("Sandbox is enabled but no docker config could be resolved");
-    }
-    const containerManager = new ContainerManager(dockerConfig);
-    sandboxExecutor = new SandboxExecutor(containerManager, baseSandbox!);
-    log.info(`Sandbox executor initialized (image: ${dockerConfig.image})`);
-  }
-  configureToolsLayer({ sandboxExecutor });
+  const sandboxBaseConfig = baseSandboxFile
+    ? resolveSandboxConfigFromFile("<agents-defaults>", undefined, baseSandboxFile)
+    : undefined;
+  configureToolsLayer({ sandboxBaseConfig });
 
   const spawnableAgentIds = config.agents
     .filter((a) => a.spawnable === true && a.enabled !== false)
@@ -292,12 +271,10 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       registry.clear();
     }
 
-    if (sandboxExecutor) {
-      try {
-        await sandboxExecutor.cleanup();
-      } catch (err) {
-        log.warn(`Sandbox cleanup error: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    try {
+      await shutdownToolsLayer();
+    } catch (err) {
+      log.warn(`Sandbox cleanup error: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
