@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
-import { CronScheduler } from "../../automation/cron-job.js";
+import { CronScheduler } from "../../../automation/cron-job.js";
 import { SessionStoreManager } from "../../../agent/runners/pi/session-store.js";
 import { AgentRuntime } from "../../../agent/runtime.js";
 import { createMockSessionStore } from "../../../test-helpers.js";

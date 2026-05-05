@@ -15,8 +15,8 @@ import {
 } from "./paths.js";
 
 import { ApiServer } from "./legacy/plugins/http/server.js";
-import { CronScheduler } from "./legacy/automation/cron-job.js";
-import { HeartbeatManager } from "./legacy/automation/heartbeat.js";
+import { CronScheduler } from "./automation/cron-job.js";
+import { HeartbeatManager } from "./automation/heartbeat.js";
 import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
 import { AgentRuntime } from "./agent/runtime.js";

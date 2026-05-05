@@ -1,11 +1,7 @@
-// src/automation/heartbeat.ts — Heartbeat system for periodic agent wake-ups
-// Reads HEARTBEAT.md from workspace and prompts the agent on a timer.
-// Silent replies (NO_REPLY / HEARTBEAT_OK) are suppressed; other output is logged.
-
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createLogger, type Logger } from "../../logging/logger.js";
-import { isSilentReplyPayloadText } from "../../silent-reply.js";
+import { createLogger, type Logger } from "../logging/logger.js";
+import { isSilentReplyPayloadText } from "../silent-reply.js";
 
 // ---------------------------------------------------------------------------
 // Types
