@@ -38,6 +38,9 @@ const MAX_SESSIONS = 100;
 const MAX_PENDING_MESSAGES = 50;
 const MAX_STEER_MESSAGE_LEN = 10_000;
 
+/** sessionKey alone is per-agent unique; two agents can legally hold the same key. */
+const activeKey = (agentId: string, sessionKey: string) => `${agentId}\x00${sessionKey}`;
+
 function evictStaleSessions() {
   const now = Date.now();
   for (const [key, session] of activeSessions) {
@@ -60,18 +63,9 @@ function evictStaleSessions() {
 
 async function resolveSessionKey(
   store: DefaultSessionStore,
-  agentId: string,
-  urlKey: string,
+  sessionKey: string,
 ): Promise<{ sessionKey: string; sessionId: string; session: Session } | undefined> {
-  // Direct lookup first — transports (e.g. Discord) store keys without an
-  // agentId prefix, so the URL-supplied key may already be the stored form.
-  let session = await store.findByKey(urlKey);
-  let sessionKey = urlKey;
-  if (!session) {
-    // HTTP-API-created sessions are stored under `${agentId}:${userKey}`.
-    sessionKey = `${agentId}:${urlKey}`;
-    session = await store.findByKey(sessionKey);
-  }
+  const session = await store.findByKey(sessionKey);
   if (!session) return undefined;
   return { sessionKey, sessionId: session.id, session };
 }
@@ -157,7 +151,7 @@ addRoute("GET", "/api/sessions/:agentId/:key", async (req, res, deps) => {
     return;
   }
 
-  const resolved = await resolveSessionKey(store, req.params.agentId, req.params.key);
+  const resolved = await resolveSessionKey(store, req.params.key);
   if (!resolved) {
     sendError(res, 404, `Session not found`);
     return;
@@ -189,7 +183,7 @@ addRoute("GET", "/api/sessions/:agentId/:key/messages", async (req, res, deps) =
     return;
   }
 
-  const resolved = await resolveSessionKey(store, req.params.agentId, req.params.key);
+  const resolved = await resolveSessionKey(store, req.params.key);
   if (!resolved) {
     sendError(res, 404, `Session not found`);
     return;
@@ -213,7 +207,7 @@ addRoute("GET", "/api/sessions/:agentId/:key/stream", async (req, res, deps) => 
     sendError(res, 404, "Session not found");
     return;
   }
-  const resolved = await resolveSessionKey(store, req.params.agentId, req.params.key);
+  const resolved = await resolveSessionKey(store, req.params.key);
   if (!resolved) {
     sendError(res, 404, "Session not found");
     return;
@@ -268,18 +262,16 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
 
   const SESSION_KEY_MAX_LEN = 128;
 
-  let urlKey: string;
+  let sessionKey: string;
   if (body?.sessionKey) {
     if (body.sessionKey.length > SESSION_KEY_MAX_LEN) {
       sendError(res, 400, `sessionKey exceeds max length of ${SESSION_KEY_MAX_LEN}`);
       return;
     }
-    urlKey = body.sessionKey;
+    sessionKey = body.sessionKey;
   } else {
-    urlKey = randomUUID();
+    sessionKey = randomUUID();
   }
-
-  const sessionKey = `${agentId}:${urlKey}`;
 
   let sessionId: string;
   let resumed = false;
@@ -298,10 +290,10 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
   }
 
   evictStaleSessions();
-  activeSessions.set(sessionKey, { sessionKey, sessionId, agentId, lastActivity: Date.now(), pendingMessages: [] });
+  activeSessions.set(activeKey(agentId, sessionKey), { sessionKey, sessionId, agentId, lastActivity: Date.now(), pendingMessages: [] });
 
   log.info(`Session ${resumed ? "resumed" : "created"}: ${sessionKey} (agent: ${agentId})`);
-  sendJson(res, resumed ? 200 : 201, { key: urlKey, agentId, resumed });
+  sendJson(res, resumed ? 200 : 201, { key: sessionKey, agentId, resumed });
 });
 
 // ---------------------------------------------------------------------------
@@ -309,10 +301,9 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
 // ---------------------------------------------------------------------------
 
 addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) => {
-  const { agentId, key: urlKey } = req.params;
-  const sessionKey = `${agentId}:${urlKey}`;
+  const { agentId, key: sessionKey } = req.params;
 
-  let active = activeSessions.get(sessionKey);
+  let active = activeSessions.get(activeKey(agentId, sessionKey));
   if (!active) {
     // Session may exist in the store but was never registered via the HTTP create
     // path (e.g. transport-driven sessions like Discord). Look it up and register
@@ -320,7 +311,7 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
     if (deps.sessionStoreManager) {
       const store = deps.sessionStoreManager.peek(agentId);
       if (store) {
-        const resolved = await resolveSessionKey(store, agentId, urlKey);
+        const resolved = await resolveSessionKey(store, sessionKey);
         if (resolved) {
           active = {
             sessionKey: resolved.sessionKey,
@@ -329,7 +320,7 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
             lastActivity: Date.now(),
             pendingMessages: [],
           };
-          activeSessions.set(resolved.sessionKey, active);
+          activeSessions.set(activeKey(agentId, resolved.sessionKey), active);
         }
       }
     }
@@ -432,8 +423,8 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
 // ---------------------------------------------------------------------------
 
 addRoute("POST", "/api/sessions/:agentId/:key/steer", async (req, res, _deps) => {
-  const sessionKey = `${req.params.agentId}:${req.params.key}`;
-  const active = activeSessions.get(sessionKey);
+  const { agentId, key: sessionKey } = req.params;
+  const active = activeSessions.get(activeKey(agentId, sessionKey));
   if (!active) {
     sendError(res, 404, `Active session not found`);
     return;
@@ -464,8 +455,8 @@ addRoute("POST", "/api/sessions/:agentId/:key/steer", async (req, res, _deps) =>
 // ---------------------------------------------------------------------------
 
 addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res, deps) => {
-  const sessionKey = `${req.params.agentId}:${req.params.key}`;
-  const session = activeSessions.get(sessionKey);
+  const { agentId, key: sessionKey } = req.params;
+  const session = activeSessions.get(activeKey(agentId, sessionKey));
   if (!session) {
     sendError(res, 404, `Active session not found`);
     return;
@@ -483,19 +474,18 @@ addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res, deps) => {
 // ---------------------------------------------------------------------------
 
 addRoute("DELETE", "/api/sessions/:agentId/:key", async (req, res, deps) => {
-  const { agentId, key: urlKey } = req.params;
-  const sessionKey = `${agentId}:${urlKey}`;
+  const { agentId, key: sessionKey } = req.params;
 
-  const active = activeSessions.get(sessionKey);
+  const active = activeSessions.get(activeKey(agentId, sessionKey));
   if (active) {
     active.abortController?.abort();
-    activeSessions.delete(sessionKey);
+    activeSessions.delete(activeKey(agentId, sessionKey));
   }
 
   if (deps.sessionStoreManager) {
     const store = deps.sessionStoreManager.peek(agentId);
     if (store) {
-      const resolved = await resolveSessionKey(store, agentId, urlKey);
+      const resolved = await resolveSessionKey(store, sessionKey);
       if (resolved) {
         await store.delete(resolved.sessionId);
         sendJson(res, 200, { ok: true });

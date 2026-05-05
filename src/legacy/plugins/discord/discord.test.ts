@@ -191,7 +191,7 @@ describe("DiscordTransport", () => {
         }
       ).handleMessage(msg);
 
-      expect(sessionStore.findByKey).toHaveBeenCalledWith("discord:bot-123:channel:channel-1:default");
+      expect(sessionStore.findByKey).toHaveBeenCalledWith("discord:bot-123:channel:channel-1");
       expect(sessionStore.addMessage).toHaveBeenNthCalledWith(
         1,
         "session-123",
