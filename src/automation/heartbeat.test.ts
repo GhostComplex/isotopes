@@ -1,5 +1,3 @@
-// src/automation/heartbeat.test.ts — Unit tests for heartbeat manager
-
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { HeartbeatManager, type RunAgentLoop } from "./heartbeat.js";
 

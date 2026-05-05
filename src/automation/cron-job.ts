@@ -1,8 +1,5 @@
-// src/automation/cron-job.ts — Cron job scheduler for Isotopes
-// Manages cron-based scheduled tasks for agents and channels.
-
 import { Cron } from "croner";
-import { createLogger } from "../../logging/logger.js";
+import { createLogger } from "../logging/logger.js";
 
 const log = createLogger("cron");
 
