@@ -39,7 +39,7 @@ pnpm test:integration
 - `gateway/` — Transport-agnostic message-pipeline utilities (dedupe, debounce, mention, channel-history, session-keys, slash-command parsing) plus the `Transport` interface.
 - `sandbox/` — Docker container management for sandboxed tool execution.
 - `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/runners/pi/session-store.ts`.
-- `automation/` — Cron action types only; impl (`CronScheduler`, `HeartbeatManager`) still lives under `legacy/automation/`.
+- `automation/` — Cron action types only; impl (`CronScheduler`, `HeartbeatManager`) lives in `legacy/automation/`.
 - `logging/` — `createLogger("tag")` factory.
 - `legacy/` — Transitional area being decomposed PR-by-PR. New code should not land here.
 - Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema), `paths.ts` (`ISOTOPES_HOME` resolution), `silent-reply.ts` (silent-reply token detection), `test-helpers.ts` (shared test mocks).
@@ -48,6 +48,7 @@ pnpm test:integration
 
 - `runtime.ts` — `AgentRuntime`: in-memory agent registry + per-run dispatcher. Validates `RunRequest`, resolves session ID, delegates to a runner.
 - `runtime-adapter.ts` — Chat-style decorator over `runtime.run` for callers that want a single `responseText` instead of an event stream.
+- `runtime-context.ts` — `runWithRuntimeContext` / `getRuntimeContext` AsyncLocalStorage carrying the parent session ID into `spawn_agent` tool calls (the SDK's fixed `execute()` signature has no other channel for it).
 - `types.ts` — `RegisteredAgent`, `RunRequest`, `RunInfo`, `AgentConfig`, `ProviderConfig`, `RunValidationError`.
 - `runners/pi/` — Default Pi runner wrapping `@mariozechner/pi-agent-core` + `@mariozechner/pi-coding-agent`: `runner.ts`, `session-factory.ts`, `session-store.ts`, `messages.ts`, `system-prompt-override.ts`, `tool-result-truncation.ts`.
 - `runners/claude/` — Alternative runner backed by the Claude Agent SDK.
@@ -71,7 +72,6 @@ pnpm test:integration
 - `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives.
 - `plugins/http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status.
 - `automation/` — `CronScheduler`, `HeartbeatManager`.
-- `transport/context.ts` — `runWithMessageContext` / `getMessageContext` AsyncLocalStorage runtime.
 - `tools/exec.ts` — Shell exec tool (`exec`, `process_list`, `process_kill`).
 - `version.ts` — Build version constant.
 
@@ -80,7 +80,7 @@ pnpm test:integration
 - **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` alternative). Swap runners without touching gateway, sandbox, or plugin code.
 - **Tool registry**: Tools are `(schema, handler)` pairs assembled per-agent in `agent/tools/index.ts`; tool guards (CLI, FS) are enforced at registration and injected into system prompts.
 - **Event streaming**: `AgentRuntime.run()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error. `runtime-adapter.ts` collapses it to a single response for chat consumers.
-- **AsyncLocalStorage context**: `runWithMessageContext` (in `legacy/transport/context.ts`) carries per-message transport context through async tool calls; `getMessageContext` reads it from inside tool handlers.
+- **AsyncLocalStorage context**: `runWithRuntimeContext` (in `agent/runtime-context.ts`) carries the parent session ID through async tool calls so `spawn_agent` can read it inside `execute()`.
 - **Workspace context**: `SOUL.md` / `TOOLS.md` / `MEMORY.md` / `BOOTSTRAP.md` are merged into system prompts and hot-reloaded on change.
 
 ## Testing
