@@ -4,7 +4,7 @@ import {
   createAgentTools,
   applyToolPolicy,
 } from "./index.js";
-import { createWebFetchTool } from "../../legacy/tools/web.js";
+import { createWebFetchTool } from "./web.js";
 import { ProcessRegistry } from "../../legacy/tools/exec.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {

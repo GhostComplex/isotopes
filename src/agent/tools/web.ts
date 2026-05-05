@@ -1,5 +1,3 @@
-// src/tools/web.ts — Web fetch and search tools
-
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
 

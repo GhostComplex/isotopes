@@ -11,7 +11,7 @@ import type { AgentToolSettings } from "./types.js";
 import { HostFs, SandboxFs, type FsBridge } from "../../sandbox/fs-bridge.js";
 import { SandboxExecutor } from "../../sandbox/executor.js";
 import { type SandboxConfig } from "../../sandbox/config.js";
-import { createWebFetchTool, createWebSearchTool } from "../../legacy/tools/web.js";
+import { createWebFetchTool, createWebSearchTool } from "./web.js";
 import { createReactTools, type LazyTransportContext } from "../../legacy/tools/react.js";
 import { createExecTools, ProcessRegistry } from "../../legacy/tools/exec.js";
 import type { AgentRuntime } from "../runtime.js";
