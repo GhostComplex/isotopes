@@ -20,9 +20,16 @@ describe("Workspace Templates", () => {
   });
 
   describe("getWorkspaceTemplates", () => {
-    it("returns 7 templates", () => {
+    it("returns 7 templates for a regular agent", () => {
       const templates = getWorkspaceTemplates();
       expect(templates).toHaveLength(7);
+    });
+
+    it("returns only SOUL.md for the subagent", () => {
+      const templates = getWorkspaceTemplates("subagent");
+      expect(templates).toHaveLength(1);
+      expect(templates[0].filename).toBe("SOUL.md");
+      expect(templates[0].content).toContain("subagent");
     });
 
     it("marks BOOTSTRAP.md as firstRunOnly", () => {

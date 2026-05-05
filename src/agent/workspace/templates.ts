@@ -53,12 +53,15 @@ const EXISTING_CONTENT_FILES = [
   "HEARTBEAT.md",
 ];
 
-/** Get the workspace templates for an agent. Subagent gets a focused
- * "ephemeral helper" SOUL; everyone else gets the full personal-assistant set. */
+/** Get the workspace templates for an agent. Subagents are ephemeral
+ * task-runners — they get only SOUL.md so they aren't polluted by
+ * persistent-identity, user-profile, delegation, or daemon-loop context. */
 export function getWorkspaceTemplates(agentId?: string): WorkspaceTemplate[] {
-  const isSubagent = agentId === "subagent";
+  if (agentId === "subagent") {
+    return [{ filename: "SOUL.md", content: loadTemplate("SOUL.subagent.md") }];
+  }
   return [
-    { filename: "SOUL.md", content: loadTemplate(isSubagent ? "SOUL.subagent.md" : "SOUL.md") },
+    { filename: "SOUL.md", content: loadTemplate("SOUL.md") },
     { filename: "IDENTITY.md", content: loadTemplate("IDENTITY.md") },
     { filename: "USER.md", content: loadTemplate("USER.md") },
     { filename: "TOOLS.md", content: loadTemplate("TOOLS.md") },
