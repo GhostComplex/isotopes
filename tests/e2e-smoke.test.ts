@@ -13,7 +13,7 @@ import {
   applyToolPolicy,
 } from "../src/agent/tools/index.js";
 import { createExecTools, ProcessRegistry } from "../src/legacy/tools/exec.js";
-import { createWebFetchTool } from "../src/legacy/tools/web.js";
+import { createWebFetchTool } from "../src/agent/tools/web.js";
 
 async function callTool(tool: AgentTool, args: unknown): Promise<string> {
   const result: AgentToolResult<unknown> = await tool.execute("test-call", args as never);

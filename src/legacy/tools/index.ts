@@ -1,6 +1,3 @@
-export { createWebFetchTool, createWebSearchTool } from "./web.js";
-export type { SearchResult } from "./web.js";
-
 export {
   ProcessRegistry,
   createExecTool,
