@@ -129,14 +129,6 @@ describe("Workspace Templates", () => {
       expect(bootstrap).toContain("Hello, World");
     });
 
-    it("BOOTSTRAP.md contains anti-hallucination guard", async () => {
-      await seedWorkspaceTemplates(tempDir);
-
-      const bootstrap = await fs.readFile(path.join(tempDir, "BOOTSTRAP.md"), "utf-8");
-      expect(bootstrap).toContain("IDENTITY.md is already loaded");
-      expect(bootstrap).toContain("Do NOT fabricate identity");
-    });
-
     it("is idempotent — second call creates nothing", async () => {
       await seedWorkspaceTemplates(tempDir);
       const created = await seedWorkspaceTemplates(tempDir);

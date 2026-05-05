@@ -6,12 +6,6 @@ This folder is home. Treat it that way.
 
 If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again.
 
-## Session Startup
-
-Your workspace files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, this `AGENTS.md`, `BOOTSTRAP.md`) and your memory (`MEMORY.md` plus today's and yesterday's `memory/YYYY-MM-DD.md` notes) are **already loaded above** under `# Workspace Context` and `# Memory`. Don't re-read them with `read` — that wastes tokens and adds latency. Just use what's there.
-
-Only reach for `read` when you need an older daily note, a skill file, or anything else not already in your context.
-
 ## Memory
 
 You wake up fresh each session. These files are your continuity:
@@ -132,22 +126,6 @@ Periodically (every few days), use a heartbeat to:
 4. Remove outdated info from MEMORY.md that's no longer relevant
 
 Daily files are raw notes; MEMORY.md is curated wisdom.
-
-## Workspace Layout
-
-```
-SOUL.md        — your personality, values, operating principles
-IDENTITY.md    — name, creature type, vibe, emoji
-USER.md        — about your human
-TOOLS.md       — environment-specific notes (hosts, APIs, tooling)
-MEMORY.md      — accumulated knowledge
-AGENTS.md      — this file (your operating instructions)
-HEARTBEAT.md   — periodic task checklist
-memory/        — daily notes (YYYY-MM-DD.md)
-skills/        — your learned skills (each has a SKILL.md)
-```
-
-All workspace paths are relative to your workspace root.
 
 ## Make It Yours
 
