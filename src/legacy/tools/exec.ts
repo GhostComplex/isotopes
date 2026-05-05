@@ -7,7 +7,7 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type, type Static } from "typebox";
 import { createLogger } from "../../logging/logger.js";
 import type { SandboxExecutor } from "../../sandbox/executor.js";
-import type { SandboxConfig } from "../../sandbox/config.js";
+import { type SandboxConfig, shouldSandbox } from "../../sandbox/config.js";
 
 const execAsync = promisify(exec);
 const log = createLogger("tools:exec");
@@ -251,8 +251,7 @@ export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof 
   const { sandboxExecutor, agentId, agentSandboxConfig } = options;
 
   const useSandbox = (): boolean =>
-    !!(sandboxExecutor && agentId && agentSandboxConfig &&
-       sandboxExecutor.shouldExecuteInSandbox(agentId, agentSandboxConfig));
+    !!(sandboxExecutor && agentId && agentSandboxConfig && shouldSandbox(agentSandboxConfig));
 
   return {
     name: "exec",

@@ -236,22 +236,6 @@ describe("SandboxExecutor", () => {
     });
   });
 
-  describe("shouldExecuteInSandbox", () => {
-    it("returns true when default config is enabled", () => {
-      expect(executor.shouldExecuteInSandbox("agent-1")).toBe(true);
-    });
-
-    it("returns false when default config is disabled", () => {
-      const offExecutor = new SandboxExecutor(mockManager, { enabled: false });
-      expect(offExecutor.shouldExecuteInSandbox("agent-1")).toBe(false);
-    });
-
-    it("uses agent-level config override when provided", () => {
-      const agentOverride: SandboxConfig = { enabled: false };
-      expect(executor.shouldExecuteInSandbox("agent-1", agentOverride)).toBe(false);
-    });
-  });
-
   describe("cleanup", () => {
     it("stops and removes a specific agent's container", async () => {
       // Create a container first

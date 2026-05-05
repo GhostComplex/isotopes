@@ -228,6 +228,14 @@ export function resolveSandboxConfigFromFile(
     );
   }
 
+  if (agentSandbox?.mounts) {
+    throw new Error(
+      `agent "${agentId}": sandbox.mounts is not supported at the per-agent level. ` +
+        `The runtime maintains one container per agent built from base mounts; per-agent overrides would be silently ignored. ` +
+        `Move mounts to agents.defaults.sandbox.mounts or top-level sandbox.mounts.`,
+    );
+  }
+
   const defaults = defaultSandbox
     ? toSandboxConfig(defaultSandbox)
     : undefined;

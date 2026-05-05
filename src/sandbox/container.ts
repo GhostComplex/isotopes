@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { createLogger } from "../logging/logger.js";
 import type { DockerConfig, Mount, WorkspaceAccess } from "./config.js";
+
+const log = createLogger("sandbox:container");
 
 /** Cap collected stdout/stderr per `exec()` call to prevent OOM from runaway commands. */
 const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -74,7 +77,7 @@ export class ContainerManager {
     return ["docker", "exec", "-i", containerId, ...command];
   }
 
-  /** Returns null when the container doesn't exist. */
+  /** Returns null when the container doesn't exist (or docker can't be reached — see debug log). */
   async status(containerId: string): Promise<ContainerInfo | null> {
     try {
       const { stdout } = await this.runDocker([
@@ -87,7 +90,8 @@ export class ContainerManager {
       const line = stdout.toString("utf8").trim();
       if (!line) return null;
       return parseInspectLine(line);
-    } catch {
+    } catch (err) {
+      log.debug(`status(${containerId}) failed`, err);
       return null;
     }
   }

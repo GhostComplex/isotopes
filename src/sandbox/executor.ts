@@ -2,7 +2,7 @@
 
 import { createLogger } from "../logging/logger.js";
 import { ContainerManager, type ContainerInfo, type ExecResult } from "./container.js";
-import { shouldSandbox, type SandboxConfig, type WorkspaceAccess } from "./config.js";
+import { type SandboxConfig, type WorkspaceAccess } from "./config.js";
 
 const log = createLogger("sandbox:executor");
 
@@ -50,10 +50,6 @@ export class SandboxExecutor {
   ): Promise<string[]> {
     const container = await this.ensureContainer(agentId, options?.workspacePath);
     return this.containerManager.buildExecArgv(container.id, command);
-  }
-
-  shouldExecuteInSandbox(_agentId: string, agentConfig?: SandboxConfig): boolean {
-    return shouldSandbox(agentConfig ?? this.defaultConfig);
   }
 
   async cleanup(agentId?: string): Promise<void> {

@@ -408,6 +408,15 @@ agents:
       ).toThrow(/sandbox\.docker is not supported at the per-agent level/);
     });
 
+    it("rejects per-agent sandbox.mounts with a clear error", () => {
+      expect(() =>
+        resolveSandboxConfigFromFile(
+          "test-agent",
+          { enabled: true, mounts: [{ host: "/foo", container: "/foo" }] },
+          { enabled: true },
+        ),
+      ).toThrow(/sandbox\.mounts is not supported at the per-agent level/);
+    });
     it("propagates pidsLimit / noNewPrivileges from file", () => {
       const config = resolveSandboxConfigFromFile("test-agent", undefined, {
         enabled: true,

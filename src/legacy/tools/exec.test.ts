@@ -523,7 +523,6 @@ import type { SandboxConfig } from "../../sandbox/config.js";
 
 function makeMockSandboxExecutor(overrides?: Partial<SandboxExecutor>): SandboxExecutor {
   return {
-    shouldExecuteInSandbox: vi.fn(() => true),
     execute: vi.fn(async () => ({ exitCode: 0, stdout: "sandboxed-out", stderr: "" })),
     buildExecArgv: vi.fn(async (_id: string, cmd: string[]) => [
       "docker", "exec", "-i", "ctr-1", ...cmd,
@@ -644,10 +643,8 @@ describe("exec tool sandbox routing", () => {
     expect(result.error).toMatch(/Sandbox container creation failed/);
   });
 
-  it("falls back to host when shouldExecuteInSandbox returns false", async () => {
-    const executor = makeMockSandboxExecutor({
-      shouldExecuteInSandbox: vi.fn(() => false),
-    });
+  it("falls back to host when sandbox config is disabled", async () => {
+    const executor = makeMockSandboxExecutor();
     const tool = createExecTool({
       cwd: "/tmp",
       sandboxExecutor: executor,
