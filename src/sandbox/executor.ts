@@ -30,7 +30,7 @@ export class SandboxExecutor {
     return new SandboxExecutor(new ContainerManager());
   }
 
-  /** Register an agent's resolved sandbox config. Idempotent — last write wins. */
+  /** Register an agent's resolved sandbox config. Re-calling merges into existing — absent fields preserve previous values. */
   registerAgent(agentId: string, config: SandboxConfig): void {
     if (config.docker) this.agentDocker.set(agentId, config.docker);
     if (config.mounts) this.agentMounts.set(agentId, config.mounts);

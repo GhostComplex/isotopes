@@ -176,6 +176,12 @@ describe("SandboxExecutor", () => {
       expect(mockManager.create).toHaveBeenCalledTimes(2);
     });
 
+    it("throws when executing for an unregistered agent", async () => {
+      await expect(executor.execute("never-registered", ["echo"])).rejects.toThrow(
+        /sandboxed but no docker config registered/,
+      );
+    });
+
     it("uses per-agent docker when registered, overriding default docker", async () => {
       executor.registerAgent("agent-1", { enabled: true, docker: { image: "custom:v2", network: "host" } });
       await executor.execute("agent-1", ["ls"], { workspacePath: "/ws" });
