@@ -1,6 +1,6 @@
 ---
 name: coding-agent
-description: "Delegate a focused coding task to another agent via the spawn_agent tool. Use for: building features, multi-file refactors, multi-file bug fixes, PR review, writing tests. NOT for: one-liner edits (use edit), reading code (use read), running shell commands (use bash)."
+description: "Delegate a focused coding task to another agent via the spawn_agent tool. Use for: building features, multi-file refactors, multi-file bug fixes, PR review, writing tests. NOT for: one-liner edits (use edit), reading code (use read), running shell commands (use exec)."
 ---
 
 # Coding Agent
@@ -65,7 +65,7 @@ Then spawn one agent per worktree with its own `working_directory`. Push and ope
 
 - One short message when you start (target + working_directory).
 - Update on milestone, error, or completion. No filler.
-- If a sub-run returns `[send_message cancelled by user — do not retry…]` or `[blocked] …`, stop. Don't retry the same content; ask the user or change approach.
+- If a sub-run returns `[spawn_agent cancelled by user — do not retry this same request]`, stop. Don't retry the same content; ask the user or change approach.
 
 ## Rules
 
