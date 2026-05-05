@@ -58,7 +58,7 @@ const EXISTING_CONTENT_FILES = [
  * persistent-identity, user-profile, delegation, or daemon-loop context. */
 export function getWorkspaceTemplates(agentId?: string): WorkspaceTemplate[] {
   if (agentId === "subagent") {
-    return [{ filename: "SOUL.md", content: loadTemplate("SOUL.subagent.md") }];
+    return [{ filename: "AGENTS.md", content: loadTemplate("AGENTS.subagent.md") }];
   }
   return [
     { filename: "SOUL.md", content: loadTemplate("SOUL.md") },

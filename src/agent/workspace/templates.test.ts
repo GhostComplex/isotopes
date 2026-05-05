@@ -25,10 +25,10 @@ describe("Workspace Templates", () => {
       expect(templates).toHaveLength(7);
     });
 
-    it("returns only SOUL.md for the subagent", () => {
+    it("returns only AGENTS.md for the subagent", () => {
       const templates = getWorkspaceTemplates("subagent");
       expect(templates).toHaveLength(1);
-      expect(templates[0].filename).toBe("SOUL.md");
+      expect(templates[0].filename).toBe("AGENTS.md");
       expect(templates[0].content).toContain("subagent");
     });
 
