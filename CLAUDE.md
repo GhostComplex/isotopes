@@ -39,7 +39,7 @@ pnpm test:integration
 - `gateway/` — Transport-agnostic message-pipeline utilities (dedupe, debounce, mention, channel-history, session-keys, slash-command parsing) plus the `Transport` interface.
 - `sandbox/` — Docker container management for sandboxed tool execution.
 - `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/runners/pi/session-store.ts`.
-- `automation/` — Cron action types only; impl (`CronScheduler`, `HeartbeatManager`) lives in `legacy/automation/`.
+- `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
 - `logging/` — `createLogger("tag")` factory.
 - `legacy/` — Transitional area being decomposed PR-by-PR. New code should not land here.
 - Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema), `paths.ts` (`ISOTOPES_HOME` resolution), `silent-reply.ts` (silent-reply token detection), `test-helpers.ts` (shared test mocks).
@@ -71,7 +71,6 @@ pnpm test:integration
 - `plugins/` — Plugin system (`hooks.ts`, `manager.ts`, `tool-registry.ts`, `ui-registry.ts`, `discovery.ts`, `api.ts`).
 - `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives.
 - `plugins/http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status.
-- `automation/` — `CronScheduler`, `HeartbeatManager`.
 - `tools/exec.ts` — Shell exec tool (`exec`, `process_list`, `process_kill`).
 - `version.ts` — Build version constant.
 
