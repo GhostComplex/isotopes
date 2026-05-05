@@ -9,12 +9,7 @@ import type {
   AgentConfig,
 } from "./agent/types.js";
 import type { AgentToolSettings } from "./agent/tools/types.js";
-import type {
-  Binding,
-  BindingPeer,
-  ChannelsConfig,
-  PeerKind,
-} from "./gateway/types.js";
+import type { ChannelsConfig } from "./gateway/types.js";
 import type { CronActionConfig } from "./automation/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "./sandbox/config.js";
 import type { PluginConfigEntry } from "./legacy/plugins/types.js";
@@ -106,25 +101,6 @@ export interface SandboxConfigFile {
 // SessionConfig from core/types.ts is used directly — no separate config-file type needed
 // since the config-file shape is identical to the runtime type.
 
-/** Peer reference in binding config */
-export interface BindingPeerConfigFile {
-  kind: string;
-  id: string;
-}
-
-/** Match criteria in binding config */
-export interface BindingMatchConfigFile {
-  channel: string;
-  accountId?: string;
-  peer?: BindingPeerConfigFile;
-}
-
-/** A single binding entry in config file */
-export interface BindingConfigFile {
-  agentId: string;
-  match: BindingMatchConfigFile;
-}
-
 /** Context management configuration (shared across transports) */
 export interface ContextConfigFile {
   /** Max user turns to include in prompt context. Default: 20 */
@@ -175,8 +151,6 @@ export interface IsotopesConfigFileRaw {
   sandbox?: SandboxConfigFile;
   /** Agent definitions — array form or object with defaults + list */
   agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[] };
-  /** Agent ↔ Channel bindings */
-  bindings?: BindingConfigFile[];
   /** Channel configurations (Discord accounts, per-guild settings) */
   channels?: ChannelsConfig;
   /** Channel-level cron job definitions */
@@ -361,63 +335,6 @@ export function toAgentConfig(
     spawnable: agent.spawnable,
     sessionPolicy: agent.sessionPolicy,
   };
-}
-
-const VALID_PEER_KINDS = new Set<string>(["group", "dm", "thread"]);
-
-/**
- * Convert config file bindings to Binding[].
- * Validates that all referenced agentIds exist and peer kinds are valid.
- */
-export function toBindings(
-  bindingsConfig: BindingConfigFile[] | undefined,
-  agents: AgentConfigFile[],
-): Binding[] {
-  if (!bindingsConfig || bindingsConfig.length === 0) return [];
-
-  const agentIds = new Set(agents.map((a) => a.id));
-
-  return bindingsConfig.map((entry, i) => {
-    // Validate agentId exists
-    if (!agentIds.has(entry.agentId)) {
-      throw new Error(
-        `bindings[${i}]: agentId "${entry.agentId}" does not match any defined agent`,
-      );
-    }
-
-    // Validate match.channel is present
-    if (!entry.match?.channel) {
-      throw new Error(`bindings[${i}]: match.channel is required`);
-    }
-
-    // Validate peer kind if present
-    if (entry.match.peer) {
-      if (!VALID_PEER_KINDS.has(entry.match.peer.kind)) {
-        throw new Error(
-          `bindings[${i}]: invalid peer.kind "${entry.match.peer.kind}" (must be group, dm, or thread)`,
-        );
-      }
-      if (!entry.match.peer.id) {
-        throw new Error(`bindings[${i}]: peer.id is required when peer is specified`);
-      }
-    }
-
-    const binding: Binding = {
-      agentId: entry.agentId,
-      match: {
-        channel: entry.match.channel,
-        ...(entry.match.accountId !== undefined && { accountId: entry.match.accountId }),
-        ...(entry.match.peer !== undefined && {
-          peer: {
-            kind: entry.match.peer.kind as PeerKind,
-            id: String(entry.match.peer.id),
-          } satisfies BindingPeer,
-        }),
-      },
-    };
-
-    return binding;
-  });
 }
 
 // ---------------------------------------------------------------------------

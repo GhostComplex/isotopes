@@ -34,7 +34,7 @@ pnpm test:integration
 **Module resolution**: ESM-only (`"type": "module"`). All imports use `.js` extensions (NodeNext resolution). Target: ES2022. Node >= 20.
 
 ### Core (`src/core/`)
-- `types.ts` — Framework-wide interfaces (Message, Tool, AgentConfig, AgentInstance, AgentCore, Transport, Binding, Session, SessionStore). Zero coupling to any specific SDK.
+- `types.ts` — Framework-wide interfaces (Message, Tool, AgentConfig, AgentInstance, AgentCore, Transport, Session, SessionStore). Zero coupling to any specific SDK.
 - `pi-mono.ts` — `PiMonoCore`: the default AgentCore implementation wrapping `@mariozechner/pi-agent-core`. Handles model resolution, tool bridging, context compaction.
 - `agent-manager.ts` — `DefaultAgentManager`: in-memory agent registry with workspace awareness.
 - `tools.ts` — `ToolRegistry` class + built-in tools (echo, time, shell, file read/write, list dir, subagent). Tool guards enforce CLI/FS access.
@@ -68,7 +68,6 @@ pnpm test:integration
 - **Pluggable core**: `AgentCore` is an interface; `PiMonoCore` is the default. Swap the LLM backend without touching the rest.
 - **Tool registry**: Tools are `(schema, handler)` pairs. Tool guards (CLI, FS) are enforced at registration and injected into system prompts.
 - **Event streaming**: `AgentInstance.prompt()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error.
-- **Binding resolution**: More-specific bindings win (channel+account+peer > channel+account > channel).
 - **AsyncLocalStorage context**: `SubagentDiscordContext` passes Discord-specific context through async chains.
 - **Workspace context**: SOUL.md/TOOLS.md/MEMORY.md/BOOTSTRAP.md are merged into system prompts and hot-reloaded on change.
 

@@ -1,33 +1,4 @@
-// src/gateway/types.ts — Gateway types (routing decisions + transport contract)
-
-// ---------------------------------------------------------------------------
-// Bindings — route messages to agents by (channel, accountId, peer)
-// ---------------------------------------------------------------------------
-
-/** Peer kind: group channel, direct message, or thread */
-export type PeerKind = 'group' | 'dm' | 'thread';
-
-/** Peer identifier — a specific chat target within a channel+account */
-export interface BindingPeer {
-  kind: PeerKind;
-  id: string;
-}
-
-/** Match criteria for a binding rule */
-export interface BindingMatch {
-  /** Transport channel type (e.g. "discord") */
-  channel: string;
-  /** Account identifier within that channel */
-  accountId?: string;
-  /** Specific peer (group/dm/thread) to scope the binding */
-  peer?: BindingPeer;
-}
-
-/** A binding ties an agent to a (channel, accountId, peer) pattern */
-export interface Binding {
-  agentId: string;
-  match: BindingMatch;
-}
+// src/gateway/types.ts — Gateway types (channels config + transport contract)
 
 // ---------------------------------------------------------------------------
 // Channel config — extensible per-transport
