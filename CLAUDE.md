@@ -93,7 +93,7 @@ pnpm test:integration
 
 ## Linting
 
-- ESLint 9 flat config. Unused vars starting with `_` are allowed.
+- ESLint 9 flat config. Unused function args starting with `_` are allowed (local vars are not exempted).
 - `@typescript-eslint/no-explicit-any`: warn (not error).
 - Pre-commit hook (Husky + lint-staged): runs `eslint --fix` then `pnpm typecheck` on staged `.ts` files.
 
