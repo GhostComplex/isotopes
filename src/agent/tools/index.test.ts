@@ -61,6 +61,15 @@ describe("createAgentTools", () => {
     expect(names).toContain("web_fetch");
     expect(names).not.toContain("web_search");
   });
+
+  it("omits web_fetch when sandbox network is 'none'", () => {
+    const tools = createAgentTools({
+      ...baseOpts(),
+      agentSandboxConfig: { enabled: false, docker: { image: "isotopes-sandbox:latest", network: "none" } },
+    });
+    const names = tools.map((t) => t.name);
+    expect(names).not.toContain("web_fetch");
+  });
 });
 
 describe("applyToolPolicy", () => {

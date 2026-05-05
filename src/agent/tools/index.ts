@@ -334,7 +334,9 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
       ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
     }));
   }
-  tools.push(createWebFetchTool());
+  if (opts.agentSandboxConfig?.docker?.network !== "none") {
+    tools.push(createWebFetchTool());
+  }
   if (opts.transportContext) {
     tools.push(...createReactTools(opts.transportContext));
   }
