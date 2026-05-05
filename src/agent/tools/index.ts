@@ -10,7 +10,6 @@ import { Type } from "typebox";
 import type { AgentToolSettings } from "./types.js";
 import { HostFs, SandboxFs, type FsBridge } from "../../sandbox/fs-bridge.js";
 import { SandboxExecutor } from "../../sandbox/executor.js";
-import { ContainerManager } from "../../sandbox/container.js";
 import { type SandboxConfig, shouldSandbox } from "../../sandbox/config.js";
 import { createWebFetchTool, createWebSearchTool } from "../../legacy/tools/web.js";
 import { createReactTools, type LazyTransportContext } from "../../legacy/tools/react.js";
@@ -280,10 +279,10 @@ export interface CreateAgentToolsOptions {
 let sandboxExecutor: SandboxExecutor | undefined;
 
 export function configureToolsLayer(opts: { sandboxBaseConfig?: SandboxConfig }): void {
-  if (opts.sandboxBaseConfig?.docker) {
-    const containerManager = new ContainerManager(opts.sandboxBaseConfig.docker);
-    sandboxExecutor = new SandboxExecutor(containerManager, opts.sandboxBaseConfig);
-    log.info(`Sandbox executor initialized (image: ${opts.sandboxBaseConfig.docker.image})`);
+  if (!opts.sandboxBaseConfig) return;
+  sandboxExecutor = SandboxExecutor.fromConfig(opts.sandboxBaseConfig);
+  if (sandboxExecutor) {
+    log.info(`Sandbox executor initialized (image: ${opts.sandboxBaseConfig.docker?.image})`);
   }
 }
 

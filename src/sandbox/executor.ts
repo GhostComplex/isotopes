@@ -1,7 +1,7 @@
 // src/sandbox/executor.ts — Per-agent container lifecycle + command routing.
 
 import { createLogger } from "../logging/logger.js";
-import type { ContainerInfo, ContainerManager, ExecResult } from "./container.js";
+import { ContainerManager, type ContainerInfo, type ExecResult } from "./container.js";
 import { shouldSandbox, type SandboxConfig, type WorkspaceAccess } from "./config.js";
 
 const log = createLogger("sandbox:executor");
@@ -22,6 +22,12 @@ export class SandboxExecutor {
     private containerManager: ContainerManager,
     private defaultConfig: SandboxConfig,
   ) {}
+
+  /** Returns an executor when sandbox docker config is present, else undefined. */
+  static fromConfig(config: SandboxConfig): SandboxExecutor | undefined {
+    if (!config.docker) return undefined;
+    return new SandboxExecutor(new ContainerManager(config.docker), config);
+  }
 
   async execute(
     agentId: string,
