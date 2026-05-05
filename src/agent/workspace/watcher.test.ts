@@ -1,5 +1,3 @@
-// src/workspace/watcher.test.ts — Unit tests for WorkspaceWatcher
-
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fsp from "node:fs/promises";
 import path from "node:path";

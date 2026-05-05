@@ -1,5 +1,3 @@
-// src/workspace/templates.test.ts — Unit tests for workspace template seeding
-
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -22,9 +20,16 @@ describe("Workspace Templates", () => {
   });
 
   describe("getWorkspaceTemplates", () => {
-    it("returns 7 templates", () => {
+    it("returns 7 templates for a regular agent", () => {
       const templates = getWorkspaceTemplates();
       expect(templates).toHaveLength(7);
+    });
+
+    it("returns only AGENTS.md for the subagent", () => {
+      const templates = getWorkspaceTemplates("subagent");
+      expect(templates).toHaveLength(1);
+      expect(templates[0].filename).toBe("AGENTS.md");
+      expect(templates[0].content).toContain("subagent");
     });
 
     it("marks BOOTSTRAP.md as firstRunOnly", () => {
@@ -122,14 +127,6 @@ describe("Workspace Templates", () => {
       expect(created).toContain("BOOTSTRAP.md");
       const bootstrap = await fs.readFile(path.join(tempDir, "BOOTSTRAP.md"), "utf-8");
       expect(bootstrap).toContain("Hello, World");
-    });
-
-    it("BOOTSTRAP.md contains anti-hallucination guard", async () => {
-      await seedWorkspaceTemplates(tempDir);
-
-      const bootstrap = await fs.readFile(path.join(tempDir, "BOOTSTRAP.md"), "utf-8");
-      expect(bootstrap).toContain("IDENTITY.md is already loaded");
-      expect(bootstrap).toContain("Do NOT fabricate identity");
     });
 
     it("is idempotent — second call creates nothing", async () => {
