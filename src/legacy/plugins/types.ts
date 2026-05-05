@@ -7,7 +7,7 @@ import type { SessionStore } from "../../sessions/types.js";
 import type { Transport } from "../../gateway/types.js";
 import type { SessionStoreManager } from "../../agent/runners/pi/session-store.js";
 import type { IsotopesConfigFile } from "../../config.js";
-import type { LazyTransportContext } from "../tools/react.js";
+import type { LazyTransportContext } from "../../agent/tools/react.js";
 import type { AgentRuntime } from "../../agent/runtime.js";
 
 // ---------------------------------------------------------------------------

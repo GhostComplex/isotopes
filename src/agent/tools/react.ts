@@ -1,5 +1,3 @@
-// src/tools/react.ts — message_react tool
-
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
 import { createLogger } from "../../logging/logger.js";
