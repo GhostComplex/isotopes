@@ -6,7 +6,7 @@ import path from "node:path";
 import { SessionStoreManager } from "./agent/runners/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyTransportContext } from "./gateway/transport-context.js";
-import { ProcessRegistry } from "./legacy/tools/exec.js";
+import { ProcessRegistry } from "./agent/tools/exec.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { configureToolsLayer, shutdownToolsLayer } from "./agent/tools/index.js";
 import {

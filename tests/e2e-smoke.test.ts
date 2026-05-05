@@ -12,8 +12,9 @@ import {
   createAgentTools,
   applyToolPolicy,
 } from "../src/agent/tools/index.js";
-import { createExecTools, ProcessRegistry } from "../src/legacy/tools/exec.js";
+import { createExecTools, ProcessRegistry } from "../src/agent/tools/exec.js";
 import { createWebFetchTool } from "../src/agent/tools/web.js";
+import { HostExecutor } from "../src/agent/host-executor.js";
 
 async function callTool(tool: AgentTool, args: unknown): Promise<string> {
   const result: AgentToolResult<unknown> = await tool.execute("test-call", args as never);
@@ -74,14 +75,14 @@ describe("edit tool (SDK)", () => {
 
 describe("exec tool", () => {
   it("runs a shell command and returns stdout", async () => {
-    const tools = createExecTools({ cwd: tmpDir });
+    const tools = createExecTools({ cwd: tmpDir, executor: new HostExecutor() });
     const result = JSON.parse(await callTool(findTool(tools, "exec"), { command: "echo hello" }));
     expect(result.exit_code).toBe(0);
     expect(result.stdout.trim()).toBe("hello");
   });
 
   it("reports non-zero exit codes", async () => {
-    const tools = createExecTools({ cwd: tmpDir });
+    const tools = createExecTools({ cwd: tmpDir, executor: new HostExecutor() });
     const result = JSON.parse(await callTool(findTool(tools, "exec"), { command: "exit 42" }));
     expect(result.exit_code).not.toBe(0);
   });
@@ -89,13 +90,13 @@ describe("exec tool", () => {
 
 describe("web_fetch tool", () => {
   it("fetches a URL and returns content", async () => {
-    const tool = createWebFetchTool();
+    const tool = createWebFetchTool({ executor: new HostExecutor() });
     const result = await callTool(tool, { url: "https://httpbin.org/get" });
     expect(result).toContain("httpbin.org");
   }, 30_000);
 
   it("returns error for invalid URL", async () => {
-    const tool = createWebFetchTool();
+    const tool = createWebFetchTool({ executor: new HostExecutor() });
     const result = await callTool(tool, { url: "not-a-url" });
     expect(result).toContain("[error]");
   });
@@ -125,7 +126,7 @@ describe("tool policy deny", () => {
   });
 
   it("exec tool denied via policy is not present", () => {
-    const execTools = createExecTools({ cwd: tmpDir });
+    const execTools = createExecTools({ cwd: tmpDir, executor: new HostExecutor() });
     const filtered = applyToolPolicy(execTools, { deny: ["exec"] });
     const names = filtered.map((t) => t.name);
     expect(names).not.toContain("exec");

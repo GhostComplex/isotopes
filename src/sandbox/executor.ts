@@ -1,19 +1,15 @@
 // src/sandbox/executor.ts — Per-agent container lifecycle + command routing.
 
 import { createLogger } from "../logging/logger.js";
-import { ContainerManager, type ContainerInfo, type ExecResult } from "./container.js";
+import { ContainerManager, type ContainerInfo } from "./container.js";
+import type { Executor, ExecOptions, ExecResult } from "../agent/executor.js";
 import { type DockerConfig, type Mount, type SandboxConfig, type WorkspaceAccess } from "./config.js";
 
 const log = createLogger("sandbox:executor");
 
-export interface SandboxExecOptions {
-  workspacePath?: string;
-  timeout?: number;
-  stdin?: Buffer | string;
-}
-
 /**
  * Lazily creates one container per agent and routes commands through it.
+ * Use `bind(agentId)` to get a per-agent Executor for tool consumption.
  */
 export class SandboxExecutor {
   private containers: Map<string, ContainerInfo> = new Map();
@@ -37,10 +33,18 @@ export class SandboxExecutor {
     if (config.workspaceAccess) this.agentWorkspaceAccess.set(agentId, config.workspaceAccess);
   }
 
+  /** Returns a per-agent Executor that routes through this agent's container. */
+  bind(agentId: string): Executor {
+    return {
+      execute: (argv, opts) => this.execute(agentId, argv, opts),
+      buildExecArgv: (argv, opts) => this.buildExecArgv(agentId, argv, opts),
+    };
+  }
+
   async execute(
     agentId: string,
     command: string[],
-    options?: SandboxExecOptions,
+    options?: ExecOptions,
   ): Promise<ExecResult> {
     const container = await this.ensureContainer(agentId, options?.workspacePath);
     const execOpts = options?.stdin !== undefined ? { stdin: options.stdin } : undefined;
@@ -53,7 +57,7 @@ export class SandboxExecutor {
   async buildExecArgv(
     agentId: string,
     command: string[],
-    options?: SandboxExecOptions,
+    options?: ExecOptions,
   ): Promise<string[]> {
     const container = await this.ensureContainer(agentId, options?.workspacePath);
     return this.containerManager.buildExecArgv(container.id, command);

@@ -1,33 +1,15 @@
-// src/tools/exec.ts — Shell execution and background process management tools
-
 import { spawn, type ChildProcess } from "node:child_process";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type, type Static } from "typebox";
 import { createLogger } from "../../logging/logger.js";
-import type { SandboxExecutor } from "../../sandbox/executor.js";
-import type { SandboxConfig } from "../../sandbox/config.js";
+import type { Executor } from "../executor.js";
 
-const execAsync = promisify(exec);
 const log = createLogger("tools:exec");
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/** Default timeout for foreground exec in seconds. */
 const DEFAULT_TIMEOUT_SEC = 30;
-
-/** Maximum allowed timeout in milliseconds. */
 const MAX_TIMEOUT_MS = 300_000;
-
-/** Maximum output size in bytes (100 KB). */
 const MAX_OUTPUT_BYTES = 100 * 1024;
-
-// ---------------------------------------------------------------------------
-// ProcessRegistry — tracks background processes
-// ---------------------------------------------------------------------------
+const DEFAULT_MAX_COMPLETED = 100;
 
 export interface ProcessInfo {
   process_id: string;
@@ -41,15 +23,9 @@ export interface ProcessInfo {
   _proc: ChildProcess;
 }
 
-/** Default maximum number of completed processes to retain. */
-const DEFAULT_MAX_COMPLETED = 100;
-
 /**
- * ProcessRegistry — singleton that tracks background processes spawned by
- * the exec tool. Each agent workspace gets its own registry instance.
- *
- * Automatically evicts oldest completed processes when maxCompleted is exceeded
- * to prevent unbounded memory growth (#296).
+ * Tracks background processes the exec tool spawns. One registry per agent.
+ * Auto-evicts oldest completed entries past `maxCompleted` (#296).
  */
 export class ProcessRegistry {
   private processes = new Map<string, ProcessInfo>();
@@ -60,25 +36,14 @@ export class ProcessRegistry {
     this.maxCompleted = options?.maxCompleted ?? DEFAULT_MAX_COMPLETED;
   }
 
-  /** Spawn a background process and register it. */
-  spawn(command: string, cwd: string, options?: { argv?: string[] }): ProcessInfo {
+  /** Spawn argv as a tracked background process. argv comes from Executor.buildExecArgv. */
+  spawn(command: string, argv: string[], cwd: string): ProcessInfo {
     const id = `proc_${this.nextId++}`;
-
-    // If argv is provided (sandbox path), spawn that directly so stdout/stderr
-    // pipes and SIGTERM kill flow through the host child handle. Otherwise
-    // fall back to the host shell.
-    const child = options?.argv && options.argv.length > 0
-      ? spawn(options.argv[0], options.argv.slice(1), {
-          cwd,
-          stdio: ["ignore", "pipe", "pipe"],
-          detached: false,
-        })
-      : spawn(command, [], {
-          cwd,
-          stdio: ["ignore", "pipe", "pipe"],
-          detached: false,
-          shell: true,
-        });
+    const child = spawn(argv[0], argv.slice(1), {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+    });
 
     const info: ProcessInfo = {
       process_id: id,
@@ -91,7 +56,6 @@ export class ProcessRegistry {
       _proc: child,
     };
 
-    // Capture output (truncated to MAX_OUTPUT_BYTES)
     child.stdout?.on("data", (chunk: Buffer) => {
       if (info.stdout.length < MAX_OUTPUT_BYTES) {
         info.stdout += chunk.toString().slice(0, MAX_OUTPUT_BYTES - info.stdout.length);
@@ -120,27 +84,21 @@ export class ProcessRegistry {
     return info;
   }
 
-  /** Get a process by ID. */
   get(id: string): ProcessInfo | undefined {
     return this.processes.get(id);
   }
 
-  /** List all tracked processes. */
   list(): ProcessInfo[] {
     return Array.from(this.processes.values());
   }
 
-  /** Kill a process by ID. Returns true if killed, false if not found. */
   kill(id: string): boolean {
     const info = this.processes.get(id);
     if (!info) return false;
 
     if (info.status === "running") {
-      try {
-        info._proc.kill("SIGTERM");
-      } catch {
-        // Process may have already exited between status check and kill
-      }
+      try { info._proc.kill("SIGTERM"); }
+      catch { /* may have already exited between check and kill */ }
       info.status = "exited";
       info.exit_code = info.exit_code ?? 137;
     }
@@ -152,18 +110,13 @@ export class ProcessRegistry {
   clear(): void {
     for (const info of this.processes.values()) {
       if (info.status === "running") {
-        try {
-          info._proc.kill("SIGTERM");
-        } catch {
-          // ignore
-        }
+        try { info._proc.kill("SIGTERM"); } catch { /* ignore */ }
       }
     }
     this.processes.clear();
     this.nextId = 1;
   }
 
-  /** Get count of completed (exited) processes. */
   getCompletedCount(): number {
     let count = 0;
     for (const info of this.processes.values()) {
@@ -176,20 +129,12 @@ export class ProcessRegistry {
   cleanup(): number {
     const toRemove: string[] = [];
     for (const [id, info] of this.processes.entries()) {
-      if (info.status === "exited") {
-        toRemove.push(id);
-      }
+      if (info.status === "exited") toRemove.push(id);
     }
-    for (const id of toRemove) {
-      this.processes.delete(id);
-    }
+    for (const id of toRemove) this.processes.delete(id);
     return toRemove.length;
   }
 
-  /**
-   * Evict oldest completed processes if count exceeds maxCompleted.
-   * Called automatically when a process exits.
-   */
   private evictOldestCompleted(): void {
     const completed: Array<{ id: string; startTime: number }> = [];
     for (const [id, info] of this.processes.entries()) {
@@ -197,13 +142,8 @@ export class ProcessRegistry {
         completed.push({ id, startTime: new Date(info.start_time).getTime() });
       }
     }
-
     if (completed.length <= this.maxCompleted) return;
-
-    // Sort by start time (oldest first)
     completed.sort((a, b) => a.startTime - b.startTime);
-
-    // Remove oldest until we're at maxCompleted
     const toRemove = completed.length - this.maxCompleted;
     for (let i = 0; i < toRemove; i++) {
       this.processes.delete(completed[i].id);
@@ -212,23 +152,13 @@ export class ProcessRegistry {
   }
 }
 
-// ---------------------------------------------------------------------------
-// exec tool
-// ---------------------------------------------------------------------------
-
 export interface ExecToolOptions {
-  /** Working directory for command execution. */
+  /** Working directory for the command (host or container). */
   cwd?: string;
+  /** Per-agent executor — host or sandbox-bound. Required. */
+  executor: Executor;
   /** ProcessRegistry instance for background process tracking. */
   registry?: ProcessRegistry;
-  /** Optional sandbox executor — when provided alongside agentId and
-   *  agentSandboxConfig, exec routes through a Docker container instead
-   *  of running on the host. */
-  sandboxExecutor?: SandboxExecutor;
-  /** Agent ID owning this exec tool (required for sandbox routing). */
-  agentId?: string;
-  /** Resolved sandbox config for this agent. Required for sandbox routing. */
-  agentSandboxConfig?: SandboxConfig;
 }
 
 function jsonResult(value: unknown): AgentToolResult<undefined> {
@@ -245,13 +175,10 @@ const execSchema = Type.Object({
   })),
 });
 
-export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof execSchema> {
-  const { cwd = process.cwd() } = options;
+export function createExecTool(options: ExecToolOptions): AgentTool<typeof execSchema> {
+  const cwd = options.cwd ?? process.cwd();
   const registry = options.registry ?? new ProcessRegistry();
-  const { sandboxExecutor, agentId, agentSandboxConfig } = options;
-
-  const useSandbox = (): boolean =>
-    !!(sandboxExecutor && agentId && agentSandboxConfig?.enabled);
+  const { executor } = options;
 
   return {
     name: "exec",
@@ -267,22 +194,22 @@ export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof 
         return jsonResult({ error: "Command must not be empty" });
       }
 
+      const argv = ["sh", "-c", command];
+
       if (background) {
-        let argv: string[] | undefined;
-        if (useSandbox()) {
-          try {
-            argv = await sandboxExecutor!.buildExecArgv(agentId!, ["sh", "-c", command], { workspacePath: cwd });
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            log.warn("Sandbox container creation failed for background exec", { command, error: msg });
-            return jsonResult({
-              stdout: "", stderr: `[sandbox error] ${msg}`, exit_code: 1,
-              error: `Sandbox container creation failed: ${msg}`,
-            });
-          }
+        let spawnArgv: string[];
+        try {
+          spawnArgv = await executor.buildExecArgv(argv, { workspacePath: cwd });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn("buildExecArgv failed for background exec", { command, error: msg });
+          return jsonResult({
+            stdout: "", stderr: `[exec error] ${msg}`, exit_code: 1,
+            error: `Background exec failed: ${msg}`,
+          });
         }
-        const info = registry.spawn(command, cwd, argv ? { argv } : undefined);
-        log.info("Background process started", { processId: info.process_id, command, cwd, sandboxed: !!argv });
+        const info = registry.spawn(command, spawnArgv, cwd);
+        log.info("Background process started", { processId: info.process_id, command, cwd });
         return jsonResult({
           process_id: info.process_id,
           command: info.command,
@@ -296,67 +223,32 @@ export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof 
         MAX_TIMEOUT_MS,
       );
 
-      if (useSandbox()) {
-        try {
-          const result = await sandboxExecutor!.execute(
-            agentId!,
-            ["sh", "-c", command],
-            { workspacePath: cwd, timeout: timeoutMs },
-          );
-          log.info("Command executed (sandbox)", { command, cwd, exitCode: result.exitCode });
-          return jsonResult({
-            stdout: result.stdout.toString("utf8"),
-            stderr: result.stderr.toString("utf8"),
-            exit_code: result.exitCode,
-          });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes("timed out")) {
-            log.warn("Command timed out (sandbox)", { command, timeoutMs });
-            return jsonResult({
-              stdout: "", stderr: "", exit_code: 124,
-              error: `Command timed out after ${timeoutMs / 1000}s`,
-            });
-          }
-          log.warn("Sandbox exec failed", { command, error: msg });
-          return jsonResult({
-            stdout: "", stderr: `[sandbox error] ${msg}`, exit_code: 1,
-            error: `Sandbox exec failed: ${msg}`,
-          });
-        }
-      }
-
       try {
-        const { stdout, stderr } = await execAsync(command, {
-          cwd, timeout: timeoutMs, maxBuffer: MAX_OUTPUT_BYTES,
+        const result = await executor.execute(argv, { workspacePath: cwd, timeout: timeoutMs });
+        log.info("Command executed", { command, cwd, exitCode: result.exitCode });
+        return jsonResult({
+          stdout: result.stdout.toString("utf8"),
+          stderr: result.stderr.toString("utf8"),
+          exit_code: result.exitCode,
         });
-        log.info("Command executed", { command, cwd, exitCode: 0 });
-        return jsonResult({ stdout: stdout || "", stderr: stderr || "", exit_code: 0 });
-      } catch (error) {
-        const err = error as {
-          message?: string; code?: number; signal?: string;
-          stdout?: string; stderr?: string;
-        };
-        if (err.signal === "SIGTERM") {
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("timed out")) {
           log.warn("Command timed out", { command, timeoutMs });
           return jsonResult({
-            stdout: err.stdout || "", stderr: err.stderr || "", exit_code: 124,
+            stdout: "", stderr: "", exit_code: 124,
             error: `Command timed out after ${timeoutMs / 1000}s`,
           });
         }
-        const exitCode = typeof err.code === "number" ? err.code : 1;
-        log.info("Command failed", { command, exitCode });
+        log.warn("Exec failed", { command, error: msg });
         return jsonResult({
-          stdout: err.stdout || "", stderr: err.stderr || "", exit_code: exitCode,
+          stdout: "", stderr: `[exec error] ${msg}`, exit_code: 1,
+          error: `Exec failed: ${msg}`,
         });
       }
     },
   };
 }
-
-// ---------------------------------------------------------------------------
-// process_list tool
-// ---------------------------------------------------------------------------
 
 const processListSchema = Type.Object({});
 
@@ -382,10 +274,6 @@ export function createProcessListTool(registry: ProcessRegistry): AgentTool<type
   };
 }
 
-// ---------------------------------------------------------------------------
-// process_kill tool
-// ---------------------------------------------------------------------------
-
 const processKillSchema = Type.Object({
   process_id: Type.String({ description: "The process_id returned by exec with background=true" }),
 });
@@ -410,11 +298,7 @@ export function createProcessKillTool(registry: ProcessRegistry): AgentTool<type
   };
 }
 
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-export function createExecTools(options: ExecToolOptions = {}): AgentTool[] {
+export function createExecTools(options: ExecToolOptions): AgentTool[] {
   const registry = options.registry ?? new ProcessRegistry();
   const execOptions = { ...options, registry };
   return [
@@ -423,4 +307,3 @@ export function createExecTools(options: ExecToolOptions = {}): AgentTool[] {
     createProcessKillTool(registry),
   ];
 }
-

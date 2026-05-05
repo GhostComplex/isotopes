@@ -3,11 +3,9 @@ import {
   createTimeTool,
   createAgentTools,
   applyToolPolicy,
-  configureToolsLayer,
-  shutdownToolsLayer,
 } from "./index.js";
 import { createWebFetchTool } from "./web.js";
-import { ProcessRegistry } from "../../legacy/tools/exec.js";
+import { ProcessRegistry } from "./exec.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content.find((c) => c.type === "text");
@@ -63,35 +61,11 @@ describe("createAgentTools", () => {
     expect(names).toContain("web_fetch");
     expect(names).not.toContain("web_search");
   });
-
-  it("omits web_fetch when sandbox is enabled and network is 'none'", () => {
-    configureToolsLayer({
-      sandboxBaseConfig: { enabled: true, docker: { image: "isotopes-sandbox:latest", network: "none" } },
-    });
-    try {
-      const tools = createAgentTools({
-        ...baseOpts(),
-        agentSandboxConfig: { enabled: true, docker: { image: "isotopes-sandbox:latest", network: "none" } },
-      });
-      const names = tools.map((t) => t.name);
-      expect(names).not.toContain("web_fetch");
-    } finally {
-      void shutdownToolsLayer();
-    }
-  });
-
-  it("keeps web_fetch when sandbox is disabled even if docker.network is 'none'", () => {
-    const tools = createAgentTools({
-      ...baseOpts(),
-      agentSandboxConfig: { enabled: false, docker: { image: "isotopes-sandbox:latest", network: "none" } },
-    });
-    const names = tools.map((t) => t.name);
-    expect(names).toContain("web_fetch");
-  });
 });
 
 describe("applyToolPolicy", () => {
-  const tools = [createTimeTool(), createWebFetchTool()];
+  const noopExecutor = { execute: async () => ({ exitCode: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }), buildExecArgv: async (a: string[]) => a };
+  const tools = [createTimeTool(), createWebFetchTool({ executor: noopExecutor })];
 
   it("returns all tools when policy is undefined", () => {
     expect(applyToolPolicy(tools)).toHaveLength(2);

@@ -5,7 +5,7 @@ import type { DockerConfig, Mount, WorkspaceAccess } from "./config.js";
 const log = createLogger("sandbox:container");
 
 /** Cap collected stdout/stderr per `exec()` call to prevent OOM from runaway commands. */
-const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
+const EXEC_MAX_OUTPUT_BYTES = 100 * 1024;
 
 export type ContainerStatus = "created" | "running" | "paused" | "exited";
 
@@ -17,13 +17,8 @@ export interface ContainerInfo {
   createdAt: Date;
 }
 
-export interface ExecResult {
-  exitCode: number;
-  stdout: Buffer;
-  stderr: Buffer;
-  /** True iff stdout or stderr was capped at EXEC_MAX_OUTPUT_BYTES. */
-  truncated?: boolean;
-}
+import type { ExecResult } from "../agent/executor.js";
+export type { ExecResult };
 
 /** Wraps the `docker` CLI rather than the API to avoid heavy SDK deps. Stateless — DockerConfig is per-call. */
 export class ContainerManager {

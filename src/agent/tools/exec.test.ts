@@ -39,6 +39,7 @@ function createFakeChild(delayMs: number, exitCode = 0): ChildProcess {
       if (!child._killed) {
         child._killed = true;
         child.emit("exit", signal === "SIGTERM" ? 137 : exitCode, signal ?? null);
+        child.emit("close", signal === "SIGTERM" ? 137 : exitCode, signal ?? null);
       }
       return true;
     }),
@@ -49,6 +50,7 @@ function createFakeChild(delayMs: number, exitCode = 0): ChildProcess {
       if (!child._killed) {
         child._killed = true;
         child.emit("exit", exitCode, null);
+        child.emit("close", exitCode, null);
       }
     }, delayMs);
   }
@@ -58,6 +60,17 @@ function createFakeChild(delayMs: number, exitCode = 0): ChildProcess {
 
 /** Mapping of command patterns to fake child behavior. */
 function fakeChildForCommand(cmd: string): ChildProcess {
+  // Strip "sh -c " wrapper — every command now goes through `sh -c` via Executor.
+  if (cmd.startsWith("sh -c ")) cmd = cmd.slice(6);
+  // Crude shell `>&2` redirect — emit on stderr instead of stdout
+  if (cmd.includes(">&2")) {
+    const text = cmd.replace(/\s*>&2\s*$/, "").replace(/^echo\s+/, "");
+    const child = createFakeChild(0, 0);
+    process.nextTick(() => {
+      child.stderr!.emit("data", Buffer.from(text + "\n"));
+    });
+    return child;
+  }
   if (cmd.startsWith("echo ")) {
     const text = cmd.slice(5);
     const child = createFakeChild(0, 0);
@@ -101,6 +114,7 @@ import {
   createProcessKillTool,
   createExecTools,
 } from "./exec.js";
+import { HostExecutor } from "../host-executor.js";
 
 // ---------------------------------------------------------------------------
 // ProcessRegistry
@@ -118,7 +132,7 @@ describe("ProcessRegistry", () => {
   });
 
   it("spawns a process and assigns an id", () => {
-    const info = registry.spawn("echo hello", process.cwd());
+    const info = registry.spawn("echo hello", ["sh", "-c", "echo hello"], process.cwd());
     expect(info.process_id).toBe("proc_1");
     expect(info.command).toBe("echo hello");
     expect(info.status).toBe("running");
@@ -126,26 +140,26 @@ describe("ProcessRegistry", () => {
   });
 
   it("assigns incrementing ids", () => {
-    const a = registry.spawn("echo a", process.cwd());
-    const b = registry.spawn("echo b", process.cwd());
+    const a = registry.spawn("echo a", ["sh", "-c", "echo a"], process.cwd());
+    const b = registry.spawn("echo b", ["sh", "-c", "echo b"], process.cwd());
     expect(a.process_id).toBe("proc_1");
     expect(b.process_id).toBe("proc_2");
   });
 
   it("lists all processes", () => {
-    registry.spawn("echo a", process.cwd());
-    registry.spawn("echo b", process.cwd());
+    registry.spawn("echo a", ["sh", "-c", "echo a"], process.cwd());
+    registry.spawn("echo b", ["sh", "-c", "echo b"], process.cwd());
     expect(registry.list()).toHaveLength(2);
   });
 
   it("gets process by id", () => {
-    const info = registry.spawn("echo test", process.cwd());
+    const info = registry.spawn("echo test", ["sh", "-c", "echo test"], process.cwd());
     expect(registry.get(info.process_id)).toBe(info);
     expect(registry.get("nonexistent")).toBeUndefined();
   });
 
   it("kills a running process", () => {
-    const info = registry.spawn("sleep 60", process.cwd());
+    const info = registry.spawn("sleep 60", ["sh", "-c", "sleep 60"], process.cwd());
     expect(registry.kill(info.process_id)).toBe(true);
     expect(info.status).toBe("exited");
   });
@@ -155,15 +169,15 @@ describe("ProcessRegistry", () => {
   });
 
   it("clears all processes", () => {
-    registry.spawn("echo a", process.cwd());
-    registry.spawn("echo b", process.cwd());
+    registry.spawn("echo a", ["sh", "-c", "echo a"], process.cwd());
+    registry.spawn("echo b", ["sh", "-c", "echo b"], process.cwd());
     registry.clear();
     expect(registry.list()).toHaveLength(0);
   });
 
   it("tracks completed process count", async () => {
-    const a = registry.spawn("echo a", process.cwd());
-    const b = registry.spawn("sleep 60", process.cwd());
+    const a = registry.spawn("echo a", ["sh", "-c", "echo a"], process.cwd());
+    const b = registry.spawn("sleep 60", ["sh", "-c", "sleep 60"], process.cwd());
 
     // Wait for first process to complete
     await new Promise((r) => setTimeout(r, 100));
@@ -173,8 +187,8 @@ describe("ProcessRegistry", () => {
   });
 
   it("cleans up completed processes manually", async () => {
-    registry.spawn("echo a", process.cwd());
-    registry.spawn("echo b", process.cwd());
+    registry.spawn("echo a", ["sh", "-c", "echo a"], process.cwd());
+    registry.spawn("echo b", ["sh", "-c", "echo b"], process.cwd());
     
     // Wait for processes to complete
     await new Promise((r) => setTimeout(r, 100));
@@ -189,11 +203,11 @@ describe("ProcessRegistry", () => {
     const smallRegistry = new ProcessRegistry({ maxCompleted: 2 });
     
     // Spawn 3 processes that complete immediately
-    smallRegistry.spawn("echo 1", process.cwd());
+    smallRegistry.spawn("echo 1", ["sh", "-c", "echo 1"], process.cwd());
     await new Promise((r) => setTimeout(r, 50));
-    smallRegistry.spawn("echo 2", process.cwd());
+    smallRegistry.spawn("echo 2", ["sh", "-c", "echo 2"], process.cwd());
     await new Promise((r) => setTimeout(r, 50));
-    smallRegistry.spawn("echo 3", process.cwd());
+    smallRegistry.spawn("echo 3", ["sh", "-c", "echo 3"], process.cwd());
     await new Promise((r) => setTimeout(r, 100));
     
     // Should have evicted oldest, keeping only 2
@@ -208,9 +222,11 @@ describe("ProcessRegistry", () => {
 
 describe("exec tool", () => {
   let registry: ProcessRegistry;
+  let executor: HostExecutor;
 
   beforeEach(() => {
     registry = new ProcessRegistry();
+    executor = new HostExecutor();
   });
 
   afterEach(() => {
@@ -218,20 +234,20 @@ describe("exec tool", () => {
   });
 
   it("returns tool with correct schema", () => {
-    const tool = createExecTool({ registry });
+    const tool = createExecTool({ registry, executor });
     expect(tool.name).toBe("exec");
     expect(tool.parameters).toBeDefined();
   });
 
   it("executes a basic command", async () => {
-    const tool = createExecTool({ registry });
+    const tool = createExecTool({ registry, executor });
     const result = JSON.parse(await callTool(tool, { command: "echo hello" }));
     expect(result.stdout.trim()).toBe("hello");
     expect(result.exit_code).toBe(0);
   });
 
   it("captures stderr", async () => {
-    const tool = createExecTool({ registry });
+    const tool = createExecTool({ registry, executor });
     const result = JSON.parse(
       await callTool(tool, { command: "echo err >&2" }),
     );
@@ -240,19 +256,19 @@ describe("exec tool", () => {
   });
 
   it("returns non-zero exit code on failure", async () => {
-    const tool = createExecTool({ registry });
+    const tool = createExecTool({ registry, executor });
     const result = JSON.parse(await callTool(tool, { command: "exit 42" }));
     expect(result.exit_code).not.toBe(0);
   });
 
   it("returns error for empty command", async () => {
-    const tool = createExecTool({ registry });
+    const tool = createExecTool({ registry, executor });
     const result = JSON.parse(await callTool(tool, { command: "" }));
     expect(result.error).toContain("must not be empty");
   });
 
   it("times out with custom timeout", async () => {
-    const tool = createExecTool({ registry });
+    const tool = createExecTool({ registry, executor });
     const result = JSON.parse(
       await callTool(tool, { command: "sleep 10", timeout: 1 }),
     );
@@ -263,7 +279,7 @@ describe("exec tool", () => {
   it("clamps timeout to max 300s", async () => {
     // We can't easily test the actual clamping without waiting, but we can
     // verify the tool doesn't reject large values
-    const tool = createExecTool({ registry });
+    const tool = createExecTool({ registry, executor });
     expect(tool.parameters).toBeDefined();
   });
 
@@ -272,7 +288,7 @@ describe("exec tool", () => {
   // ---------------------------------------------------------------------------
 
   it("runs a command in background mode", async () => {
-    const tool = createExecTool({ registry });
+    const tool = createExecTool({ registry, executor });
     const result = JSON.parse(
       await callTool(tool, { command: "sleep 60", background: true }),
     );
@@ -284,7 +300,7 @@ describe("exec tool", () => {
   });
 
   it("background process appears in registry", async () => {
-    const tool = createExecTool({ registry });
+    const tool = createExecTool({ registry, executor });
     await callTool(tool, { command: "sleep 60", background: true });
     expect(registry.list()).toHaveLength(1);
   });
@@ -317,8 +333,8 @@ describe("process_list tool", () => {
   });
 
   it("lists running and exited processes", async () => {
-    registry.spawn("sleep 60", process.cwd());
-    const shortProc = registry.spawn("echo done", process.cwd());
+    registry.spawn("sleep 60", ["sh", "-c", "sleep 60"], process.cwd());
+    const shortProc = registry.spawn("echo done", ["sh", "-c", "echo done"], process.cwd());
 
     // Wait a bit for the echo to finish
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -342,7 +358,7 @@ describe("process_list tool", () => {
   });
 
   it("does not expose internal _proc field", async () => {
-    registry.spawn("echo hello", process.cwd());
+    registry.spawn("echo hello", ["sh", "-c", "echo hello"], process.cwd());
     const tool = createProcessListTool(registry);
     const result = JSON.parse(await callTool(tool, {}));
     expect(result.processes[0]._proc).toBeUndefined();
@@ -365,7 +381,7 @@ describe("process_kill tool", () => {
   });
 
   it("kills a running process", async () => {
-    const info = registry.spawn("sleep 60", process.cwd());
+    const info = registry.spawn("sleep 60", ["sh", "-c", "sleep 60"], process.cwd());
     const tool = createProcessKillTool(registry);
     const result = JSON.parse(
       await callTool(tool, { process_id: info.process_id }),
@@ -377,7 +393,7 @@ describe("process_kill tool", () => {
   });
 
   it("handles killing an already exited process", async () => {
-    const info = registry.spawn("echo fast", process.cwd());
+    const info = registry.spawn("echo fast", ["sh", "-c", "echo fast"], process.cwd());
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     const tool = createProcessKillTool(registry);
@@ -409,8 +425,10 @@ describe("process_kill tool", () => {
 // ---------------------------------------------------------------------------
 
 describe("createExecTools", () => {
+  const executor = new HostExecutor();
+
   it("returns all three tools", () => {
-    const tools = createExecTools();
+    const tools = createExecTools({ executor });
     const names = tools.map((t) => t.name);
     expect(names).toContain("exec");
     expect(names).toContain("process_list");
@@ -419,7 +437,7 @@ describe("createExecTools", () => {
   });
 
   it("shares registry across tools", async () => {
-    const tools = createExecTools();
+    const tools = createExecTools({ executor });
     const execHandler = (args: unknown) => callTool(tools.find((t) => t.name === "exec")!, args);
     const listHandler = (args: unknown) => callTool(tools.find((t) => t.name === "process_list")!, args);
     const killHandler = (args: unknown) => callTool(tools.find((t) => t.name === "process_kill")!, args);
@@ -446,8 +464,8 @@ describe("createExecTools", () => {
     const registry1 = new ProcessRegistry();
     const registry2 = new ProcessRegistry();
 
-    const tools1 = createExecTools({ registry: registry1 });
-    const tools2 = createExecTools({ registry: registry2 });
+    const tools1 = createExecTools({ registry: registry1, executor });
+    const tools2 = createExecTools({ registry: registry2, executor });
 
     const exec1 = (args: unknown) => callTool(tools1.find((t) => t.name === "exec")!, args);
     const list1 = (args: unknown) => callTool(tools1.find((t) => t.name === "process_list")!, args);
@@ -484,8 +502,8 @@ describe("createExecTools", () => {
     const registry1 = new ProcessRegistry();
     const registry2 = new ProcessRegistry();
 
-    const tools1 = createExecTools({ registry: registry1 });
-    const tools2 = createExecTools({ registry: registry2 });
+    const tools1 = createExecTools({ registry: registry1, executor });
+    const tools2 = createExecTools({ registry: registry2, executor });
 
     const exec1 = (args: unknown) => callTool(tools1.find((t) => t.name === "exec")!, args);
     const kill2 = (args: unknown) => callTool(tools2.find((t) => t.name === "process_kill")!, args);
@@ -514,147 +532,91 @@ describe("createExecTools", () => {
   });
 });
 
+
 // ---------------------------------------------------------------------------
-// Sandbox routing
+// Executor delegation
 // ---------------------------------------------------------------------------
 
-import type { SandboxExecutor } from "../../sandbox/executor.js";
-import type { SandboxConfig } from "../../sandbox/config.js";
+import type { Executor } from "../executor.js";
 
-function makeMockSandboxExecutor(overrides?: Partial<SandboxExecutor>): SandboxExecutor {
+function makeMockExecutor(overrides?: Partial<Executor>): Executor {
   return {
-    execute: vi.fn(async () => ({ exitCode: 0, stdout: "sandboxed-out", stderr: "" })),
-    buildExecArgv: vi.fn(async (_id: string, cmd: string[]) => [
-      "docker", "exec", "-i", "ctr-1", ...cmd,
-    ]),
-    cleanup: vi.fn(async () => {}),
+    execute: vi.fn(async () => ({
+      exitCode: 0,
+      stdout: Buffer.from("mocked-out"),
+      stderr: Buffer.alloc(0),
+    })),
+    buildExecArgv: vi.fn(async (argv: string[]) => ["docker", "exec", "-i", "ctr-1", ...argv]),
     ...overrides,
-  } as unknown as SandboxExecutor;
+  };
 }
 
-const sandboxConfig: SandboxConfig = {
-  enabled: true,
-  workspaceAccess: "rw",
-  docker: { image: "isotopes-sandbox:latest" },
-};
-
-describe("exec tool sandbox routing", () => {
-  it("routes foreground exec through SandboxExecutor.execute when sandboxed", async () => {
-    const executor = makeMockSandboxExecutor();
-    const tool = createExecTool({
-      cwd: "/ws",
-      sandboxExecutor: executor,
-      agentId: "agent-1",
-      agentSandboxConfig: sandboxConfig,
-    });
+describe("createExecTool — Executor delegation", () => {
+  it("foreground exec wraps command in sh -c and delegates to executor.execute", async () => {
+    const executor = makeMockExecutor();
+    const registry = new ProcessRegistry();
+    const tool = createExecTool({ cwd: "/ws", registry, executor });
 
     const result = JSON.parse(await callTool(tool, { command: "echo hi" }) as string);
 
     expect(executor.execute).toHaveBeenCalledWith(
-      "agent-1",
       ["sh", "-c", "echo hi"],
-      { workspacePath: "/ws", timeout: expect.any(Number), allowedWorkspaces: undefined },
+      { workspacePath: "/ws", timeout: expect.any(Number) },
     );
-    expect(result.stdout).toBe("sandboxed-out");
+    expect(result.stdout).toBe("mocked-out");
     expect(result.exit_code).toBe(0);
   });
 
-  it("returns timeout JSON (not throw) when sandbox execute reports timeout", async () => {
-    const executor = makeMockSandboxExecutor({
-      execute: vi.fn(async () => {
-        throw new Error("Sandbox execution timed out after 1000ms");
-      }),
-    });
-    const tool = createExecTool({
-      cwd: "/ws",
-      sandboxExecutor: executor,
-      agentId: "agent-1",
-      agentSandboxConfig: sandboxConfig,
-    });
-
-    const result = JSON.parse(await callTool(tool, { command: "sleep 9999", timeout: 1 }) as string);
-    expect(result.exit_code).toBe(124);
-    expect(result.error).toMatch(/timed out/);
-  });
-
-  it("returns sandbox-error JSON (not throw) when container creation fails", async () => {
-    const executor = makeMockSandboxExecutor({
-      execute: vi.fn(async () => {
-        throw new Error("docker daemon not running");
-      }),
-    });
-    const tool = createExecTool({
-      cwd: "/ws",
-      sandboxExecutor: executor,
-      agentId: "agent-1",
-      agentSandboxConfig: sandboxConfig,
-    });
-
-    const result = JSON.parse(await callTool(tool, { command: "ls" }) as string);
-    expect(result.exit_code).toBe(1);
-    expect(result.stderr).toMatch(/sandbox error/);
-  });
-
-  it("routes background exec through SandboxExecutor.buildExecArgv", async () => {
-    const executor = makeMockSandboxExecutor();
+  it("background exec calls buildExecArgv and registers the returned argv", async () => {
+    const executor = makeMockExecutor();
     const registry = new ProcessRegistry();
     const spawnSpy = vi.spyOn(registry, "spawn");
-    const tool = createExecTool({
-      cwd: "/ws",
-      registry,
-      sandboxExecutor: executor,
-      agentId: "agent-1",
-      agentSandboxConfig: sandboxConfig,
-    });
+    const tool = createExecTool({ cwd: "/ws", registry, executor });
 
     const result = JSON.parse(await callTool(tool, { command: "sleep 3", background: true }) as string);
 
     expect(executor.buildExecArgv).toHaveBeenCalledWith(
-      "agent-1",
       ["sh", "-c", "sleep 3"],
-      { workspacePath: "/ws", allowedWorkspaces: undefined },
+      { workspacePath: "/ws" },
     );
-    expect(spawnSpy).toHaveBeenCalledWith("sleep 3", "/ws", {
-      argv: ["docker", "exec", "-i", "ctr-1", "sh", "-c", "sleep 3"],
-    });
+    expect(spawnSpy).toHaveBeenCalledWith(
+      "sleep 3",
+      ["docker", "exec", "-i", "ctr-1", "sh", "-c", "sleep 3"],
+      "/ws",
+    );
     expect(result.process_id).toBe("proc_1");
     expect(result.status).toBe("running");
 
     registry.clear();
   });
 
-  it("returns sandbox-error JSON when buildExecArgv fails (background)", async () => {
-    const executor = makeMockSandboxExecutor({
-      buildExecArgv: vi.fn(async () => {
-        throw new Error("docker daemon not running");
-      }),
+  it("returns timeout JSON when executor reports timed out", async () => {
+    const executor = makeMockExecutor({
+      execute: vi.fn(async () => { throw new Error("Sandbox execution timed out after 1000ms"); }),
     });
-    const registry = new ProcessRegistry();
-    const tool = createExecTool({
-      cwd: "/ws",
-      registry,
-      sandboxExecutor: executor,
-      agentId: "agent-1",
-      agentSandboxConfig: sandboxConfig,
-    });
-
-    const result = JSON.parse(await callTool(tool, { command: "sleep 3", background: true }) as string);
-    expect(result.exit_code).toBe(1);
-    expect(result.error).toMatch(/Sandbox container creation failed/);
+    const tool = createExecTool({ cwd: "/ws", registry: new ProcessRegistry(), executor });
+    const result = JSON.parse(await callTool(tool, { command: "sleep 9999", timeout: 1 }) as string);
+    expect(result.exit_code).toBe(124);
+    expect(result.error).toMatch(/timed out/);
   });
 
-  it("falls back to host when sandbox config is disabled", async () => {
-    const executor = makeMockSandboxExecutor();
-    const tool = createExecTool({
-      cwd: "/tmp",
-      sandboxExecutor: executor,
-      agentId: "agent-1",
-      agentSandboxConfig: { enabled: false },
+  it("returns exec-error JSON when executor throws", async () => {
+    const executor = makeMockExecutor({
+      execute: vi.fn(async () => { throw new Error("docker daemon not running"); }),
     });
+    const tool = createExecTool({ cwd: "/ws", registry: new ProcessRegistry(), executor });
+    const result = JSON.parse(await callTool(tool, { command: "ls" }) as string);
+    expect(result.exit_code).toBe(1);
+    expect(result.stderr).toMatch(/exec error/);
+  });
 
-    const result = JSON.parse(await callTool(tool, { command: "echo host" }) as string);
-    expect(executor.execute).not.toHaveBeenCalled();
-    expect(result.stdout).toContain("host");
-    expect(result.exit_code).toBe(0);
+  it("returns error JSON when buildExecArgv fails (background)", async () => {
+    const executor = makeMockExecutor({
+      buildExecArgv: vi.fn(async () => { throw new Error("docker daemon not running"); }),
+    });
+    const tool = createExecTool({ cwd: "/ws", registry: new ProcessRegistry(), executor });
+    const result = JSON.parse(await callTool(tool, { command: "sleep 3", background: true }) as string);
+    expect(result.exit_code).toBe(1);
+    expect(result.error).toMatch(/Background exec failed/);
   });
 });

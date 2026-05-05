@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createWebFetchTool } from "./web.js";
+import type { Executor } from "../executor.js";
 
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 
@@ -9,47 +10,43 @@ async function callTool(tool: AgentTool, args: unknown): Promise<string> {
   return block?.text ?? "";
 }
 
-function mockFetchHtml(html: string, contentType = "text/html"): void {
-  global.fetch = vi.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    headers: new Map([["content-type", contentType]]) as unknown as Headers,
-    text: async () => html,
-  } as Response);
+function mockExecutor(curlStdout: string, opts?: { exitCode?: number; stderr?: string }): Executor {
+  return {
+    execute: vi.fn(async () => ({
+      exitCode: opts?.exitCode ?? 0,
+      stdout: Buffer.from(curlStdout),
+      stderr: Buffer.from(opts?.stderr ?? ""),
+    })),
+    buildExecArgv: vi.fn(async (a: string[]) => a),
+  };
+}
+
+function curlResponse(status: number, contentType: string, body: string): string {
+  return `HTTP/1.1 ${status} OK\r\nContent-Type: ${contentType}\r\nContent-Length: ${body.length}\r\n\r\n${body}`;
 }
 
 describe("createWebFetchTool", () => {
-  let originalFetch: typeof global.fetch;
-
-  beforeEach(() => { originalFetch = global.fetch; });
-  afterEach(() => { global.fetch = originalFetch; vi.restoreAllMocks(); });
-
   it("returns tool with correct schema", () => {
-    const tool = createWebFetchTool();
+    const tool = createWebFetchTool({ executor: mockExecutor("") });
     expect(tool.name).toBe("web_fetch");
     expect(tool.parameters).toBeDefined();
   });
 
   it("rejects empty URL", async () => {
-    const result = await callTool(createWebFetchTool(), { url: "" });
+    const result = await callTool(createWebFetchTool({ executor: mockExecutor("") }), { url: "" });
     expect(result).toContain("[error] URL cannot be empty");
   });
 
   it("rejects invalid URL", async () => {
-    const result = await callTool(createWebFetchTool(), { url: "not-a-url" });
+    const result = await callTool(createWebFetchTool({ executor: mockExecutor("") }), { url: "not-a-url" });
     expect(result).toContain("[error] Invalid URL");
   });
 
   it("converts HTML to markdown preserving structure", async () => {
-    mockFetchHtml(`
-      <html><body>
-        <h1>Title</h1>
-        <p>Paragraph with <a href="https://example.com">link</a>.</p>
-        <ul><li>item one</li><li>item two</li></ul>
-      </body></html>
-    `);
+    const html = `<html><body><h1>Title</h1><p>Paragraph with <a href="https://example.com">link</a>.</p><ul><li>item one</li><li>item two</li></ul></body></html>`;
+    const tool = createWebFetchTool({ executor: mockExecutor(curlResponse(200, "text/html", html)) });
 
-    const result = await callTool(createWebFetchTool(), { url: "https://example.com" });
+    const result = await callTool(tool, { url: "https://example.com" });
     expect(result).toContain("# Title");
     expect(result).toContain("[link](https://example.com)");
     expect(result).toMatch(/[*-]\s+item one/);
@@ -57,68 +54,79 @@ describe("createWebFetchTool", () => {
   });
 
   it("returns non-HTML content as-is", async () => {
-    mockFetchHtml('{"key":"value"}', "application/json");
-
-    const result = await callTool(createWebFetchTool(), { url: "https://api.example.com/data" });
+    const tool = createWebFetchTool({
+      executor: mockExecutor(curlResponse(200, "application/json", '{"key":"value"}')),
+    });
+    const result = await callTool(tool, { url: "https://api.example.com/data" });
     expect(result).toContain('{"key":"value"}');
   });
 
-  it("upgrades http to https for non-localhost URLs", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true, status: 200,
-      headers: new Map([["content-type", "text/html"]]) as unknown as Headers,
-      text: async () => "<p>x</p>",
-    } as Response);
-    global.fetch = fetchMock;
+  it("upgrades http to https for non-localhost URLs in the curl argv", async () => {
+    const exec = vi.fn<(argv: string[], opts?: unknown) => Promise<{ exitCode: number; stdout: Buffer; stderr: Buffer }>>(async () => ({
+      exitCode: 0,
+      stdout: Buffer.from(curlResponse(200, "text/html", "<p>x</p>")),
+      stderr: Buffer.alloc(0),
+    }));
+    const executor: Executor = { execute: exec, buildExecArgv: async (a) => a };
 
-    await callTool(createWebFetchTool(), { url: "http://example.com" });
-    const calledUrl = fetchMock.mock.calls[0][0] as string;
-    expect(calledUrl).toBe("https://example.com/");
+    await callTool(createWebFetchTool({ executor }), { url: "http://example.com" });
+    const argv = exec.mock.calls[0][0] as string[];
+    expect(argv[argv.length - 1]).toBe("https://example.com/");
   });
 
   it("does NOT upgrade http for localhost", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true, status: 200,
-      headers: new Map([["content-type", "text/html"]]) as unknown as Headers,
-      text: async () => "<p>x</p>",
-    } as Response);
-    global.fetch = fetchMock;
+    const exec = vi.fn<(argv: string[], opts?: unknown) => Promise<{ exitCode: number; stdout: Buffer; stderr: Buffer }>>(async () => ({
+      exitCode: 0,
+      stdout: Buffer.from(curlResponse(200, "text/html", "<p>x</p>")),
+      stderr: Buffer.alloc(0),
+    }));
+    const executor: Executor = { execute: exec, buildExecArgv: async (a) => a };
 
-    await callTool(createWebFetchTool(), { url: "http://localhost:8080/page" });
-    const calledUrl = fetchMock.mock.calls[0][0] as string;
-    expect(calledUrl).toBe("http://localhost:8080/page");
+    await callTool(createWebFetchTool({ executor }), { url: "http://localhost:8080/page" });
+    const argv = exec.mock.calls[0][0] as string[];
+    expect(argv[argv.length - 1]).toBe("http://localhost:8080/page");
   });
 
-  it("returns error on non-2xx response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false, status: 404, statusText: "Not Found",
-      headers: new Map() as unknown as Headers,
-      text: async () => "",
-    } as Response);
+  it("uses curl with honest User-Agent", async () => {
+    const exec = vi.fn<(argv: string[], opts?: unknown) => Promise<{ exitCode: number; stdout: Buffer; stderr: Buffer }>>(async () => ({
+      exitCode: 0,
+      stdout: Buffer.from(curlResponse(200, "text/html", "<p>x</p>")),
+      stderr: Buffer.alloc(0),
+    }));
+    const executor: Executor = { execute: exec, buildExecArgv: async (a) => a };
 
-    const result = await callTool(createWebFetchTool(), { url: "https://example.com/missing" });
+    await callTool(createWebFetchTool({ executor }), { url: "https://example.com" });
+    const argv = exec.mock.calls[0][0] as string[];
+    expect(argv).toContain("curl");
+    const uaIdx = argv.indexOf("-A");
+    expect(uaIdx).toBeGreaterThan(-1);
+    expect(argv[uaIdx + 1]).toBe("isotopes-web/0.1");
+  });
+
+  it("returns error for HTTP 4xx/5xx", async () => {
+    const tool = createWebFetchTool({
+      executor: mockExecutor(curlResponse(404, "text/html", "")),
+    });
+    const result = await callTool(tool, { url: "https://example.com/missing" });
     expect(result).toContain("[error] Failed to fetch");
     expect(result).toContain("404");
   });
 
-  it("uses honest User-Agent (not faked Chrome)", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true, status: 200,
-      headers: new Map([["content-type", "text/html"]]) as unknown as Headers,
-      text: async () => "<p>x</p>",
-    } as Response);
-    global.fetch = fetchMock;
-
-    await callTool(createWebFetchTool(), { url: "https://example.com" });
-    const headers = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
-    expect(headers["User-Agent"]).toBe("isotopes-web/0.1");
+  it("returns error when curl exits non-zero", async () => {
+    const tool = createWebFetchTool({
+      executor: mockExecutor("", { exitCode: 6, stderr: "Could not resolve host" }),
+    });
+    const result = await callTool(tool, { url: "https://nonexistent.invalid" });
+    expect(result).toContain("[error] Failed to fetch");
+    expect(result).toContain("Could not resolve host");
   });
 
   it("truncates content over 50KB", async () => {
     const huge = "x".repeat(60000);
-    mockFetchHtml(`<html><body><pre>${huge}</pre></body></html>`);
-
-    const result = await callTool(createWebFetchTool(), { url: "https://example.com" });
+    const tool = createWebFetchTool({
+      executor: mockExecutor(curlResponse(200, "text/html", `<pre>${huge}</pre>`)),
+    });
+    const result = await callTool(tool, { url: "https://example.com" });
     expect(result).toContain("[truncated]");
     expect(result.length).toBeLessThan(60000);
   });
