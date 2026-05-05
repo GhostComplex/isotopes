@@ -5,7 +5,7 @@ import type { AgentRuntime } from "./runtime.js";
 import { userMessage, assistantMessage, getAgentEndMeta } from "./runners/pi/messages.js";
 import type { Logger } from "../logging/logger.js";
 import type { HookRegistry } from "../legacy/plugins/hooks.js";
-import { runWithMessageContext } from "../legacy/transport/context.js";
+import { runWithRuntimeContext } from "./runtime-context.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
 export interface RunAgentOptions {
@@ -51,8 +51,8 @@ export async function runAgent(
       ...(cwd ? { cwd } : {}),
     });
 
-    await runWithMessageContext(
-      { transport: "internal", channelKey: sessionId, agentId: to, parentSessionId: sessionId },
+    await runWithRuntimeContext(
+      { parentSessionId: sessionId },
       async () => {
         for await (const event of stream) {
           if (onEvent) {
