@@ -68,7 +68,6 @@ pnpm test:integration
 - **Pluggable core**: `AgentCore` is an interface; `PiMonoCore` is the default. Swap the LLM backend without touching the rest.
 - **Tool registry**: Tools are `(schema, handler)` pairs. Tool guards (CLI, FS) are enforced at registration and injected into system prompts.
 - **Event streaming**: `AgentInstance.prompt()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error.
-- **Binding resolution**: More-specific bindings win (channel+account+peer > channel+account > channel).
 - **AsyncLocalStorage context**: `SubagentDiscordContext` passes Discord-specific context through async chains.
 - **Workspace context**: SOUL.md/TOOLS.md/MEMORY.md/BOOTSTRAP.md are merged into system prompts and hot-reloaded on change.
 

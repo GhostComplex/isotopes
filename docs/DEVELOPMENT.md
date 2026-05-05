@@ -10,7 +10,6 @@
                │                │               │
 ┌──────────────┴────────────────┴───────────────┴─────────────┐
 │                      Message Router                         │
-│   - Binding resolution (channel + account + peer)           │
 │   - Mention filtering (requireMention per guild/group)      │
 └──────────────────────────┬──────────────────────────────────┘
                            │

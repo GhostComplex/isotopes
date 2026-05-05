@@ -227,7 +227,6 @@ Isotopes 当前未提供对应能力。（Issue #116 已开）
 | --- | --- | --- | --- |
 | Agent 定义 | `agents.list[]` | `agents[]` | 名称不同，结构类似 |
 | Agent defaults | `agents.defaults.*` | 顶层 `provider/tools/compaction` | OpenClaw 的 defaults 命名空间更清晰 |
-| Bindings | `bindings[]` | `bindings[]` | 已对齐 |
 | Discord | `channels.discord.accounts.*` | `discord.*` | OpenClaw 支持多 account |
 | DM scope | `session.dmScope` | 无 | 缺失 |
 | Session reset | `session.reset.*` | 无 | 缺失 |
