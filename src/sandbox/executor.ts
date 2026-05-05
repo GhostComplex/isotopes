@@ -20,26 +20,21 @@ export class SandboxExecutor {
   private inflight: Map<string, Promise<ContainerInfo>> = new Map();
   private agentMounts: Map<string, Mount[]> = new Map();
   private agentDocker: Map<string, DockerConfig> = new Map();
+  private agentWorkspaceAccess: Map<string, WorkspaceAccess> = new Map();
 
-  constructor(
-    private containerManager: ContainerManager,
-    private defaultConfig: SandboxConfig,
-  ) {}
+  constructor(private containerManager: ContainerManager) {}
 
   /** Returns an executor when sandbox docker config is present, else undefined. */
   static fromConfig(config: SandboxConfig): SandboxExecutor | undefined {
     if (!config.docker) return undefined;
-    return new SandboxExecutor(new ContainerManager(), config);
+    return new SandboxExecutor(new ContainerManager());
   }
 
-  /** Override the mounts used when this agent's container is created. Replaces defaults entirely. */
-  registerAgentMounts(agentId: string, mounts: Mount[]): void {
-    this.agentMounts.set(agentId, mounts);
-  }
-
-  /** Override the docker config used when this agent's container is created. */
-  registerAgentDocker(agentId: string, docker: DockerConfig): void {
-    this.agentDocker.set(agentId, docker);
+  /** Register an agent's resolved sandbox config. Idempotent — last write wins. */
+  registerAgent(agentId: string, config: SandboxConfig): void {
+    if (config.docker) this.agentDocker.set(agentId, config.docker);
+    if (config.mounts) this.agentMounts.set(agentId, config.mounts);
+    if (config.workspaceAccess) this.agentWorkspaceAccess.set(agentId, config.workspaceAccess);
   }
 
   async execute(
@@ -106,7 +101,7 @@ export class SandboxExecutor {
 
     const containerName = `isotopes-sandbox-${agentId}`;
     const workspace = workspacePath ?? "/tmp";
-    const access: WorkspaceAccess = this.defaultConfig.workspaceAccess ?? "rw";
+    const access: WorkspaceAccess = this.agentWorkspaceAccess.get(agentId) ?? "rw";
 
     // Reap an orphan from a previous process — otherwise `docker create` fails on the name conflict.
     const orphan = await this.containerManager.status(containerName);
@@ -115,9 +110,9 @@ export class SandboxExecutor {
       await this.safeRemove(orphan.id);
     }
 
-    const docker = this.agentDocker.get(agentId) ?? this.defaultConfig.docker;
+    const docker = this.agentDocker.get(agentId);
     if (!docker) {
-      throw new Error(`agent "${agentId}" sandboxed but no docker config available (neither base nor per-agent)`);
+      throw new Error(`agent "${agentId}" sandboxed but no docker config registered`);
     }
 
     const container = await this.containerManager.create(
@@ -153,9 +148,13 @@ export class SandboxExecutor {
 
   private async cleanupAgent(agentId: string): Promise<void> {
     const container = this.containers.get(agentId);
-    if (!container) return;
-    await this.safeRemove(container.id);
-    this.containers.delete(agentId);
+    if (container) {
+      await this.safeRemove(container.id);
+      this.containers.delete(agentId);
+    }
+    this.agentMounts.delete(agentId);
+    this.agentDocker.delete(agentId);
+    this.agentWorkspaceAccess.delete(agentId);
   }
 
   private async cleanupAll(): Promise<void> {
@@ -166,6 +165,9 @@ export class SandboxExecutor {
         this.containers.delete(agentId);
       }),
     );
+    this.agentMounts.clear();
+    this.agentDocker.clear();
+    this.agentWorkspaceAccess.clear();
   }
 
   private async safeRemove(containerId: string): Promise<void> {

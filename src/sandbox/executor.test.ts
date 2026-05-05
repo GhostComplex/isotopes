@@ -56,7 +56,8 @@ describe("SandboxExecutor", () => {
 
   beforeEach(() => {
     mockManager = createMockContainerManager();
-    executor = new SandboxExecutor(mockManager, defaultConfig);
+    executor = new SandboxExecutor(mockManager);
+    executor.registerAgent("agent-1", defaultConfig);
   });
 
   describe("execute", () => {
@@ -176,7 +177,7 @@ describe("SandboxExecutor", () => {
     });
 
     it("uses per-agent docker when registered, overriding default docker", async () => {
-      executor.registerAgentDocker("agent-1", { image: "custom:v2", network: "host" });
+      executor.registerAgent("agent-1", { enabled: true, docker: { image: "custom:v2", network: "host" } });
       await executor.execute("agent-1", ["ls"], { workspacePath: "/ws" });
 
       expect(mockManager.create).toHaveBeenCalledWith(
@@ -189,9 +190,10 @@ describe("SandboxExecutor", () => {
     });
 
     it("uses per-agent mounts when registered, overriding defaults", async () => {
-      executor.registerAgentMounts("agent-1", [
-        { host: "/agent/foo", container: "/foo", readOnly: true },
-      ]);
+      executor.registerAgent("agent-1", {
+        ...defaultConfig,
+        mounts: [{ host: "/agent/foo", container: "/foo", readOnly: true }],
+      });
       await executor.execute("agent-1", ["ls"], { workspacePath: "/ws" });
 
       expect(mockManager.create).toHaveBeenCalledWith(
@@ -320,6 +322,8 @@ describe("SandboxExecutor", () => {
           createdAt: new Date(),
         });
 
+      executor.registerAgent("agent-a", defaultConfig);
+      executor.registerAgent("agent-b", defaultConfig);
       await executor.execute("agent-a", ["echo", "a"]);
       await executor.execute("agent-b", ["echo", "b"]);
 
