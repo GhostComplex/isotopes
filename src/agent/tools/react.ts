@@ -1,33 +1,13 @@
-// src/tools/react.ts — message_react tool
-
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
 import { createLogger } from "../../logging/logger.js";
-import type { Transport } from "../../gateway/types.js";
+import type { TransportContext } from "../../gateway/transport-context.js";
 
 const log = createLogger("tools:react");
 
 function jsonResult(value: unknown): AgentToolResult<undefined> {
   return { content: [{ type: "text", text: JSON.stringify(value) }], details: undefined };
 }
-
-// ---------------------------------------------------------------------------
-// Context
-// ---------------------------------------------------------------------------
-
-export interface ReactToolContext {
-  getTransport: () => Transport | undefined;
-}
-
-export class LazyTransportContext implements ReactToolContext {
-  private _transport: Transport | undefined;
-  setTransport(transport: Transport): void { this._transport = transport; }
-  getTransport(): Transport | undefined { return this._transport; }
-}
-
-// ---------------------------------------------------------------------------
-// message_react
-// ---------------------------------------------------------------------------
 
 const messageReactSchema = Type.Object({
   message_id: Type.String({ description: "ID of the message to react to" }),
@@ -39,7 +19,7 @@ const messageReactSchema = Type.Object({
   emoji: Type.String({ description: "Emoji to react with (Unicode emoji or custom emoji identifier)" }),
 });
 
-export function createMessageReactTool(ctx: ReactToolContext): AgentTool<typeof messageReactSchema> {
+export function createMessageReactTool(ctx: TransportContext): AgentTool<typeof messageReactSchema> {
   return {
     name: "message_react",
     label: "message_react",
@@ -67,6 +47,6 @@ export function createMessageReactTool(ctx: ReactToolContext): AgentTool<typeof 
   };
 }
 
-export function createReactTools(ctx: ReactToolContext): AgentTool[] {
+export function createReactTools(ctx: TransportContext): AgentTool[] {
   return [createMessageReactTool(ctx)];
 }

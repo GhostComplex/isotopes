@@ -1,12 +1,9 @@
-// src/tools/react.test.ts — Unit tests for message_react tool
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   createMessageReactTool,
   createReactTools,
-  LazyTransportContext,
-  type ReactToolContext,
 } from "./react.js";
+import { LazyTransportContext, type TransportContext } from "../../gateway/transport-context.js";
 import type { Transport } from "../../gateway/types.js";
 
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
@@ -27,12 +24,12 @@ function createMockTransport(overrides: Partial<Transport> = {}): Transport {
   };
 }
 
-function wrapTransport(transport: Transport): ReactToolContext {
+function wrapTransport(transport: Transport): TransportContext {
   return { getTransport: () => transport };
 }
 
 describe("message_react tool", () => {
-  let ctx: ReactToolContext;
+  let ctx: TransportContext;
   let transport: Transport;
 
   beforeEach(() => {
