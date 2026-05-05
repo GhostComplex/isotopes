@@ -83,8 +83,6 @@ describe("ContainerManager", () => {
       const hardened: DockerConfig = {
         ...defaultDockerConfig,
         pidsLimit: 256,
-        capDrop: ["ALL"],
-        capAdd: ["DAC_OVERRIDE", "CHOWN", "FOWNER"],
         noNewPrivileges: true,
       };
       const m = new ContainerManager(hardened);
@@ -95,10 +93,6 @@ describe("ContainerManager", () => {
       expect(args).toContain("--init");
       expect(args).toContain("--pids-limit");
       expect(args).toContain("256");
-      expect(args.filter((a) => a === "--cap-drop")).toHaveLength(1);
-      expect(args).toContain("ALL");
-      expect(args.filter((a) => a === "--cap-add")).toHaveLength(3);
-      expect(args).toContain("DAC_OVERRIDE");
       expect(args).toContain("--security-opt");
       expect(args).toContain("no-new-privileges");
     });

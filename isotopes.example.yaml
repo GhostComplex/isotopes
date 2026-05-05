@@ -48,7 +48,7 @@ agents:
     # compaction:                           # per-agent override
     #   mode: aggressive
     # sandbox:                              # per-agent override (see global "sandbox" below)
-    #   mode: non-main
+    #   enabled: true
     # cron:                                 # per-agent scheduled prompts (#193)
     #   tasks:
     #     - name: morning-standup
@@ -185,7 +185,7 @@ channels:
 # SANDBOX — Docker-isolated code execution (default for all agents)
 # =============================================================================
 # sandbox:
-#   mode: off                         # off | non-main | all
+#   enabled: false                    # true to route exec/file tools through Docker
 #   workspaceAccess: rw               # rw | ro
 #   docker:
 #     image: isotopes-sandbox:latest

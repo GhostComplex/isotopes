@@ -80,7 +80,6 @@ export interface AgentToolsConfigFile {
   deny?: string[];
 }
 
-/** Sandbox Docker configuration in config file */
 export interface SandboxDockerConfigFile {
   image?: string;
   network?: string;
@@ -88,8 +87,6 @@ export interface SandboxDockerConfigFile {
   cpuLimit?: number;
   memoryLimit?: string;
   pidsLimit?: number;
-  capDrop?: string[];
-  capAdd?: string[];
   noNewPrivileges?: boolean;
 }
 
@@ -99,9 +96,8 @@ export interface SandboxMountConfigFile {
   readOnly?: boolean;
 }
 
-/** Sandbox execution configuration in config file */
 export interface SandboxConfigFile {
-  mode?: string;
+  enabled?: boolean;
   workspaceAccess?: string;
   mounts?: SandboxMountConfigFile[];
   docker?: SandboxDockerConfigFile;
@@ -228,7 +224,7 @@ export function resolveSandboxConfigFromFile(
     throw new Error(
       `agent "${agentId}": sandbox.docker is not supported at the per-agent level. ` +
         `Move docker config to the agents-level (agents.defaults.sandbox.docker or top-level sandbox.docker); ` +
-        `each agent may only override sandbox.mode and sandbox.workspaceAccess.`,
+        `each agent may only override sandbox.enabled and sandbox.workspaceAccess.`,
     );
   }
 
@@ -242,12 +238,9 @@ export function resolveSandboxConfigFromFile(
   return resolveSandboxConfig(agentId, defaults, override);
 }
 
-/**
- * Convert a config-file sandbox entry to a typed SandboxConfig.
- */
 function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
   return {
-    mode: (file.mode ?? "off") as SandboxConfig["mode"],
+    enabled: file.enabled ?? false,
     ...(file.workspaceAccess !== undefined && {
       workspaceAccess: file.workspaceAccess as SandboxConfig["workspaceAccess"],
     }),
@@ -268,8 +261,6 @@ function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
         ...(file.docker.cpuLimit !== undefined && { cpuLimit: file.docker.cpuLimit }),
         ...(file.docker.memoryLimit !== undefined && { memoryLimit: file.docker.memoryLimit }),
         ...(file.docker.pidsLimit !== undefined && { pidsLimit: file.docker.pidsLimit }),
-        ...(file.docker.capDrop !== undefined && { capDrop: file.docker.capDrop }),
-        ...(file.docker.capAdd !== undefined && { capAdd: file.docker.capAdd }),
         ...(file.docker.noNewPrivileges !== undefined && { noNewPrivileges: file.docker.noNewPrivileges }),
       },
     }),

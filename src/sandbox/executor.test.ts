@@ -46,7 +46,7 @@ function createMockContainerManager(): ContainerManager {
 
 describe("SandboxExecutor", () => {
   const defaultConfig: SandboxConfig = {
-    mode: "all",
+    enabled: true,
     workspaceAccess: "rw",
     docker: { image: "isotopes-sandbox:latest", network: "bridge" },
   };
@@ -210,26 +210,18 @@ describe("SandboxExecutor", () => {
   });
 
   describe("shouldExecuteInSandbox", () => {
-    it("returns true for mode 'all' regardless of main agent", () => {
-      expect(executor.shouldExecuteInSandbox("agent-1", true)).toBe(true);
-      expect(executor.shouldExecuteInSandbox("agent-1", false)).toBe(true);
+    it("returns true when default config is enabled", () => {
+      expect(executor.shouldExecuteInSandbox("agent-1")).toBe(true);
     });
 
-    it("returns false for main agent when default mode is 'non-main'", () => {
-      const nonMainExecutor = new SandboxExecutor(mockManager, {
-        mode: "non-main",
-      });
-
-      expect(nonMainExecutor.shouldExecuteInSandbox("agent-1", true)).toBe(false);
-      expect(nonMainExecutor.shouldExecuteInSandbox("agent-1", false)).toBe(true);
+    it("returns false when default config is disabled", () => {
+      const offExecutor = new SandboxExecutor(mockManager, { enabled: false });
+      expect(offExecutor.shouldExecuteInSandbox("agent-1")).toBe(false);
     });
 
     it("uses agent-level config override when provided", () => {
-      const agentOverride: SandboxConfig = { mode: "off" };
-
-      expect(
-        executor.shouldExecuteInSandbox("agent-1", false, agentOverride),
-      ).toBe(false);
+      const agentOverride: SandboxConfig = { enabled: false };
+      expect(executor.shouldExecuteInSandbox("agent-1", agentOverride)).toBe(false);
     });
   });
 

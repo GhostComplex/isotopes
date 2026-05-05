@@ -534,7 +534,7 @@ function makeMockSandboxExecutor(overrides?: Partial<SandboxExecutor>): SandboxE
 }
 
 const sandboxConfig: SandboxConfig = {
-  mode: "all",
+  enabled: true,
   workspaceAccess: "rw",
   docker: { image: "isotopes-sandbox:latest" },
 };
@@ -546,7 +546,6 @@ describe("exec tool sandbox routing", () => {
       cwd: "/ws",
       sandboxExecutor: executor,
       agentId: "agent-1",
-      isMainAgent: false,
       agentSandboxConfig: sandboxConfig,
     });
 
@@ -653,8 +652,7 @@ describe("exec tool sandbox routing", () => {
       cwd: "/tmp",
       sandboxExecutor: executor,
       agentId: "agent-1",
-      isMainAgent: true,
-      agentSandboxConfig: { mode: "non-main" },
+      agentSandboxConfig: { enabled: false },
     });
 
     const result = JSON.parse(await callTool(tool, { command: "echo host" }) as string);

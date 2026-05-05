@@ -1,6 +1,4 @@
-// src/sandbox/executor.ts — Sandbox execution orchestrator
-// Manages the lifecycle of sandbox containers per-agent and routes
-// command execution through them.
+// src/sandbox/executor.ts — Per-agent container lifecycle + command routing.
 
 import { createLogger } from "../logging/logger.js";
 import type { ContainerInfo, ContainerManager, ExecResult } from "./container.js";
@@ -8,34 +6,16 @@ import { shouldSandbox, type SandboxConfig, type WorkspaceAccess } from "./confi
 
 const log = createLogger("sandbox:executor");
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Options for executing a command in a sandbox container. */
 export interface SandboxExecOptions {
-  /** Path to the workspace directory to mount */
   workspacePath?: string;
-  /** Execution timeout in milliseconds */
   timeout?: number;
-  /** Bytes piped to the command's stdin (e.g. file content for `cat > file`). */
   stdin?: Buffer | string;
 }
 
-// ---------------------------------------------------------------------------
-// Executor
-// ---------------------------------------------------------------------------
-
 /**
- * Orchestrates sandbox execution for agents.
- *
- * Each agent that requires sandboxing gets its own Docker container.
- * Containers are lazily created on first execution and reused across
- * subsequent calls. The executor manages the full container lifecycle
- * and provides cleanup for graceful shutdown.
+ * Lazily creates one container per agent and routes commands through it.
  */
 export class SandboxExecutor {
-  /** Active containers keyed by agent ID */
   private containers: Map<string, ContainerInfo> = new Map();
 
   constructor(
@@ -43,15 +23,6 @@ export class SandboxExecutor {
     private defaultConfig: SandboxConfig,
   ) {}
 
-  /**
-   * Execute a command for an agent, using a sandbox container if the agent's
-   * config requires it.
-   *
-   * @param agentId - The agent requesting execution
-   * @param command - Command and arguments to execute
-   * @param options - Execution options (workspace path, timeout)
-   * @returns ExecResult with exit code, stdout, and stderr
-   */
   async execute(
     agentId: string,
     command: string[],
@@ -59,22 +30,17 @@ export class SandboxExecutor {
   ): Promise<ExecResult> {
     const container = await this.ensureContainer(agentId, options?.workspacePath);
     const execOpts = options?.stdin !== undefined ? { stdin: options.stdin } : undefined;
-
     if (options?.timeout) {
       return this.execWithTimeout(container.id, command, options.timeout, execOpts);
     }
-
     return this.containerManager.exec(container.id, command, execOpts);
   }
 
   /**
-   * Build the host-side argv for running `command` inside the agent's
-   * container via `docker exec`. Ensures the container exists.
-   *
-   * Used by background-process spawning: the caller spawns this argv as a
-   * regular host child process and tracks the ChildProcess handle, getting
-   * stdout/stderr pipes and SIGTERM-based kill for free (docker exec defaults
-   * to --sig-proxy=true, so signals reach the container PID).
+   * Host-side argv that runs `command` inside the agent's container via
+   * `docker exec`. Used for background processes — caller spawns this argv
+   * directly so it can track ChildProcess and signal it (docker forwards
+   * SIGTERM via --sig-proxy=true).
    */
   async buildExecArgv(
     agentId: string,
@@ -85,45 +51,15 @@ export class SandboxExecutor {
     return this.containerManager.buildExecArgv(container.id, command);
   }
 
-  /**
-   * Check whether a specific agent should be sandboxed.
-   *
-   * @param agentId - The agent to check
-   * @param isMainAgent - Whether this is the main agent
-   * @param agentConfig - Optional per-agent sandbox config override
-   * @returns true if the agent should run in a sandbox
-   */
-  shouldExecuteInSandbox(
-    _agentId: string,
-    isMainAgent: boolean,
-    agentConfig?: SandboxConfig,
-  ): boolean {
-    const config = agentConfig ?? this.defaultConfig;
-    return shouldSandbox(config, isMainAgent);
+  shouldExecuteInSandbox(_agentId: string, agentConfig?: SandboxConfig): boolean {
+    return shouldSandbox(agentConfig ?? this.defaultConfig);
   }
 
-  /**
-   * Clean up containers. If agentId is provided, only clean up that agent's
-   * container. Otherwise, clean up all containers.
-   *
-   * @param agentId - Optional agent ID to clean up specifically
-   */
   async cleanup(agentId?: string): Promise<void> {
-    if (agentId) {
-      await this.cleanupAgent(agentId);
-    } else {
-      await this.cleanupAll();
-    }
+    if (agentId) await this.cleanupAgent(agentId);
+    else await this.cleanupAll();
   }
 
-  // -----------------------------------------------------------------------
-  // Private helpers
-  // -----------------------------------------------------------------------
-
-  /**
-   * Ensure a running container exists for the given agent.
-   * Creates and starts one if necessary.
-   */
   private async ensureContainer(
     agentId: string,
     workspacePath?: string,
@@ -131,13 +67,9 @@ export class SandboxExecutor {
     const existing = this.containers.get(agentId);
 
     if (existing) {
-      // Verify the container is still running
       const info = await this.containerManager.status(existing.id);
-      if (info && info.status === "running") {
-        return existing;
-      }
+      if (info && info.status === "running") return existing;
 
-      // Container is not running — try to restart or recreate
       if (info && info.status !== "running") {
         try {
           await this.containerManager.start(existing.id);
@@ -151,7 +83,6 @@ export class SandboxExecutor {
       }
     }
 
-    // Create a new container
     const containerName = `isotopes-sandbox-${agentId}`;
     const workspace = workspacePath ?? "/tmp";
     const access: WorkspaceAccess = this.defaultConfig.workspaceAccess ?? "rw";
@@ -166,13 +97,9 @@ export class SandboxExecutor {
     await this.containerManager.start(container.id);
     const running: ContainerInfo = { ...container, status: "running" };
     this.containers.set(agentId, running);
-
     return running;
   }
 
-  /**
-   * Execute a command with a timeout.
-   */
   private async execWithTimeout(
     containerId: string,
     command: string[],
@@ -190,23 +117,15 @@ export class SandboxExecutor {
     }
   }
 
-  /**
-   * Clean up a single agent's container.
-   */
   private async cleanupAgent(agentId: string): Promise<void> {
     const container = this.containers.get(agentId);
     if (!container) return;
-
     await this.safeRemove(container.id);
     this.containers.delete(agentId);
   }
 
-  /**
-   * Clean up all containers.
-   */
   private async cleanupAll(): Promise<void> {
     const entries = [...this.containers.entries()];
-
     await Promise.allSettled(
       entries.map(async ([agentId, container]) => {
         await this.safeRemove(container.id);
@@ -215,19 +134,10 @@ export class SandboxExecutor {
     );
   }
 
-  /**
-   * Safely stop and remove a container, swallowing errors.
-   */
   private async safeRemove(containerId: string): Promise<void> {
-    try {
-      await this.containerManager.stop(containerId, 5);
-    } catch (err) {
-      log.debug(`Stop failed for container ${containerId} (may already be stopped)`, err);
-    }
-    try {
-      await this.containerManager.remove(containerId, true);
-    } catch (err) {
-      log.debug(`Remove failed for container ${containerId} (may already be removed)`, err);
-    }
+    try { await this.containerManager.stop(containerId, 5); }
+    catch (err) { log.debug(`Stop failed for ${containerId}`, err); }
+    try { await this.containerManager.remove(containerId, true); }
+    catch (err) { log.debug(`Remove failed for ${containerId}`, err); }
   }
 }

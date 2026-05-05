@@ -1,21 +1,9 @@
-// src/sandbox/config.ts — Sandbox configuration for secure tool execution
-// Defines types and resolution logic for Docker-based sandbox execution.
+// src/sandbox/config.ts — Sandbox configuration types and resolution.
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Sandbox execution mode */
-export type SandboxMode = "off" | "non-main" | "all";
-
-/** Workspace mount access level */
 export type WorkspaceAccess = "rw" | "ro";
 
-/** Docker container configuration */
 export interface DockerConfig {
-  /** Docker image to use for sandbox containers */
   image: string;
-  /** Docker network mode */
   network?: "bridge" | "host" | "none";
   /** Extra /etc/hosts entries (e.g., "host.docker.internal:host-gateway") */
   extraHosts?: string[];
@@ -25,10 +13,6 @@ export interface DockerConfig {
   memoryLimit?: string;
   /** Max PIDs in container. Default: 256. Set to 0 to disable. */
   pidsLimit?: number;
-  /** Linux capabilities to drop. Default: ["ALL"]. */
-  capDrop?: string[];
-  /** Linux capabilities to add back after capDrop. Default: [] (none). Opt-in only — caps like DAC_OVERRIDE are ignored by the kernel for non-root container users anyway. */
-  capAdd?: string[];
   /** Apply --security-opt=no-new-privileges. Default: true. */
   noNewPrivileges?: boolean;
 }
@@ -39,112 +23,73 @@ export interface Mount {
   readOnly?: boolean;
 }
 
-/** Sandbox configuration for an agent */
 export interface SandboxConfig {
-  mode: SandboxMode;
+  enabled: boolean;
   workspaceAccess?: WorkspaceAccess;
   mounts?: Mount[];
   docker?: DockerConfig;
 }
 
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-const VALID_SANDBOX_MODES = new Set<string>(["off", "non-main", "all"]);
 const VALID_WORKSPACE_ACCESS = new Set<string>(["rw", "ro"]);
 const VALID_NETWORK_MODES = new Set<string>(["bridge", "host", "none"]);
 const MEMORY_LIMIT_PATTERN = /^\d+[kmg]$/i;
 
-/**
- * Validate a SandboxConfig, throwing on invalid values.
- */
 function validateSandboxConfig(config: SandboxConfig, label: string): void {
   const check = (cond: boolean, msg: string) => { if (!cond) throw new Error(`${label}: ${msg}`); };
-
-  check(VALID_SANDBOX_MODES.has(config.mode), `invalid sandbox mode "${config.mode}" (must be off, non-main, or all)`);
 
   if (config.workspaceAccess !== undefined) {
     check(VALID_WORKSPACE_ACCESS.has(config.workspaceAccess), `invalid workspaceAccess "${config.workspaceAccess}" (must be rw or ro)`);
   }
 
   if (config.mounts !== undefined) {
-    check(Array.isArray(config.mounts), "mounts must be an array");
     for (let i = 0; i < config.mounts.length; i++) {
       const m = config.mounts[i];
-      check(typeof m.host === "string" && m.host.startsWith("/"), `mounts[${i}].host must be an absolute path`);
-      check(typeof m.container === "string" && m.container.startsWith("/"), `mounts[${i}].container must be an absolute path`);
-      if (m.readOnly !== undefined) check(typeof m.readOnly === "boolean", `mounts[${i}].readOnly must be a boolean`);
+      check(m.host.startsWith("/"), `mounts[${i}].host must be an absolute path`);
+      check(m.container.startsWith("/"), `mounts[${i}].container must be an absolute path`);
     }
   }
 
   if (config.docker) {
     const d = config.docker;
-    check(!!d.image && typeof d.image === "string", "docker.image is required and must be a non-empty string");
+    check(!!d.image, "docker.image is required");
     if (d.network !== undefined) check(VALID_NETWORK_MODES.has(d.network), `invalid docker.network "${d.network}" (must be bridge, host, or none)`);
-    if (d.cpuLimit !== undefined) check(typeof d.cpuLimit === "number" && d.cpuLimit > 0, "docker.cpuLimit must be a positive number");
-    if (d.memoryLimit !== undefined) check(typeof d.memoryLimit === "string" && MEMORY_LIMIT_PATTERN.test(d.memoryLimit), `docker.memoryLimit must match pattern like "512m", "1g"`);
-    if (d.pidsLimit !== undefined) check(typeof d.pidsLimit === "number" && d.pidsLimit >= 0 && Number.isInteger(d.pidsLimit), "docker.pidsLimit must be a non-negative integer");
-    if (d.capDrop !== undefined) check(Array.isArray(d.capDrop), "docker.capDrop must be an array of strings");
-    if (d.capAdd !== undefined) check(Array.isArray(d.capAdd), "docker.capAdd must be an array of strings");
-    if (d.noNewPrivileges !== undefined) check(typeof d.noNewPrivileges === "boolean", "docker.noNewPrivileges must be a boolean");
+    if (d.cpuLimit !== undefined) check(d.cpuLimit > 0, "docker.cpuLimit must be a positive number");
+    if (d.memoryLimit !== undefined) check(MEMORY_LIMIT_PATTERN.test(d.memoryLimit), `docker.memoryLimit must match pattern like "512m", "1g"`);
+    if (d.pidsLimit !== undefined) check(d.pidsLimit >= 0 && Number.isInteger(d.pidsLimit), "docker.pidsLimit must be a non-negative integer");
   }
 }
 
-// ---------------------------------------------------------------------------
-// Resolution
-// ---------------------------------------------------------------------------
-
-/** Default Docker configuration */
 const DEFAULT_DOCKER_CONFIG: DockerConfig = {
   image: "isotopes-sandbox:latest",
   network: "bridge",
   pidsLimit: 256,
-  capDrop: ["ALL"],
-  capAdd: [],
   noNewPrivileges: true,
 };
 
 /**
- * Resolve sandbox config for a specific agent by merging agent-level overrides
- * with defaults. Agent-level values take precedence over defaults.
- *
- * @param agentId - The agent identifier (used in error messages)
- * @param defaults - Default sandbox config (from agents.defaults.sandbox)
- * @param override - Agent-level sandbox config override
- * @returns Resolved SandboxConfig
+ * Merge agent-level overrides over defaults. Returns `{ enabled: false }` when
+ * no config is provided at any layer.
  */
 export function resolveSandboxConfig(
   agentId: string,
   defaults?: SandboxConfig,
   override?: SandboxConfig,
 ): SandboxConfig {
-  // No sandbox config at all → mode: off
-  if (!defaults && !override) {
-    return { mode: "off" };
-  }
+  if (!defaults && !override) return { enabled: false };
 
   const resolved: SandboxConfig = {
-    mode: override?.mode ?? defaults?.mode ?? "off",
+    enabled: override?.enabled ?? defaults?.enabled ?? false,
     workspaceAccess: override?.workspaceAccess ?? defaults?.workspaceAccess ?? "rw",
     mounts: override?.mounts ?? defaults?.mounts,
     docker: mergeDockerConfig(defaults?.docker, override?.docker),
   };
 
   validateSandboxConfig(resolved, `agent "${agentId}"`);
-
   return resolved;
 }
 
-/**
- * Merge Docker configs, with override values taking precedence.
- */
-function mergeDockerConfig(
-  defaults?: DockerConfig,
-  override?: DockerConfig,
-): DockerConfig {
+function mergeDockerConfig(defaults?: DockerConfig, override?: DockerConfig): DockerConfig {
   if (!defaults && !override) return { ...DEFAULT_DOCKER_CONFIG };
-
   return {
     image: override?.image ?? defaults?.image ?? DEFAULT_DOCKER_CONFIG.image,
     network: override?.network ?? defaults?.network ?? DEFAULT_DOCKER_CONFIG.network,
@@ -152,33 +97,10 @@ function mergeDockerConfig(
     cpuLimit: override?.cpuLimit ?? defaults?.cpuLimit,
     memoryLimit: override?.memoryLimit ?? defaults?.memoryLimit,
     pidsLimit: override?.pidsLimit ?? defaults?.pidsLimit ?? DEFAULT_DOCKER_CONFIG.pidsLimit,
-    capDrop: override?.capDrop ?? defaults?.capDrop ?? DEFAULT_DOCKER_CONFIG.capDrop,
-    capAdd: override?.capAdd ?? defaults?.capAdd ?? DEFAULT_DOCKER_CONFIG.capAdd,
     noNewPrivileges: override?.noNewPrivileges ?? defaults?.noNewPrivileges ?? DEFAULT_DOCKER_CONFIG.noNewPrivileges,
   };
 }
 
-/**
- * Determine whether an agent should be sandboxed based on the config and
- * whether it is the "main" agent.
- *
- * - mode "off"      → never sandbox
- * - mode "non-main" → sandbox only if NOT the main agent
- * - mode "all"      → always sandbox
- *
- * @param config - Resolved sandbox config
- * @param isMainAgent - Whether this agent is the main/primary agent
- * @returns true if the agent should run in a sandbox
- */
-export function shouldSandbox(config: SandboxConfig, isMainAgent: boolean): boolean {
-  switch (config.mode) {
-    case "off":
-      return false;
-    case "non-main":
-      return !isMainAgent;
-    case "all":
-      return true;
-    default:
-      return false;
-  }
+export function shouldSandbox(config: SandboxConfig): boolean {
+  return config.enabled;
 }

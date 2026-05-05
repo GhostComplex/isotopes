@@ -298,7 +298,7 @@ export async function shutdownToolsLayer(): Promise<void> {
 }
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
-  const isSandboxed = !!(opts.agentSandboxConfig && shouldSandbox(opts.agentSandboxConfig, false));
+  const isSandboxed = !!(opts.agentSandboxConfig && shouldSandbox(opts.agentSandboxConfig));
   if (isSandboxed && !sandboxExecutor) {
     throw new Error(
       `agent "${opts.agentId}" requires sandbox but no sandbox infrastructure is configured. ` +
@@ -321,7 +321,6 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
       registry: opts.processRegistry,
       sandboxExecutor: sandboxExecutor,
       agentId: opts.agentId,
-      isMainAgent: false,
       agentSandboxConfig: opts.agentSandboxConfig,
     }),
   ];

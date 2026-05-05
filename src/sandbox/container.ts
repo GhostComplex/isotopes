@@ -269,17 +269,6 @@ export class ContainerManager {
       args.push("--pids-limit", String(this.config.pidsLimit));
     }
 
-    // Linux capability hardening
-    if (this.config.capDrop) {
-      for (const cap of this.config.capDrop) {
-        args.push("--cap-drop", cap);
-      }
-    }
-    if (this.config.capAdd) {
-      for (const cap of this.config.capAdd) {
-        args.push("--cap-add", cap);
-      }
-    }
     if (this.config.noNewPrivileges !== false) {
       args.push("--security-opt", "no-new-privileges");
     }

@@ -27,14 +27,14 @@ non-root `agent` user with uid 1000.
 Sandbox config is layered: an **agents-level** block (under
 `agents.defaults.sandbox` or top-level `sandbox`) supplies docker / mount
 defaults; each agent may overlay a partial **per-agent** override (typically
-just `mode: "off"` to opt one agent out).
+just `enabled: false` to opt one agent out).
 
 ```yaml
 # Agents-level (top-level `sandbox` is also accepted).
 agents:
   defaults:
     sandbox:
-      mode: all              # off | non-main | all
+      enabled: true
       workspaceAccess: rw    # rw | ro
       docker:
         image: isotopes-sandbox:latest
@@ -42,58 +42,29 @@ agents:
         cpuLimit: 1.5
         memoryLimit: 1g
         pidsLimit: 256       # 0 disables
-        capDrop: ["ALL"]
-        capAdd: []           # opt-in only; defaults to none. Caps like
-                             # DAC_OVERRIDE are kernel-ignored for the
-                             # non-root container user anyway.
         noNewPrivileges: true
   list:
     - id: trusted-bot
       sandbox:
-        mode: off            # this single agent runs on the host
+        enabled: false       # this single agent runs on the host
     - id: untrusted-bot
       # inherits agents.defaults.sandbox
 ```
 
 Per-agent `sandbox.docker` is **rejected at config load** — there is one
 `ContainerManager` per process, so the docker block lives at the agents-level.
-Per-agent `sandbox` may only override `mode` and `workspaceAccess`.
-
-## Modes
-
-| Mode | Behavior |
-|---|---|
-| `off` | All commands run on the host. Default. |
-| `non-main` | Commands run in a container unless the agent is marked "main". Currently no agent is marked main, so this behaves like `all`. |
-| `all` | Every command from every agent runs in a container. |
-
-The "main agent" concept exists in the resolver (`shouldSandbox`) but no
-config flag wires it through yet — every agent is treated as non-main. Add a
-`main: true` field to the agent file and read it in `cli.ts` when you need
-the distinction.
+Per-agent `sandbox` may only override `enabled` and `workspaceAccess`.
 
 ## What's mounted
 
-The agent's workspace directory (`~/.isotopes/workspace-<id>/` or whatever
-`agent.workspace` resolves to) is bind-mounted at the **same host path**
-inside the container. Absolute paths from the host therefore resolve
-identically inside and outside the container — no `/workspace` ↔ host path
-translation is needed in the fs bridge or in user-facing log output. With
-`workspaceAccess: rw` the agent can edit `SOUL.md`, `MEMORY.md`, etc., and
-the changes persist to the host. With `ro` they cannot — but most agents
-need `rw` to maintain their own state.
-
-Any directories listed in the agent's `allowedWorkspaces` (granted to host
-file tools like `read_file` / `edit`) are also bind-mounted into the
-container, **read-only**, at the same host path. This keeps `exec cat
-/some/allowed/path` and `read_file /some/allowed/path` consistent. Write
-access through `exec` to those paths is intentionally not supported — use
-the workspace mount or a dedicated rw-allowed directory if writes are
-needed.
+The agent's workspace directory is bind-mounted at the **same host path**
+inside the container, so absolute paths resolve identically on host and in
+the container. Extra `mounts:` entries are bind-mounted at their declared
+container path (read-only when `readOnly: true`).
 
 ## What's sandboxed
 
-When `sandbox.mode` is `all` or `non-main`:
+When `sandbox.enabled` is true:
 
 - **Shell commands** (`exec`, background processes) run as `docker exec` on
   the agent's container.

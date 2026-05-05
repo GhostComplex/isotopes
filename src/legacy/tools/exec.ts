@@ -227,9 +227,6 @@ export interface ExecToolOptions {
   sandboxExecutor?: SandboxExecutor;
   /** Agent ID owning this exec tool (required for sandbox routing). */
   agentId?: string;
-  /** Whether this agent counts as the "main" agent for `mode: "non-main"`.
-   *  Defaults to false (multi-agent setups have no primary). */
-  isMainAgent?: boolean;
   /** Resolved sandbox config for this agent. Required for sandbox routing. */
   agentSandboxConfig?: SandboxConfig;
 }
@@ -251,11 +248,11 @@ const execSchema = Type.Object({
 export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof execSchema> {
   const { cwd = process.cwd() } = options;
   const registry = options.registry ?? new ProcessRegistry();
-  const { sandboxExecutor, agentId, agentSandboxConfig, isMainAgent } = options;
+  const { sandboxExecutor, agentId, agentSandboxConfig } = options;
 
   const useSandbox = (): boolean =>
     !!(sandboxExecutor && agentId && agentSandboxConfig &&
-       sandboxExecutor.shouldExecuteInSandbox(agentId, isMainAgent ?? false, agentSandboxConfig));
+       sandboxExecutor.shouldExecuteInSandbox(agentId, agentSandboxConfig));
 
   return {
     name: "exec",
