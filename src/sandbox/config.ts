@@ -77,10 +77,11 @@ export function resolveSandboxConfig(
 ): SandboxConfig {
   if (!defaults && !override) return { enabled: false };
 
+  const mounts = [...(defaults?.mounts ?? []), ...(override?.mounts ?? [])];
   const resolved: SandboxConfig = {
     enabled: override?.enabled ?? defaults?.enabled ?? false,
     workspaceAccess: override?.workspaceAccess ?? defaults?.workspaceAccess ?? "rw",
-    mounts: override?.mounts ?? defaults?.mounts,
+    ...(mounts.length > 0 && { mounts }),
     docker: mergeDockerConfig(defaults?.docker, override?.docker),
   };
 

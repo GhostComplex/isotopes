@@ -113,7 +113,7 @@ export class SandboxExecutor {
       containerName,
       workspace,
       access,
-      this.agentMounts.get(agentId) ?? this.defaultConfig.mounts ?? [],
+      this.agentMounts.get(agentId) ?? [],
     );
 
     await this.containerManager.start(container.id);
