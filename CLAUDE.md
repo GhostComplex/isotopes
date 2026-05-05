@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Isotopes is a self-hostable AI agent framework for multi-agent collaboration across chat platforms (Discord, Feishu). Agents have self-evolving prompts (SOUL.md, MEMORY.md), binding-based message routing, cron automation, sandbox execution, and daemon mode.
+Isotopes is a self-hostable AI agent framework for multi-agent collaboration across chat platforms (Discord today, Feishu future). Agents have self-evolving prompts (SOUL.md, MEMORY.md), per-account routing, cron automation, sandbox execution, and daemon mode.
 
 ## Commands
 
@@ -20,7 +20,7 @@ pnpm test:watch        # Vitest in watch mode
 pnpm ci                # lint + typecheck + test (full local validation)
 
 # Single test file
-npx vitest run src/core/tools.test.ts
+npx vitest run src/agent/tools/index.test.ts
 
 # Single test by name
 npx vitest run -t "registers a tool"
@@ -33,50 +33,62 @@ pnpm test:integration
 
 **Module resolution**: ESM-only (`"type": "module"`). All imports use `.js` extensions (NodeNext resolution). Target: ES2022. Node >= 20.
 
-### Core (`src/core/`)
-- `types.ts` — Framework-wide interfaces (Message, Tool, AgentConfig, AgentInstance, AgentCore, Transport, Session, SessionStore). Zero coupling to any specific SDK.
-- `pi-mono.ts` — `PiMonoCore`: the default AgentCore implementation wrapping `@mariozechner/pi-agent-core`. Handles model resolution, tool bridging, context compaction.
-- `agent-manager.ts` — `DefaultAgentManager`: in-memory agent registry with workspace awareness.
-- `tools.ts` — `ToolRegistry` class + built-in tools (echo, time, shell, file read/write, list dir, subagent). Tool guards enforce CLI/FS access.
-- `bindings.ts` — Routes messages to agents by (channel, accountId, peer) with priority scoring.
-- `workspace.ts` — Loads workspace context files (SOUL.md, TOOLS.md, MEMORY.md, BOOTSTRAP.md) into system prompts.
-- `compaction.ts` — LLM-based context window summarization.
-- `session-store.ts` — In-memory sessions with JSONL file persistence.
-- `config.ts` — YAML config loader with Zod validation. Supports `${ENV_VAR}` interpolation.
-- `test-helpers.ts` — Shared mock factories: `createMockAgentInstance()`, `createMockAgentManager()`, `createMockSessionStore()`.
+### Top-level src/ layout
 
-### Transports (`src/transports/`)
-- `discord.ts` — Discord transport (channels, threads, DMs, mention handling, binding resolution).
-- `feishu.ts` — Feishu/Lark transport (groups, P2P, WebSocket).
+- `agent/` — Agent runtime, runners, tools, workspace loading. The new home for everything that defines what an agent *is* and how it runs.
+- `gateway/` — Transport-agnostic message-pipeline utilities (dedupe, debounce, mention, channel-history, session-keys, slash-command parsing) plus the `Transport` interface.
+- `sandbox/` — Docker container management for sandboxed tool execution.
+- `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/runners/pi/session-store.ts`.
+- `automation/` — Cron action types only; impl (`CronScheduler`, `HeartbeatManager`) still lives under `legacy/automation/`.
+- `logging/` — `createLogger("tag")` factory.
+- `legacy/` — Transitional area being decomposed PR-by-PR. New code should not land here.
+- Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema), `paths.ts` (`ISOTOPES_HOME` resolution), `silent-reply.ts` (silent-reply token detection), `test-helpers.ts` (shared test mocks).
 
-### Tools (`src/tools/`)
-- `git.ts` / `github.ts` — Git and `gh` CLI wrappers.
-- Other tool helpers (`exec.ts`, `react.ts`, `web.ts`). Agent-to-agent
-  delegation is the `send_message` tool defined in `src/core/tools.ts`.
+### `src/agent/`
 
-### Other modules
-- `src/automation/` — Cron expression parsing and job scheduling.
-- `src/api/` — REST API using raw Node `http` (no Express).
-- `src/daemon/` — PID-based daemon lifecycle, launchd/systemd service integration, log rotation.
-- `src/sandbox/` — Docker container management for sandboxed tool execution.
-- `src/workspace/` — File watcher, hot-reload manager, workspace templates and state.
-- `src/skills/` — Skill discovery, parsing, and prompt injection.
-- `src/subagent/` — Sub-agent management via the Claude Agent SDK, Discord sink for output routing.
-- `src/legacy/cli.ts` — CLI entry point. Parses args, dispatches subcommands or runs foreground.
+- `runtime.ts` — `AgentRuntime`: in-memory agent registry + per-run dispatcher. Validates `RunRequest`, resolves session ID, delegates to a runner.
+- `runtime-adapter.ts` — Chat-style decorator over `runtime.run` for callers that want a single `responseText` instead of an event stream.
+- `types.ts` — `RegisteredAgent`, `RunRequest`, `RunInfo`, `AgentConfig`, `ProviderConfig`, `RunValidationError`.
+- `runners/pi/` — Default Pi runner wrapping `@mariozechner/pi-agent-core` + `@mariozechner/pi-coding-agent`: `runner.ts`, `session-factory.ts`, `session-store.ts`, `messages.ts`, `system-prompt-override.ts`, `tool-result-truncation.ts`.
+- `runners/claude/` — Alternative runner backed by the Claude Agent SDK.
+- `tools/` — Built-in agent tools (`web` for `web_fetch`, `react` for transport reactions) and the registry (`index.ts`) that assembles per-agent tool sets.
+- `workspace/` — Loads `SOUL.md` / `TOOLS.md` / `MEMORY.md` / `BOOTSTRAP.md` into system prompts; manages workspace state and template files.
+
+### `src/gateway/`
+
+- `types.ts` — `Transport` interface (start/stop/reply/react) and `ChannelsConfig`.
+- `transport-context.ts` — `TransportContext` / `LazyTransportContext` for passing per-message transport context through tool calls.
+- `commands.ts` — Slash-command parsing.
+- `dedupe.ts` / `debounce.ts` / `mention.ts` / `channel-history.ts` / `session-keys.ts` — Inbound message pipeline utilities. Each is small, transport-agnostic, and consumed by the Discord plugin today.
+
+### `src/legacy/` (transitional)
+
+- `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground or as daemon. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
+- `daemon/` — PID-based daemon lifecycle (`process.ts`) with launchd/systemd service integration (`service.ts`).
+- `init/` — `isotopes init` setup wizard built with Ink.
+- `tui/` — Terminal UI for interactive chat mode.
+- `plugins/` — Plugin system (`hooks.ts`, `manager.ts`, `tool-registry.ts`, `ui-registry.ts`, `discovery.ts`, `api.ts`).
+- `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives.
+- `plugins/http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status.
+- `automation/` — `CronScheduler`, `HeartbeatManager`.
+- `transport/context.ts` — `runWithMessageContext` / `getMessageContext` AsyncLocalStorage runtime.
+- `tools/exec.ts` — Shell exec tool (`exec`, `process_list`, `process_kill`).
+- `version.ts` — Build version constant.
 
 ### Key patterns
-- **Pluggable core**: `AgentCore` is an interface; `PiMonoCore` is the default. Swap the LLM backend without touching the rest.
-- **Tool registry**: Tools are `(schema, handler)` pairs. Tool guards (CLI, FS) are enforced at registration and injected into system prompts.
-- **Event streaming**: `AgentInstance.prompt()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error.
-- **AsyncLocalStorage context**: `SubagentDiscordContext` passes Discord-specific context through async chains.
-- **Workspace context**: SOUL.md/TOOLS.md/MEMORY.md/BOOTSTRAP.md are merged into system prompts and hot-reloaded on change.
+
+- **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` alternative). Swap runners without touching gateway, sandbox, or plugin code.
+- **Tool registry**: Tools are `(schema, handler)` pairs assembled per-agent in `agent/tools/index.ts`; tool guards (CLI, FS) are enforced at registration and injected into system prompts.
+- **Event streaming**: `AgentRuntime.run()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error. `runtime-adapter.ts` collapses it to a single response for chat consumers.
+- **AsyncLocalStorage context**: `runWithMessageContext` (in `legacy/transport/context.ts`) carries per-message transport context through async tool calls; `getMessageContext` reads it from inside tool handlers.
+- **Workspace context**: `SOUL.md` / `TOOLS.md` / `MEMORY.md` / `BOOTSTRAP.md` are merged into system prompts and hot-reloaded on change.
 
 ## Testing
 
 - Framework: Vitest with `globals: true`
 - Tests are co-located with source files (`.test.ts` suffix in same directory)
 - Additional tests in `tests/` (top-level)
-- Mock helpers in `src/core/test-helpers.ts`
+- Mock helpers in `src/test-helpers.ts`
 - Integration tests in `tests/integration/` are excluded from `pnpm test`
 
 ## Linting
