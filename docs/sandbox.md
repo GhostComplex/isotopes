@@ -24,36 +24,39 @@ non-root `agent` user with uid 1000.
 
 ## Configure
 
-Sandbox config is layered: an **agents-level** block (under
-`agents.defaults.sandbox` or top-level `sandbox`) supplies docker / mount
-defaults; each agent may overlay a partial **per-agent** override (typically
-just `enabled: false` to opt one agent out).
+Sandbox config can live in three places (in order of precedence — later wins):
+
+1. **Top-level `sandbox:`** — simplest, applies to all agents.
+2. **`agents.defaults.sandbox:`** — same effect as top-level but scoped under
+   `agents`. Use this when you also have `agents.defaults.tools` etc.
+3. **Per-agent `agents.list[].sandbox:`** — partial override for one agent
+   (typically just `enabled: false` to opt out, or `enabled: true` to opt in).
+
+Per-agent overrides may only set `enabled` and `workspaceAccess`. The
+`docker:` block must live at the top-level / agents-defaults layer because
+the runtime maintains a single `ContainerManager` per process.
 
 ```yaml
-# Agents-level (top-level `sandbox` is also accepted).
+# Simplest form — top-level, applies to every agent
+sandbox:
+  enabled: true
+  workspaceAccess: rw          # rw | ro
+  docker:
+    image: isotopes-sandbox:latest
+    network: bridge            # bridge | host | none
+    cpuLimit: 1.5
+    memoryLimit: 1g
+    pidsLimit: 256             # 0 disables
+    noNewPrivileges: true
+
 agents:
-  defaults:
-    sandbox:
-      enabled: true
-      workspaceAccess: rw    # rw | ro
-      docker:
-        image: isotopes-sandbox:latest
-        network: bridge      # bridge | host | none
-        cpuLimit: 1.5
-        memoryLimit: 1g
-        pidsLimit: 256       # 0 disables
-        noNewPrivileges: true
   list:
     - id: trusted-bot
       sandbox:
-        enabled: false       # this single agent runs on the host
+        enabled: false         # this one runs on the host
     - id: untrusted-bot
-      # inherits agents.defaults.sandbox
+      # inherits the top-level sandbox config
 ```
-
-Per-agent `sandbox.docker` is **rejected at config load** — there is one
-`ContainerManager` per process, so the docker block lives at the agents-level.
-Per-agent `sandbox` may only override `enabled` and `workspaceAccess`.
 
 ## What's mounted
 
