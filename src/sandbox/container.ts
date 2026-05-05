@@ -31,11 +31,8 @@ export interface ContainerInfo {
 
 /** Result of executing a command in a container */
 export interface ExecResult {
-  /** Process exit code */
   exitCode: number;
-  /** Standard output (raw bytes — call `.toString("utf8")` if you want a string) */
   stdout: Buffer;
-  /** Standard error (raw bytes) */
   stderr: Buffer;
   /** True iff stdout or stderr was capped at EXEC_MAX_OUTPUT_BYTES. */
   truncated?: boolean;
@@ -243,7 +240,6 @@ export class ContainerManager {
     args.push("-v", `${workspacePath}:${workspacePath}${workspaceSuffix}`);
     args.push("-w", workspacePath);
 
-    // User-configured additional mounts.
     for (const m of mounts) {
       if (m.host === workspacePath) continue;  // dedupe with workspace mount
       const suffix = m.readOnly ? ":ro" : "";

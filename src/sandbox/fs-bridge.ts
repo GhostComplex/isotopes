@@ -60,8 +60,7 @@ export class HostFs implements FsBridge {
   }
 }
 
-/** All operations run inside the agent's container via `docker exec`.
- * Containment = container mount view; paths outside mounts are invisible. */
+/** All operations route through `docker exec`; containment is the container's mount view. */
 export class SandboxFs implements FsBridge {
   constructor(
     private executor: SandboxExecutor,

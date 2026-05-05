@@ -274,22 +274,11 @@ export interface CreateAgentToolsOptions {
   spawnableAgentIds?: string[];
   transportContext?: LazyTransportContext;
   processRegistry: ProcessRegistry;
-  /** When defined and resolves to a sandboxed mode, FS and exec route through
-   *  docker; spawn_agent is also disabled (host child runners can't be
-   *  confined). Search needs (find/grep) go through `exec` with `fd`/`rg`. */
   agentSandboxConfig?: SandboxConfig;
 }
 
-/**
- * The single SandboxExecutor instance shared by all sandboxed agents.
- * Built from the resolved base sandbox config via `configureToolsLayer`.
- * Module-state matches reality: one daemon, one ContainerManager, one
- * SandboxExecutor.
- */
 let sandboxExecutor: SandboxExecutor | undefined;
 
-/** Initialise the tools layer. Builds the sandbox executor when the resolved
- *  base sandbox config has a docker block. Call once at boot. */
 export function configureToolsLayer(opts: { sandboxBaseConfig?: SandboxConfig }): void {
   if (opts.sandboxBaseConfig?.docker) {
     const containerManager = new ContainerManager(opts.sandboxBaseConfig.docker);
@@ -298,7 +287,6 @@ export function configureToolsLayer(opts: { sandboxBaseConfig?: SandboxConfig })
   }
 }
 
-/** Tear down sandbox infra. Call at daemon shutdown. */
 export async function shutdownToolsLayer(): Promise<void> {
   if (sandboxExecutor) {
     try {

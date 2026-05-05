@@ -93,7 +93,6 @@ export interface SandboxDockerConfigFile {
   noNewPrivileges?: boolean;
 }
 
-/** Sandbox bind mount (only effective when sandbox.mode != "off"). */
 export interface SandboxMountConfigFile {
   host: string;
   container: string;

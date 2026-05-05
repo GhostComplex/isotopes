@@ -1,7 +1,3 @@
-// src/sandbox/fs-bridge.test.ts — Unit tests for SandboxFs and FsError
-//
-// SandboxExecutor is mocked. Every SandboxFs method routes through executor.execute.
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SandboxFs, FsError, mapStderrToCode } from "./fs-bridge.js";
 import type { SandboxExecutor } from "./executor.js";

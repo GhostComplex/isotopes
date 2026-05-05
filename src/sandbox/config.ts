@@ -33,25 +33,17 @@ export interface DockerConfig {
   noNewPrivileges?: boolean;
 }
 
-/** A bind mount applied when the container is created. */
 export interface Mount {
-  /** Absolute host path */
   host: string;
-  /** Absolute container path (where this appears inside the container) */
   container: string;
-  /** Mount as read-only. Default: false (rw) */
   readOnly?: boolean;
 }
 
 /** Sandbox configuration for an agent */
 export interface SandboxConfig {
-  /** Sandbox execution mode */
   mode: SandboxMode;
-  /** Workspace mount access level. Default: "rw" */
   workspaceAccess?: WorkspaceAccess;
-  /** Additional bind mounts. Only applied when mode != "off". */
   mounts?: Mount[];
-  /** Docker configuration */
   docker?: DockerConfig;
 }
 

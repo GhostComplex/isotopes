@@ -158,9 +158,7 @@ describe("SandboxExecutor", () => {
       );
     });
 
-    it("passes mounts from defaultConfig through to ContainerManager.create", async () => {
-      // mounts now come from defaultConfig (set on the SandboxExecutor at construction),
-      // not per-call. Default config in this test has no mounts, so [] is expected.
+    it("passes mounts from defaultConfig to ContainerManager.create", async () => {
       await executor.execute("agent-1", ["ls"], { workspacePath: "/ws" });
 
       expect(mockManager.create).toHaveBeenCalledWith(
