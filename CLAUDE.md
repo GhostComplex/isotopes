@@ -34,7 +34,7 @@ pnpm test:integration
 **Module resolution**: ESM-only (`"type": "module"`). All imports use `.js` extensions (NodeNext resolution). Target: ES2022. Node >= 20.
 
 ### Core (`src/core/`)
-- `types.ts` — Framework-wide interfaces (Message, Tool, AgentConfig, AgentInstance, AgentCore, Transport, Binding, Session, SessionStore). Zero coupling to any specific SDK.
+- `types.ts` — Framework-wide interfaces (Message, Tool, AgentConfig, AgentInstance, AgentCore, Transport, Session, SessionStore). Zero coupling to any specific SDK.
 - `pi-mono.ts` — `PiMonoCore`: the default AgentCore implementation wrapping `@mariozechner/pi-agent-core`. Handles model resolution, tool bridging, context compaction.
 - `agent-manager.ts` — `DefaultAgentManager`: in-memory agent registry with workspace awareness.
 - `tools.ts` — `ToolRegistry` class + built-in tools (echo, time, shell, file read/write, list dir, subagent). Tool guards enforce CLI/FS access.
