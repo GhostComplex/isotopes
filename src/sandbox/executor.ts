@@ -2,7 +2,7 @@
 
 import { createLogger } from "../logging/logger.js";
 import { ContainerManager, type ContainerInfo, type ExecResult } from "./container.js";
-import { shouldSandbox, type SandboxConfig, type WorkspaceAccess } from "./config.js";
+import { type DockerConfig, type Mount, type SandboxConfig, type WorkspaceAccess } from "./config.js";
 
 const log = createLogger("sandbox:executor");
 
@@ -18,16 +18,23 @@ export interface SandboxExecOptions {
 export class SandboxExecutor {
   private containers: Map<string, ContainerInfo> = new Map();
   private inflight: Map<string, Promise<ContainerInfo>> = new Map();
+  private agentMounts: Map<string, Mount[]> = new Map();
+  private agentDocker: Map<string, DockerConfig> = new Map();
+  private agentWorkspaceAccess: Map<string, WorkspaceAccess> = new Map();
 
-  constructor(
-    private containerManager: ContainerManager,
-    private defaultConfig: SandboxConfig,
-  ) {}
+  constructor(private containerManager: ContainerManager) {}
 
   /** Returns an executor when sandbox docker config is present, else undefined. */
   static fromConfig(config: SandboxConfig): SandboxExecutor | undefined {
     if (!config.docker) return undefined;
-    return new SandboxExecutor(new ContainerManager(config.docker), config);
+    return new SandboxExecutor(new ContainerManager());
+  }
+
+  /** Register an agent's resolved sandbox config. Re-calling merges into existing — absent fields preserve previous values. */
+  registerAgent(agentId: string, config: SandboxConfig): void {
+    if (config.docker) this.agentDocker.set(agentId, config.docker);
+    if (config.mounts) this.agentMounts.set(agentId, config.mounts);
+    if (config.workspaceAccess) this.agentWorkspaceAccess.set(agentId, config.workspaceAccess);
   }
 
   async execute(
@@ -50,10 +57,6 @@ export class SandboxExecutor {
   ): Promise<string[]> {
     const container = await this.ensureContainer(agentId, options?.workspacePath);
     return this.containerManager.buildExecArgv(container.id, command);
-  }
-
-  shouldExecuteInSandbox(_agentId: string, agentConfig?: SandboxConfig): boolean {
-    return shouldSandbox(agentConfig ?? this.defaultConfig);
   }
 
   async cleanup(agentId?: string): Promise<void> {
@@ -98,7 +101,7 @@ export class SandboxExecutor {
 
     const containerName = `isotopes-sandbox-${agentId}`;
     const workspace = workspacePath ?? "/tmp";
-    const access: WorkspaceAccess = this.defaultConfig.workspaceAccess ?? "rw";
+    const access: WorkspaceAccess = this.agentWorkspaceAccess.get(agentId) ?? "rw";
 
     // Reap an orphan from a previous process — otherwise `docker create` fails on the name conflict.
     const orphan = await this.containerManager.status(containerName);
@@ -107,11 +110,17 @@ export class SandboxExecutor {
       await this.safeRemove(orphan.id);
     }
 
+    const docker = this.agentDocker.get(agentId);
+    if (!docker) {
+      throw new Error(`agent "${agentId}" sandboxed but no docker config registered`);
+    }
+
     const container = await this.containerManager.create(
       containerName,
       workspace,
       access,
-      this.defaultConfig.mounts ?? [],
+      this.agentMounts.get(agentId) ?? [],
+      docker,
     );
 
     await this.containerManager.start(container.id);
@@ -139,9 +148,13 @@ export class SandboxExecutor {
 
   private async cleanupAgent(agentId: string): Promise<void> {
     const container = this.containers.get(agentId);
-    if (!container) return;
-    await this.safeRemove(container.id);
-    this.containers.delete(agentId);
+    if (container) {
+      await this.safeRemove(container.id);
+      this.containers.delete(agentId);
+    }
+    this.agentMounts.delete(agentId);
+    this.agentDocker.delete(agentId);
+    this.agentWorkspaceAccess.delete(agentId);
   }
 
   private async cleanupAll(): Promise<void> {
@@ -152,6 +165,9 @@ export class SandboxExecutor {
         this.containers.delete(agentId);
       }),
     );
+    this.agentMounts.clear();
+    this.agentDocker.clear();
+    this.agentWorkspaceAccess.clear();
   }
 
   private async safeRemove(containerId: string): Promise<void> {

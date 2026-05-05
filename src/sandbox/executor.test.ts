@@ -56,7 +56,8 @@ describe("SandboxExecutor", () => {
 
   beforeEach(() => {
     mockManager = createMockContainerManager();
-    executor = new SandboxExecutor(mockManager, defaultConfig);
+    executor = new SandboxExecutor(mockManager);
+    executor.registerAgent("agent-1", defaultConfig);
   });
 
   describe("execute", () => {
@@ -70,6 +71,7 @@ describe("SandboxExecutor", () => {
         "/home/user/workspace",
         "rw",
         [],
+        defaultConfig.docker,
       );
       expect(mockManager.start).toHaveBeenCalledWith("container-123");
       expect(mockManager.exec).toHaveBeenCalledWith("container-123", [
@@ -174,6 +176,41 @@ describe("SandboxExecutor", () => {
       expect(mockManager.create).toHaveBeenCalledTimes(2);
     });
 
+    it("throws when executing for an unregistered agent", async () => {
+      await expect(executor.execute("never-registered", ["echo"])).rejects.toThrow(
+        /sandboxed but no docker config registered/,
+      );
+    });
+
+    it("uses per-agent docker when registered, overriding default docker", async () => {
+      executor.registerAgent("agent-1", { enabled: true, docker: { image: "custom:v2", network: "host" } });
+      await executor.execute("agent-1", ["ls"], { workspacePath: "/ws" });
+
+      expect(mockManager.create).toHaveBeenCalledWith(
+        "isotopes-sandbox-agent-1",
+        "/ws",
+        "rw",
+        [],
+        { image: "custom:v2", network: "host" },
+      );
+    });
+
+    it("uses per-agent mounts when registered, overriding defaults", async () => {
+      executor.registerAgent("agent-1", {
+        ...defaultConfig,
+        mounts: [{ host: "/agent/foo", container: "/foo", readOnly: true }],
+      });
+      await executor.execute("agent-1", ["ls"], { workspacePath: "/ws" });
+
+      expect(mockManager.create).toHaveBeenCalledWith(
+        "isotopes-sandbox-agent-1",
+        "/ws",
+        "rw",
+        [{ host: "/agent/foo", container: "/foo", readOnly: true }],
+        defaultConfig.docker,
+      );
+    });
+
     it("uses /tmp as default workspace when none specified", async () => {
       await executor.execute("agent-1", ["ls"]);
 
@@ -182,6 +219,7 @@ describe("SandboxExecutor", () => {
         "/tmp",
         "rw",
         [],
+        defaultConfig.docker,
       );
     });
 
@@ -193,6 +231,7 @@ describe("SandboxExecutor", () => {
         "/ws",
         "rw",
         [],
+        defaultConfig.docker,
       );
     });
 
@@ -219,6 +258,7 @@ describe("SandboxExecutor", () => {
         "/ws",
         "rw",
         [],
+        defaultConfig.docker,
       );
       expect(mockManager.start).toHaveBeenCalled();
       expect(mockManager.buildExecArgv).toHaveBeenCalledWith("container-123", [
@@ -233,22 +273,6 @@ describe("SandboxExecutor", () => {
 
       expect(mockManager.create).toHaveBeenCalledTimes(1);
       expect(mockManager.buildExecArgv).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("shouldExecuteInSandbox", () => {
-    it("returns true when default config is enabled", () => {
-      expect(executor.shouldExecuteInSandbox("agent-1")).toBe(true);
-    });
-
-    it("returns false when default config is disabled", () => {
-      const offExecutor = new SandboxExecutor(mockManager, { enabled: false });
-      expect(offExecutor.shouldExecuteInSandbox("agent-1")).toBe(false);
-    });
-
-    it("uses agent-level config override when provided", () => {
-      const agentOverride: SandboxConfig = { enabled: false };
-      expect(executor.shouldExecuteInSandbox("agent-1", agentOverride)).toBe(false);
     });
   });
 
@@ -304,6 +328,8 @@ describe("SandboxExecutor", () => {
           createdAt: new Date(),
         });
 
+      executor.registerAgent("agent-a", defaultConfig);
+      executor.registerAgent("agent-b", defaultConfig);
       await executor.execute("agent-a", ["echo", "a"]);
       await executor.execute("agent-b", ["echo", "b"]);
 

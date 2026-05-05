@@ -50,14 +50,14 @@ describe("ContainerManager", () => {
 
   beforeEach(() => {
     mockSpawn.mockReset();
-    manager = new ContainerManager(defaultDockerConfig);
+    manager = new ContainerManager();
   });
 
   describe("create", () => {
     it("calls docker create with correct arguments", async () => {
       mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
 
-      const result = await manager.create("test-container", "/home/user/workspace", "rw");
+      const result = await manager.create("test-container", "/home/user/workspace", "rw", [], defaultDockerConfig);
 
       expect(mockSpawn).toHaveBeenCalledWith("docker", [
         "create",
@@ -85,9 +85,8 @@ describe("ContainerManager", () => {
         pidsLimit: 256,
         noNewPrivileges: true,
       };
-      const m = new ContainerManager(hardened);
 
-      await m.create("hardened", "/workspace", "rw");
+      await manager.create("hardened", "/workspace", "rw", [], hardened);
 
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("--init");
@@ -100,7 +99,7 @@ describe("ContainerManager", () => {
     it("omits --pids-limit when set to 0", async () => {
       mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
       const cfg: DockerConfig = { ...defaultDockerConfig, pidsLimit: 0 };
-      await new ContainerManager(cfg).create("t", "/w", "rw");
+      await manager.create("t", "/w", "rw", [], cfg);
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).not.toContain("--pids-limit");
     });
@@ -108,7 +107,7 @@ describe("ContainerManager", () => {
     it("omits --security-opt when noNewPrivileges is false", async () => {
       mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
       const cfg: DockerConfig = { ...defaultDockerConfig, noNewPrivileges: false };
-      await new ContainerManager(cfg).create("t", "/w", "rw");
+      await manager.create("t", "/w", "rw", [], cfg);
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).not.toContain("--security-opt");
     });
@@ -116,7 +115,7 @@ describe("ContainerManager", () => {
     it("adds :ro suffix for read-only workspace access", async () => {
       mockSpawn.mockReturnValue(fakeChild({ code: 0, stdout: "abc123\n" }));
 
-      await manager.create("test-container", "/workspace", "ro");
+      await manager.create("test-container", "/workspace", "ro", [], defaultDockerConfig);
 
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("/workspace:/workspace:ro");
@@ -129,9 +128,8 @@ describe("ContainerManager", () => {
         ...defaultDockerConfig,
         extraHosts: ["host.docker.internal:host-gateway", "myhost:192.168.1.1"],
       };
-      const m = new ContainerManager(configWithHosts);
 
-      await m.create("test", "/workspace", "rw");
+      await manager.create("test", "/workspace", "rw", [], configWithHosts);
 
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("--add-host");
@@ -147,9 +145,8 @@ describe("ContainerManager", () => {
         cpuLimit: 1.5,
         memoryLimit: "512m",
       };
-      const m = new ContainerManager(configWithLimits);
 
-      await m.create("test", "/workspace", "rw");
+      await manager.create("test", "/workspace", "rw", [], configWithLimits);
 
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("--cpus");
@@ -164,7 +161,7 @@ describe("ContainerManager", () => {
       await manager.create("test", "/workspace", "rw", [
         { host: "/host/data", container: "/data", readOnly: true },
         { host: "/host/scratch", container: "/scratch", readOnly: false },
-      ]);
+      ], defaultDockerConfig);
 
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).toContain("/host/data:/data:ro");
@@ -177,7 +174,7 @@ describe("ContainerManager", () => {
       await manager.create("test", "/workspace", "rw", [
         { host: "/workspace", container: "/workspace", readOnly: true },
         { host: "/extra", container: "/extra" },
-      ]);
+      ], defaultDockerConfig);
 
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).not.toContain("/workspace:/workspace:ro");

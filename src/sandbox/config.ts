@@ -42,10 +42,13 @@ function validateSandboxConfig(config: SandboxConfig, label: string): void {
   }
 
   if (config.mounts !== undefined) {
+    const seen = new Set<string>();
     for (let i = 0; i < config.mounts.length; i++) {
       const m = config.mounts[i];
       check(m.host.startsWith("/"), `mounts[${i}].host must be an absolute path`);
       check(m.container.startsWith("/"), `mounts[${i}].container must be an absolute path`);
+      check(!seen.has(m.container), `mounts[${i}].container "${m.container}" duplicates an earlier mount`);
+      seen.add(m.container);
     }
   }
 
@@ -77,10 +80,11 @@ export function resolveSandboxConfig(
 ): SandboxConfig {
   if (!defaults && !override) return { enabled: false };
 
+  const mounts = [...(defaults?.mounts ?? []), ...(override?.mounts ?? [])];
   const resolved: SandboxConfig = {
     enabled: override?.enabled ?? defaults?.enabled ?? false,
     workspaceAccess: override?.workspaceAccess ?? defaults?.workspaceAccess ?? "rw",
-    mounts: override?.mounts ?? defaults?.mounts,
+    ...(mounts.length > 0 && { mounts }),
     docker: mergeDockerConfig(defaults?.docker, override?.docker),
   };
 
@@ -99,8 +103,4 @@ function mergeDockerConfig(defaults?: DockerConfig, override?: DockerConfig): Do
     pidsLimit: override?.pidsLimit ?? defaults?.pidsLimit ?? DEFAULT_DOCKER_CONFIG.pidsLimit,
     noNewPrivileges: override?.noNewPrivileges ?? defaults?.noNewPrivileges ?? DEFAULT_DOCKER_CONFIG.noNewPrivileges,
   };
-}
-
-export function shouldSandbox(config: SandboxConfig): boolean {
-  return config.enabled;
 }

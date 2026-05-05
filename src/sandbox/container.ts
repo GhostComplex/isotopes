@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { createLogger } from "../logging/logger.js";
 import type { DockerConfig, Mount, WorkspaceAccess } from "./config.js";
+
+const log = createLogger("sandbox:container");
 
 /** Cap collected stdout/stderr per `exec()` call to prevent OOM from runaway commands. */
 const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -22,17 +25,16 @@ export interface ExecResult {
   truncated?: boolean;
 }
 
-/** Wraps the `docker` CLI rather than the API to avoid heavy SDK deps. */
+/** Wraps the `docker` CLI rather than the API to avoid heavy SDK deps. Stateless — DockerConfig is per-call. */
 export class ContainerManager {
-  constructor(private config: DockerConfig) {}
-
   async create(
     name: string,
     workspacePath: string,
     access: WorkspaceAccess,
-    mounts: Mount[] = [],
+    mounts: Mount[],
+    docker: DockerConfig,
   ): Promise<ContainerInfo> {
-    const args = this.buildCreateArgs(name, workspacePath, access, mounts);
+    const args = this.buildCreateArgs(name, workspacePath, access, mounts, docker);
     const { stdout } = await this.runDocker(args);
     const containerId = stdout.toString("utf8").trim();
 
@@ -40,7 +42,7 @@ export class ContainerManager {
       id: containerId,
       name,
       status: "created",
-      image: this.config.image,
+      image: docker.image,
       createdAt: new Date(),
     };
   }
@@ -74,7 +76,7 @@ export class ContainerManager {
     return ["docker", "exec", "-i", containerId, ...command];
   }
 
-  /** Returns null when the container doesn't exist. */
+  /** Returns null when the container doesn't exist (or docker can't be reached — see debug log). */
   async status(containerId: string): Promise<ContainerInfo | null> {
     try {
       const { stdout } = await this.runDocker([
@@ -87,7 +89,8 @@ export class ContainerManager {
       const line = stdout.toString("utf8").trim();
       if (!line) return null;
       return parseInspectLine(line);
-    } catch {
+    } catch (err) {
+      log.debug(`status(${containerId}) failed`, err);
       return null;
     }
   }
@@ -158,6 +161,7 @@ export class ContainerManager {
     workspacePath: string,
     access: WorkspaceAccess,
     mounts: Mount[],
+    docker: DockerConfig,
   ): string[] {
     const args: string[] = ["create", "--name", name, "--init"];
 
@@ -173,26 +177,26 @@ export class ContainerManager {
       args.push("-v", `${m.host}:${m.container}${suffix}`);
     }
 
-    if (this.config.network) {
-      args.push("--network", this.config.network);
+    if (docker.network) {
+      args.push("--network", docker.network);
     }
-    if (this.config.extraHosts) {
-      for (const host of this.config.extraHosts) args.push("--add-host", host);
+    if (docker.extraHosts) {
+      for (const host of docker.extraHosts) args.push("--add-host", host);
     }
-    if (this.config.cpuLimit !== undefined) {
-      args.push("--cpus", String(this.config.cpuLimit));
+    if (docker.cpuLimit !== undefined) {
+      args.push("--cpus", String(docker.cpuLimit));
     }
-    if (this.config.memoryLimit) {
-      args.push("--memory", this.config.memoryLimit);
+    if (docker.memoryLimit) {
+      args.push("--memory", docker.memoryLimit);
     }
-    if (this.config.pidsLimit !== undefined && this.config.pidsLimit > 0) {
-      args.push("--pids-limit", String(this.config.pidsLimit));
+    if (docker.pidsLimit !== undefined && docker.pidsLimit > 0) {
+      args.push("--pids-limit", String(docker.pidsLimit));
     }
-    if (this.config.noNewPrivileges !== false) {
+    if (docker.noNewPrivileges !== false) {
       args.push("--security-opt", "no-new-privileges");
     }
 
-    args.push(this.config.image);
+    args.push(docker.image);
     args.push("tail", "-f", "/dev/null");  // keep container alive
     return args;
   }

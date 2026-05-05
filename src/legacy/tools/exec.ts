@@ -251,8 +251,7 @@ export function createExecTool(options: ExecToolOptions = {}): AgentTool<typeof 
   const { sandboxExecutor, agentId, agentSandboxConfig } = options;
 
   const useSandbox = (): boolean =>
-    !!(sandboxExecutor && agentId && agentSandboxConfig &&
-       sandboxExecutor.shouldExecuteInSandbox(agentId, agentSandboxConfig));
+    !!(sandboxExecutor && agentId && agentSandboxConfig?.enabled);
 
   return {
     name: "exec",

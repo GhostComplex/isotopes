@@ -32,9 +32,7 @@ Sandbox config can live in three places (in order of precedence — later wins):
 3. **Per-agent `agents.list[].sandbox:`** — partial override for one agent
    (typically just `enabled: false` to opt out, or `enabled: true` to opt in).
 
-Per-agent overrides may only set `enabled` and `workspaceAccess`. The
-`docker:` block must live at the top-level / agents-defaults layer because
-the runtime maintains a single `ContainerManager` per process.
+Per-agent overrides may set `enabled`, `workspaceAccess`, `mounts` (per-agent mounts are appended to base mounts), and `docker` (per-field merge — agent fields override base fields).
 
 ```yaml
 # Simplest form — top-level, applies to every agent
