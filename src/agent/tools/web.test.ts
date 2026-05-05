@@ -1,7 +1,5 @@
-// src/tools/web.test.ts — Tests for web fetch and search tools
-
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createWebFetchTool, createWebSearchTool, parseDuckDuckGoResults } from "./web.js";
+import { createWebFetchTool } from "./web.js";
 
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 
@@ -11,430 +9,117 @@ async function callTool(tool: AgentTool, args: unknown): Promise<string> {
   return block?.text ?? "";
 }
 
+function mockFetchHtml(html: string, contentType = "text/html"): void {
+  global.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    headers: new Map([["content-type", contentType]]) as unknown as Headers,
+    text: async () => html,
+  } as Response);
+}
 
-describe("web tools", () => {
+describe("createWebFetchTool", () => {
   let originalFetch: typeof global.fetch;
 
-  beforeEach(() => {
-    originalFetch = global.fetch;
+  beforeEach(() => { originalFetch = global.fetch; });
+  afterEach(() => { global.fetch = originalFetch; vi.restoreAllMocks(); });
+
+  it("returns tool with correct schema", () => {
+    const tool = createWebFetchTool();
+    expect(tool.name).toBe("web_fetch");
+    expect(tool.parameters).toBeDefined();
   });
 
-  afterEach(() => {
-    global.fetch = originalFetch;
-    vi.restoreAllMocks();
+  it("rejects empty URL", async () => {
+    const result = await callTool(createWebFetchTool(), { url: "" });
+    expect(result).toContain("[error] URL cannot be empty");
   });
 
-  describe("createWebFetchTool", () => {
-    it("returns tool with correct schema", () => {
-      const tool = createWebFetchTool();
-      expect(tool.name).toBe("web_fetch");
-      expect(tool.description).toContain("web page");
-      expect(tool.parameters.required).toContain("url");
-    });
-
-    it("returns error for empty URL", async () => {
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "" });
-      expect(result).toContain("[error]");
-      expect(result).toContain("empty");
-    });
-
-    it("returns error for invalid URL", async () => {
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "not-a-url" });
-      expect(result).toContain("[error]");
-      expect(result).toContain("Invalid URL");
-    });
-
-    it("fetches and converts HTML to text", async () => {
-      const mockHtml = `
-        <!DOCTYPE html>
-        <html>
-          <head><title>Test Page</title></head>
-          <body>
-            <script>console.log("removed");</script>
-            <style>.removed {}</style>
-            <main>
-              <h1>Main Heading</h1>
-              <p>This is a paragraph.</p>
-              <a href="https://example.com">Link text</a>
-            </main>
-          </body>
-        </html>
-      `;
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        headers: new Map([["content-type", "text/html"]]),
-        text: () => Promise.resolve(mockHtml),
-      });
-
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "https://example.com/page" });
-
-      expect(result).toContain("Test Page");
-      expect(result).toContain("Main Heading");
-      expect(result).toContain("This is a paragraph");
-      expect(result).toContain("Link text");
-      expect(result).not.toContain("console.log");
-      expect(result).not.toContain(".removed");
-    });
-
-    it("handles non-HTML content", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        headers: new Map([["content-type", "application/json"]]),
-        text: () => Promise.resolve('{"key": "value"}'),
-      });
-
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "https://api.example.com/data" });
-
-      expect(result).toContain('{"key": "value"}');
-    });
-
-    it("handles HTTP error", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-      });
-
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "https://example.com/missing" });
-
-      expect(result).toContain("[error]");
-      expect(result).toContain("404");
-    });
-
-    it("handles network error", async () => {
-      global.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
-
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "https://example.com" });
-
-      expect(result).toContain("[error]");
-      expect(result).toContain("Connection refused");
-    });
-
-    it("truncates long content", async () => {
-      const longContent = "x".repeat(100000);
-      const mockHtml = `<html><body><p>${longContent}</p></body></html>`;
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        headers: new Map([["content-type", "text/html"]]),
-        text: () => Promise.resolve(mockHtml),
-      });
-
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "https://example.com" });
-
-      expect(result).toContain("[Content truncated");
-      expect(result.length).toBeLessThan(100000);
-    });
-
-    it("extracts content from article tags", async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <div>Noise before</div>
-            <article>
-              <h2>Article Title</h2>
-              <p>Article content here.</p>
-            </article>
-            <div>Noise after</div>
-          </body>
-        </html>
-      `;
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        headers: new Map([["content-type", "text/html"]]),
-        text: () => Promise.resolve(mockHtml),
-      });
-
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "https://example.com" });
-
-      expect(result).toContain("Article Title");
-      expect(result).toContain("Article content");
-    });
-
-    it("handles list items", async () => {
-      const mockHtml = `
-        <html><body>
-          <ul>
-            <li>Item 1</li>
-            <li>Item 2</li>
-            <li>Item 3</li>
-          </ul>
-        </body></html>
-      `;
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        headers: new Map([["content-type", "text/html"]]),
-        text: () => Promise.resolve(mockHtml),
-      });
-
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "https://example.com" });
-
-      expect(result).toContain("• Item 1");
-      expect(result).toContain("• Item 2");
-    });
-
-    it("decodes HTML entities", async () => {
-      const mockHtml = `
-        <html><body>
-          <p>Less than: &lt; Greater than: &gt; Amp: &amp;</p>
-          <p>Quote: &quot; Apostrophe: &#39;</p>
-        </body></html>
-      `;
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        headers: new Map([["content-type", "text/html"]]),
-        text: () => Promise.resolve(mockHtml),
-      });
-
-      const tool = createWebFetchTool();
-      const result = await callTool(tool, { url: "https://example.com" });
-
-      expect(result).toContain("Less than: <");
-      expect(result).toContain("Greater than: >");
-      expect(result).toContain("Amp: &");
-    });
+  it("rejects invalid URL", async () => {
+    const result = await callTool(createWebFetchTool(), { url: "not-a-url" });
+    expect(result).toContain("[error] Invalid URL");
   });
 
-  describe("parseDuckDuckGoResults", () => {
-    it("parses results with uddg redirect URLs", () => {
-      const html = `
-        <div class="result">
-          <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpage1&amp;rut=abc">Example Page 1</a>
-          <a class="result__snippet">This is the first snippet.</a>
-        </div>
-        <div class="result">
-          <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpage2&amp;rut=def">Example Page 2</a>
-          <a class="result__snippet">This is the second snippet.</a>
-        </div>
-      `;
+  it("converts HTML to markdown preserving structure", async () => {
+    mockFetchHtml(`
+      <html><body>
+        <h1>Title</h1>
+        <p>Paragraph with <a href="https://example.com">link</a>.</p>
+        <ul><li>item one</li><li>item two</li></ul>
+      </body></html>
+    `);
 
-      const results = parseDuckDuckGoResults(html, 5);
-      expect(results).toHaveLength(2);
-      expect(results[0]).toEqual({
-        title: "Example Page 1",
-        url: "https://example.com/page1",
-        snippet: "This is the first snippet.",
-      });
-      expect(results[1]).toEqual({
-        title: "Example Page 2",
-        url: "https://example.com/page2",
-        snippet: "This is the second snippet.",
-      });
-    });
-
-    it("parses results with direct URLs", () => {
-      const html = `
-        <a class="result__a" href="https://direct.example.com">Direct Link</a>
-        <a class="result__snippet">Direct snippet.</a>
-      `;
-
-      const results = parseDuckDuckGoResults(html, 5);
-      expect(results).toHaveLength(1);
-      expect(results[0].url).toBe("https://direct.example.com");
-      expect(results[0].title).toBe("Direct Link");
-    });
-
-    it("strips HTML tags from titles", () => {
-      const html = `
-        <a class="result__a" href="https://example.com"><b>Bold</b> Title</a>
-        <a class="result__snippet">Snippet text.</a>
-      `;
-
-      const results = parseDuckDuckGoResults(html, 5);
-      expect(results[0].title).toBe("Bold Title");
-    });
-
-    it("respects count limit", () => {
-      const html = `
-        <a class="result__a" href="https://example.com/1">Result 1</a>
-        <a class="result__snippet">Snippet 1</a>
-        <a class="result__a" href="https://example.com/2">Result 2</a>
-        <a class="result__snippet">Snippet 2</a>
-        <a class="result__a" href="https://example.com/3">Result 3</a>
-        <a class="result__snippet">Snippet 3</a>
-      `;
-
-      const results = parseDuckDuckGoResults(html, 2);
-      expect(results).toHaveLength(2);
-    });
-
-    it("returns empty array when no results found", () => {
-      const html = `<html><body><div class="no-results">No results</div></body></html>`;
-      const results = parseDuckDuckGoResults(html, 5);
-      expect(results).toEqual([]);
-    });
-
-    it("handles missing snippets gracefully", () => {
-      const html = `
-        <a class="result__a" href="https://example.com/1">Result 1</a>
-        <a class="result__a" href="https://example.com/2">Result 2</a>
-        <a class="result__snippet">Only one snippet</a>
-      `;
-
-      const results = parseDuckDuckGoResults(html, 5);
-      expect(results).toHaveLength(2);
-      expect(results[0].snippet).toBe("Only one snippet");
-      expect(results[1].snippet).toBe("");
-    });
-
-    it("handles span-based snippets", () => {
-      const html = `
-        <a class="result__a" href="https://example.com">Title</a>
-        <span class="result__snippet">Span-based snippet.</span>
-      `;
-
-      const results = parseDuckDuckGoResults(html, 5);
-      expect(results[0].snippet).toBe("Span-based snippet.");
-    });
-
-    it("decodes HTML entities in results", () => {
-      const html = `
-        <a class="result__a" href="https://example.com">Tom &amp; Jerry&#39;s Page</a>
-        <a class="result__snippet">A &lt;great&gt; snippet with &quot;quotes&quot;.</a>
-      `;
-
-      const results = parseDuckDuckGoResults(html, 5);
-      expect(results[0].title).toBe("Tom & Jerry's Page");
-      expect(results[0].snippet).toBe('A <great> snippet with "quotes".');
-    });
+    const result = await callTool(createWebFetchTool(), { url: "https://example.com" });
+    expect(result).toContain("# Title");
+    expect(result).toContain("[link](https://example.com)");
+    expect(result).toMatch(/[*-]\s+item one/);
+    expect(result).toMatch(/[*-]\s+item two/);
   });
 
-  describe("createWebSearchTool", () => {
-    it("returns tool with correct schema", () => {
-      const tool = createWebSearchTool();
-      expect(tool.name).toBe("web_search");
-      expect(tool.description).toContain("DuckDuckGo");
-      expect(tool.parameters.required).toContain("query");
-      expect(tool.parameters.properties).toHaveProperty("query");
-      expect(tool.parameters.properties).toHaveProperty("count");
-      expect(tool.parameters.properties).toHaveProperty("region");
-    });
+  it("returns non-HTML content as-is", async () => {
+    mockFetchHtml('{"key":"value"}', "application/json");
 
-    it("returns error for empty query", async () => {
-      const tool = createWebSearchTool();
-      const result = await callTool(tool, { query: "" });
-      expect(result).toContain("[error]");
-      expect(result).toContain("empty");
-    });
+    const result = await callTool(createWebFetchTool(), { url: "https://api.example.com/data" });
+    expect(result).toContain('{"key":"value"}');
+  });
 
-    it("fetches and parses search results", async () => {
-      const mockHtml = `
-        <html><body>
-          <div class="result">
-            <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fresult&amp;rut=abc">Example Result</a>
-            <a class="result__snippet">This is a test snippet for the search.</a>
-          </div>
-          <div class="result">
-            <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fother.example.com&amp;rut=def">Other Result</a>
-            <a class="result__snippet">Another snippet here.</a>
-          </div>
-        </body></html>
-      `;
+  it("upgrades http to https for non-localhost URLs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      headers: new Map([["content-type", "text/html"]]) as unknown as Headers,
+      text: async () => "<p>x</p>",
+    } as Response);
+    global.fetch = fetchMock;
 
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(mockHtml),
-      });
+    await callTool(createWebFetchTool(), { url: "http://example.com" });
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    expect(calledUrl).toBe("https://example.com/");
+  });
 
-      const tool = createWebSearchTool();
-      const result = await callTool(tool, { query: "test search" });
+  it("does NOT upgrade http for localhost", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      headers: new Map([["content-type", "text/html"]]) as unknown as Headers,
+      text: async () => "<p>x</p>",
+    } as Response);
+    global.fetch = fetchMock;
 
-      expect(result).toContain("Search results");
-      expect(result).toContain("Example Result");
-      expect(result).toContain("https://example.com/result");
-      expect(result).toContain("This is a test snippet");
-      expect(result).toContain("Other Result");
+    await callTool(createWebFetchTool(), { url: "http://localhost:8080/page" });
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    expect(calledUrl).toBe("http://localhost:8080/page");
+  });
 
-      // Verify fetch was called with correct URL
-      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(fetchCall[0]).toContain("html.duckduckgo.com/html/");
-      expect(fetchCall[0]).toContain("q=test+search");
-    });
+  it("returns error on non-2xx response", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false, status: 404, statusText: "Not Found",
+      headers: new Map() as unknown as Headers,
+      text: async () => "",
+    } as Response);
 
-    it("passes region parameter as kl", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve("<html></html>"),
-      });
+    const result = await callTool(createWebFetchTool(), { url: "https://example.com/missing" });
+    expect(result).toContain("[error] Failed to fetch");
+    expect(result).toContain("404");
+  });
 
-      const tool = createWebSearchTool();
-      await callTool(tool, { query: "test", region: "us-en" });
+  it("uses honest User-Agent (not faked Chrome)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      headers: new Map([["content-type", "text/html"]]) as unknown as Headers,
+      text: async () => "<p>x</p>",
+    } as Response);
+    global.fetch = fetchMock;
 
-      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(fetchCall[0]).toContain("kl=us-en");
-    });
+    await callTool(createWebFetchTool(), { url: "https://example.com" });
+    const headers = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers["User-Agent"]).toBe("isotopes-web/0.1");
+  });
 
-    it("clamps count to valid range", async () => {
-      const mockHtml = `
-        <a class="result__a" href="https://example.com/1">R1</a>
-        <a class="result__snippet">S1</a>
-        <a class="result__a" href="https://example.com/2">R2</a>
-        <a class="result__snippet">S2</a>
-        <a class="result__a" href="https://example.com/3">R3</a>
-        <a class="result__snippet">S3</a>
-      `;
+  it("truncates content over 50KB", async () => {
+    const huge = "x".repeat(60000);
+    mockFetchHtml(`<html><body><pre>${huge}</pre></body></html>`);
 
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(mockHtml),
-      });
-
-      const tool = createWebSearchTool();
-      const result = await callTool(tool, { query: "test", count: 2 });
-
-      // Should only show 2 results
-      expect(result).toContain("1. R1");
-      expect(result).toContain("2. R2");
-      expect(result).not.toContain("3. R3");
-    });
-
-    it("returns message when no results found", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve("<html><body>No results</body></html>"),
-      });
-
-      const tool = createWebSearchTool();
-      const result = await callTool(tool, { query: "xyznonexistent" });
-
-      expect(result).toContain("No results found");
-    });
-
-    it("handles HTTP error", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 503,
-        statusText: "Service Unavailable",
-      });
-
-      const tool = createWebSearchTool();
-      const result = await callTool(tool, { query: "test" });
-
-      expect(result).toContain("[error]");
-      expect(result).toContain("503");
-    });
-
-    it("handles network error", async () => {
-      global.fetch = vi.fn().mockRejectedValue(new Error("Network timeout"));
-
-      const tool = createWebSearchTool();
-      const result = await callTool(tool, { query: "test" });
-
-      expect(result).toContain("[error]");
-      expect(result).toContain("Network timeout");
-    });
+    const result = await callTool(createWebFetchTool(), { url: "https://example.com" });
+    expect(result).toContain("[truncated]");
+    expect(result.length).toBeLessThan(60000);
   });
 });

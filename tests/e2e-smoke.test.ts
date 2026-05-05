@@ -157,7 +157,6 @@ describe("full tool wiring", () => {
       workspacePath: tmpDir,
       agentId: "test",
       processRegistry: new ProcessRegistry(),
-      settings: { web: true },
     });
     const names = new Set(all.map((t) => t.name));
 
@@ -167,7 +166,6 @@ describe("full tool wiring", () => {
     expect(names.has("ls")).toBe(true);
     expect(names.has("exec")).toBe(true);
     expect(names.has("web_fetch")).toBe(true);
-    expect(names.has("web_search")).toBe(true);
     expect(names.has("get_current_time")).toBe(true);
     expect(names.has("process_list")).toBe(true);
     expect(names.has("process_kill")).toBe(true);

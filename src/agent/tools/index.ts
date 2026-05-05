@@ -11,7 +11,7 @@ import type { AgentToolSettings } from "./types.js";
 import { HostFs, SandboxFs, type FsBridge } from "../../sandbox/fs-bridge.js";
 import { SandboxExecutor } from "../../sandbox/executor.js";
 import { type SandboxConfig } from "../../sandbox/config.js";
-import { createWebFetchTool, createWebSearchTool } from "./web.js";
+import { createWebFetchTool } from "./web.js";
 import { createReactTools, type LazyTransportContext } from "../../legacy/tools/react.js";
 import { createExecTools, ProcessRegistry } from "../../legacy/tools/exec.js";
 import type { AgentRuntime } from "../runtime.js";
@@ -334,9 +334,9 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
       ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
     }));
   }
-  if (opts.settings?.web) {
+  const networkIsolated = isSandboxed && opts.agentSandboxConfig?.docker?.network === "none";
+  if (!networkIsolated) {
     tools.push(createWebFetchTool());
-    tools.push(createWebSearchTool());
   }
   if (opts.transportContext) {
     tools.push(...createReactTools(opts.transportContext));

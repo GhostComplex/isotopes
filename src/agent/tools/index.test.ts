@@ -3,6 +3,8 @@ import {
   createTimeTool,
   createAgentTools,
   applyToolPolicy,
+  configureToolsLayer,
+  shutdownToolsLayer,
 } from "./index.js";
 import { createWebFetchTool } from "./web.js";
 import { ProcessRegistry } from "../../legacy/tools/exec.js";
@@ -55,11 +57,36 @@ describe("createAgentTools", () => {
     expect(names).toContain("exec");
   });
 
-  it("adds web tools when settings.web is true", () => {
-    const tools = createAgentTools({ ...baseOpts(), settings: { web: true } });
+  it("registers web_fetch by default", () => {
+    const tools = createAgentTools(baseOpts());
     const names = tools.map((t) => t.name);
     expect(names).toContain("web_fetch");
-    expect(names).toContain("web_search");
+    expect(names).not.toContain("web_search");
+  });
+
+  it("omits web_fetch when sandbox is enabled and network is 'none'", () => {
+    configureToolsLayer({
+      sandboxBaseConfig: { enabled: true, docker: { image: "isotopes-sandbox:latest", network: "none" } },
+    });
+    try {
+      const tools = createAgentTools({
+        ...baseOpts(),
+        agentSandboxConfig: { enabled: true, docker: { image: "isotopes-sandbox:latest", network: "none" } },
+      });
+      const names = tools.map((t) => t.name);
+      expect(names).not.toContain("web_fetch");
+    } finally {
+      void shutdownToolsLayer();
+    }
+  });
+
+  it("keeps web_fetch when sandbox is disabled even if docker.network is 'none'", () => {
+    const tools = createAgentTools({
+      ...baseOpts(),
+      agentSandboxConfig: { enabled: false, docker: { image: "isotopes-sandbox:latest", network: "none" } },
+    });
+    const names = tools.map((t) => t.name);
+    expect(names).toContain("web_fetch");
   });
 });
 
