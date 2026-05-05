@@ -5,7 +5,6 @@ import http from "node:http";
 import path from "node:path";
 import { createLogger } from "../../../logging/logger.js";
 import type { CronScheduler } from "../../automation/cron-job.js";
-import type { ConfigReloader } from "../../workspace/config-reloader.js";
 import type { SessionStoreManager } from "../../../agent/runners/pi/session-store.js";
 import {
   applyCors,
@@ -22,7 +21,6 @@ import type { UIRegistry } from "../../plugins/ui-registry.js";
 
 // Register route modules (side-effect imports)
 import "./cron.js";
-import "./config.js";
 import "./logs.js";
 import "./status.js";
 import "./sessions.js";
@@ -55,7 +53,6 @@ export interface ApiServerConfig {
  */
 export interface ApiServerDeps {
   cronScheduler: CronScheduler;
-  configReloader?: ConfigReloader;
   uiRegistry?: UIRegistry;
   sessionStoreManager?: SessionStoreManager;
   hooks?: HookRegistry;
@@ -74,7 +71,6 @@ export class ApiServer {
     this.uiRegistry = deps.uiRegistry;
     this.deps = {
       cronScheduler: deps.cronScheduler,
-      configReloader: deps.configReloader,
       sessionStoreManager: deps.sessionStoreManager,
       hooks: deps.hooks,
       agentRuntime: deps.agentRuntime,
