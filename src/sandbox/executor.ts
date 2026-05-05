@@ -87,9 +87,7 @@ export class SandboxExecutor {
     const workspace = workspacePath ?? "/tmp";
     const access: WorkspaceAccess = this.defaultConfig.workspaceAccess ?? "rw";
 
-    // Reap an orphan container left by a previous process (crash, kill -9,
-    // docker restart, etc). Without this, `docker create` fails with a name
-    // conflict on every restart.
+    // Reap an orphan from a previous process — otherwise `docker create` fails on the name conflict.
     const orphan = await this.containerManager.status(containerName);
     if (orphan) {
       log.info(`Removing orphan container ${containerName} (${orphan.status}) from previous run`);
