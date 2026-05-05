@@ -1,118 +1,76 @@
 ---
 name: coding-agent
-description: "Delegate coding tasks to sub-agents via send_message. Use when: (1) building/creating new features, (2) refactoring code, (3) fixing bugs that need multi-file changes, (4) reviewing PRs. Default target: claude. NOT for: simple one-liner fixes (just exec), reading code (use read_file), or tasks that only need shell commands."
+description: "Delegate a focused coding task to another agent via the spawn_agent tool. Use for: building features, multi-file refactors, multi-file bug fixes, PR review, writing tests. NOT for: one-liner edits (use edit), reading code (use read), running shell commands (use bash)."
 ---
 
 # Coding Agent
 
-Delegate coding tasks to sub-agents via the `send_message` tool. Always use **claude** as the default target unless it fails — then fall back to a registered named agent.
+Delegate coding work to another agent with the `spawn_agent` tool. The call blocks until the spawned agent finishes; the return value is its final assistant message.
 
-## Target Priority
-
-1. **claude** — Default. Always try first. Runs the Claude CLI in `working_directory`.
-2. **subagent** — Ephemeral helper that inherits your filtered tool set. Use for tasks where claude isn't available or you want the call to share your provider.
-3. **Named agents** — Use when you specifically need that agent's persona / persisted memory.
-
-## When to Use
-
-✅ **USE this skill when:**
-
-- Building or creating new features
-- Refactoring large codebases
-- Fixing bugs that span multiple files
-- Implementing specs or designs
-- Reviewing PRs (delegate to claude to analyze diff)
-- Writing tests
-
-## When NOT to Use
-
-❌ **DON'T use this skill when:**
-
-- Simple one-liner fixes → just use `exec` with sed/patch
-- Reading/exploring code → use `read_file` or `exec cat`
-- Running tests or builds → use `exec` directly
-- Git operations → use `exec` with git commands
-
-## The Pattern
-
-### One-Shot Task
+## Tool
 
 ```
-send_message(
-  to: "claude",
-  content: "In /Users/user_name/_repos/isotopes, do X. Details: ...",
-  working_directory: "/Users/steins.ghost/_repos/isotopes"
+spawn_agent(
+  to: <target agent id>,
+  content: <task description>,
+  working_directory: <path, required for `coding`>
 )
 ```
 
-### Key Rules
+`to` must be one of the targets the tool advertises in its current description. Common conventions:
 
-1. **Always specify working_directory** — agent wakes up focused on the right project (required for `claude`)
-2. **Be specific in `content`** — include file paths, function names, expected behavior
-3. **Include constraints** — "don't modify tests", "keep backward compatible", etc.
-4. **One concern per call** — don't ask one agent to do 5 unrelated things
+- **`coding`** — Claude CLI subprocess running in `working_directory`. Default choice for real coding tasks.
+- **`subagent`** — ephemeral pi helper with read-only tools. Good for exploration / analysis without side effects.
+- **A registered agent id** — appends the prompt to that agent's session as a user turn. Use when you specifically need that agent's persona or memory.
 
-### Task Template
+If `to` isn't in the advertised target list, the call fails with `Unknown target`.
+
+## Writing the `content`
+
+- One concern per call. Don't bundle unrelated tasks.
+- Be concrete: file paths, function names, expected behavior, validation command.
+- State constraints: "don't touch tests", "keep the public API stable", etc.
+
+Template:
 
 ```
-Task: [what to do]
-Working directory: [path]
-Files to modify: [list specific files if known]
-Context: [why we're doing this]
+Task: <what to do>
+Files to modify: <if known>
+Context: <why>
 Constraints:
-- [constraint 1]
-- [constraint 2]
-Validation: Run `npm run build` and `npm test` after changes.
+- <constraint>
+Validation: run `pnpm build && pnpm test`
 ```
 
-## PR Review Pattern
+## PR review
 
 ```
-send_message(
-  to: "claude",
-  content: "Review PR #XX in /Users/user_name/_repos/isotopes.
-    Run: git diff main...feat/branch-name
-    Check for: bugs, missing error handling, test coverage, style issues.
-    Summarize findings.",
-  working_directory: "/Users/steins.ghost/_repos/isotopes"
+spawn_agent(
+  to: "coding",
+  content: "Review PR #NN. Run `git diff main...<branch>` and report bugs, missing error handling, test gaps, style issues.",
+  working_directory: "/abs/path/to/repo"
 )
 ```
 
-## Parallel Work with Git Worktrees
-
-For fixing multiple issues in parallel:
+## Parallel work via worktrees
 
 ```bash
-# 1. Create worktrees
 git worktree add -b fix/issue-78 worktrees/issue-78 main
 git worktree add -b fix/issue-99 worktrees/issue-99 main
-
-# 2. Delegate each in its own worktree
-send_message(to: "claude", content: "Fix issue #78...", working_directory: "worktrees/issue-78")
-send_message(to: "claude", content: "Fix issue #99...", working_directory: "worktrees/issue-99")
-
-# 3. Create PRs after fixes
-cd worktrees/issue-78 && git push -u origin fix/issue-78
-gh pr create --title "fix: ..." --body "..."
-
-# 4. Cleanup
-git worktree remove worktrees/issue-78
 ```
 
-## Progress Updates
+Then spawn one agent per worktree with its own `working_directory`. Push and open PRs after each finishes; remove worktrees when merged.
 
-When delegating coding tasks:
-- Send 1 short message when you start (what's running + where)
-- Update when something changes: milestone completes, error hit, sub-run finishes
-- If a sub-run fails, say what failed and why immediately
-- If the result returns `[send_message cancelled by user — do not retry…]`, stop. Don't retry the same content.
-- If the result returns `[blocked] …`, the failure tracker has shut this task down. Don't retry the same content; ask the user or change approach.
+## Progress updates
 
-## ⚠️ Rules
+- One short message when you start (target + working_directory).
+- Update on milestone, error, or completion. No filler.
+- If a sub-run returns `[send_message cancelled by user — do not retry…]` or `[blocked] …`, stop. Don't retry the same content; ask the user or change approach.
 
-1. **Always try `claude` first** — only switch to a named agent if claude fails
-2. **Never hand-code patches yourself** — you're an orchestrator, delegate to agents
-3. **Be patient** — don't `/stop` sub-runs because they're "slow"; cancellation is recorded and blocks retry
-4. **Never delegate code changes against your own workspace** — always against the source repo
-5. **Run tests after changes** — `npm run build && npm test` in the repo
-6. **One concern per call** — keep `content` focused
+## Rules
+
+1. You are the orchestrator. Don't hand-write patches yourself when delegation fits.
+2. `working_directory` is required for `coding` (sets the Claude subprocess cwd). For pi targets it's passed as task context — use absolute paths in `content` if precision matters.
+3. Don't kill sub-runs because they feel slow. Cancellation is recorded and blocks retry.
+4. Never delegate edits against your own workspace — always against the source repo.
+5. Have the spawned agent run build/tests as part of the task, not as a follow-up call.
