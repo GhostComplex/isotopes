@@ -7,22 +7,22 @@ import {
   createLsTool,
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import type { AgentToolSettings } from "../tools/types.js";
-import { HostFs, SandboxFs, type FsBridge } from "../sandbox/fs-bridge.js";
-import { SandboxExecutor } from "../sandbox/executor.js";
-import { ContainerManager } from "../sandbox/container.js";
-import { type SandboxConfig, shouldSandbox } from "../sandbox/config.js";
-import { createWebFetchTool, createWebSearchTool } from "../legacy/tools/web.js";
-import { createReactTools, type LazyTransportContext } from "../legacy/tools/react.js";
-import { createExecTools, ProcessRegistry } from "../legacy/tools/exec.js";
-import type { AgentRuntime } from "./runtime.js";
-import { RunValidationError } from "./types.js";
-import type { RunRequest } from "./types.js";
-import { getMessageContext } from "../legacy/transport/context.js";
-import { getDiscordA2AStreamContext } from "../legacy/plugins/discord/a2a-stream-context.js";
-import { DiscordA2ASink } from "../legacy/plugins/discord/discord-a2a-sink.js";
-import { getAgentEndMeta } from "./runners/pi/messages.js";
-import { createLogger } from "../logging/logger.js";
+import type { AgentToolSettings } from "./types.js";
+import { HostFs, SandboxFs, type FsBridge } from "../../sandbox/fs-bridge.js";
+import { SandboxExecutor } from "../../sandbox/executor.js";
+import { ContainerManager } from "../../sandbox/container.js";
+import { type SandboxConfig, shouldSandbox } from "../../sandbox/config.js";
+import { createWebFetchTool, createWebSearchTool } from "../../legacy/tools/web.js";
+import { createReactTools, type LazyTransportContext } from "../../legacy/tools/react.js";
+import { createExecTools, ProcessRegistry } from "../../legacy/tools/exec.js";
+import type { AgentRuntime } from "../runtime.js";
+import { RunValidationError } from "../types.js";
+import type { RunRequest } from "../types.js";
+import { getMessageContext } from "../../legacy/transport/context.js";
+import { getDiscordA2AStreamContext } from "../../legacy/plugins/discord/a2a-stream-context.js";
+import { DiscordA2ASink } from "../../legacy/plugins/discord/discord-a2a-sink.js";
+import { getAgentEndMeta } from "../runners/pi/messages.js";
+import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("tools");
 

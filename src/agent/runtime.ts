@@ -35,7 +35,7 @@ import {
 import { ensureWorkspaceStructure } from "./workspace.js";
 import { seedWorkspaceTemplates } from "../legacy/workspace/templates.js";
 import { reconcileWorkspaceState } from "../legacy/workspace/state.js";
-import { createAgentTools } from "../agent/tools.js";
+import { createAgentTools } from "./tools/index.js";
 import { LazyTransportContext } from "../legacy/tools/react.js";
 import { ProcessRegistry } from "../legacy/tools/exec.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";

@@ -8,7 +8,7 @@ import type { ProviderType } from "./agent/types.js";
 import type {
   AgentConfig,
 } from "./agent/types.js";
-import type { AgentToolSettings } from "./tools/types.js";
+import type { AgentToolSettings } from "./agent/tools/types.js";
 import type {
   Binding,
   BindingPeer,

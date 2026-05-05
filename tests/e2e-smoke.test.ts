@@ -11,7 +11,7 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import {
   createAgentTools,
   applyToolPolicy,
-} from "../src/agent/tools.js";
+} from "../src/agent/tools/index.js";
 import { createExecTools, ProcessRegistry } from "../src/legacy/tools/exec.js";
 import { createWebFetchTool } from "../src/legacy/tools/web.js";
 
