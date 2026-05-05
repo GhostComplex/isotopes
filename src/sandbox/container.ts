@@ -1,35 +1,19 @@
-// src/sandbox/container.ts — Docker container lifecycle management
-// Wraps Docker CLI commands for creating, starting, stopping, and executing
-// commands in sandbox containers.
-
 import { spawn } from "node:child_process";
 import type { DockerConfig, Mount, WorkspaceAccess } from "./config.js";
 
 /** Cap collected stdout/stderr per `exec()` call to prevent OOM from runaway commands. */
 const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Container status */
 export type ContainerStatus = "created" | "running" | "paused" | "exited";
 
-/** Information about a Docker container */
 export interface ContainerInfo {
-  /** Docker container ID */
   id: string;
-  /** Container name */
   name: string;
-  /** Current status */
   status: ContainerStatus;
-  /** Docker image used */
   image: string;
-  /** When the container was created */
   createdAt: Date;
 }
 
-/** Result of executing a command in a container */
 export interface ExecResult {
   exitCode: number;
   stdout: Buffer;
@@ -38,28 +22,10 @@ export interface ExecResult {
   truncated?: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Container Manager
-// ---------------------------------------------------------------------------
-
-/**
- * Manages Docker container lifecycle for sandbox execution.
- *
- * Uses the Docker CLI (`docker`) rather than the Docker API to avoid
- * heavy dependencies. All operations are async and shell out to `docker`.
- */
+/** Wraps the `docker` CLI rather than the API to avoid heavy SDK deps. */
 export class ContainerManager {
   constructor(private config: DockerConfig) {}
 
-  /**
-   * Create a new container with the workspace mounted.
-   *
-   * @param name - Container name (must be unique)
-   * @param workspacePath - Host path to mount; mounted at the same path
-   *   inside the container so absolute host paths resolve identically.
-   * @param access - Mount access level (rw or ro)
-   * @returns ContainerInfo for the created container
-   */
   async create(
     name: string,
     workspacePath: string,
@@ -79,29 +45,14 @@ export class ContainerManager {
     };
   }
 
-  /**
-   * Start a stopped or created container.
-   */
   async start(containerId: string): Promise<void> {
     await this.runDocker(["start", containerId]);
   }
 
-  /**
-   * Stop a running container.
-   *
-   * @param containerId - Container to stop
-   * @param timeout - Seconds to wait before killing (default: 10)
-   */
   async stop(containerId: string, timeout = 10): Promise<void> {
     await this.runDocker(["stop", "-t", String(timeout), containerId]);
   }
 
-  /**
-   * Remove a container.
-   *
-   * @param containerId - Container to remove
-   * @param force - Force removal of running container
-   */
   async remove(containerId: string, force = false): Promise<void> {
     const args = ["rm"];
     if (force) args.push("--force");
@@ -109,13 +60,7 @@ export class ContainerManager {
     await this.runDocker(args);
   }
 
-  /**
-   * Execute a command inside a running container.
-   *
-   * @param containerId - Container to execute in
-   * @param command - Command and arguments
-   * @returns ExecResult with exit code, stdout, and stderr (does not throw on non-zero)
-   */
+  /** Does not throw on non-zero exit — caller inspects exitCode. */
   async exec(
     containerId: string,
     command: string[],
@@ -125,19 +70,15 @@ export class ContainerManager {
   }
 
   /**
-   * Build the argv to run a command inside the container as a host-side
-   * `docker exec` child process. Used by background-process spawning so that
-   * stdin/stdout/stderr/SIGTERM all flow through the host child handle.
+   * Argv to run a command inside the container as a host-side `docker exec`
+   * child process. Used by background-process spawning so stdin/stdout/stderr
+   * and SIGTERM all flow through the host child handle.
    */
   buildExecArgv(containerId: string, command: string[]): string[] {
     return ["docker", "exec", "-i", containerId, ...command];
   }
 
-  /**
-   * Get the current status of a container.
-   *
-   * @returns ContainerInfo or null if the container doesn't exist
-   */
+  /** Returns null when the container doesn't exist. */
   async status(containerId: string): Promise<ContainerInfo | null> {
     try {
       const { stdout } = await this.runDocker([
@@ -149,17 +90,11 @@ export class ContainerManager {
 
       const line = stdout.toString("utf8").trim();
       if (!line) return null;
-
       return parseInspectLine(line);
     } catch {
-      // Container doesn't exist
       return null;
     }
   }
-
-  // -----------------------------------------------------------------------
-  // Private helpers
-  // -----------------------------------------------------------------------
 
   /** Spawn `docker <args>`; resolve with collected output, never throws on exit code. */
   private spawnDocker(args: string[], options?: { stdin?: Buffer | string }): Promise<ExecResult> {
@@ -222,9 +157,6 @@ export class ContainerManager {
     return result;
   }
 
-  /**
-   * Build the `docker create` argument list.
-   */
   private buildCreateArgs(
     name: string,
     workspacePath: string,
@@ -233,9 +165,8 @@ export class ContainerManager {
   ): string[] {
     const args: string[] = ["create", "--name", name, "--init"];
 
-    // Workspace volume mount — mounted at the same host path inside the
-    // container so that absolute paths from the host resolve identically
-    // (no /workspace ↔ host path translation needed in the fs bridge).
+    // Mount workspace at the same host path so absolute paths resolve
+    // identically inside and outside — fs bridge needs no translation.
     const workspaceSuffix = access === "ro" ? ":ro" : "";
     args.push("-v", `${workspacePath}:${workspacePath}${workspaceSuffix}`);
     args.push("-w", workspacePath);
@@ -246,19 +177,12 @@ export class ContainerManager {
       args.push("-v", `${m.host}:${m.container}${suffix}`);
     }
 
-    // Network mode
     if (this.config.network) {
       args.push("--network", this.config.network);
     }
-
-    // Extra hosts
     if (this.config.extraHosts) {
-      for (const host of this.config.extraHosts) {
-        args.push("--add-host", host);
-      }
+      for (const host of this.config.extraHosts) args.push("--add-host", host);
     }
-
-    // Resource limits
     if (this.config.cpuLimit !== undefined) {
       args.push("--cpus", String(this.config.cpuLimit));
     }
@@ -268,34 +192,19 @@ export class ContainerManager {
     if (this.config.pidsLimit !== undefined && this.config.pidsLimit > 0) {
       args.push("--pids-limit", String(this.config.pidsLimit));
     }
-
     if (this.config.noNewPrivileges !== false) {
       args.push("--security-opt", "no-new-privileges");
     }
 
-    // Image
     args.push(this.config.image);
-
-    // Keep container alive with a long-running process
-    args.push("tail", "-f", "/dev/null");
-
+    args.push("tail", "-f", "/dev/null");  // keep container alive
     return args;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Parsing helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Parse a line from `docker inspect --format`.
- * Format: ID\tName\tStatus\tImage\tCreated
- */
 function parseInspectLine(line: string): ContainerInfo {
   const [id, rawName, rawStatus, image, createdStr] = line.split("\t");
-  // docker inspect prefixes names with /
-  const name = rawName.startsWith("/") ? rawName.slice(1) : rawName;
-
+  const name = rawName.startsWith("/") ? rawName.slice(1) : rawName;  // docker prefixes names with /
   return {
     id,
     name,
@@ -305,15 +214,11 @@ function parseInspectLine(line: string): ContainerInfo {
   };
 }
 
-/**
- * Normalize Docker status strings to our ContainerStatus enum.
- * Docker uses strings like "Up 2 minutes", "Exited (0) 5 minutes ago", etc.
- */
+/** Docker status strings: "Up 2 minutes", "Exited (0) 5 minutes ago", "created", "paused", etc. */
 function normalizeStatus(raw: string): ContainerStatus {
   const lower = raw.toLowerCase();
   if (lower === "created") return "created";
   if (lower === "paused" || lower.includes("paused")) return "paused";
   if (lower === "running" || lower.startsWith("up")) return "running";
-  // "exited", "Exited (0) ...", "dead", "removing", etc.
   return "exited";
 }
