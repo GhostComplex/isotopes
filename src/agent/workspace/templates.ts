@@ -1,6 +1,3 @@
-// src/workspace/templates.ts — Workspace template seeding
-// Seeds default files into new agent workspaces using write-exclusive mode.
-
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";

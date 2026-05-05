@@ -1,5 +1,3 @@
-// src/workspace/state.test.ts — Unit tests for workspace state tracking
-
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";

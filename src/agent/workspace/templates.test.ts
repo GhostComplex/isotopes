@@ -1,5 +1,3 @@
-// src/workspace/templates.test.ts — Unit tests for workspace template seeding
-
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";

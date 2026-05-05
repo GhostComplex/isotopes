@@ -1,6 +1,3 @@
-// src/workspace/state.ts — Workspace bootstrap state tracking
-// Tracks the hatch lifecycle via .isotopes/workspace-state.json.
-
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createLogger } from "../../logging/logger.js";

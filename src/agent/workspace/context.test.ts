@@ -1,5 +1,3 @@
-// src/core/workspace.test.ts — Unit tests for workspace loading
-
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";

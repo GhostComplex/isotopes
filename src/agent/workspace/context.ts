@@ -1,6 +1,3 @@
-// src/agent/workspace.ts — Workspace file loading and management
-// Handles SOUL.md, MEMORY.md, TOOLS.md, and other workspace files.
-
 import fs from "node:fs/promises";
 import path from "node:path";
 import { loadSkills, formatSkillsForPrompt } from "@mariozechner/pi-coding-agent";

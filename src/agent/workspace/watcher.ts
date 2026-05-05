@@ -1,6 +1,3 @@
-// src/workspace/watcher.ts — File system watcher for workspace hot-reload
-// Watches workspace files for changes and notifies registered handlers.
-
 import fs from "node:fs";
 import path from "node:path";
 import { createLogger } from "../../logging/logger.js";
