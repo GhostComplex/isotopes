@@ -31,7 +31,7 @@ import { buildSessionKey } from "../../../gateway/session-keys.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../../../gateway/channel-history.js";
 import { DedupeCache } from "../../../gateway/dedupe.js";
 import { InboundDebouncer } from "../../../gateway/debounce.js";
-import { SlashCommandHandler } from "../../commands/slash-commands.js";
+import { SlashCommandHandler } from "../../../gateway/commands.js";
 
 const log = loggers.discord;
 

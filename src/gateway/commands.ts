@@ -1,9 +1,6 @@
-// src/commands/slash-commands.ts — Slash command handler for admin operations
-// Parses and dispatches /status, /reload, /model commands from chat messages.
-
-import type { SessionStore } from "../../sessions/types.js";
-import type { AgentRuntime } from "../../agent/runtime.js";
-import { createLogger } from "../../logging/logger.js";
+import type { SessionStore } from "../sessions/types.js";
+import type { AgentRuntime } from "../agent/runtime.js";
+import { createLogger } from "../logging/logger.js";
 
 const log = createLogger("commands");
 
@@ -20,9 +17,9 @@ export interface CommandContext {
   sessionStore: SessionStore;
   /** The agent ID this message was routed to */
   agentId: string;
-  /** Discord user ID of the invoker */
+  /** Stable user ID of the invoker (transport-specific) */
   userId: string;
-  /** Discord username of the invoker */
+  /** Display name of the invoker (transport-specific) */
   username: string;
   /** Current session ID (if available) */
   sessionId?: string;
