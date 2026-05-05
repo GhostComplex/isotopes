@@ -66,7 +66,7 @@ export class ContainerManager {
     command: string[],
     options?: { stdin?: Buffer | string },
   ): Promise<ExecResult> {
-    return this.spawnDocker(["exec", "-i", containerId, ...command], options);
+    return this.runDockerWithCapture(["exec", "-i", containerId, ...command], options);
   }
 
   /** Returns argv (not a spawned process) so callers can manage their own ChildProcess for long-running tasks. */
@@ -92,8 +92,8 @@ export class ContainerManager {
     }
   }
 
-  /** Spawn `docker <args>`; resolve with collected output, never throws on exit code. */
-  private spawnDocker(args: string[], options?: { stdin?: Buffer | string }): Promise<ExecResult> {
+  /** Run `docker <args>`; capture all output, never throws on exit code. */
+  private runDockerWithCapture(args: string[], options?: { stdin?: Buffer | string }): Promise<ExecResult> {
     return new Promise<ExecResult>((resolve, reject) => {
       const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
       const stdoutChunks: Buffer[] = [];
@@ -144,9 +144,9 @@ export class ContainerManager {
     });
   }
 
-  /** Like spawnDocker, but throws on non-zero exit. Used by lifecycle commands. */
+  /** Like runDockerWithCapture, but throws on non-zero exit. Used by lifecycle commands. */
   private async runDocker(args: string[]): Promise<ExecResult> {
-    const result = await this.spawnDocker(args);
+    const result = await this.runDockerWithCapture(args);
     if (result.exitCode !== 0) {
       throw new Error(`docker ${args[0]} failed (exit ${result.exitCode}): ${result.stderr.toString("utf8").trim()}`);
     }
