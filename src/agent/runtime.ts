@@ -260,7 +260,6 @@ export class AgentRuntime {
 
     const tools: AgentTool[] = createAgentTools({
       workspacePath,
-      settings: agentConfig.toolSettings,
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,
       agentSandboxConfig: agentConfig.sandbox,

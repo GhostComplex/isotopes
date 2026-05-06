@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   createTimeTool,
   createAgentTools,
-  applyToolPolicy,
 } from "./index.js";
 import { createWebFetchTool } from "./web.js";
 
@@ -58,33 +57,5 @@ describe("createAgentTools", () => {
     const names = tools.map((t) => t.name);
     expect(names).toContain("web_fetch");
     expect(names).not.toContain("web_search");
-  });
-});
-
-describe("applyToolPolicy", () => {
-  const noopExecutor = { execute: async () => ({ exitCode: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }), buildExecArgv: async (a: string[]) => a };
-  const tools = [createTimeTool(), createWebFetchTool(noopExecutor)];
-
-  it("returns all tools when policy is undefined", () => {
-    expect(applyToolPolicy(tools)).toHaveLength(2);
-  });
-
-  it("returns all tools when policy has neither allow nor deny", () => {
-    expect(applyToolPolicy(tools, {})).toHaveLength(2);
-  });
-
-  it("filters by allow list", () => {
-    const out = applyToolPolicy(tools, { allow: ["get_current_time"] });
-    expect(out.map((t) => t.name)).toEqual(["get_current_time"]);
-  });
-
-  it("filters by deny list", () => {
-    const out = applyToolPolicy(tools, { deny: ["get_current_time"] });
-    expect(out.map((t) => t.name)).toEqual(["web_fetch"]);
-  });
-
-  it("deny takes precedence over allow", () => {
-    const out = applyToolPolicy(tools, { allow: ["get_current_time"], deny: ["get_current_time"] });
-    expect(out).toEqual([]);
   });
 });
