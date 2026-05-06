@@ -40,6 +40,4 @@ export type Screen = "chat" | "status";
 
 export interface TuiOptions {
   agent?: string;
-  /** Attach to an existing session by key instead of creating the default `tui` session. */
-  session?: string;
 }

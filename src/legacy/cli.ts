@@ -140,7 +140,6 @@ const { values, positionals } = parseArgs({
     level: { type: "string" },
     follow: { type: "boolean", short: "f" },
     force: { type: "boolean" },
-    session: { type: "string" },
   },
   allowPositionals: true,
 });
@@ -156,13 +155,7 @@ Usage:
   isotopes                           Run in foreground (default)
   isotopes init [--force]            Write a default ~/.isotopes/isotopes.yaml
 
-  isotopes tui [--agent id] [--session key]
-                                     Interactive TUI chat with an agent
-
-  isotopes sessions list             List all sessions
-  isotopes sessions show <id>        Show session details
-  isotopes sessions delete <id>      Delete a session
-  isotopes sessions reset <id>       Reset session history
+  isotopes tui [--agent id]          Interactive TUI chat with an agent
 
   isotopes cron list                 List scheduled jobs
   isotopes cron add <spec> <task>    Add a cron job
@@ -184,7 +177,7 @@ Options:
   -v, --version    Show version
   -c, --config     Path to config file
   --agent          Agent ID for tui command
-  --json           Output as JSON (sessions, cron commands)
+  --json           Output as JSON (cron commands)
   --lines          Number of log lines (default: 50)
   --level          Filter logs by level (debug/info/warn/error)
   -f, --follow     Follow log output
@@ -259,84 +252,6 @@ async function handleServiceCommand(): Promise<void> {
 // ---------------------------------------------------------------------------
 // Sessions command
 // ---------------------------------------------------------------------------
-
-type SessionInfo = { id: string; agentId: string; messageCount?: number; createdAt?: string };
-
-function printSessionFields(s: SessionInfo, indent: string): void {
-  console.log(`${indent}Agent: ${s.agentId}`);
-  console.log(`${indent}Messages: ${s.messageCount ?? "?"}`);
-  console.log(`${indent}Created: ${s.createdAt ?? "?"}`);
-}
-
-async function handleSessionsCommand(): Promise<void> {
-  const subCmd = positionals[0];
-  const sessionId = positionals[1];
-
-  await withDaemonErrors(async () => {
-    switch (subCmd) {
-      case "list":
-      case undefined: {
-        const sessions = await apiCall<SessionInfo[]>("GET", "/api/sessions");
-        printJsonOr(sessions, () => {
-          if (sessions.length === 0) {
-            console.log("No active sessions");
-            return;
-          }
-          console.log(`Sessions (${sessions.length}):\n`);
-          for (const s of sessions) {
-            console.log(`  ${s.id}`);
-            printSessionFields(s, "    ");
-            console.log();
-          }
-        });
-        break;
-      }
-      case "show": {
-        const id = requireArg(sessionId, "isotopes sessions show <id>");
-        try {
-          const session = await apiCall<SessionInfo>("GET", `/api/sessions/${id}`);
-          printJsonOr(session, () => {
-            console.log(`Session: ${session.id}`);
-            printSessionFields(session, "  ");
-          });
-        } catch (err) {
-          if (err instanceof ApiError && err.status === 404) {
-            console.error(`Session not found: ${id}`);
-            process.exit(1);
-          }
-          throw err;
-        }
-        break;
-      }
-      case "delete": {
-        const id = requireArg(sessionId, "isotopes sessions delete <id>");
-        await apiAction({
-          method: "DELETE",
-          path: `/api/sessions/${id}`,
-          notFoundLabel: "Session",
-          notFoundId: id,
-          success: `Session deleted: ${id}`,
-        });
-        break;
-      }
-      case "reset": {
-        const id = requireArg(sessionId, "isotopes sessions reset <id>");
-        await apiAction({
-          method: "POST",
-          path: `/api/sessions/${id}/reset`,
-          notFoundLabel: "Session",
-          notFoundId: id,
-          success: `Session reset: ${id}`,
-        });
-        break;
-      }
-      default:
-        console.error(`Unknown sessions subcommand: ${subCmd}`);
-        console.error("Usage: isotopes sessions [list|show|delete|reset] [id]");
-        process.exit(1);
-    }
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Cron command
@@ -579,13 +494,9 @@ async function run(): Promise<void> {
 
     case "tui": {
       const { launchTui } = await import("./tui/index.js");
-      await launchTui({ agent: values.agent, session: values.session });
+      await launchTui({ agent: values.agent });
       break;
     }
-
-    case "sessions":
-      await handleSessionsCommand();
-      break;
 
     case "cron":
       await handleCronCommand();
