@@ -74,9 +74,9 @@ function toToolDefinition(t: AgentTool, hooks: HookRegistry | undefined, agentId
 
 export async function createPiSession(
   deps: PiSessionDeps,
-  opts: { agent: RegisteredAgent; sessionId: string; cwd?: string; systemPromptAddendum?: string },
+  opts: { agent: RegisteredAgent; sessionId: string; cwd?: string; extraSystemPrompt?: string },
 ): Promise<AgentSession> {
-  const { agent, sessionId, cwd, systemPromptAddendum } = opts;
+  const { agent, sessionId, cwd, extraSystemPrompt } = opts;
   if (!agent.sessionStore) throw new Error(`pi runner: agent ${agent.id} requires a sessionStore`);
   const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
@@ -97,7 +97,7 @@ export async function createPiSession(
   });
 
   const basePrompt = await buildAgentSystemPrompt(agent.config);
-  const finalPrompt = systemPromptAddendum ? `${basePrompt}\n\n---\n\n${systemPromptAddendum}` : basePrompt;
+  const finalPrompt = extraSystemPrompt ? `${basePrompt}\n\n---\n\n${extraSystemPrompt}` : basePrompt;
   overrideSessionSystemPrompt(session, finalPrompt);
   return session;
 }

@@ -14,7 +14,7 @@ export interface RunAgentOptions {
   content: string;
   cwd?: string;
   /** Optional text appended to the agent's system prompt for this run. */
-  systemPromptAddendum?: string;
+  extraSystemPrompt?: string;
   log: Logger;
   hooks?: HookRegistry;
   /** Fires at every turn boundary; non-null return is steered into the next turn. */
@@ -32,7 +32,7 @@ export async function runAgent(
   runtime: AgentRuntime,
   opts: RunAgentOptions,
 ): Promise<RunAgentResult> {
-  const { to, sessionId, content, cwd, systemPromptAddendum, log, hooks, onTurnEnd, onEvent } = opts;
+  const { to, sessionId, content, cwd, extraSystemPrompt, log, hooks, onTurnEnd, onEvent } = opts;
 
   if (hooks && content) {
     await hooks.emit("message_received", {
@@ -51,7 +51,7 @@ export async function runAgent(
       sessionId,
       content,
       ...(cwd ? { cwd } : {}),
-      ...(systemPromptAddendum ? { systemPromptAddendum } : {}),
+      ...(extraSystemPrompt ? { extraSystemPrompt } : {}),
     });
 
     await runWithRuntimeContext(

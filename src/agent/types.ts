@@ -56,7 +56,7 @@ export interface RunRequest {
   /** Optional text appended to the system prompt for this run. Used by
    * transports to teach transport-specific output directives without
    * polluting the agent core. */
-  systemPromptAddendum?: string;
+  extraSystemPrompt?: string;
   /** Fires once after run is registered, before any AgentEvent yields.
    * Use to wire side-channel UI (Discord thread, audit) by sessionId. */
   onRunStart?: (sessionId: string) => void;

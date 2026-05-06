@@ -754,7 +754,7 @@ export class DiscordTransport implements Transport {
           sessionId,
           content: "",
           ...(cwd ? { cwd } : {}),
-          systemPromptAddendum: REPLY_DIRECTIVE_PROMPT,
+          extraSystemPrompt: REPLY_DIRECTIVE_PROMPT,
           log,
           onEvent: (e) => {
             if (e.type === "message_update" && streamBuffer) {

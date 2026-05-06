@@ -59,7 +59,7 @@ export function parseReplyDirective(
 /**
  * System-prompt addendum that teaches the LLM how to use reply directives.
  * Transports that originate runs from a chat surface should pass this string
- * via RunRequest.systemPromptAddendum so the agent learns the syntax.
+ * via RunRequest.extraSystemPrompt so the agent learns the syntax.
  */
 export const REPLY_DIRECTIVE_PROMPT = `# Chat Output Directives
 
