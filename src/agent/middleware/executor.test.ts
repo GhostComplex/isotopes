@@ -1,10 +1,9 @@
-// src/sandbox/executor.test.ts — Unit tests for SandboxExecutor
-// ContainerManager is fully mocked.
+// Unit tests for SandboxExecutor. ContainerManager is fully mocked.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SandboxExecutor } from "./executor.js";
 import type { ContainerManager, ContainerInfo } from "./container.js";
-import type { SandboxConfig } from "./config.js";
+import type { SandboxConfig } from "./sandbox-config.js";
 
 // ---------------------------------------------------------------------------
 // Mock ContainerManager

@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
 import { NodeHtmlMarkdown } from "node-html-markdown";
-import type { Executor } from "../executor.js";
+import type { Executor } from "../middleware/executor.js";
 
 const MAX_CONTENT_LENGTH = 50000;
 const REQUEST_TIMEOUT_SEC = 30;

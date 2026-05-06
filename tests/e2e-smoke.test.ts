@@ -14,7 +14,7 @@ import {
 } from "../src/agent/tools/index.js";
 import { createExecTools } from "../src/agent/tools/exec.js";
 import { createWebFetchTool } from "../src/agent/tools/web.js";
-import { HostExecutor } from "../src/agent/host-executor.js";
+import { HostExecutor } from "../src/agent/middleware/executor.js";
 
 async function callTool(tool: AgentTool, args: unknown): Promise<string> {
   const result: AgentToolResult<unknown> = await tool.execute("test-call", args as never);

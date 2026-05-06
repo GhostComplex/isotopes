@@ -1,8 +1,8 @@
 // src/sandbox/config.test.ts — Unit tests for sandbox config resolution
 
 import { describe, it, expect } from "vitest";
-import { resolveSandboxConfig } from "./config.js";
-import type { SandboxConfig } from "./config.js";
+import { resolveSandboxConfig } from "./sandbox-config.js";
+import type { SandboxConfig } from "./sandbox-config.js";
 
 describe("Sandbox Config", () => {
   describe("resolveSandboxConfig", () => {

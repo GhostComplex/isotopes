@@ -440,3 +440,25 @@ describe("AgentRuntime no longer exposes a per-session event bus", () => {
     expect((rt as unknown as { sessionListenerCount?: unknown }).sessionListenerCount).toBeUndefined();
   });
 });
+
+describe("AgentRuntime.shutdown", () => {
+  it("is a no-op when no sandboxBaseConfig was passed", async () => {
+    const rt = new AgentRuntime();
+    await expect(rt.shutdown()).resolves.toBeUndefined();
+  });
+
+  it("is idempotent — calling twice does not throw", async () => {
+    const rt = new AgentRuntime();
+    await rt.shutdown();
+    await expect(rt.shutdown()).resolves.toBeUndefined();
+  });
+
+  it("calls cleanup on the SandboxExecutor exactly once across repeated shutdowns", async () => {
+    const cleanup = vi.fn().mockResolvedValue(undefined);
+    const rt = new AgentRuntime();
+    (rt as unknown as { sandboxExecutor: { cleanup: () => Promise<void> } }).sandboxExecutor = { cleanup };
+    await rt.shutdown();
+    await rt.shutdown();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+});

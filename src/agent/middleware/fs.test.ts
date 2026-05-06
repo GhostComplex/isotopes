@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { SandboxFs, FsError, mapStderrToCode } from "./fs-bridge.js";
+import { SandboxFs, FsError, mapStderrToCode } from "./fs.js";
 import type { SandboxExecutor } from "./executor.js";
 
 function makeExecutor(): SandboxExecutor {

@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type, type Static } from "typebox";
 import { createLogger } from "../../logging/logger.js";
-import type { Executor } from "../executor.js";
+import type { Executor } from "../middleware/executor.js";
 
 const log = createLogger("tools:exec");
 

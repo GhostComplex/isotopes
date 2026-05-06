@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createWebFetchTool } from "./web.js";
-import type { Executor } from "../executor.js";
+import type { Executor } from "../middleware/executor.js";
 
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 
