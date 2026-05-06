@@ -3,7 +3,6 @@ import {
   createTimeTool,
   createAgentTools,
 } from "./index.js";
-import { createWebFetchTool } from "./web.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content.find((c) => c.type === "text");
