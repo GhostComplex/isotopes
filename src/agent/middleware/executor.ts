@@ -12,34 +12,24 @@ export interface ExecResult {
   exitCode: number;
   stdout: Buffer;
   stderr: Buffer;
-  /** True iff stdout or stderr was capped at EXEC_MAX_OUTPUT_BYTES. */
   truncated?: boolean;
 }
 
 export interface ExecOptions {
-  /** Working directory. Sandbox honors at container-create time, not per-call. */
+  /** Sandbox honors at container-create time, not per-call. */
   workspacePath?: string;
   timeout?: number;
   stdin?: Buffer | string;
 }
 
-/**
- * Per-agent command execution. HostExecutor runs on the host process;
- * SandboxExecutor.bind(agentId) runs inside the agent's container.
- */
 export interface Executor {
   execute(argv: string[], opts?: ExecOptions): Promise<ExecResult>;
 
-  /**
-   * Returns the host-side argv to spawn for this command. HostExecutor
-   * returns argv as-is; SandboxExecutor prepends `docker exec -i <ctr>`.
-   * Used by background-process tracking — caller spawns the returned argv
-   * itself so it can keep the ChildProcess handle.
-   */
+  /** Host argv to spawn — used by background-process tracking so the caller keeps the ChildProcess. SandboxExecutor prepends `docker exec -i <ctr>`. */
   buildExecArgv(argv: string[], opts?: ExecOptions): Promise<string[]>;
 }
 
-/** Thin wrapper over child_process.spawn — host = trust model, no cwd jail / env scrub. */
+/** child_process.spawn — host = trust model, no cwd jail / env scrub. */
 export class HostExecutor implements Executor {
   async execute(argv: string[], opts?: ExecOptions): Promise<ExecResult> {
     if (argv.length === 0) {
@@ -119,10 +109,7 @@ export class HostExecutor implements Executor {
   }
 }
 
-/**
- * Lazily creates one container per agent and routes commands through it.
- * Use `bind(agentId)` to get a per-agent Executor for tool consumption.
- */
+/** One container per agent, lazily created. `bind(agentId)` returns a per-agent Executor for tools. */
 export class SandboxExecutor {
   private containers: Map<string, ContainerInfo> = new Map();
   private inflight: Map<string, Promise<ContainerInfo>> = new Map();
@@ -132,20 +119,18 @@ export class SandboxExecutor {
 
   constructor(private containerManager: ContainerManager) {}
 
-  /** Returns an executor when sandbox docker config is present, else undefined. */
   static fromConfig(config: SandboxConfig): SandboxExecutor | undefined {
     if (!config.docker) return undefined;
     return new SandboxExecutor(new ContainerManager());
   }
 
-  /** Register an agent's resolved sandbox config. Re-calling merges into existing — absent fields preserve previous values. */
+  /** Re-calling merges into existing — absent fields preserve previous values. */
   registerAgent(agentId: string, config: SandboxConfig): void {
     if (config.docker) this.agentDocker.set(agentId, config.docker);
     if (config.mounts) this.agentMounts.set(agentId, config.mounts);
     if (config.workspaceAccess) this.agentWorkspaceAccess.set(agentId, config.workspaceAccess);
   }
 
-  /** Returns a per-agent Executor that routes through this agent's container. */
   bind(agentId: string): Executor {
     return {
       execute: (argv, opts) => this.execute(agentId, argv, opts),
