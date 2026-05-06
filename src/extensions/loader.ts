@@ -5,8 +5,6 @@ import { createLogger } from "../logging/logger.js";
 
 const log = createLogger("extensions");
 
-/** Scan ~/.isotopes/extensions/*.ts and return absolute paths.
- * Files are loaded by pi-coding-agent's ResourceLoader (jiti). */
 export function discoverExtensionPaths(): string[] {
   const dir = path.join(getIsotopesHome(), "extensions");
   if (!fs.existsSync(dir)) return [];
