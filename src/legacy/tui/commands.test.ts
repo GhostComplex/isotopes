@@ -37,6 +37,7 @@ describe("dispatch", () => {
     onNewChat: () => calls.push("new"),
     onExit: () => calls.push("exit"),
     onShowStatus: () => calls.push("status"),
+    onShowSessions: () => calls.push("sessions"),
     onHelp: () => calls.push("help"),
   };
 
@@ -45,6 +46,11 @@ describe("dispatch", () => {
   it("dispatches /new", () => {
     expect(dispatch("new", "", callbacks)).toBe(true);
     expect(calls).toEqual(["new"]);
+  });
+
+  it("dispatches /sessions", () => {
+    expect(dispatch("sessions", "", callbacks)).toBe(true);
+    expect(calls).toEqual(["sessions"]);
   });
 
   it("dispatches /exit and aliases", () => {

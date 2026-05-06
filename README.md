@@ -47,11 +47,6 @@ isotopes reload [agentId]          Reload workspace (hot-reload)
 isotopes tui [--agent id]
                                    Interactive TUI chat with an agent
 
-isotopes sessions list             List all sessions
-isotopes sessions show <id>        Show session details
-isotopes sessions delete <id>      Delete a session
-isotopes sessions reset <id>       Reset session history
-
 isotopes cron list                 List scheduled jobs
 isotopes cron add <spec> <task>    Add a cron job
 isotopes cron remove <id>          Remove a cron job
@@ -70,7 +65,7 @@ Options:
   -v, --version    Show version
   -c, --config     Path to config file
   --agent          Agent ID for tui command
-  --json           Output as JSON (sessions, cron commands)
+  --json           Output as JSON (cron commands)
   --lines          Number of log lines (default: 50)
   --level          Filter logs by level (debug/info/warn/error)
   -f, --follow     Follow log output

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, Static, useInput, useApp } from "ink";
 import { randomUUID } from "node:crypto";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
-import type { ChatMessage, ContentBlock, TuiOptions, Screen, SSEEvent } from "./types.js";
+import type { ChatMessage, ContentBlock, Screen, SSEEvent } from "./types.js";
 import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
@@ -93,25 +93,28 @@ export function historyToChatMessages(items: Array<{ role: string; type?: string
 }
 
 interface Props {
-  options: TuiOptions;
+  agentId: string;
+  sessionKey: string;
+  mode: "owned" | "attach";
   onSwitchScreen: (screen: Screen) => void;
 }
 
-export function ChatScreen({ options, onSwitchScreen }: Props) {
+export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScreen }: Props) {
   const { exit } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [agentReady, setAgentReady] = useState(false);
-  const [agentId, setAgentId] = useState(options.agent ?? "");
+  const [agentId, setAgentId] = useState(propAgentId);
   const [error, setError] = useState<string | null>(null);
   const sessionKeyRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const attachAbortRef = useRef<AbortController | null>(null);
   const pendingSteerRef = useRef<ChatMessage[]>([]);
   const settledRef = useRef<ChatMessage[]>([]);
+  const isAttached = mode === "attach";
 
-  const initAgent = useCallback(async (requestedAgent?: string) => {
+  const initAgent = useCallback(async () => {
     setAgentReady(false);
     setError(null);
     try {
@@ -121,19 +124,15 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         return;
       }
 
-      const resolvedAgentId = requestedAgent ?? "main";
-
-      if (options.session) {
-        sessionKeyRef.current = options.session;
-        setAgentId(resolvedAgentId);
-        const { items: history } = await api.getHistory(resolvedAgentId, options.session);
-        const chatMessages = historyToChatMessages(history);
-        setMessages(chatMessages);
+      if (mode === "attach") {
+        sessionKeyRef.current = sessionKey;
+        const { items: history } = await api.getHistory(propAgentId, sessionKey);
+        setMessages(historyToChatMessages(history));
         const attachAbort = new AbortController();
         attachAbortRef.current = attachAbort;
         void (async () => {
           try {
-            await api.attachStream(resolvedAgentId, options.session!, (m) => {
+            await api.attachStream(propAgentId, sessionKey, (m) => {
               const converted = historyToChatMessages([m.message as { role: string; content: unknown; toolCallId?: string }]);
               if (converted.length > 0) {
                 setMessages((prev) => [...prev, ...converted]);
@@ -149,7 +148,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         return;
       }
 
-      const session = await api.createSession(resolvedAgentId, "tui");
+      const session = await api.createSession(propAgentId, sessionKey);
       sessionKeyRef.current = session.key;
       setAgentId(session.agentId);
 
@@ -169,10 +168,10 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [options.session]);
+  }, []);
 
   useEffect(() => {
-    void initAgent(options.agent);
+    void initAgent();
     return () => {
       abortRef.current?.abort();
       attachAbortRef.current?.abort();
@@ -182,10 +181,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const sendMessage = async (text: string) => {
     if (!sessionKeyRef.current || isStreaming) return;
 
-    // Attach mode: attachStream is the single source of truth for UI updates.
-    // Skip local user echo and inline streaming preview — the persisted
-    // user message + assistant response will arrive via the bus.
-    if (options.session) {
+    if (isAttached) {
       setIsStreaming(true);
       const abort = new AbortController();
       abortRef.current = abort;
@@ -295,8 +291,8 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
     if (slash) {
       const handled = dispatch(slash.command, slash.args, {
         onNewChat: () => {
-          if (options.session) {
-            setMessages((prev) => [...prev, { role: "system", content: "/new is disabled in --session attach mode (would delete the attached session). Exit and relaunch without --session.", timestamp: new Date() }]);
+          if (isAttached) {
+            setMessages((prev) => [...prev, { role: "system", content: "/new is disabled while attached to another session. Use /sessions to switch.", timestamp: new Date() }]);
             return;
           }
           setMessages([]);
@@ -307,7 +303,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
               if (sessionKeyRef.current) {
                 await api.deleteSession(agentId, sessionKeyRef.current).catch(() => {});
               }
-              const session = await api.createSession(agentId, "tui");
+              const session = await api.createSession(agentId, sessionKey);
               sessionKeyRef.current = session.key;
               setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
             } catch (err) {
@@ -319,6 +315,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         },
         onExit: () => exit(),
         onShowStatus: () => onSwitchScreen("status"),
+        onShowSessions: () => onSwitchScreen("sessions"),
         onHelp: () => setMessages((prev) => [...prev, { role: "system", content: HELP_TEXT, timestamp: new Date() }]),
       });
       if (!handled) {
@@ -423,6 +420,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         <Text bold>isotopes</Text>
         <Text> — agent: </Text>
         <Text color="cyan">{agentId || "loading..."}</Text>
+        {isAttached && <Text color="magenta"> [attached: {sessionKey}]</Text>}
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
