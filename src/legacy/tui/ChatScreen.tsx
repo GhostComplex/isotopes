@@ -336,7 +336,6 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         onSwitchAgent: (id) => void initAgent(id),
         onExit: () => exit(),
         onShowStatus: () => onSwitchScreen("status"),
-        onShowChat: () => {},
         onHelp: () => setMessages((prev) => [...prev, { role: "system", content: HELP_TEXT, timestamp: new Date() }]),
       });
       if (!handled) {

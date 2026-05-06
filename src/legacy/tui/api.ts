@@ -101,8 +101,6 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
         return { type: "turn_end" };
       case "error":
         return { type: "error", message: parsed.message };
-      case "agent_end":
-        return { type: "agent_end", stopReason: parsed.stopReason };
       default:
         return null;
     }
@@ -207,9 +205,8 @@ export async function attachStream(
           try {
             const parsed = JSON.parse(dataLines.join("\n")) as AttachedMessage;
             onMessage(parsed);
-          } catch (err) {
-             
-            console.error("attachStream: malformed JSON", err);
+          } catch {
+            // swallow malformed JSON: console.error would corrupt ink's render
           }
         }
         currentEvent = "";

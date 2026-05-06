@@ -28,7 +28,7 @@ describe("fetchStatus", () => {
 
 describe("fetchUsage", () => {
   it("returns usage stats", async () => {
-    const data = { totalTokens: 100, input: 50, output: 50, cacheRead: 0, cacheWrite: 0, cost: 0.01, turns: 5 };
+    const data = { totalTokens: 100, input: 50, output: 50, cost: 0.01, turns: 5 };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
     const result = await fetchUsage();
     expect(result).toEqual(data);
@@ -143,11 +143,6 @@ describe("parseSSELine", () => {
   it("parses error", () => {
     const event = parseSSELine("error", '{"message":"boom"}');
     expect(event).toEqual({ type: "error", message: "boom" });
-  });
-
-  it("parses agent_end", () => {
-    const event = parseSSELine("agent_end", '{"stopReason":"end"}');
-    expect(event).toEqual({ type: "agent_end", stopReason: "end" });
   });
 
   it("returns null for empty event type", () => {

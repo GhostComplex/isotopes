@@ -38,7 +38,6 @@ describe("dispatch", () => {
     onSwitchAgent: (id: string) => calls.push(`agent:${id}`),
     onExit: () => calls.push("exit"),
     onShowStatus: () => calls.push("status"),
-    onShowChat: () => calls.push("chat"),
     onHelp: () => calls.push("help"),
   };
 

@@ -21,7 +21,6 @@ export interface CommandCallbacks {
   onSwitchAgent: (agentId: string) => void;
   onExit: () => void;
   onShowStatus: () => void;
-  onShowChat: () => void;
   onHelp: () => void;
 }
 
@@ -46,9 +45,6 @@ export function dispatch(
     case "status":
       callbacks.onShowStatus();
       return true;
-    case "chat":
-      callbacks.onShowChat();
-      return true;
     case "help":
       callbacks.onHelp();
       return true;
@@ -62,5 +58,5 @@ export const HELP_TEXT = [
   "/agent <id>   — Switch to a different agent",
   "/status       — Show daemon status",
   "/help         — Show this help",
-  "/exit         — Quit the TUI",
+  "/exit /quit /q — Quit the TUI",
 ].join("\n");
