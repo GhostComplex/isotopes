@@ -10,14 +10,6 @@ export interface ChatMessage {
   id?: string;
 }
 
-export interface ToolCallEntry {
-  id: string;
-  name: string;
-  args: string;
-  result?: string;
-  isError?: boolean;
-}
-
 export interface DaemonStatus {
   version: string;
   uptime: number;
@@ -31,16 +23,6 @@ export interface SessionSummary {
   lastActivityAt: string;
 }
 
-export interface UsageStats {
-  totalTokens: number;
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  cost: number;
-  turns: number;
-}
-
 export interface ChatSessionInfo {
   key: string;
   agentId: string;
@@ -52,15 +34,12 @@ export type SSEEvent =
   | { type: "tool_call"; toolCallId: string; toolName: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; toolName: string; result: unknown; isError: boolean }
   | { type: "turn_end" }
-  | { type: "error"; message: string }
-  | { type: "agent_end"; stopReason: string };
+  | { type: "error"; message: string };
 
 export type Screen = "chat" | "status";
 
 export interface TuiOptions {
   agent?: string;
-  config?: string;
-  message?: string;
-  /** Attach to an existing session by key instead of creating tui:main. */
+  /** Attach to an existing session by key instead of creating the default `tui` session. */
   session?: string;
 }

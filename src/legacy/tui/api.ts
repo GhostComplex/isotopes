@@ -1,4 +1,4 @@
-import type { ChatSessionInfo, DaemonStatus, SessionSummary, SSEEvent, UsageStats } from "./types.js";
+import type { ChatSessionInfo, DaemonStatus, SessionSummary, SSEEvent } from "./types.js";
 
 const DEFAULT_PORT = 2712;
 
@@ -45,10 +45,6 @@ export async function fetchStatus(): Promise<DaemonStatus> {
 export async function fetchSessions(): Promise<SessionSummary[]> {
   const data = await fetchJson<{ items: SessionSummary[] }>("/api/sessions");
   return data.items;
-}
-
-export async function fetchUsage(): Promise<UsageStats> {
-  return fetchJson<UsageStats>("/api/usage");
 }
 
 export async function isDaemonRunning(): Promise<boolean> {
@@ -101,8 +97,6 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
         return { type: "turn_end" };
       case "error":
         return { type: "error", message: parsed.message };
-      case "agent_end":
-        return { type: "agent_end", stopReason: parsed.stopReason };
       default:
         return null;
     }
@@ -207,9 +201,8 @@ export async function attachStream(
           try {
             const parsed = JSON.parse(dataLines.join("\n")) as AttachedMessage;
             onMessage(parsed);
-          } catch (err) {
-             
-            console.error("attachStream: malformed JSON", err);
+          } catch {
+            // swallow malformed JSON: console.error would corrupt ink's render
           }
         }
         currentEvent = "";

@@ -136,7 +136,6 @@ const { values, positionals } = parseArgs({
     config: { type: "string", short: "c" },
     agent: { type: "string" },
     json: { type: "boolean" },
-    message: { type: "string" },
     lines: { type: "string" },
     level: { type: "string" },
     follow: { type: "boolean", short: "f" },
@@ -157,7 +156,7 @@ Usage:
   isotopes                           Run in foreground (default)
   isotopes init [--force]            Write a default ~/.isotopes/isotopes.yaml
 
-  isotopes tui [--agent id] [--message "text"] [--session key]
+  isotopes tui [--agent id] [--session key]
                                      Interactive TUI chat with an agent
 
   isotopes sessions list             List all sessions
@@ -185,7 +184,6 @@ Options:
   -v, --version    Show version
   -c, --config     Path to config file
   --agent          Agent ID for tui command
-  --message        Send an initial message in TUI mode
   --json           Output as JSON (sessions, cron commands)
   --lines          Number of log lines (default: 50)
   --level          Filter logs by level (debug/info/warn/error)
@@ -581,7 +579,7 @@ async function run(): Promise<void> {
 
     case "tui": {
       const { launchTui } = await import("./tui/index.js");
-      await launchTui({ agent: values.agent, config: values.config, message: values.message, session: values.session });
+      await launchTui({ agent: values.agent, session: values.session });
       break;
     }
 

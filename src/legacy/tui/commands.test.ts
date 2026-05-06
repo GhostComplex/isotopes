@@ -35,10 +35,8 @@ describe("dispatch", () => {
   const calls: string[] = [];
   const callbacks = {
     onNewChat: () => calls.push("new"),
-    onSwitchAgent: (id: string) => calls.push(`agent:${id}`),
     onExit: () => calls.push("exit"),
     onShowStatus: () => calls.push("status"),
-    onShowChat: () => calls.push("chat"),
     onHelp: () => calls.push("help"),
   };
 
@@ -47,15 +45,6 @@ describe("dispatch", () => {
   it("dispatches /new", () => {
     expect(dispatch("new", "", callbacks)).toBe(true);
     expect(calls).toEqual(["new"]);
-  });
-
-  it("dispatches /agent with args", () => {
-    expect(dispatch("agent", "mybot", callbacks)).toBe(true);
-    expect(calls).toEqual(["agent:mybot"]);
-  });
-
-  it("returns false for /agent without args", () => {
-    expect(dispatch("agent", "", callbacks)).toBe(false);
   });
 
   it("dispatches /exit and aliases", () => {

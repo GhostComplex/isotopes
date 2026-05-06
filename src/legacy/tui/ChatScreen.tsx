@@ -110,7 +110,6 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
   const attachAbortRef = useRef<AbortController | null>(null);
   const pendingSteerRef = useRef<ChatMessage[]>([]);
   const settledRef = useRef<ChatMessage[]>([]);
-  const autoMessageSent = useRef(false);
 
   const initAgent = useCallback(async (requestedAgent?: string) => {
     setAgentReady(false);
@@ -158,7 +157,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         return;
       }
 
-      const session = await api.createSession(resolvedAgentId, "tui:main");
+      const session = await api.createSession(resolvedAgentId, "tui");
       sessionKeyRef.current = session.key;
       setAgentId(session.agentId);
 
@@ -187,13 +186,6 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
       attachAbortRef.current?.abort();
     };
   }, []);
-
-  useEffect(() => {
-    if (agentReady && options.message && !autoMessageSent.current) {
-      autoMessageSent.current = true;
-      void sendMessage(options.message);
-    }
-  }, [agentReady]);
 
   const sendMessage = async (text: string) => {
     if (!sessionKeyRef.current || isStreaming) return;
@@ -323,7 +315,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
               if (sessionKeyRef.current) {
                 await api.deleteSession(agentId, sessionKeyRef.current).catch(() => {});
               }
-              const session = await api.createSession(agentId, "tui:main");
+              const session = await api.createSession(agentId, "tui");
               sessionKeyRef.current = session.key;
               setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
             } catch (err) {
@@ -333,10 +325,8 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
             }
           })();
         },
-        onSwitchAgent: (id) => void initAgent(id),
         onExit: () => exit(),
         onShowStatus: () => onSwitchScreen("status"),
-        onShowChat: () => {},
         onHelp: () => setMessages((prev) => [...prev, { role: "system", content: HELP_TEXT, timestamp: new Date() }]),
       });
       if (!handled) {

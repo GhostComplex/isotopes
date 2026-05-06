@@ -5,14 +5,10 @@ import type { TuiOptions } from "./types.js";
 
 export async function launchTui(values: {
   agent?: string;
-  config?: string;
-  message?: string;
   session?: string;
 }): Promise<void> {
   const options: TuiOptions = {
     agent: values.agent,
-    config: values.config,
-    message: values.message,
     session: values.session,
   };
 
