@@ -27,11 +27,7 @@ export interface PiSessionDeps {
   extensionPaths?: string[];
 }
 
-/** ResourceLoader cache: one per agentId. reload() re-imports every extension
- * file via jiti, so we share the loader across all sessions for the same
- * agent instead of rebuilding per-session. cwd-local resource discovery
- * (skills, prompts) is anchored to the agent's default workspace; sessions
- * with overridden cwd still see the same extensions. */
+/** Per-agent loader cache; reload() jiti-imports every extension file. */
 const loaderCache = new Map<string, Promise<DefaultResourceLoader>>();
 
 async function getResourceLoader(
