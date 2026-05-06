@@ -111,9 +111,7 @@ export async function createPiSession(
     );
   }
 
-  // Build pi tool allowlist from isotopes customTools + extension tools, then
-  // apply the agent's allow/deny policy. Without this, extension tools bypass
-  // tools.allow/deny since they're registered via ResourceLoader, not customTools.
+  // Extension tools bypass tools.allow/deny unless we pass pi an allowlist.
   let toolAllowlist: string[] | undefined;
   const policy = agent.config.toolSettings;
   if (policy?.allow || policy?.deny) {
