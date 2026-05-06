@@ -8,10 +8,6 @@ interface Props {
   options: TuiOptions;
 }
 
-function modeFor(sessionKey: string): "owned" | "attach" {
-  return sessionKey === "tui" || sessionKey.startsWith("tui:") ? "owned" : "attach";
-}
-
 export function App({ options }: Props) {
   const launchAgentId = options.agent ?? "main";
   const [screen, setScreen] = useState<Screen>("chat");
@@ -42,7 +38,7 @@ export function App({ options }: Props) {
       key={`${agentId}:${sessionKey}`}
       agentId={agentId}
       sessionKey={sessionKey}
-      mode={modeFor(sessionKey)}
+      mode={sessionKey === "tui" ? "owned" : "attach"}
       onSwitchScreen={setScreen}
     />
   );
