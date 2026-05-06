@@ -27,24 +27,24 @@ function curlResponse(status: number, contentType: string, body: string): string
 
 describe("createWebFetchTool", () => {
   it("returns tool with correct schema", () => {
-    const tool = createWebFetchTool({ executor: mockExecutor("") });
+    const tool = createWebFetchTool(mockExecutor(""));
     expect(tool.name).toBe("web_fetch");
     expect(tool.parameters).toBeDefined();
   });
 
   it("rejects empty URL", async () => {
-    const result = await callTool(createWebFetchTool({ executor: mockExecutor("") }), { url: "" });
+    const result = await callTool(createWebFetchTool(mockExecutor("")), { url: "" });
     expect(result).toContain("[error] URL cannot be empty");
   });
 
   it("rejects invalid URL", async () => {
-    const result = await callTool(createWebFetchTool({ executor: mockExecutor("") }), { url: "not-a-url" });
+    const result = await callTool(createWebFetchTool(mockExecutor("")), { url: "not-a-url" });
     expect(result).toContain("[error] Invalid URL");
   });
 
   it("converts HTML to markdown preserving structure", async () => {
     const html = `<html><body><h1>Title</h1><p>Paragraph with <a href="https://example.com">link</a>.</p><ul><li>item one</li><li>item two</li></ul></body></html>`;
-    const tool = createWebFetchTool({ executor: mockExecutor(curlResponse(200, "text/html", html)) });
+    const tool = createWebFetchTool(mockExecutor(curlResponse(200, "text/html", html)));
 
     const result = await callTool(tool, { url: "https://example.com" });
     expect(result).toContain("# Title");
@@ -54,9 +54,7 @@ describe("createWebFetchTool", () => {
   });
 
   it("returns non-HTML content as-is", async () => {
-    const tool = createWebFetchTool({
-      executor: mockExecutor(curlResponse(200, "application/json", '{"key":"value"}')),
-    });
+    const tool = createWebFetchTool(mockExecutor(curlResponse(200, "application/json", '{"key":"value"}')));
     const result = await callTool(tool, { url: "https://api.example.com/data" });
     expect(result).toContain('{"key":"value"}');
   });
@@ -69,7 +67,7 @@ describe("createWebFetchTool", () => {
     }));
     const executor: Executor = { execute: exec, buildExecArgv: async (a) => a };
 
-    await callTool(createWebFetchTool({ executor }), { url: "http://example.com" });
+    await callTool(createWebFetchTool(executor), { url: "http://example.com" });
     const argv = exec.mock.calls[0][0] as string[];
     expect(argv[argv.length - 1]).toBe("https://example.com/");
   });
@@ -82,7 +80,7 @@ describe("createWebFetchTool", () => {
     }));
     const executor: Executor = { execute: exec, buildExecArgv: async (a) => a };
 
-    await callTool(createWebFetchTool({ executor }), { url: "http://localhost:8080/page" });
+    await callTool(createWebFetchTool(executor), { url: "http://localhost:8080/page" });
     const argv = exec.mock.calls[0][0] as string[];
     expect(argv[argv.length - 1]).toBe("http://localhost:8080/page");
   });
@@ -95,7 +93,7 @@ describe("createWebFetchTool", () => {
     }));
     const executor: Executor = { execute: exec, buildExecArgv: async (a) => a };
 
-    await callTool(createWebFetchTool({ executor }), { url: "https://example.com" });
+    await callTool(createWebFetchTool(executor), { url: "https://example.com" });
     const argv = exec.mock.calls[0][0] as string[];
     expect(argv).toContain("curl");
     const uaIdx = argv.indexOf("-A");
@@ -104,18 +102,14 @@ describe("createWebFetchTool", () => {
   });
 
   it("returns error for HTTP 4xx/5xx", async () => {
-    const tool = createWebFetchTool({
-      executor: mockExecutor(curlResponse(404, "text/html", "")),
-    });
+    const tool = createWebFetchTool(mockExecutor(curlResponse(404, "text/html", "")));
     const result = await callTool(tool, { url: "https://example.com/missing" });
     expect(result).toContain("[error] Failed to fetch");
     expect(result).toContain("404");
   });
 
   it("returns error when curl exits non-zero", async () => {
-    const tool = createWebFetchTool({
-      executor: mockExecutor("", { exitCode: 6, stderr: "Could not resolve host" }),
-    });
+    const tool = createWebFetchTool(mockExecutor("", { exitCode: 6, stderr: "Could not resolve host" }));
     const result = await callTool(tool, { url: "https://nonexistent.invalid" });
     expect(result).toContain("[error] Failed to fetch");
     expect(result).toContain("Could not resolve host");
@@ -123,9 +117,7 @@ describe("createWebFetchTool", () => {
 
   it("truncates content over 50KB", async () => {
     const huge = "x".repeat(60000);
-    const tool = createWebFetchTool({
-      executor: mockExecutor(curlResponse(200, "text/html", `<pre>${huge}</pre>`)),
-    });
+    const tool = createWebFetchTool(mockExecutor(curlResponse(200, "text/html", `<pre>${huge}</pre>`)));
     const result = await callTool(tool, { url: "https://example.com" });
     expect(result).toContain("[truncated]");
     expect(result.length).toBeLessThan(60000);

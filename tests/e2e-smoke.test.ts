@@ -90,13 +90,13 @@ describe("exec tool", () => {
 
 describe("web_fetch tool", () => {
   it("fetches a URL and returns content", async () => {
-    const tool = createWebFetchTool({ executor: new HostExecutor() });
+    const tool = createWebFetchTool(new HostExecutor());
     const result = await callTool(tool, { url: "https://httpbin.org/get" });
     expect(result).toContain("httpbin.org");
   }, 30_000);
 
   it("returns error for invalid URL", async () => {
-    const tool = createWebFetchTool({ executor: new HostExecutor() });
+    const tool = createWebFetchTool(new HostExecutor());
     const result = await callTool(tool, { url: "not-a-url" });
     expect(result).toContain("[error]");
   });

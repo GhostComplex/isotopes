@@ -84,12 +84,7 @@ const webFetchSchema = Type.Object({
   url: Type.String({ description: "The URL to fetch" }),
 });
 
-export interface WebFetchToolOptions {
-  executor: Executor;
-}
-
-export function createWebFetchTool(options: WebFetchToolOptions): AgentTool<typeof webFetchSchema> {
-  const { executor } = options;
+export function createWebFetchTool(executor: Executor): AgentTool<typeof webFetchSchema> {
   return {
     name: "web_fetch",
     label: "web_fetch",

@@ -63,7 +63,7 @@ describe("createAgentTools", () => {
 
 describe("applyToolPolicy", () => {
   const noopExecutor = { execute: async () => ({ exitCode: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }), buildExecArgv: async (a: string[]) => a };
-  const tools = [createTimeTool(), createWebFetchTool({ executor: noopExecutor })];
+  const tools = [createTimeTool(), createWebFetchTool(noopExecutor)];
 
   it("returns all tools when policy is undefined", () => {
     expect(applyToolPolicy(tools)).toHaveLength(2);

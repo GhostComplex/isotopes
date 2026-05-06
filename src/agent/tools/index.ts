@@ -336,7 +336,7 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
       ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
     }));
   }
-  tools.push(createWebFetchTool({ executor }));
+  tools.push(createWebFetchTool(executor));
   if (opts.transportContext) {
     tools.push(...createReactTools(opts.transportContext));
   }
