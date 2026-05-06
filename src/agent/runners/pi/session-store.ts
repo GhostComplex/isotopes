@@ -13,7 +13,6 @@ import type {
 } from "../../../sessions/types.js";
 import {
   ensureAgentSessionsDir,
-  getAgentSessionsDir,
   normalizeAgentId,
 } from "../../../paths.js";
 import { createLogger } from "../../../logging/logger.js";
@@ -311,9 +310,5 @@ export class SessionStoreManager {
     }
     this.stores.clear();
     this.inits.clear();
-  }
-
-  static dirFor(agentId: string): string {
-    return getAgentSessionsDir(agentId);
   }
 }
