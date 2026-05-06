@@ -101,7 +101,6 @@ export class ProcessRegistry {
     return true;
   }
 
-  /** Clear all processes (for testing). */
   clear(): void {
     for (const info of this.processes.values()) {
       if (info.status === "running") {
@@ -120,7 +119,6 @@ export class ProcessRegistry {
     return count;
   }
 
-  /** Manually remove all completed processes. */
   cleanup(): number {
     const toRemove: string[] = [];
     for (const [id, info] of this.processes.entries()) {
@@ -148,11 +146,10 @@ export class ProcessRegistry {
 }
 
 export interface ExecToolOptions {
-  /** Working directory for the command (host or container). */
+  /** Working directory (host or container). */
   cwd?: string;
-  /** Per-agent executor — host or sandbox-bound. Required. */
+  /** Per-agent executor. Required. */
   executor: Executor;
-  /** ProcessRegistry instance for background process tracking. */
   registry?: ProcessRegistry;
 }
 

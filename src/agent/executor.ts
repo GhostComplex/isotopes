@@ -7,11 +7,10 @@ export interface ExecResult {
 }
 
 export interface ExecOptions {
-  /** Working directory for the command. Sandbox honors at container-create time, not per-call. */
+  /** Working directory. Sandbox honors at container-create time, not per-call. */
   workspacePath?: string;
-  /** Hard deadline in milliseconds; rejects if exceeded. */
+  /** Hard deadline in ms; rejects on expiry. */
   timeout?: number;
-  /** Bytes piped to stdin. */
   stdin?: Buffer | string;
 }
 
@@ -21,7 +20,6 @@ export interface ExecOptions {
  * Tools take an Executor and don't know which backend they got.
  */
 export interface Executor {
-  /** Run argv synchronously; returns once the process exits. */
   execute(argv: string[], opts?: ExecOptions): Promise<ExecResult>;
 
   /**
