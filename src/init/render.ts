@@ -24,7 +24,7 @@ function renderProvider(answers: InitAnswers): string {
 
 function renderAgents(answers: InitAnswers): string {
   const lines = [`agents:`, `  - id: main`];
-  if (answers.claude === "enabled") {
+  if (answers.claude === "claude") {
     lines.push(`  - id: coding`, `    runner: claude`);
   }
   return lines.join("\n") + "\n";

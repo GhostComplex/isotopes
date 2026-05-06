@@ -93,7 +93,7 @@ describe("renderConfig", () => {
   });
 
   it("adds a coding agent when claude is enabled", () => {
-    const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "enabled" });
+    const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "claude" });
     expect(yaml).toMatch(/- id: coding\n {4}runner: claude/);
   });
 

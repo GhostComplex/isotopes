@@ -14,7 +14,7 @@ import TextInput from "ink-text-input";
 
 export type LlmChoice = "ghc-proxy" | "skip";
 export type ChannelChoice = "discord" | "skip";
-export type ClaudeChoice = "enabled" | "skip";
+export type ClaudeChoice = "claude" | "skip";
 
 export interface GhcProxyAnswers {
   baseUrl: string;
@@ -84,7 +84,7 @@ function InitWizard({ onDone }: Props) {
   const [groupPolicy, setGroupPolicy] = useState<GroupPolicyChoice>("allowlist");
   const [groupAllowlistInput, setGroupAllowlistInput] = useState("");
 
-  const [claude, setClaude] = useState<ClaudeChoice>("enabled");
+  const [claude, setClaude] = useState<ClaudeChoice>("claude");
 
   useInput((_input, key) => {
     if (key.ctrl && _input === "c") {
@@ -325,10 +325,10 @@ function InitWizard({ onDone }: Props) {
 
       {step.kind === "claude" && (
         <Box flexDirection="column">
-          <Text>3) Claude CLI runner (allows agents to spawn `claude` subprocesses):</Text>
+          <Text>3) Enable A2A coding:</Text>
           <SelectInput
             items={[
-              { label: "enabled (default)", value: "enabled" as const },
+              { label: "claude (default)", value: "claude" as const },
               { label: "skip", value: "skip" as const },
             ]}
             onSelect={(item: { value: ClaudeChoice }) => {
