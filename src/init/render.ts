@@ -6,9 +6,9 @@ const HEADER = `# ~/.isotopes/isotopes.yaml
 `;
 
 const PROVIDER_SKIP = `# provider:
-#   type: anthropic
-#   defaultModel: claude-opus-4.6
-#   apiKey: \${ANTHROPIC_API_KEY}
+#   type: github-copilot
+#   defaultModel: claude-opus-4.7
+#   apiKey: \${GITHUB_TOKEN}
 `;
 
 function renderProvider(answers: InitAnswers): string {

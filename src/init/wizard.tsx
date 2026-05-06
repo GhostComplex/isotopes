@@ -45,7 +45,7 @@ export interface InitAnswers {
 // Defaults
 // ---------------------------------------------------------------------------
 
-const DEFAULT_GHC_MODEL = "claude-opus-4.6";
+const DEFAULT_GHC_MODEL = "claude-opus-4.7";
 
 // ---------------------------------------------------------------------------
 // Wizard
