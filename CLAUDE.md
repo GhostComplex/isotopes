@@ -40,6 +40,7 @@ pnpm test:integration
 - `sandbox/` — Docker container management for sandboxed tool execution.
 - `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/runners/pi/session-store.ts`.
 - `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
+- `daemon/` — PID-based daemon lifecycle (`process.ts`) with launchd/systemd/schtasks service integration (`service.ts`).
 - `logging/` — `createLogger("tag")` factory.
 - `legacy/` — Transitional area being decomposed PR-by-PR. New code should not land here.
 - Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema), `paths.ts` (`ISOTOPES_HOME` resolution), `silent-reply.ts` (silent-reply token detection), `test-helpers.ts` (shared test mocks).
@@ -65,7 +66,6 @@ pnpm test:integration
 ### `src/legacy/` (transitional)
 
 - `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground or as daemon. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
-- `daemon/` — PID-based daemon lifecycle (`process.ts`) with launchd/systemd service integration (`service.ts`).
 - `init/` — `isotopes init` setup wizard built with Ink.
 - `tui/` — Terminal UI for interactive chat mode.
 - `plugins/` — Plugin system (`hooks.ts`, `manager.ts`, `tool-registry.ts`, `ui-registry.ts`, `discovery.ts`, `api.ts`).
