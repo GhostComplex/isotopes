@@ -124,34 +124,21 @@ export interface CronJobConfigFile {
   enabled?: boolean;
 }
 
-/** Agent defaults — shared configuration inherited by all agents unless overridden */
-export interface AgentDefaultsConfigFile {
-  tools?: AgentToolsConfigFile;
-  sandbox?: SandboxConfigFile;
-}
-
-/** Raw config file structure — agents can be array or object form */
-export interface IsotopesConfigFileRaw {
+export interface IsotopesConfigFile {
   /** Default provider for all agents */
   provider?: ProviderConfigFile;
   /** Default tool policy/guards for all agents */
   tools?: AgentToolsConfigFile;
   /** Default sandbox config for all agents */
   sandbox?: SandboxConfigFile;
-  /** Agent definitions — array form or object with defaults + list */
-  agents: AgentConfigFile[] | { defaults?: AgentDefaultsConfigFile; list: AgentConfigFile[] };
+  /** Agent definitions */
+  agents: AgentConfigFile[];
   /** Channel configurations (Discord accounts, per-guild settings) */
   channels?: ChannelsConfig;
   /** Channel-level cron job definitions */
   cron?: CronJobConfigFile[];
   /** Plugin configurations */
   plugins?: Record<string, PluginConfigEntry>;
-}
-
-/** Normalized config — agents is always an array. */
-export interface IsotopesConfigFile extends Omit<IsotopesConfigFileRaw, "agents"> {
-  agents: AgentConfigFile[];
-  agentDefaults?: AgentDefaultsConfigFile;
 }
 
 export function resolveToolSettings(
@@ -168,8 +155,7 @@ export function resolveToolSettings(
 /**
  * Resolve sandbox config from config file types.
  *
- * Layered resolution: an agents-level config (from
- * `agents.defaults.sandbox` or top-level `sandbox`) provides image / docker /
+ * Layered resolution: top-level `sandbox` provides image / docker /
  * workspaceAccess. Per-agent `sandbox` is a partial override — typically just
  * `{ mode: "off" }` to opt a single agent out. Per-agent `sandbox.docker` is
  * rejected because the runtime maintains a single global ContainerManager.
@@ -235,83 +221,55 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
   const content = await fs.readFile(filePath, "utf-8");
   const ext = path.extname(filePath).toLowerCase();
 
-  let raw: IsotopesConfigFileRaw;
+  let raw: IsotopesConfigFile;
 
   if (ext === ".yaml" || ext === ".yml") {
-    raw = YAML.parse(content) as IsotopesConfigFileRaw;
+    raw = YAML.parse(content) as IsotopesConfigFile;
   } else if (ext === ".json") {
-    raw = JSON.parse(content) as IsotopesConfigFileRaw;
+    raw = JSON.parse(content) as IsotopesConfigFile;
   } else {
     // Try YAML first, then JSON
     try {
-      raw = YAML.parse(content) as IsotopesConfigFileRaw;
+      raw = YAML.parse(content) as IsotopesConfigFile;
     } catch {
-      raw = JSON.parse(content) as IsotopesConfigFileRaw;
+      raw = JSON.parse(content) as IsotopesConfigFile;
     }
   }
 
-  // Normalize agents: support both array form and object form { defaults, list }
-  let agentList: AgentConfigFile[];
-  let agentDefaults: AgentDefaultsConfigFile | undefined;
-
-  if (Array.isArray(raw.agents)) {
-    agentList = raw.agents;
-  } else if (
-    raw.agents &&
-    typeof raw.agents === "object" &&
-    "list" in raw.agents
-  ) {
-    if (!Array.isArray(raw.agents.list)) {
-      throw new Error("Config agents.list must be an array");
-    }
-    agentList = raw.agents.list;
-    agentDefaults = raw.agents.defaults;
-  } else {
-    throw new Error("Config must have an 'agents' array or an 'agents' object with a 'list' field");
+  if (!Array.isArray(raw.agents)) {
+    throw new Error("Config must have an 'agents' array");
   }
-
-  if (agentList.length === 0) {
+  if (raw.agents.length === 0) {
     throw new Error("Config must have at least one agent");
   }
 
-  // Build normalized config — agents is always an array from here on
-  let config: IsotopesConfigFile = {
-    ...raw,
-    agents: agentList,
-    agentDefaults,
-  };
-
   // Process environment variables
-  config = processEnvVars(config);
-
-  return config;
+  return processEnvVars(raw);
 }
 
 /**
  * Convert config file agent to AgentConfig.
- * Merge priority: agent > agentDefaults > global
+ * Merge priority: agent > global
  */
 export function toAgentConfig(
   agent: AgentConfigFile,
-  agentDefaults?: AgentDefaultsConfigFile,
   globalProvider?: ProviderConfigFile,
   globalTools?: AgentToolsConfigFile,
   globalSandbox?: SandboxConfigFile,
 ): AgentConfig {
-  // 3-tier merge: agent > defaults > global (shallow replace per block)
-  const tools = agent.tools ?? agentDefaults?.tools ?? globalTools;
+  // 2-tier merge: agent > global (shallow replace per block)
+  const tools = agent.tools ?? globalTools;
   const resolvedToolSettings = resolveToolSettings(tools);
-  // Sandbox: agents-level (defaults > global) is the base; per-agent overlays
-  // partial overrides (typically just `mode: "off"`). The merge happens inside
-  // resolveSandboxConfigFromFile so per-agent need not repeat docker config.
-  const baseSandbox = agentDefaults?.sandbox ?? globalSandbox;
+  // Sandbox: top-level provides docker / workspaceAccess; per-agent overlays
+  // partial overrides (typically just `enabled: false`). The merge happens
+  // inside resolveSandboxConfigFromFile so per-agent need not repeat docker config.
 
   // Model: per-agent override > global defaultModel
   const model = agent.model ?? globalProvider?.defaultModel;
 
   const sandbox =
-    agent.sandbox || baseSandbox
-      ? resolveSandboxConfigFromFile(agent.id, agent.sandbox, baseSandbox)
+    agent.sandbox || globalSandbox
+      ? resolveSandboxConfigFromFile(agent.id, agent.sandbox, globalSandbox)
       : undefined;
 
   return {

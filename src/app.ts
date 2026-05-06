@@ -61,7 +61,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const processRegistries = new Map<string, ProcessRegistry>();
   const toolRegistries = new Map<string, AgentTool[]>();
 
-  const baseSandboxFile = config.agentDefaults?.sandbox ?? config.sandbox;
+  const baseSandboxFile = config.sandbox;
   const sandboxBaseConfig = baseSandboxFile
     ? resolveSandboxConfigFromFile("<agents-defaults>", undefined, baseSandboxFile)
     : undefined;
@@ -77,7 +77,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     const sessionStore = await sessionStoreManager.getOrCreate(agentFile.id);
     const result = await agentRuntime.register({
       agentFile,
-      agentDefaults: config.agentDefaults,
       provider: config.provider,
       globalTools: config.tools,
       sandbox: config.sandbox,

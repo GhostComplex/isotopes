@@ -17,20 +17,6 @@ provider:
 
 # =============================================================================
 # AGENTS — at least one is required
-#
-# Two equivalent forms:
-#   1) array form (shown below)
-#   2) object form with shared defaults:
-#        agents:
-#          defaults:
-#            tools:
-#              deny: ["shell"]
-#            sandbox:
-#              enabled: true
-#          list:
-#            - id: main
-#            - id: helper
-#              model: claude-sonnet-4.6
 # =============================================================================
 agents:
   - id: main
