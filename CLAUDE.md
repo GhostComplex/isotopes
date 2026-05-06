@@ -37,7 +37,7 @@ pnpm test:integration
 
 - `agent/` — Agent runtime, runners, tools, workspace loading. The new home for everything that defines what an agent *is* and how it runs.
 - `gateway/` — Transport-agnostic message-pipeline utilities (dedupe, debounce, mention, channel-history, session-keys, slash-command parsing) plus the `Transport` interface.
-- `sandbox/` — Docker container management for sandboxed tool execution.
+- `sandbox/` — Sandbox config types + resolver. Docker container/exec primitives + per-agent host/sandbox executor and fs adapters live in `agent/middleware/`.
 - `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/runners/pi/session-store.ts`.
 - `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
