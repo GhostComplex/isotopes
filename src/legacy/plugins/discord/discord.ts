@@ -235,7 +235,7 @@ export class DiscordTransport implements Transport {
   }
 
   async start(): Promise<void> {
-    this.client.on("ready", () => {
+    this.client.on("clientReady", () => {
       log.info(`Logged in as ${this.client.user?.tag}`);
       this.ready = true;
     });
