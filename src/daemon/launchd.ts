@@ -10,7 +10,6 @@ import { createLogger } from "../logging/logger.js";
 const execAsync = promisify(exec);
 const log = createLogger("daemon:launchd");
 
-/** Configuration for installing the daemon as a LaunchAgent. */
 export interface LaunchAgentConfig {
   /** Reverse-domain identifier, e.g. "ai.isotopes.daemon" */
   name: string;
@@ -22,7 +21,6 @@ export interface LaunchAgentConfig {
   logPath: string;
 }
 
-/** Status snapshot returned by {@link status}. */
 export type LaunchAgentStatus =
   | { state: "running"; pid: number }
   | { state: "loaded" }
@@ -73,24 +71,18 @@ function buildPlist(config: LaunchAgentConfig): string {
 `;
 }
 
-/**
- * Write the plist and hand it to launchd. Idempotent: if the agent is
- * already loaded, unload-then-load to pick up any plist changes.
- */
 export async function install(config: LaunchAgentConfig): Promise<void> {
   const target = plistPath(config.name);
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, buildPlist(config), "utf-8");
   log.info(`Wrote LaunchAgent plist to ${target}`);
 
-  // Best-effort unload (silent if not loaded) then load — makes install idempotent
-  // and ensures launchd picks up plist changes on re-install.
+  // unload-then-load so re-install picks up plist changes
   await execAsync(`launchctl unload -w ${target}`).catch(() => undefined);
   await execAsync(`launchctl load -w ${target}`);
   log.info(`Loaded LaunchAgent ${config.name}`);
 }
 
-/** Unload the agent (best-effort) and delete the plist file. */
 export async function uninstall(name: string): Promise<void> {
   const target = plistPath(name);
   await execAsync(`launchctl unload -w ${target}`).catch((err) => {
@@ -100,22 +92,12 @@ export async function uninstall(name: string): Promise<void> {
   log.info(`Removed LaunchAgent plist ${target}`);
 }
 
-/**
- * Send SIGTERM to the running daemon. With KeepAlive=true, launchd
- * immediately respawns it — net effect is a restart with a new PID.
- * Throws if the agent isn't loaded.
- */
+// SIGTERM the daemon; KeepAlive=true makes launchd respawn with a new PID.
 export async function restart(name: string): Promise<void> {
   await execAsync(`launchctl stop ${name}`);
   log.info(`Restarted LaunchAgent ${name}`);
 }
 
-/**
- * Query launchctl for the agent's current state.
- * - `running`: loaded and process is alive (pid > 0)
- * - `loaded`: loaded but no live process (transient — KeepAlive should respawn)
- * - `not-installed`: launchctl doesn't know about this label
- */
 export async function status(name: string): Promise<LaunchAgentStatus> {
   let stdout: string;
   try {
