@@ -41,6 +41,7 @@ pnpm test:integration
 - `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/runners/pi/session-store.ts`.
 - `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
+- `init/` — `isotopes init` setup wizard built with Ink.
 - `logging/` — `createLogger("tag")` factory.
 - `legacy/` — Transitional area being decomposed PR-by-PR. New code should not land here.
 - Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema), `paths.ts` (`ISOTOPES_HOME` resolution), `silent-reply.ts` (silent-reply token detection), `test-helpers.ts` (shared test mocks).
@@ -66,7 +67,6 @@ pnpm test:integration
 ### `src/legacy/` (transitional)
 
 - `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
-- `init/` — `isotopes init` setup wizard built with Ink.
 - `tui/` — Terminal UI for interactive chat mode.
 - `plugins/` — Plugin system (`hooks.ts`, `manager.ts`, `tool-registry.ts`, `ui-registry.ts`, `discovery.ts`, `api.ts`).
 - `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives.
