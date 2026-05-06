@@ -14,7 +14,7 @@ import TextInput from "ink-text-input";
 
 export type LlmChoice = "ghc-proxy" | "skip";
 export type ChannelChoice = "discord" | "skip";
-export type ClaudeChoice = "enabled" | "skip";
+export type CodingAgentChoice = "claude" | "skip";
 
 export interface GhcProxyAnswers {
   baseUrl: string;
@@ -38,14 +38,14 @@ export interface InitAnswers {
   ghcProxy?: GhcProxyAnswers;
   channel: ChannelChoice;
   discord?: DiscordAnswers;
-  claude: ClaudeChoice;
+  codingAgent: CodingAgentChoice;
 }
 
 // ---------------------------------------------------------------------------
 // Defaults
 // ---------------------------------------------------------------------------
 
-const DEFAULT_GHC_MODEL = "claude-opus-4.6";
+const DEFAULT_GHC_MODEL = "claude-opus-4.7";
 
 // ---------------------------------------------------------------------------
 // Wizard
@@ -84,7 +84,7 @@ function InitWizard({ onDone }: Props) {
   const [groupPolicy, setGroupPolicy] = useState<GroupPolicyChoice>("allowlist");
   const [groupAllowlistInput, setGroupAllowlistInput] = useState("");
 
-  const [claude, setClaude] = useState<ClaudeChoice>("enabled");
+  const [codingAgent, setCodingAgent] = useState<CodingAgentChoice>("claude");
 
   useInput((_input, key) => {
     if (key.ctrl && _input === "c") {
@@ -97,7 +97,7 @@ function InitWizard({ onDone }: Props) {
     const answers: InitAnswers = {
       llm,
       channel,
-      claude,
+      codingAgent,
       ...(llm === "ghc-proxy"
         ? { ghcProxy: { baseUrl: ghcBaseUrl, apiKey: ghcApiKey, model: ghcModel } }
         : {}),
@@ -325,15 +325,15 @@ function InitWizard({ onDone }: Props) {
 
       {step.kind === "claude" && (
         <Box flexDirection="column">
-          <Text>3) Claude CLI runner (allows agents to spawn `claude` subprocesses):</Text>
+          <Text>3) Enable A2A coding:</Text>
           <SelectInput
             items={[
-              { label: "enabled (default)", value: "enabled" as const },
+              { label: "claude (default)", value: "claude" as const },
               { label: "skip", value: "skip" as const },
             ]}
-            onSelect={(item: { value: ClaudeChoice }) => {
-              setClaude(item.value);
-              finish({ claude: item.value });
+            onSelect={(item: { value: CodingAgentChoice }) => {
+              setCodingAgent(item.value);
+              finish({ codingAgent: item.value });
             }}
           />
         </Box>

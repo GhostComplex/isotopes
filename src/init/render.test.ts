@@ -3,24 +3,25 @@ import { renderConfig } from "./render.js";
 
 describe("renderConfig", () => {
   it("emits a commented-out provider when llm is skipped", () => {
-    const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "enabled" });
+    const yaml = renderConfig({ llm: "skip", channel: "skip", codingAgent: "skip" });
     expect(yaml).toMatch(/^# provider:/m);
     expect(yaml).toContain("agents:");
     expect(yaml).toContain("- id: main");
     expect(yaml).not.toContain("channels:");
   });
 
-  it("emits a ghc-proxy provider with literal apiKey", () => {
+  it("emits a ghc-proxy provider with literal apiKey + defaultModel", () => {
     const yaml = renderConfig({
       llm: "ghc-proxy",
       ghcProxy: { baseUrl: "https://api.example.com", apiKey: "sk-test", model: "claude-opus-4.7" },
       channel: "skip",
-      claude: "enabled",
+      codingAgent: "skip",
     });
-    expect(yaml).toContain("type: anthropic-proxy");
+    expect(yaml).toContain("type: github-copilot");
     expect(yaml).toContain("baseUrl: https://api.example.com");
     expect(yaml).toContain("apiKey: sk-test");
-    expect(yaml).toContain("model: claude-opus-4.7");
+    expect(yaml).toContain("defaultModel: claude-opus-4.7");
+    expect(yaml).not.toContain("anthropic-proxy");
   });
 
   it("emits discord with dm disabled and group allowlist by default", () => {
@@ -28,7 +29,7 @@ describe("renderConfig", () => {
       llm: "skip",
       channel: "discord",
       discord: { token: "bot-token-abc", dmPolicy: "disabled", groupPolicy: "allowlist" },
-      claude: "enabled",
+      codingAgent: "skip",
     });
     expect(yaml).toContain("channels:");
     expect(yaml).toContain("token: bot-token-abc");
@@ -42,7 +43,7 @@ describe("renderConfig", () => {
       llm: "skip",
       channel: "discord",
       discord: { token: "tok", dmPolicy: "allowlist", dmUserId: "111222333", groupPolicy: "open" },
-      claude: "enabled",
+      codingAgent: "skip",
     });
     expect(yaml).toContain('- "111222333"');
     expect(yaml).toMatch(/dmAccess:\s+policy: allowlist/);
@@ -58,7 +59,7 @@ describe("renderConfig", () => {
         groupPolicy: "allowlist",
         groupAllowlist: ["111222333", "444555666/777888999"],
       },
-      claude: "enabled",
+      codingAgent: "skip",
     });
     expect(yaml).toMatch(/groupAccess:\s+policy: allowlist/);
     expect(yaml).toContain('- "111222333"');
@@ -73,7 +74,7 @@ describe("renderConfig", () => {
       llm: "skip",
       channel: "discord",
       discord: { token: "tok", dmPolicy: "disabled", groupPolicy: "open" },
-      claude: "enabled",
+      codingAgent: "skip",
     });
     expect(yaml).toMatch(/groupAccess:\s+policy: open/);
     expect(yaml).not.toContain("guildAllowlist:");
@@ -85,22 +86,30 @@ describe("renderConfig", () => {
       ghcProxy: { baseUrl: "https://api.example.com", apiKey: "sk-test", model: "claude-opus-4.7" },
       channel: "discord",
       discord: { token: "bot-token-abc", dmPolicy: "disabled", groupPolicy: "allowlist" },
-      claude: "enabled",
+      codingAgent: "skip",
     });
-    expect(yaml).toContain("type: anthropic-proxy");
+    expect(yaml).toContain("type: github-copilot");
     expect(yaml).toContain("token: bot-token-abc");
   });
 
-  it("emits subagent and coding entries by default; coding has runner: claude", () => {
-    const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "enabled" });
-    expect(yaml).toMatch(/- id: subagent/);
-    expect(yaml).toMatch(/- id: coding\n {4}runner: claude/);
-    expect(yaml).not.toContain("enabled: false");
+  it("adds a coding agent (spawnable, claude runner) when claude is enabled", () => {
+    const yaml = renderConfig({ llm: "skip", channel: "skip", codingAgent: "claude" });
+    expect(yaml).toMatch(/- id: coding\n {4}runner: claude\n {4}spawnable: true/);
   });
 
-  it("disables coding when user opts out; subagent stays; runner stays", () => {
-    const yaml = renderConfig({ llm: "skip", channel: "skip", claude: "skip" });
-    expect(yaml).toMatch(/- id: subagent/);
-    expect(yaml).toMatch(/- id: coding\n {4}runner: claude\n {4}enabled: false/);
+  it("omits the coding agent when claude is skipped", () => {
+    const yaml = renderConfig({ llm: "skip", channel: "skip", codingAgent: "skip" });
+    expect(yaml).not.toContain("- id: coding");
+    expect(yaml).not.toContain("runner: claude");
+  });
+
+  it("does not emit the redundant `tools: {}` block", () => {
+    const yaml = renderConfig({ llm: "skip", channel: "skip", codingAgent: "skip" });
+    expect(yaml).not.toMatch(/^tools:/m);
+  });
+
+  it("does not hard-code a `subagent` agent (user adds when needed)", () => {
+    const yaml = renderConfig({ llm: "skip", channel: "skip", codingAgent: "skip" });
+    expect(yaml).not.toContain("- id: subagent");
   });
 });

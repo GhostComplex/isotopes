@@ -549,8 +549,8 @@ async function handleInitCommand(): Promise<void> {
     process.exit(1);
   }
 
-  const { runInitWizard } = await import("./init/wizard.js");
-  const { renderConfig } = await import("./init/render.js");
+  const { runInitWizard } = await import("../init/wizard.js");
+  const { renderConfig } = await import("../init/render.js");
   const answers = await runInitWizard();
   const yaml = renderConfig(answers);
 

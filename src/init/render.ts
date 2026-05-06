@@ -1,6 +1,3 @@
-// src/init/render.ts — Render InitAnswers into a yaml config string.
-// Pure function so it's trivially testable without spinning up ink.
-
 import type { InitAnswers } from "./wizard.js";
 
 const HEADER = `# ~/.isotopes/isotopes.yaml
@@ -9,31 +6,26 @@ const HEADER = `# ~/.isotopes/isotopes.yaml
 `;
 
 const PROVIDER_SKIP = `# provider:
-#   type: anthropic
-#   model: claude-opus-4.6
-#   apiKey: \${ANTHROPIC_API_KEY}
+#   type: github-copilot
+#   defaultModel: claude-opus-4.7
+#   apiKey: \${GITHUB_TOKEN}
 `;
 
 function renderProvider(answers: InitAnswers): string {
   if (answers.llm !== "ghc-proxy" || !answers.ghcProxy) return PROVIDER_SKIP;
   const { baseUrl, apiKey, model } = answers.ghcProxy;
   return `provider:
-  type: anthropic-proxy
+  type: github-copilot
   baseUrl: ${baseUrl}
   apiKey: ${apiKey}
-  model: ${model}
+  defaultModel: ${model}
 `;
 }
 
-const TOOLS = `tools: {}
-`;
-
 function renderAgents(answers: InitAnswers): string {
-  const lines = [`agents:`, `  - id: main`, `  - id: subagent`];
-  if (answers.claude === "enabled") {
-    lines.push(`  - id: coding`, `    runner: claude`);
-  } else {
-    lines.push(`  - id: coding`, `    runner: claude`, `    enabled: false`);
+  const lines = [`agents:`, `  - id: main`];
+  if (answers.codingAgent === "claude") {
+    lines.push(`  - id: coding`, `    runner: claude`, `    spawnable: true`);
   }
   return lines.join("\n") + "\n";
 }
@@ -92,7 +84,7 @@ ${dmBlock}${groupBlock}        threadBindings:
 }
 
 export function renderConfig(answers: InitAnswers): string {
-  return [HEADER, renderProvider(answers), TOOLS, renderAgents(answers), renderChannels(answers)]
+  return [HEADER, renderProvider(answers), renderAgents(answers), renderChannels(answers)]
     .filter((s) => s.length > 0)
     .join("\n");
 }
