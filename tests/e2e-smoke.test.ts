@@ -12,7 +12,7 @@ import {
   createAgentTools,
   applyToolPolicy,
 } from "../src/agent/tools/index.js";
-import { createExecTools, ProcessRegistry } from "../src/agent/tools/exec.js";
+import { createExecTools } from "../src/agent/tools/exec.js";
 import { createWebFetchTool } from "../src/agent/tools/web.js";
 import { HostExecutor } from "../src/agent/host-executor.js";
 
@@ -52,7 +52,7 @@ describe("workspace context", () => {
 
 describe("read tool (SDK)", () => {
   it("reads a file from the workspace", async () => {
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
     const result = await callTool(findTool(tools, "read"), { path: "hello.txt" });
     expect(result).toContain("Hello, world!");
   });
@@ -63,7 +63,7 @@ describe("edit tool (SDK)", () => {
     const editFile = path.join(tmpDir, "editable.txt");
     await fs.writeFile(editFile, "foo bar baz\n");
 
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
     await callTool(findTool(tools, "edit"), {
       path: editFile,
       edits: [{ oldText: "bar", newText: "qux" }],
@@ -117,7 +117,7 @@ describe("NO_REPLY suppression", () => {
 
 describe("tool policy deny", () => {
   it("removes denied tools", () => {
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
     const filtered = applyToolPolicy(tools, { deny: ["read"] });
     const names = filtered.map((t) => t.name);
     expect(names).not.toContain("read");
@@ -128,20 +128,17 @@ describe("tool policy deny", () => {
   it("exec tool denied via policy is not present", () => {
     const execTools = createExecTools({ cwd: tmpDir, executor: new HostExecutor() });
     const filtered = applyToolPolicy(execTools, { deny: ["exec"] });
-    const names = filtered.map((t) => t.name);
-    expect(names).not.toContain("exec");
-    expect(names).toContain("process_list");
-    expect(names).toContain("process_kill");
+    expect(filtered).toHaveLength(0);
   });
 
   it("allow list restricts to only specified tools", () => {
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
     const filtered = applyToolPolicy(tools, { allow: ["read", "edit"] });
     expect(filtered.map((t) => t.name).sort()).toEqual(["edit", "read"]);
   });
 
   it("deny takes precedence over allow", () => {
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", processRegistry: new ProcessRegistry() });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
     const filtered = applyToolPolicy(tools, {
       allow: ["read", "edit"],
       deny: ["edit"],
@@ -157,7 +154,7 @@ describe("full tool wiring", () => {
     const all = createAgentTools({
       workspacePath: tmpDir,
       agentId: "test",
-      processRegistry: new ProcessRegistry(),
+      
     });
     const names = new Set(all.map((t) => t.name));
 
@@ -168,8 +165,6 @@ describe("full tool wiring", () => {
     expect(names.has("exec")).toBe(true);
     expect(names.has("web_fetch")).toBe(true);
     expect(names.has("get_current_time")).toBe(true);
-    expect(names.has("process_list")).toBe(true);
-    expect(names.has("process_kill")).toBe(true);
 
     // Smoke: execute a couple of tools end-to-end
     const readResult = await callTool(findTool(all, "read"), { path: "SOUL.md" });

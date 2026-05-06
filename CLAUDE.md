@@ -71,7 +71,6 @@ pnpm test:integration
 - `plugins/` — Plugin system (`hooks.ts`, `manager.ts`, `tool-registry.ts`, `ui-registry.ts`, `discovery.ts`, `api.ts`).
 - `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives.
 - `plugins/http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status.
-- `tools/exec.ts` — Shell exec tool (`exec`, `process_list`, `process_kill`).
 - `version.ts` — Build version constant.
 
 ### Key patterns

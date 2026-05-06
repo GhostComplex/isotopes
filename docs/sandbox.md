@@ -126,23 +126,13 @@ docker exec -it isotopes-sandbox-<agent-id> claude
 Credentials must be mounted into the container (e.g. via `docker.binds`) —
 they are not forwarded from the host automatically.
 
-## Background processes
-
-`exec` with `background: true` works in sandbox mode: the host spawns a
-`docker exec -i <ctr> sh -c <cmd>` child and tracks the host-side
-`ChildProcess`. `process_kill` sends SIGTERM to that child, which docker
-forwards into the container (default `--sig-proxy=true`).
-
 ## Verifying
 
 After enabling and building the image:
 
 1. Trigger any agent → ask it to run `whoami` and `cat /etc/os-release`.
    You should see `agent` and `Debian`, not your host user / macOS.
-2. Run `exec` with `background: true sleep 30`, then `process_list` (status
-   running) and `docker exec <ctr> ps -ef` (sleep visible). Then
-   `process_kill` and confirm status moves to `exited`.
-3. Stop isotopes (Ctrl+C). `docker ps -a | grep isotopes-sandbox-` should
+2. Stop isotopes (Ctrl+C). `docker ps -a | grep isotopes-sandbox-` should
    be empty — `SandboxExecutor.cleanup()` runs in the SIGINT/SIGTERM
    handlers.
 

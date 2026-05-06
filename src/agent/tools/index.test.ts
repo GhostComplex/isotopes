@@ -5,7 +5,6 @@ import {
   applyToolPolicy,
 } from "./index.js";
 import { createWebFetchTool } from "./web.js";
-import { ProcessRegistry } from "./exec.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content.find((c) => c.type === "text");
@@ -41,7 +40,6 @@ describe("createAgentTools", () => {
   const baseOpts = () => ({
     workspacePath: "/tmp/ws",
     agentId: "test",
-    processRegistry: new ProcessRegistry(),
   });
 
   it("registers fs tools + time + exec by default", () => {

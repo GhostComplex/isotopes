@@ -36,7 +36,6 @@ import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
 import { createAgentTools } from "./tools/index.js";
 import { LazyTransportContext } from "../gateway/transport-context.js";
-import { ProcessRegistry } from "./tools/exec.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 
 const log = createLogger("agents:runtime");
@@ -82,7 +81,6 @@ export interface AddAgentResult {
   /** null when the runner has no workspace (e.g. claude). */
   workspacePath: string | null;
   tools: AgentTool[];
-  processRegistry: ProcessRegistry;
   transportContext?: LazyTransportContext;
 }
 
@@ -224,7 +222,7 @@ export class AgentRuntime {
     };
     this.registerRunner(agentConfig.id, new ClaudeRunner(), { spawnable: agentConfig.spawnable === true });
     log.info(`Added agent: ${agent.id} (runner: claude)`);
-    return { agent, workspacePath: null, processRegistry: new ProcessRegistry(), tools: [] };
+    return { agent, workspacePath: null, tools: [] };
   }
 
   private async registerPi(
@@ -250,13 +248,11 @@ export class AgentRuntime {
     await reconcileWorkspaceState(workspacePath);
     await ensureWorkspaceStructure(workspacePath);
 
-    const processRegistry = new ProcessRegistry();
     const tools: AgentTool[] = createAgentTools({
       workspacePath,
       settings: agentConfig.toolSettings,
       parentAgentId: agentConfig.id,
       agentId: agentConfig.id,
-      processRegistry,
       agentSandboxConfig: agentConfig.sandbox,
       transportContext,
       runtime: this,
@@ -284,7 +280,6 @@ export class AgentRuntime {
     return {
       agent,
       workspacePath,
-      processRegistry,
       tools,
       ...(transportContext ? { transportContext } : {}),
     };

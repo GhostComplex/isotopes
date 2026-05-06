@@ -14,7 +14,7 @@ import { type SandboxConfig } from "../../sandbox/config.js";
 import { createWebFetchTool } from "./web.js";
 import { createReactTools } from "./react.js";
 import type { LazyTransportContext } from "../../gateway/transport-context.js";
-import { createExecTools, ProcessRegistry } from "./exec.js";
+import { createExecTools } from "./exec.js";
 import { HostExecutor } from "../host-executor.js";
 import type { Executor } from "../executor.js";
 import type { AgentRuntime } from "../runtime.js";
@@ -275,7 +275,6 @@ export interface CreateAgentToolsOptions {
   /** Pre-computed list of registered agent ids the LLM can address. */
   spawnableAgentIds?: string[];
   transportContext?: LazyTransportContext;
-  processRegistry: ProcessRegistry;
   agentSandboxConfig?: SandboxConfig;
 }
 
@@ -327,7 +326,6 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
     ...createExecTools({
       cwd: opts.workspacePath,
       executor,
-      registry: opts.processRegistry,
     }),
   ];
   if (spawnAgentEnabled && opts.runtime && opts.parentAgentId) {
