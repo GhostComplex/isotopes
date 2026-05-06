@@ -115,6 +115,28 @@ export async function createPiSession(
     );
   }
 
+  // Build pi tool allowlist from isotopes customTools + extension tools, then
+  // apply the agent's allow/deny policy. Without this, extension tools bypass
+  // tools.allow/deny since they're registered via ResourceLoader, not customTools.
+  let toolAllowlist: string[] | undefined;
+  const policy = agent.config.toolSettings;
+  if (policy?.allow || policy?.deny) {
+    const extensionToolNames: string[] = [];
+    if (resourceLoader) {
+      for (const ext of resourceLoader.getExtensions().extensions) {
+        for (const name of ext.tools.keys()) extensionToolNames.push(name);
+      }
+    }
+    const allNames = [...customTools.map((t) => t.name), ...extensionToolNames];
+    const denySet = policy.deny ? new Set(policy.deny) : undefined;
+    const allowSet = policy.allow ? new Set(policy.allow) : undefined;
+    toolAllowlist = allNames.filter((n) => {
+      if (denySet?.has(n)) return false;
+      if (allowSet && !allowSet.has(n)) return false;
+      return true;
+    });
+  }
+
   const { session } = await createAgentSession({
     cwd: sessionCwd,
     agentDir,
@@ -126,6 +148,7 @@ export async function createPiSession(
     sessionManager,
     settingsManager,
     ...(resourceLoader ? { resourceLoader } : {}),
+    ...(toolAllowlist ? { tools: toolAllowlist } : {}),
   });
 
   const basePrompt = await buildAgentSystemPrompt(agent.config);
