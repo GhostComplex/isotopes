@@ -121,15 +121,7 @@ export function ChatScreen({ options, onSwitchScreen }: Props) {
         return;
       }
 
-      let resolvedAgentId = requestedAgent;
-      if (!resolvedAgentId) {
-        const sessions = await api.fetchSessions();
-        resolvedAgentId = sessions[0]?.agentId;
-        if (!resolvedAgentId) {
-          setError("No agents available");
-          return;
-        }
-      }
+      const resolvedAgentId = requestedAgent ?? "main";
 
       if (options.session) {
         sessionKeyRef.current = options.session;
