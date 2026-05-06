@@ -98,7 +98,6 @@ channels:
         #   "bot-user-id": main
         # adminUsers:                    # discord user ids allowed to run /slash commands
         #   - "user-id"
-        # replyToMode: reply             # how the bot addresses messages
 
         threadBindings:
           enabled: true
