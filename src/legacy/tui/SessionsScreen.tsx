@@ -15,18 +15,24 @@ export function SessionsScreen({ onSwitchScreen, onSelect }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void (async () => {
+    let cancelled = false;
+    const refresh = async () => {
       const isUp = await isDaemonRunning();
+      if (cancelled) return;
       setRunning(isUp);
       if (!isUp) return;
       try {
         const list = await fetchSessions();
+        if (cancelled) return;
         setSessions(list);
-        setCursor(0);
+        setCursor((c) => (list.length === 0 ? 0 : Math.min(c, list.length - 1)));
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
-    })();
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), 5000);
+    return () => { cancelled = true; clearInterval(timer); };
   }, []);
 
   useInput((_ch, key) => {
