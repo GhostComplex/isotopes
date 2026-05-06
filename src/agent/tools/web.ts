@@ -21,13 +21,11 @@ function upgradeToHttps(rawUrl: string): string {
 }
 
 /**
- * Split `curl -i` output into the *final* response headers + body.
- * After redirects, curl emits one header block per hop separated by a
- * blank line; the last block belongs to the final response.
+ * Split `curl -i` output into the final response headers + body. After
+ * redirects, curl emits one header block per hop separated by a blank line;
+ * the last block belongs to the final response.
  */
 function parseCurlIResponse(raw: string): { headers: string; body: string } {
-  // Each header block ends with an empty line: \r\n\r\n or \n\n.
-  // Split on the first blank line to peel one block at a time, keep the last.
   const normalized = raw.replace(/\r\n/g, "\n");
   const parts: string[] = [];
   let rest = normalized;
@@ -36,10 +34,8 @@ function parseCurlIResponse(raw: string): { headers: string; body: string } {
     if (idx === -1) break;
     const head = rest.slice(0, idx);
     rest = rest.slice(idx + 2);
-    // Header blocks start with HTTP/<version>; if the chunk doesn't, we've
-    // entered the body — push remainder back as body.
+    // Once we hit a chunk that's not a header block, body has started.
     if (!/^HTTP\/[0-9.]+\s/i.test(head)) {
-      // Reattach the chunk that didn't look like headers
       rest = head + "\n\n" + rest;
       break;
     }
