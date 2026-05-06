@@ -1,11 +1,9 @@
 import { spawn } from "node:child_process";
 import { createLogger } from "../logging/logger.js";
+import { EXEC_MAX_OUTPUT_BYTES } from "../agent/executor.js";
 import type { DockerConfig, Mount, WorkspaceAccess } from "./config.js";
 
 const log = createLogger("sandbox:container");
-
-/** Cap collected stdout/stderr per `exec()` call to prevent OOM from runaway commands. */
-const EXEC_MAX_OUTPUT_BYTES = 100 * 1024;
 
 export type ContainerStatus = "created" | "running" | "paused" | "exited";
 

@@ -1,7 +1,5 @@
 import { spawn } from "node:child_process";
-import type { Executor, ExecOptions, ExecResult } from "./executor.js";
-
-const EXEC_MAX_OUTPUT_BYTES = 100 * 1024;
+import { EXEC_MAX_OUTPUT_BYTES, type Executor, type ExecOptions, type ExecResult } from "./executor.js";
 
 /** Thin wrapper over child_process.spawn — host = trust model, no cwd jail / env scrub. */
 export class HostExecutor implements Executor {

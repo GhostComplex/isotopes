@@ -1,3 +1,6 @@
+/** Cap collected stdout/stderr per `execute()` call to prevent OOM from runaway commands. */
+export const EXEC_MAX_OUTPUT_BYTES = 100 * 1024;
+
 export interface ExecResult {
   exitCode: number;
   stdout: Buffer;
