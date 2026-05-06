@@ -60,6 +60,6 @@ underlying feature; channels without support silently ignore them.
   (by the user or by a tool result).
 
 Place the tag at the start of your response, before any other text.
-Whitespace inside the brackets is allowed. Tags are channel-agnostic — each
-transport (Discord, Telegram, Feishu, …) renders them in the platform's native
-reply / quote primitive where available.`;
+Whitespace inside the brackets is allowed. Tags are channel-agnostic — the
+transport (currently Discord) renders them in the platform's native reply
+primitive.`;
