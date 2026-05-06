@@ -17,7 +17,6 @@ import {
   normalizeAgentId,
 } from "../../../paths.js";
 import { createLogger } from "../../../logging/logger.js";
-import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
 
 const log = createLogger("session-store");
 
@@ -269,15 +268,9 @@ function toSession(s: StoredSession): Session {
 
 const mgrLog = createLogger("session-store-manager");
 
-export interface SessionStoreManagerOptions {
-  hooks?: HookRegistry;
-}
-
 export class SessionStoreManager {
   private stores = new Map<string, DefaultSessionStore>();
   private inits = new Map<string, Promise<DefaultSessionStore>>();
-
-  constructor(private readonly opts: SessionStoreManagerOptions = {}) {}
 
   /** Concurrent calls for the same agentId share one initialization. */
   async getOrCreate(agentId: string): Promise<DefaultSessionStore> {
@@ -296,9 +289,6 @@ export class SessionStoreManager {
       this.stores.set(key, store);
       this.inits.delete(key);
       mgrLog.debug(`Initialized session store for agent ${agentId} at ${dataDir}`);
-      if (this.opts.hooks) {
-        await this.opts.hooks.emit("session_start", { agentId, sessionId: key });
-      }
       return store;
     })();
 
@@ -316,10 +306,7 @@ export class SessionStoreManager {
   }
 
   destroyAll(): void {
-    for (const [key, store] of this.stores) {
-      if (this.opts.hooks) {
-        this.opts.hooks.emit("session_end", { agentId: key, sessionId: key }).catch(() => {});
-      }
+    for (const store of this.stores.values()) {
       store.destroy();
     }
     this.stores.clear();

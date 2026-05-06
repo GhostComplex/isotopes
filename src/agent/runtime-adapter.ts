@@ -2,9 +2,8 @@
 // directly for raw event streams.
 
 import type { AgentRuntime } from "./runtime.js";
-import { userMessage, assistantMessage, getAgentEndMeta } from "./runners/pi/messages.js";
+import { getAgentEndMeta } from "./runners/pi/messages.js";
 import type { Logger } from "../logging/logger.js";
-import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import { runWithRuntimeContext } from "./runtime-context.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
@@ -15,7 +14,6 @@ export interface RunAgentOptions {
   cwd?: string;
   extraSystemPrompt?: string;
   log: Logger;
-  hooks?: HookRegistry;
   /** Fires at every turn boundary; non-null return is steered into the next turn. */
   onTurnEnd?: () => Promise<string | null>;
   /** Fires for every event yielded by runtime.run. Use to render streaming UI in the driving caller. */
@@ -31,15 +29,7 @@ export async function runAgent(
   runtime: AgentRuntime,
   opts: RunAgentOptions,
 ): Promise<RunAgentResult> {
-  const { to, sessionId, content, cwd, extraSystemPrompt, log, hooks, onTurnEnd, onEvent } = opts;
-
-  if (hooks && content) {
-    await hooks.emit("message_received", {
-      agentId: to,
-      sessionId,
-      message: userMessage(content),
-    });
-  }
+  const { to, sessionId, content, cwd, extraSystemPrompt, log, onTurnEnd, onEvent } = opts;
 
   let responseText = "";
   let errorMessage: string | null = null;
@@ -89,17 +79,6 @@ export async function runAgent(
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
     log.error(`runtime.run threw: ${errorMessage}`);
-  }
-
-  if (hooks && responseText) {
-    await hooks.emit("message_sending", {
-      agentId: to,
-      sessionId,
-      message: assistantMessage(responseText),
-    });
-  }
-  if (hooks) {
-    await hooks.emit("agent_end", { agentId: to, stopReason: errorMessage ? "error" : "end" });
   }
 
   return { responseText, errorMessage };

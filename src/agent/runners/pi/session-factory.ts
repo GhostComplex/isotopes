@@ -1,17 +1,17 @@
 import { getModel, type Api, type Model } from "@mariozechner/pi-ai";
-import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
   type AuthStorage,
   type ModelRegistry,
   type ToolDefinition,
   createAgentSession,
+  DefaultResourceLoader,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import * as path from "node:path";
 
 import type { ProviderConfig, RegisteredAgent } from "../../types.js";
-import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../../workspace/context.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
@@ -24,7 +24,7 @@ export interface PiSessionDeps {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   getAgentTools: (agentId: string) => AgentTool[];
-  hooks?: HookRegistry;
+  extensionPaths?: string[];
 }
 
 function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<Api> {
@@ -47,9 +47,7 @@ function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<A
   };
 }
 
-/** AgentTool → SDK ToolDefinition shim. AgentTool's execute has no ctx; the
- * shim adds it (unused) and wraps execution in before/after hooks. */
-function toToolDefinition(t: AgentTool, hooks: HookRegistry | undefined, agentId: string): ToolDefinition {
+function toToolDefinition(t: AgentTool): ToolDefinition {
   return {
     name: t.name,
     label: t.label,
@@ -57,18 +55,8 @@ function toToolDefinition(t: AgentTool, hooks: HookRegistry | undefined, agentId
     parameters: t.parameters,
     ...(t.prepareArguments ? { prepareArguments: t.prepareArguments } : {}),
     ...(t.executionMode ? { executionMode: t.executionMode } : {}),
-    execute: async (toolCallId, params, signal, onUpdate, _ctx) => {
-      if (hooks) await hooks.emit("before_tool_call", { agentId, toolName: t.name, args: params });
-      const result = await t.execute(toolCallId, params, signal, onUpdate);
-      if (hooks) {
-        const text = result.content
-          .filter((c: AgentToolResult<unknown>["content"][number]): c is { type: "text"; text: string } => c.type === "text")
-          .map((c: { text: string }) => c.text)
-          .join("\n");
-        await hooks.emit("after_tool_call", { agentId, toolName: t.name, args: params, result: text });
-      }
-      return result;
-    },
+    execute: async (toolCallId, params, signal, onUpdate, _ctx) =>
+      t.execute(toolCallId, params, signal, onUpdate),
   };
 }
 
@@ -81,19 +69,33 @@ export async function createPiSession(
   const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
-  const customTools = deps.getAgentTools(agent.id).map((t) => toToolDefinition(t, deps.hooks, agent.id));
+  const customTools = deps.getAgentTools(agent.id).map(toToolDefinition);
+  const sessionCwd = cwd ?? resolveAgentWorkspacePath(agent.config);
+  const agentDir = path.join(ISOTOPES_HOME, "agents", agent.id, "agent");
+  const settingsManager = SettingsManager.inMemory();
+
+  let resourceLoader: DefaultResourceLoader | undefined;
+  if (deps.extensionPaths && deps.extensionPaths.length > 0) {
+    resourceLoader = new DefaultResourceLoader({
+      cwd: sessionCwd,
+      agentDir,
+      settingsManager,
+      additionalExtensionPaths: deps.extensionPaths,
+    });
+    await resourceLoader.reload();
+  }
 
   const { session } = await createAgentSession({
-    cwd: cwd ?? resolveAgentWorkspacePath(agent.config),
-    agentDir: path.join(ISOTOPES_HOME, "agents", agent.id, "agent"),
+    cwd: sessionCwd,
+    agentDir,
     authStorage: deps.authStorage,
     modelRegistry: deps.modelRegistry,
     model: resolveModel(deps.globalProvider, agent.config.model),
-    // Disable SDK built-ins (read/bash/edit/write); customTools are unaffected.
     noTools: "builtin",
     customTools,
     sessionManager,
-    settingsManager: SettingsManager.inMemory(),
+    settingsManager,
+    ...(resourceLoader ? { resourceLoader } : {}),
   });
 
   const basePrompt = await buildAgentSystemPrompt(agent.config);

@@ -9,7 +9,6 @@ import type {
 } from "./types.js";
 import { RunValidationError } from "./types.js";
 import type { ProviderConfig } from "./types.js";
-import type { HookRegistry } from "../legacy/plugins/hooks.js";
 import type { PiSessionDeps } from "./runners/pi/session-factory.js";
 import { PiRunner } from "./runners/pi/runner.js";
 import { ClaudeRunner } from "./runners/claude/runner.js";
@@ -64,10 +63,10 @@ interface RunHandle {
 export interface AgentRuntimeOptions {
   /** Default LLM provider. */
   globalProvider?: ProviderConfig;
-  /** Plugin hooks to fire around tool execution. */
-  hooks?: HookRegistry;
   /** Resolved global sandbox config — if present, AgentRuntime owns a SandboxExecutor. */
   sandboxBaseConfig?: SandboxConfig;
+  /** pi extension file paths discovered from ~/.isotopes/extensions/. */
+  extensionPaths?: string[];
 }
 
 export interface AddAgentOptions {
@@ -114,12 +113,12 @@ export class AgentRuntime {
   private piGlobalProvider?: ProviderConfig;
   private piAuthStorage?: AuthStorage;
   private piModelRegistry?: ModelRegistry;
-  private hooks?: HookRegistry;
   private sandboxExecutor?: SandboxExecutor;
+  private extensionPaths: string[] = [];
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
-    if (opts.hooks) this.hooks = opts.hooks;
+    if (opts.extensionPaths) this.extensionPaths = opts.extensionPaths;
     if (opts.sandboxBaseConfig) {
       this.sandboxExecutor = SandboxExecutor.fromConfig(opts.sandboxBaseConfig);
       if (this.sandboxExecutor) {
@@ -152,7 +151,7 @@ export class AgentRuntime {
       authStorage: this.piAuthStorage,
       modelRegistry: this.piModelRegistry,
       getAgentTools: (id) => this.getAgentTools(id),
-      ...(this.hooks ? { hooks: this.hooks } : {}),
+      ...(this.extensionPaths.length > 0 ? { extensionPaths: this.extensionPaths } : {}),
     };
   }
 
@@ -270,10 +269,6 @@ export class AgentRuntime {
       ...(this.sandboxExecutor ? { sandboxExecutor: this.sandboxExecutor } : {}),
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
     });
-
-    if (this.hooks) {
-      await this.hooks.emit("before_agent_start", { agentId: agentConfig.id });
-    }
 
     const agent: RegisteredAgent = {
       id: agentConfig.id,

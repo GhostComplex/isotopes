@@ -2,11 +2,9 @@ import {
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
-import path from "node:path";
 import { SessionStoreManager } from "./agent/runners/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyTransportContext } from "./gateway/transport-context.js";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
@@ -15,10 +13,13 @@ import {
 import { ApiServer } from "./legacy/plugins/http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
-import { PluginManager } from "./legacy/plugins/manager.js";
 import { getIsotopesHome } from "./paths.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { runAgent } from "./agent/runtime-adapter.js";
+import { discoverExtensionPaths } from "./extensions/loader.js";
+import { discoverUIEntries } from "./ui/registry.js";
+import { createDiscordTransport } from "./legacy/plugins/discord/index.js";
+import type { Transport } from "./gateway/types.js";
 
 const log = createLogger("runtime");
 
@@ -31,7 +32,6 @@ export interface Runtime {
   agentRuntime: AgentRuntime;
   agentWorkspaces: Map<string, string>;
   cronScheduler: CronScheduler;
-  pluginManager: PluginManager;
   apiServer: ApiServer;
   shutdown: () => Promise<void>;
 }
@@ -41,9 +41,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   await ensureDirectories();
 
-  // Plugins must come up first so hooks are wired before any agent boots.
-  const pluginManager = new PluginManager();
-  const sessionStoreManager = new SessionStoreManager({ hooks: pluginManager.getHooks() });
+  const sessionStoreManager = new SessionStoreManager();
 
   if (!config.provider) {
     throw new Error("config.provider is required (top-level provider config in isotopes.yaml)");
@@ -53,15 +51,16 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     ? resolveSandboxConfigFromFile("<global>", undefined, config.sandbox)
     : undefined;
 
+  const extensionPaths = discoverExtensionPaths();
+
   const agentRuntime = new AgentRuntime({
     globalProvider: config.provider,
-    hooks: pluginManager.getHooks(),
     ...(sandboxBaseConfig ? { sandboxBaseConfig } : {}),
+    ...(extensionPaths.length > 0 ? { extensionPaths } : {}),
   });
 
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
-  const toolRegistries = new Map<string, AgentTool[]>();
 
   const spawnableAgentIds = config.agents
     .filter((a) => a.spawnable === true && a.enabled !== false)
@@ -83,37 +82,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
     if (result.workspacePath !== null) agentWorkspaces.set(result.agent.id, result.workspacePath);
     transportContexts.set(result.agent.id, transportCtx);
-    if (result.tools.length > 0) toolRegistries.set(result.agent.id, result.tools);
-  }
-
-  const pluginDirs = [
-    path.join(import.meta.dirname, "legacy/plugins"),
-    path.join(getIsotopesHome(), "plugins"),
-    ...[...agentWorkspaces.values()].map((w) => path.join(w, "plugins")),
-  ];
-  await pluginManager.discoverAndLoad(pluginDirs, config.plugins);
-
-  const toolPluginRegistry = pluginManager.getToolPluginRegistry();
-  for (const [agentId, tools] of toolRegistries) {
-    const resolved = toolPluginRegistry.resolve({
-      agentId,
-      workspacePath: agentWorkspaces.get(agentId)!,
-    });
-    const existingNames = new Set(tools.map((t) => t.name));
-    let injected = 0;
-    for (const t of resolved) {
-      if (existingNames.has(t.name)) {
-        log.warn(`Plugin tool "${t.name}" conflicts with existing tool for agent "${agentId}" — skipping`);
-        continue;
-      }
-      tools.push(t);
-      existingNames.add(t.name);
-      injected++;
-    }
-    if (injected > 0) {
-      agentRuntime.setAgentTools(agentId, tools);
-      log.info(`Injected ${injected} plugin tool(s) into agent "${agentId}"`);
-    }
   }
 
   const heartbeatManagers: HeartbeatManager[] = [];
@@ -216,33 +184,31 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron scheduler started with ${cronScheduler.listJobs().length} job(s)`);
   }
 
-  const pluginTransports: import("./gateway/types.js").Transport[] = [];
-  for (const [id, factory] of pluginManager.getTransportFactories()) {
+  const transports: Transport[] = [];
+  if (config.channels?.discord) {
     try {
-      const transport = await factory({
-        sessionStoreManager,
+      const discord = await createDiscordTransport({
         config,
+        sessionStoreManager,
+        agentRuntime,
         transportContexts,
         isotopesHome: getIsotopesHome(),
-        getSessionStoreForAgent: (agentId) =>
-          sessionStoreManager.peek(agentId),
-        agentRuntime,
       });
-      await transport.start();
-      pluginTransports.push(transport);
-      log.info(`Plugin transport "${id}" started`);
+      await discord.start();
+      transports.push(discord);
     } catch (err) {
-      log.error(`Failed to start plugin transport "${id}": ${err instanceof Error ? err.message : String(err)}`);
+      log.error(`Failed to start Discord transport: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  const uiEntries = discoverUIEntries();
 
   const apiServer = new ApiServer(
     { port: apiPort ?? 2712 },
     {
       cronScheduler,
-      uiRegistry: pluginManager.getUIRegistry(),
+      uiEntries,
       sessionStoreManager,
-      hooks: pluginManager.getHooks(),
       agentRuntime,
     },
   );
@@ -254,10 +220,9 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info("Shutting down...");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
-    for (const t of pluginTransports) {
+    for (const t of transports) {
       try { await t.stop(); } catch { /* ignore */ }
     }
-    await pluginManager.shutdown();
     await apiServer.stop();
     sessionStoreManager.destroyAll();
 
@@ -272,7 +237,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     agentRuntime,
     agentWorkspaces,
     cronScheduler,
-    pluginManager,
     apiServer,
     shutdown,
   };
