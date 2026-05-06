@@ -7,24 +7,6 @@ import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("skills");
 
-const ASSISTANT_OUTPUT_DIRECTIVES = `# Assistant Output Directives
-
-When you reply on a chat surface, you may include the following inline tags
-in your message to request delivery metadata. Tags are stripped from the
-user-visible text and are only honored on channels that support the
-underlying feature; channels without support silently ignore them.
-
-- \`[[reply_to_current]]\` — render this message as a native reply to the
-  message that triggered the current turn. Prefer this form.
-- \`[[reply_to: <message-id>]]\` — render this message as a native reply to
-  a specific message id. Use only when the id was explicitly given to you
-  (by the user or by a tool result).
-
-Place the tag at the start of your response, before any other text.
-Whitespace inside the brackets is allowed. Tags are channel-agnostic — each
-transport (Discord, etc.) renders them in the platform's native
-reply / quote primitive where available.`;
-
 /** Standard workspace files that contribute to system prompt */
 export const WORKSPACE_FILES = [
   "SOUL.md",
@@ -107,16 +89,13 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
 
 /** Build a complete system prompt from a loaded workspace context. */
 export function buildSystemPrompt(workspace: WorkspaceContext | null): string {
-  if (!workspace) {
-    return ASSISTANT_OUTPUT_DIRECTIVES;
-  }
+  if (!workspace) return "";
 
   const parts: string[] = [];
   parts.push(`# Workspace\n\nYour working directory is: ${workspace.workspacePath}`);
   if (workspace.systemPromptAdditions) parts.push("# Workspace Context\n\n" + workspace.systemPromptAdditions);
   if (workspace.skillsPrompt) parts.push(workspace.skillsPrompt);
   if (workspace.memory) parts.push("# Memory\n\n" + workspace.memory);
-  parts.push(ASSISTANT_OUTPUT_DIRECTIVES);
 
   return parts.join("\n\n---\n\n");
 }

@@ -53,6 +53,7 @@ export interface RunRequest {
   parentSessionId?: string;
   cwd?: string;
   timeoutSeconds?: number;
+  extraSystemPrompt?: string;
   /** Fires once after run is registered, before any AgentEvent yields.
    * Use to wire side-channel UI (Discord thread, audit) by sessionId. */
   onRunStart?: (sessionId: string) => void;

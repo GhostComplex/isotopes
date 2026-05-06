@@ -47,6 +47,7 @@ export class PiRunner {
       agent: this.opts.agent,
       sessionId,
       ...(request.cwd ? { cwd: request.cwd } : {}),
+      ...(request.extraSystemPrompt ? { extraSystemPrompt: request.extraSystemPrompt } : {}),
     });
     onSession?.(session);
     const content = request.cwd && request.from

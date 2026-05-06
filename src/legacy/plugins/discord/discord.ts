@@ -26,7 +26,7 @@ import { runAgent } from "../../../agent/runtime-adapter.js";
 import { runWithDiscordA2AStream, type DiscordA2AStreamContext } from "./a2a-stream-context.js";
 import { isSilentReplyPayloadText } from "../../../silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
-import { createReplyResolver, type ReplyToMode } from "./reply-directive.js";
+import { parseReplyDirective, REPLY_DIRECTIVE_PROMPT } from "../../../gateway/reply-directive.js";
 import { buildSessionKey } from "../../../gateway/session-keys.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../../../gateway/channel-history.js";
 import { DedupeCache } from "../../../gateway/dedupe.js";
@@ -183,7 +183,6 @@ export interface DiscordTransportConfig {
     /** Whether to include thread messages in channel history context. Default: true */
     observe?: boolean;
   };
-  replyToMode?: ReplyToMode;
 }
 
 /**
@@ -720,15 +719,6 @@ export class DiscordTransport implements Transport {
     // Start typing indicator
     const typing = this.startTyping(channel);
 
-    // Mark session as active
-
-    // Reply-marker resolver: applied to each outbound chunk. Default mode is
-    // "off" — no reply marker unless the agent emits an inline directive.
-    const resolveReply = createReplyResolver({
-      mode: this.config.replyToMode ?? "off",
-      triggerMessageId,
-    });
-
     const toolSummaries: string[] = [];
     let streamBuffer: SegmentedStreamBuffer | null = null;
 
@@ -740,7 +730,7 @@ export class DiscordTransport implements Transport {
     try {
       // Create segmented stream buffer that sends new messages at sentence boundaries
       streamBuffer = new SegmentedStreamBuffer(async (text: string) => {
-        const { replyToId, stripped } = resolveReply(text);
+        const { replyToId, stripped } = parseReplyDirective(text, triggerMessageId);
         if (!stripped) return; // chunk was nothing but a directive
         // Chunk if needed and send. Reply marker (if any) goes on first chunk only.
         const chunks = this.chunkMessage(stripped);
@@ -764,6 +754,7 @@ export class DiscordTransport implements Transport {
           sessionId,
           content: "",
           ...(cwd ? { cwd } : {}),
+          extraSystemPrompt: REPLY_DIRECTIVE_PROMPT,
           log,
           onEvent: (e) => {
             if (e.type === "message_update" && streamBuffer) {

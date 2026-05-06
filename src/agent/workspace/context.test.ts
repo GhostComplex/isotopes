@@ -199,10 +199,8 @@ Use this skill to search the web.
   });
 
   describe("buildSystemPrompt", () => {
-    it("returns just directives when no workspace", () => {
-      const result = buildSystemPrompt(null);
-      expect(result).toContain("# Assistant Output Directives");
-      expect(result).toContain("[[reply_to_current]]");
+    it("returns empty string when no workspace", () => {
+      expect(buildSystemPrompt(null)).toBe("");
     });
 
     it("includes workspace context", async () => {
@@ -224,23 +222,13 @@ Use this skill to search the web.
       const ctx = await loadWorkspaceContext(tempDir);
       const result = buildSystemPrompt(ctx);
 
-      // workspace path + workspace context + memory + directives
+      // workspace path + workspace context + memory
       const sections = result.split("\n\n---\n\n");
-      expect(sections.length).toBe(4);
+      expect(sections.length).toBe(3);
       expect(sections[0]).toContain("# Workspace");
       expect(sections[0]).toContain("Your working directory is:");
       expect(sections[1]).toContain("# Workspace Context");
       expect(sections[2]).toContain("# Memory");
-      expect(sections[3]).toContain("# Assistant Output Directives");
-    });
-
-    it("always includes assistant output directives section", async () => {
-      const ctx = await loadWorkspaceContext(tempDir);
-      const result = buildSystemPrompt(ctx);
-
-      expect(result).toContain("# Assistant Output Directives");
-      expect(result).toContain("[[reply_to_current]]");
-      expect(result).toContain("[[reply_to: <message-id>]]");
     });
 
     it("includes workspace path even when no workspace files exist", async () => {
