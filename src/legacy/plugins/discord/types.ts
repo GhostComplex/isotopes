@@ -1,8 +1,6 @@
 // plugins/discord/types.ts — Discord-specific type definitions
 // Moved from src/core/types.ts to decouple Discord from core.
 
-import type { ReplyToMode } from "./reply-directive.js";
-
 // ---------------------------------------------------------------------------
 // Thread bindings
 // ---------------------------------------------------------------------------
@@ -61,7 +59,6 @@ export interface DiscordAccountConfig {
   allowBots?: boolean;
   context?: DiscordAccountContextConfig;
   adminUsers?: string[];
-  replyToMode?: ReplyToMode;
 }
 
 export interface DiscordChannelsConfig {
