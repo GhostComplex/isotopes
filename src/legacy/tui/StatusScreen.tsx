@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { fetchStatus, fetchSessions, fetchUsage, isDaemonRunning } from "./api.js";
-import type { DaemonStatus, SessionSummary, UsageStats, Screen } from "./types.js";
+import { fetchStatus, fetchSessions, isDaemonRunning } from "./api.js";
+import type { DaemonStatus, SessionSummary, Screen } from "./types.js";
 
 interface Props {
   onSwitchScreen: (screen: Screen) => void;
@@ -19,14 +19,9 @@ function formatUptime(seconds: number): string {
   return parts.join(" ");
 }
 
-function formatCost(cost: number): string {
-  return cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(2)}`;
-}
-
 export function StatusScreen({ onSwitchScreen }: Props) {
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [usage, setUsage] = useState<UsageStats | null>(null);
   const [running, setRunning] = useState<boolean | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
@@ -34,14 +29,9 @@ export function StatusScreen({ onSwitchScreen }: Props) {
     const isUp = await isDaemonRunning();
     setRunning(isUp);
     if (isUp) {
-      try {
-        const [s, sess, u] = await Promise.all([fetchStatus(), fetchSessions(), fetchUsage()]);
-        setStatus(s);
-        setSessions(sess);
-        setUsage(u);
-      } catch {
-        // partial failure ok
-      }
+      const [s, sess] = await Promise.allSettled([fetchStatus(), fetchSessions()]);
+      if (s.status === "fulfilled") setStatus(s.value);
+      if (sess.status === "fulfilled") setSessions(sess.value);
     }
     setLastRefresh(new Date());
   };
@@ -97,14 +87,6 @@ export function StatusScreen({ onSwitchScreen }: Props) {
             <Text>  Version: <Text color="cyan">{status.version}</Text></Text>
             <Text>  Uptime:  <Text color="cyan">{formatUptime(status.uptime)}</Text></Text>
             <Text>  Cron:    <Text color="cyan">{status.cronJobs} job(s)</Text></Text>
-          </Box>
-        )}
-
-        {usage && (
-          <Box flexDirection="column">
-            <Text bold underline>Usage</Text>
-            <Text>  Tokens: <Text color="cyan">{usage.totalTokens.toLocaleString()}</Text> ({usage.input.toLocaleString()} in / {usage.output.toLocaleString()} out)</Text>
-            <Text>  Cost:   <Text color="cyan">{formatCost(usage.cost)}</Text> ({usage.turns} turns)</Text>
           </Box>
         )}
 

@@ -23,14 +23,6 @@ export interface SessionSummary {
   lastActivityAt: string;
 }
 
-export interface UsageStats {
-  totalTokens: number;
-  input: number;
-  output: number;
-  cost: number;
-  turns: number;
-}
-
 export interface ChatSessionInfo {
   key: string;
   agentId: string;
@@ -48,8 +40,6 @@ export type Screen = "chat" | "status";
 
 export interface TuiOptions {
   agent?: string;
-  config?: string;
-  message?: string;
-  /** Attach to an existing session by key instead of creating tui:main. */
+  /** Attach to an existing session by key instead of creating the default `tui` session. */
   session?: string;
 }

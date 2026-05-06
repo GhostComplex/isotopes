@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchStatus, fetchSessions, fetchUsage, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, steerMessage, parseSSELine } from "./api.js";
+import { fetchStatus, fetchSessions, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, steerMessage, parseSSELine } from "./api.js";
 
 const mockFetch = vi.fn();
 
@@ -26,15 +26,6 @@ describe("fetchStatus", () => {
   });
 });
 
-describe("fetchUsage", () => {
-  it("returns usage stats", async () => {
-    const data = { totalTokens: 100, input: 50, output: 50, cost: 0.01, turns: 5 };
-    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
-    const result = await fetchUsage();
-    expect(result).toEqual(data);
-  });
-});
-
 describe("isDaemonRunning", () => {
   it("returns true when daemon responds", async () => {
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
@@ -49,15 +40,15 @@ describe("isDaemonRunning", () => {
 
 describe("createSession", () => {
   it("posts to sessions endpoint", async () => {
-    const data = { key: "tui:main", agentId: "bot", resumed: false };
+    const data = { key: "tui", agentId: "bot", resumed: false };
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(data) });
-    const result = await createSession("bot", "tui:main");
+    const result = await createSession("bot", "tui");
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
       "http://127.0.0.1:2712/api/sessions/bot",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ sessionKey: "tui:main" }),
+        body: JSON.stringify({ sessionKey: "tui" }),
       }),
     );
   });

@@ -44,7 +44,7 @@ isotopes status                    Show daemon status
 isotopes restart [--config path]   Restart the daemon
 isotopes reload [agentId]          Reload workspace (hot-reload)
 
-isotopes tui [--agent id] [--message "text"]
+isotopes tui [--agent id]
                                    Interactive TUI chat with an agent
 
 isotopes sessions list             List all sessions
@@ -70,7 +70,6 @@ Options:
   -v, --version    Show version
   -c, --config     Path to config file
   --agent          Agent ID for tui command
-  --message        Send an initial message in TUI mode
   --json           Output as JSON (sessions, cron commands)
   --lines          Number of log lines (default: 50)
   --level          Filter logs by level (debug/info/warn/error)

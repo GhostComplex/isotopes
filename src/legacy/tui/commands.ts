@@ -18,7 +18,6 @@ export function parseSlashCommand(input: string): SlashCommand | null {
 
 export interface CommandCallbacks {
   onNewChat: () => void;
-  onSwitchAgent: (agentId: string) => void;
   onExit: () => void;
   onShowStatus: () => void;
   onHelp: () => void;
@@ -32,10 +31,6 @@ export function dispatch(
   switch (command) {
     case "new":
       callbacks.onNewChat();
-      return true;
-    case "agent":
-      if (!args) return false;
-      callbacks.onSwitchAgent(args);
       return true;
     case "exit":
     case "quit":
@@ -55,7 +50,6 @@ export function dispatch(
 
 export const HELP_TEXT = [
   "/new          — Start a new conversation",
-  "/agent <id>   — Switch to a different agent",
   "/status       — Show daemon status",
   "/help         — Show this help",
   "/exit /quit /q — Quit the TUI",

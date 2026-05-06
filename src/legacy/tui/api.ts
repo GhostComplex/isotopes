@@ -1,4 +1,4 @@
-import type { ChatSessionInfo, DaemonStatus, SessionSummary, SSEEvent, UsageStats } from "./types.js";
+import type { ChatSessionInfo, DaemonStatus, SessionSummary, SSEEvent } from "./types.js";
 
 const DEFAULT_PORT = 2712;
 
@@ -45,10 +45,6 @@ export async function fetchStatus(): Promise<DaemonStatus> {
 export async function fetchSessions(): Promise<SessionSummary[]> {
   const data = await fetchJson<{ items: SessionSummary[] }>("/api/sessions");
   return data.items;
-}
-
-export async function fetchUsage(): Promise<UsageStats> {
-  return fetchJson<UsageStats>("/api/usage");
 }
 
 export async function isDaemonRunning(): Promise<boolean> {
