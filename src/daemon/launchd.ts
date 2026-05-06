@@ -109,6 +109,5 @@ export async function status(name: string): Promise<LaunchAgentStatus> {
   if (firstField === "-") return { state: "loaded" };
   const pid = Number.parseInt(firstField, 10);
   if (Number.isFinite(pid) && pid > 0) return { state: "running", pid };
-  log.warn(`Unexpected launchctl list output for ${name}: ${stdout.trim()}`);
-  return { state: "loaded" };
+  throw new Error(`Unexpected launchctl list output for ${name}: ${stdout.trim()}`);
 }
