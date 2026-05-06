@@ -2,7 +2,7 @@
 // HostFs (node:fs) for non-sandbox; SandboxFs (all ops via docker exec) for sandbox.
 
 import fs from "node:fs/promises";
-import type { ExecResult } from "./container.js";
+import type { ExecResult } from "../agent/executor.js";
 import type { SandboxExecutor } from "./executor.js";
 
 export type FsErrorCode = "ENOENT" | "EACCES" | "EEXIST" | "EISDIR" | "ENOTDIR" | "EUNKNOWN";

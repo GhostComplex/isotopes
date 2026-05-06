@@ -23,10 +23,6 @@ export interface ProcessInfo {
   _proc: ChildProcess;
 }
 
-/**
- * Tracks background processes the exec tool spawns. One registry per agent.
- * Auto-evicts oldest completed entries past `maxCompleted` (#296).
- */
 export class ProcessRegistry {
   private processes = new Map<string, ProcessInfo>();
   private nextId = 1;
@@ -36,7 +32,6 @@ export class ProcessRegistry {
     this.maxCompleted = options?.maxCompleted ?? DEFAULT_MAX_COMPLETED;
   }
 
-  /** Spawn argv as a tracked background process. argv comes from Executor.buildExecArgv. */
   spawn(command: string, argv: string[], cwd: string): ProcessInfo {
     const id = `proc_${this.nextId++}`;
     const child = spawn(argv[0], argv.slice(1), {

@@ -18,7 +18,6 @@ export interface ContainerInfo {
 }
 
 import type { ExecResult } from "../agent/executor.js";
-export type { ExecResult };
 
 /** Wraps the `docker` CLI rather than the API to avoid heavy SDK deps. Stateless — DockerConfig is per-call. */
 export class ContainerManager {
