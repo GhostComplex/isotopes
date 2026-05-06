@@ -1,5 +1,3 @@
-// src/daemon/process.test.ts — Unit tests for DaemonProcess
-
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -43,6 +41,7 @@ const defaultOpts: DaemonOptions = {
   configPath: "/home/user/.isotopes/isotopes.yaml",
   logDir: "/home/user/.isotopes/logs",
   pidFile: "/home/user/.isotopes/isotopes.pid",
+  cliEntry: "/home/user/isotopes/cli.js",
 };
 
 function makeDaemon(opts?: Partial<DaemonOptions>): DaemonProcess {
@@ -95,22 +94,6 @@ describe("DaemonProcess.isRunning", () => {
     expect(await d.isRunning()).toBe(false);
   });
 
-  it("returns false when pid exists but process is dead (legacy format)", async () => {
-    mockFs.readFile.mockResolvedValue("12345\n");
-    mockProcessAlive(false);
-
-    const d = makeDaemon();
-    expect(await d.isRunning()).toBe(false);
-  });
-
-  it("returns true when pid exists and process is alive (legacy format)", async () => {
-    mockFs.readFile.mockResolvedValue("12345\n");
-    mockProcessAlive(true);
-
-    const d = makeDaemon();
-    expect(await d.isRunning()).toBe(true);
-  });
-
   it("returns true when pid exists and process is alive (JSON format)", async () => {
     mockFs.readFile.mockResolvedValue(JSON.stringify({ pid: 12345, startedAt: new Date().toISOString() }));
     mockProcessAlive(true);
@@ -156,7 +139,7 @@ describe("DaemonProcess.start", () => {
   });
 
   it("throws when daemon is already running", async () => {
-    mockFs.readFile.mockResolvedValue("12345\n");
+    mockFs.readFile.mockResolvedValue(JSON.stringify({ pid: 12345 }));
     mockProcessAlive(true);
 
     const d = makeDaemon();

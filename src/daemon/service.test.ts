@@ -1,5 +1,3 @@
-// src/daemon/service.test.ts — Unit tests for ServiceManager
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";

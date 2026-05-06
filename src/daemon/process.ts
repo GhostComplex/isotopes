@@ -1,12 +1,8 @@
-// src/daemon/process.ts — Daemon process lifecycle management
-// Handles starting, stopping, and querying the Isotopes daemon process.
-
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { createLogger } from "../../logging/logger.js";
+import { createLogger } from "../logging/logger.js";
 
 const log = createLogger("daemon:process");
 
@@ -23,11 +19,13 @@ export interface DaemonStatus {
   configPath?: string;
 }
 
-/** Options for starting the daemon (config path, log directory, PID file). */
+/** Options for starting the daemon. */
 export interface DaemonOptions {
   configPath: string;
   logDir: string;
   pidFile: string;
+  /** Absolute path to the CLI entry script the daemon should run. */
+  cliEntry: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,14 +40,8 @@ interface PidFileData {
 async function readPidFile(pidFile: string): Promise<PidFileData | undefined> {
   try {
     const raw = await fs.readFile(pidFile, "utf-8");
-    // Support legacy plain-number format
-    const trimmed = raw.trim();
-    if (trimmed.startsWith("{")) {
-      const data = JSON.parse(trimmed) as PidFileData;
-      return Number.isFinite(data.pid) && data.pid > 0 ? data : undefined;
-    }
-    const pid = parseInt(trimmed, 10);
-    return Number.isFinite(pid) && pid > 0 ? { pid } : undefined;
+    const data = JSON.parse(raw.trim()) as PidFileData;
+    return Number.isFinite(data.pid) && data.pid > 0 ? data : undefined;
   } catch {
     return undefined;
   }
@@ -125,18 +117,7 @@ export class DaemonProcess {
     const outFd = await fs.open(outLog, "a");
     const errFd = await fs.open(errLog, "a");
 
-    // Resolve the CLI entry point.  When running from source the file next to
-    // this module is `../cli.ts` – but the published build will have
-    // `../cli.js`.  We pass `process.argv[0]` (node/tsx) as the executable and
-    // the CLI file as its first argument so that `tsx` works transparently
-    // during development.
-    const cliEntry = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "..",
-      "cli.js",
-    );
-
-    const child = spawn(process.argv[0], [cliEntry], {
+    const child = spawn(process.argv[0], [this.options.cliEntry], {
       detached: true,
       stdio: ["ignore", outFd.fd, errFd.fd],
       // Set cwd to user home to avoid inheriting caller's cwd.

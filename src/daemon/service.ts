@@ -1,12 +1,9 @@
-// src/daemon/service.ts — System service integration (launchd / systemd / schtasks)
-// Generates and installs service definitions so the daemon starts at boot.
-
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { createLogger } from "../../logging/logger.js";
+import { createLogger } from "../logging/logger.js";
 
 const execAsync = promisify(exec);
 const log = createLogger("daemon:service");

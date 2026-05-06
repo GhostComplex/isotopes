@@ -15,8 +15,8 @@ import {
   getIsotopesHome,
   getLogsDir,
 } from "../paths.js";
-import { DaemonProcess } from "./daemon/process.js";
-import { ServiceManager, getPlatform, type ServiceConfig } from "./daemon/service.js";
+import { DaemonProcess } from "../daemon/process.js";
+import { ServiceManager, getPlatform, type ServiceConfig } from "../daemon/service.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -35,10 +35,13 @@ function getApiPort(): number {
 
 function makeDaemon(configPath?: string): DaemonProcess {
   const home = getIsotopesHome();
+  // CLI entry sits next to this file; spawn the same script the user invoked.
+  const cliEntry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "cli.js");
   return new DaemonProcess({
     configPath: configPath ?? getConfigPath(),
     logDir: getLogsDir(),
     pidFile: path.join(home, "isotopes.pid"),
+    cliEntry,
   });
 }
 
