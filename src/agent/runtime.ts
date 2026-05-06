@@ -315,10 +315,7 @@ export class AgentRuntime {
   /** Compute spawn-tree depth: parent.depth + 1, or 1 for top-level. */
   private computeDepth(parentSessionId: string | undefined): number {
     if (!parentSessionId) return 1;
-    for (const r of this.runs.values()) {
-      if (r.sessionId === parentSessionId) return r.depth + 1;
-    }
-    return 1;
+    return (this.runs.get(parentSessionId)?.depth ?? 0) + 1;
   }
 
   /** Count active sibling runs sharing the same parentSessionId. */
