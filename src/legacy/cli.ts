@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // src/cli.ts — Isotopes CLI entry point
-// Start agents from configuration file, with daemon lifecycle commands.
+// Start agents from configuration file. macOS-only LaunchAgent management
+// under `isotopes service ...`.
 
 import { parseArgs } from "node:util";
 import path from "node:path";
@@ -15,48 +16,37 @@ import {
   getIsotopesHome,
   getLogsDir,
 } from "../paths.js";
-import { DaemonProcess } from "../daemon/process.js";
-import { ServiceManager, getPlatform, type ServiceConfig } from "../daemon/service.js";
+import * as launchd from "../daemon/launchd.js";
+import type { LaunchAgentConfig } from "../daemon/launchd.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const SERVICE_NAME = "ai.isotopes.daemon";
-const SERVICE_DESCRIPTION = "Isotopes AI Agent Daemon";
 
 // ---------------------------------------------------------------------------
-// Daemon helpers
+// Helpers
 // ---------------------------------------------------------------------------
 
 function getApiPort(): number {
   return process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
 }
 
-function makeDaemon(configPath?: string): DaemonProcess {
-  const home = getIsotopesHome();
-  // CLI entry sits next to this file; spawn the same script the user invoked.
-  const cliEntry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "cli.js");
-  return new DaemonProcess({
-    configPath: configPath ?? getConfigPath(),
-    logDir: getLogsDir(),
-    pidFile: path.join(home, "isotopes.pid"),
-    cliEntry,
-  });
-}
-
-function makeServiceConfig(): ServiceConfig {
+function makeServiceConfig(): LaunchAgentConfig {
   return {
     name: SERVICE_NAME,
-    description: SERVICE_DESCRIPTION,
     execPath: process.argv[0],
-    cliPath: path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "cli.js",
-    ),
-    configPath: getConfigPath(),
+    cliPath: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "cli.js"),
     logPath: path.join(getLogsDir(), "isotopes.out.log"),
   };
+}
+
+function requireMacOS(): void {
+  if (process.platform !== "darwin") {
+    console.error("`isotopes service` is macOS-only. Run isotopes in the foreground or supervise it yourself on this platform.");
+    process.exit(1);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -84,17 +74,6 @@ async function apiCall<T = unknown>(
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
-async function apiCallSafe<T = unknown>(
-  method: string,
-  apiPath: string,
-): Promise<T | undefined> {
-  try {
-    return await apiCall<T>(method, apiPath);
-  } catch {
-    return undefined;
-  }
-}
-
 function requireArg(value: string | undefined, usage: string): string {
   if (!value) {
     console.error(`Usage: ${usage}`);
@@ -108,7 +87,7 @@ async function withDaemonErrors(fn: () => Promise<void>): Promise<void> {
     await fn();
   } catch (err) {
     if (err instanceof TypeError && String(err).includes("fetch")) {
-      console.error("Cannot connect to daemon. Is it running? Try: isotopes start");
+      console.error("Cannot connect to daemon. Is it running? Run `isotopes` in the foreground or via the LaunchAgent.");
     } else {
       console.error("Error:", err instanceof Error ? err.message : err);
     }
@@ -180,10 +159,6 @@ Isotopes v${VERSION}
 Usage:
   isotopes                           Run in foreground (default)
   isotopes init [--force]            Write a default ~/.isotopes/isotopes.yaml
-  isotopes start [--config path]     Start as background daemon
-  isotopes stop                      Stop the running daemon
-  isotopes status                    Show daemon status
-  isotopes restart [--config path]   Restart the daemon
 
   isotopes tui [--agent id] [--message "text"] [--session key]
                                      Interactive TUI chat with an agent
@@ -203,10 +178,10 @@ Usage:
   isotopes logs [--lines N] [--level LEVEL] [-f]
                                      View daemon logs
 
-  isotopes service install           Install as system service
-  isotopes service uninstall         Remove system service
-  isotopes service enable            Enable service (auto-start)
-  isotopes service disable           Disable service
+  isotopes service install           Install as macOS LaunchAgent
+  isotopes service uninstall         Remove the LaunchAgent
+  isotopes service enable            Load the LaunchAgent
+  isotopes service disable           Unload the LaunchAgent
 
 Options:
   -h, --help       Show this help
@@ -241,120 +216,30 @@ if (values.version) {
 // Subcommand dispatch
 // ---------------------------------------------------------------------------
 
-async function handleDaemonCommand(): Promise<void> {
-  const daemon = makeDaemon(values.config);
-
-  switch (subcommand) {
-    case "start": {
-      const { pid } = await daemon.start();
-      console.log(`Isotopes daemon started (pid ${pid})`);
-      break;
-    }
-
-    case "stop": {
-      await daemon.stop();
-      console.log("Isotopes daemon stopped");
-      break;
-    }
-
-    case "status": {
-      const s = await daemon.status();
-      const useJson = subArgs.includes("--json");
-
-      if (!s.running) {
-        if (useJson) {
-          console.log(JSON.stringify({ running: false }));
-        } else {
-          console.log("Isotopes daemon is not running");
-        }
-        break;
-      }
-
-      const apiStatus = (await apiCallSafe<{
-        version?: string;
-        uptime?: number;
-        sessions?: number;
-        cronJobs?: number;
-        agents?: string[];
-      }>("GET", "/api/status")) ?? {};
-
-      const cfg = await apiCallSafe<{ agents?: { id: string }[] }>("GET", "/api/config");
-      const agents = cfg?.agents?.map((a) => a.id) ?? [];
-
-      if (useJson) {
-        console.log(
-          JSON.stringify({
-            running: true,
-            pid: s.pid,
-            startedAt: s.startedAt?.toISOString(),
-            uptime: s.uptime,
-            configPath: s.configPath,
-            version: apiStatus.version,
-            sessions: apiStatus.sessions ?? 0,
-            cronJobs: apiStatus.cronJobs ?? 0,
-            agents,
-          })
-        );
-      } else {
-        console.log(`Isotopes daemon is running`);
-        console.log(`  PID:        ${s.pid}`);
-        if (apiStatus.version) console.log(`  Version:    ${apiStatus.version}`);
-        if (s.startedAt) console.log(`  Started:    ${s.startedAt.toISOString()}`);
-        if (s.uptime !== undefined) console.log(`  Uptime:     ${formatUptime(s.uptime)}`);
-        if (s.configPath) console.log(`  Config:     ${s.configPath}`);
-        if (agents.length > 0) console.log(`  Agents:     ${agents.join(", ")}`);
-        console.log(`  Sessions:   ${apiStatus.sessions ?? 0}`);
-        console.log(`  Cron jobs:  ${apiStatus.cronJobs ?? 0}`);
-      }
-      break;
-    }
-
-    case "restart": {
-      const { pid } = await daemon.restart();
-      console.log(`Isotopes daemon restarted (pid ${pid})`);
-      break;
-    }
-
-    default:
-      console.error(`Unknown command: ${subcommand}`);
-      console.log(HELP_TEXT);
-      process.exit(1);
-  }
-}
-
 async function handleServiceCommand(): Promise<void> {
+  requireMacOS();
   const serviceSubcommand = subArgs[0];
-  const svc = new ServiceManager();
 
   switch (serviceSubcommand) {
-    case "install": {
-      const platform = getPlatform();
-      if (platform === "unsupported") {
-        console.error(`Service installation is not supported on this platform`);
-        process.exit(1);
-      }
-      await svc.install(makeServiceConfig());
-      console.log(`Service "${SERVICE_NAME}" installed (${platform})`);
+    case "install":
+      await launchd.install(makeServiceConfig());
+      console.log(`LaunchAgent "${SERVICE_NAME}" installed`);
       break;
-    }
 
-    case "uninstall": {
-      await svc.uninstall(SERVICE_NAME);
-      console.log(`Service "${SERVICE_NAME}" removed`);
+    case "uninstall":
+      await launchd.uninstall(SERVICE_NAME);
+      console.log(`LaunchAgent "${SERVICE_NAME}" removed`);
       break;
-    }
 
-    case "enable": {
-      await svc.enable(SERVICE_NAME);
-      console.log(`Service "${SERVICE_NAME}" enabled`);
+    case "enable":
+      await launchd.enable(SERVICE_NAME);
+      console.log(`LaunchAgent "${SERVICE_NAME}" enabled`);
       break;
-    }
 
-    case "disable": {
-      await svc.disable(SERVICE_NAME);
-      console.log(`Service "${SERVICE_NAME}" disabled`);
+    case "disable":
+      await launchd.disable(SERVICE_NAME);
+      console.log(`LaunchAgent "${SERVICE_NAME}" disabled`);
       break;
-    }
 
     default:
       console.error(
@@ -363,23 +248,6 @@ async function handleServiceCommand(): Promise<void> {
       );
       process.exit(1);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Format helpers
-// ---------------------------------------------------------------------------
-
-function formatUptime(seconds: number): string {
-  const d = Math.floor(seconds / 86_400);
-  const h = Math.floor((seconds % 86_400) / 3_600);
-  const m = Math.floor((seconds % 3_600) / 60);
-  const s = seconds % 60;
-  const parts: string[] = [];
-  if (d > 0) parts.push(`${d}d`);
-  if (h > 0) parts.push(`${h}h`);
-  if (m > 0) parts.push(`${m}m`);
-  parts.push(`${s}s`);
-  return parts.join(" ");
 }
 
 // ---------------------------------------------------------------------------
@@ -558,7 +426,7 @@ async function handleLogsCommand(): Promise<void> {
     await fsPromises.access(logFile);
   } catch {
     console.error(`Log file not found: ${logFile}`);
-    console.error("Is the daemon running? Try: isotopes start");
+    console.error("Has the daemon ever run? Run `isotopes` in the foreground first.");
     process.exit(1);
   }
 
@@ -697,13 +565,6 @@ async function run(): Promise<void> {
   switch (subcommand) {
     case "init":
       await handleInitCommand();
-      break;
-
-    case "start":
-    case "stop":
-    case "status":
-    case "restart":
-      await handleDaemonCommand();
       break;
 
     case "service":
