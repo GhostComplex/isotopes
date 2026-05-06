@@ -155,70 +155,6 @@ agents:
       expect(config.agents[0].id).toBe("assistant");
     });
 
-    it("loads object-form agents with defaults", async () => {
-      const configPath = path.join(tempDir, "defaults.yaml");
-      await fs.writeFile(
-        configPath,
-        `
-provider:
-  type: anthropic
-  baseUrl: https://proxy.example.com
-  defaultModel: claude-sonnet
-
-agents:
-  defaults:
-    tools:
-      deny: [shell]
-  list:
-    - id: major
-    - id: tachikoma
-      model: claude-opus-4.5
-`,
-      );
-
-      const config = await loadConfig(configPath);
-
-      // agents should be normalized to array
-      expect(Array.isArray(config.agents)).toBe(true);
-      expect(config.agents[0].id).toBe("major");
-      expect(config.agents[1].id).toBe("tachikoma");
-      expect(config.agents[1].model).toBe("claude-opus-4.5");
-
-      // agentDefaults should be extracted
-      expect(config.agentDefaults).toBeDefined();
-      expect(config.agentDefaults?.tools?.deny).toEqual(["shell"]);
-    });
-
-    it("legacy array form still works and agentDefaults is undefined", async () => {
-      const configPath = path.join(tempDir, "legacy.yaml");
-      await fs.writeFile(
-        configPath,
-        `
-agents:
-  - id: test
-`,
-      );
-
-      const config = await loadConfig(configPath);
-
-      expect(Array.isArray(config.agents)).toBe(true);
-      expect(config.agentDefaults).toBeUndefined();
-    });
-
-    it("throws when agents object form has no list", async () => {
-      const configPath = path.join(tempDir, "bad-obj.yaml");
-      await fs.writeFile(
-        configPath,
-        `
-agents:
-  defaults:
-    provider:
-      type: openai
-`,
-      );
-
-      await expect(loadConfig(configPath)).rejects.toThrow();
-    });
     it("loads agent workspace path from config", async () => {
       const configPath = path.join(tempDir, "workspace.yaml");
       await fs.writeFile(
@@ -256,7 +192,7 @@ agents:
       const agentFile = { id: "test" };
       const defaultProvider = { type: "openai" as const, defaultModel: "gpt-4" };
 
-      const config = toAgentConfig(agentFile, undefined, defaultProvider);
+      const config = toAgentConfig(agentFile, defaultProvider);
 
       expect(config.model).toBe("gpt-4");
     });
@@ -265,7 +201,7 @@ agents:
       const agentFile = { id: "test", model: "claude-3" };
       const defaultProvider = { type: "openai" as const, defaultModel: "gpt-4" };
 
-      const config = toAgentConfig(agentFile, undefined, defaultProvider);
+      const config = toAgentConfig(agentFile, defaultProvider);
 
       expect(config.model).toBe("claude-3");
     });
@@ -280,18 +216,9 @@ agents:
         id: "test",
         tools: { allow: ["read"] },
       };
-      const config = toAgentConfig(agentFile, undefined, undefined, {
+      const config = toAgentConfig(agentFile, undefined, {
         deny: ["exec"],
       });
-
-      expect(config.toolSettings?.allow).toEqual(["read"]);
-    });
-
-    it("inherits tools from agentDefaults", () => {
-      const agentFile = { id: "test" };
-      const defaults = { tools: { allow: ["read"] } };
-
-      const config = toAgentConfig(agentFile, defaults);
 
       expect(config.toolSettings?.allow).toEqual(["read"]);
     });

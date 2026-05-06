@@ -29,24 +29,17 @@ export interface ThreadBinding {
 export interface GuildConfig {
   requireMention?: boolean;
   context?: {
-    historyTurns?: number;
     channelHistory?: boolean;
     channelHistoryLimit?: number;
   };
 }
 
 export interface DiscordAccountContextConfig {
-  historyTurns?: number;
   channelHistory?: boolean;
   channelHistoryLimit?: number;
   dedupe?: boolean;
   debounce?: boolean;
   debounceWindowMs?: number;
-  pruning?: {
-    protectRecent?: number;
-    headChars?: number;
-    tailChars?: number;
-  };
 }
 
 export interface DiscordAccountConfig {
