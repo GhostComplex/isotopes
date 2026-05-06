@@ -44,7 +44,7 @@ export function createExecTool(options: ExecToolOptions): AgentTool<typeof execS
       }
 
       const argv = ["sh", "-c", command];
-      const timeoutMs = Math.max((timeoutSec ?? DEFAULT_TIMEOUT_SEC) * 1000, 1000);
+      const timeoutMs = (timeoutSec ?? DEFAULT_TIMEOUT_SEC) * 1000;
 
       try {
         const result = await executor.execute(argv, { workspacePath: cwd, timeout: timeoutMs });
