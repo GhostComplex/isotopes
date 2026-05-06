@@ -1,5 +1,4 @@
-// macOS-only. Generates and installs a LaunchAgent plist for the
-// Isotopes daemon. Calls `launchctl` directly; assumes the host is macOS.
+// macOS-only — assumes the host is darwin. Caller must guard.
 
 import fs from "node:fs/promises";
 import path from "node:path";

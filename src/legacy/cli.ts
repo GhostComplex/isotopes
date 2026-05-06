@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// src/cli.ts — Isotopes CLI entry point
-// Start agents from configuration file. macOS-only LaunchAgent management
-// under `isotopes service ...`.
 
 import { parseArgs } from "node:util";
 import path from "node:path";
