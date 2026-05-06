@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
-import {
-  createTimeTool,
-  createAgentTools,
-} from "./index.js";
+import { createTimeTool } from "./time.js";
+import { createAgentTools } from "./index.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content.find((c) => c.type === "text");

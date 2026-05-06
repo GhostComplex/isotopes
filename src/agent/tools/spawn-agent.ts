@@ -10,7 +10,7 @@ import { DiscordA2ASink } from "../../legacy/plugins/discord/discord-a2a-sink.js
 import { getAgentEndMeta } from "../runners/pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
 
-const log = createLogger("tools");
+const log = createLogger("tools:spawn");
 
 function textResult(text: string): AgentToolResult<undefined> {
   return { content: [{ type: "text", text }], details: undefined };

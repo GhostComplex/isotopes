@@ -12,9 +12,6 @@ import { createTimeTool } from "./time.js";
 import { createFsTools } from "./fs-tools.js";
 import { createSpawnAgentTool } from "./spawn-agent.js";
 
-export { createTimeTool } from "./time.js";
-export { createSpawnAgentTool, type SpawnAgentToolOptions } from "./spawn-agent.js";
-
 const log = createLogger("tools");
 
 export interface CreateAgentToolsOptions {
