@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { Box, Text, useInput } from "ink";
+import React, { useState } from "react";
+import { Box, Text, useApp, useInput } from "ink";
 import { fetchStatus, isDaemonRunning } from "./api.js";
+import { usePolling } from "./usePolling.js";
 import type { DaemonStatus, Screen } from "./types.js";
+
+const REFRESH_MS = 5000;
 
 interface Props {
   onSwitchScreen: (screen: Screen) => void;
@@ -20,6 +23,7 @@ function formatUptime(seconds: number): string {
 }
 
 export function StatusScreen({ onSwitchScreen }: Props) {
+  const { exit } = useApp();
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [running, setRunning] = useState<boolean | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -37,22 +41,12 @@ export function StatusScreen({ onSwitchScreen }: Props) {
     setLastRefresh(new Date());
   };
 
-  useEffect(() => {
-    void refresh();
-    const timer = setInterval(() => void refresh(), 5000);
-    return () => clearInterval(timer);
-  }, []);
+  usePolling(refresh, REFRESH_MS);
 
   useInput((ch, key) => {
-    if (ch === "q" || ch === "/") {
-      onSwitchScreen("chat");
-    }
-    if (ch === "r") {
-      void refresh();
-    }
-    if (key.ctrl && ch === "c") {
-      process.exit(0);
-    }
+    if (ch === "q" || ch === "/") onSwitchScreen("chat");
+    else if (ch === "r") void refresh();
+    else if (key.ctrl && ch === "c") exit();
   });
 
   if (running === null) {

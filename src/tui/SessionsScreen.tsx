@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { fetchSessions, isDaemonRunning } from "./api.js";
+import { usePolling } from "./usePolling.js";
 import type { Screen, SessionSummary } from "./types.js";
+
+const REFRESH_MS = 5000;
 
 interface Props {
   currentAgentId: string;
@@ -16,27 +19,21 @@ export function SessionsScreen({ currentAgentId, currentSessionKey, onSwitchScre
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = async () => {
-      const isUp = await isDaemonRunning();
-      if (cancelled) return;
-      setRunning(isUp);
-      if (!isUp) return;
-      try {
-        const list = await fetchSessions();
-        if (cancelled) return;
-        const sorted = [...list].sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? ""));
-        setSessions(sorted);
-        setCursor((c) => (sorted.length === 0 ? 0 : Math.min(c, sorted.length - 1)));
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-      }
-    };
-    void refresh();
-    const timer = setInterval(() => void refresh(), 5000);
-    return () => { cancelled = true; clearInterval(timer); };
-  }, []);
+  const refresh = async () => {
+    const isUp = await isDaemonRunning();
+    setRunning(isUp);
+    if (!isUp) return;
+    try {
+      const list = await fetchSessions();
+      const sorted = [...list].sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? ""));
+      setSessions(sorted);
+      setCursor((c) => (sorted.length === 0 ? 0 : Math.min(c, sorted.length - 1)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  usePolling(refresh, REFRESH_MS);
 
   useInput((_ch, key) => {
     if (key.escape) {

@@ -41,6 +41,7 @@ pnpm test:integration
 - `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
 - `init/` — `isotopes init` setup wizard built with Ink.
+- `tui/` — Interactive TUI: chat / sessions / status screens. Uses ink + the daemon HTTP+SSE API. Owned vs attach mode is derived from session key (`tui` = owned, all else = attach).
 - `logging/` — `createLogger("tag")` factory.
 - `extensions/` — Loader for `~/.isotopes/extensions/*.ts` (pi-coding-agent extensions). Per-user custom tools, hooks, slash commands written against pi's native `ExtensionAPI`.
 - `ui/` — Loader for `~/.isotopes/ui/<id>/` static SPA directories, auto-mounted at `/ui/<id>`.
@@ -68,7 +69,6 @@ pnpm test:integration
 ### `src/legacy/` (transitional)
 
 - `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
-- `tui/` — Terminal UI for interactive chat mode.
 - `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives. Instantiated directly from `app.ts`.
 - `plugins/http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status. Instantiated directly from `app.ts`.
 - `version.ts` — Build version constant.

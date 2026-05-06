@@ -493,7 +493,7 @@ async function run(): Promise<void> {
       break;
 
     case "tui": {
-      const { launchTui } = await import("./tui/index.js");
+      const { launchTui } = await import("../tui/index.js");
       await launchTui({ agent: values.agent });
       break;
     }

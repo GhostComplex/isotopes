@@ -1,11 +1,12 @@
 import type { ChatSessionInfo, DaemonStatus, SessionSummary, SSEEvent } from "./types.js";
+import type { HistoryItem } from "./messages.js";
 
 const DEFAULT_PORT = 2712;
 
 function getBaseUrl(): string {
-  const port = process.env.ISOTOPES_PORT
-    ? parseInt(process.env.ISOTOPES_PORT, 10)
-    : DEFAULT_PORT;
+  const raw = process.env.ISOTOPES_PORT;
+  const parsed = raw ? parseInt(raw, 10) : DEFAULT_PORT;
+  const port = Number.isFinite(parsed) ? parsed : DEFAULT_PORT;
   return `http://127.0.0.1:${port}`;
 }
 
@@ -64,7 +65,7 @@ export async function createSession(agentId: string, sessionKey?: string): Promi
   return postJson<ChatSessionInfo>(sessionPath(agentId), body);
 }
 
-export async function getHistory(agentId: string, sessionKey: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
+export async function getHistory(agentId: string, sessionKey: string): Promise<{ items: HistoryItem[] }> {
   return fetchJson(`${sessionPath(agentId, sessionKey)}/messages`);
 }
 
@@ -105,6 +106,45 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
   }
 }
 
+/** Drives a Response body as an SSE stream. Calls onEvent for each `event:` block.
+ * Skips comment lines starting with `:` (heartbeats). Terminates on response close
+ * or when the underlying signal aborts. */
+async function readSSE(
+  res: Response,
+  onEvent: (event: string, data: string) => void,
+): Promise<void> {
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let currentEvent = "";
+  let dataLines: string[] = [];
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line.startsWith(":")) continue;
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+        dataLines = [];
+      } else if (line.startsWith("data: ")) {
+        dataLines.push(line.slice(6));
+      } else if (line === "") {
+        if (currentEvent && dataLines.length > 0) {
+          onEvent(currentEvent, dataLines.join("\n"));
+        }
+        currentEvent = "";
+        dataLines = [];
+      }
+    }
+  }
+}
+
 export async function sendMessage(
   agentId: string,
   sessionKey: string,
@@ -118,43 +158,11 @@ export async function sendMessage(
     body: JSON.stringify({ message }),
     signal,
   });
-
-  if (!res.ok) {
-    throw new Error(`API chat message: ${res.status} ${res.statusText}`);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response body");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let currentEvent = "";
-  let dataLines: string[] = [];
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        currentEvent = line.slice(7).trim();
-        dataLines = [];
-      } else if (line.startsWith("data: ")) {
-        dataLines.push(line.slice(6));
-      } else if (line === "") {
-        if (currentEvent && dataLines.length > 0) {
-          const event = parseSSELine(currentEvent, dataLines.join("\n"));
-          if (event) onEvent(event);
-        }
-        currentEvent = "";
-        dataLines = [];
-      }
-    }
-  }
+  if (!res.ok) throw new Error(`API chat message: ${res.status} ${res.statusText}`);
+  await readSSE(res, (eventType, data) => {
+    const event = parseSSELine(eventType, data);
+    if (event) onEvent(event);
+  });
 }
 
 // -- Observer-mode SSE: attach to /stream for transcript-bus updates --
@@ -174,40 +182,12 @@ export async function attachStream(
 ): Promise<void> {
   const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/stream`, { signal });
   if (!res.ok) throw new Error(`API stream: ${res.status} ${res.statusText}`);
-
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response body");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let currentEvent = "";
-  let dataLines: string[] = [];
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.startsWith(":")) continue; // heartbeat comment
-      if (line.startsWith("event: ")) {
-        currentEvent = line.slice(7).trim();
-        dataLines = [];
-      } else if (line.startsWith("data: ")) {
-        dataLines.push(line.slice(6));
-      } else if (line === "") {
-        if (currentEvent === "message" && dataLines.length > 0) {
-          try {
-            const parsed = JSON.parse(dataLines.join("\n")) as AttachedMessage;
-            onMessage(parsed);
-          } catch {
-            // swallow malformed JSON: console.error would corrupt ink's render
-          }
-        }
-        currentEvent = "";
-        dataLines = [];
-      }
+  await readSSE(res, (eventType, data) => {
+    if (eventType !== "message") return;
+    try {
+      onMessage(JSON.parse(data) as AttachedMessage);
+    } catch {
+      // swallow malformed JSON: console.error would corrupt ink's render
     }
-  }
+  });
 }
