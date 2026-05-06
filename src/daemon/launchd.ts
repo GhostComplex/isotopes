@@ -22,8 +22,21 @@ export interface LaunchAgentConfig {
   logPath: string;
 }
 
+/** Status snapshot returned by {@link status}. */
+export type LaunchAgentStatus =
+  | { state: "running"; pid: number }
+  | { state: "loaded" }
+  | { state: "not-installed" };
+
 function plistPath(name: string): string {
   return path.join(os.homedir(), "Library", "LaunchAgents", `${name}.plist`);
+}
+
+function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function buildPlist(config: LaunchAgentConfig): string {
@@ -33,31 +46,25 @@ function buildPlist(config: LaunchAgentConfig): string {
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>${config.name}</string>
+  <string>${xmlEscape(config.name)}</string>
 
   <key>ProgramArguments</key>
   <array>
-    <string>${config.execPath}</string>
-    <string>${config.cliPath}</string>
+    <string>${xmlEscape(config.execPath)}</string>
+    <string>${xmlEscape(config.cliPath)}</string>
   </array>
 
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>ISOTOPES_DAEMON</key>
-    <string>1</string>
-  </dict>
-
   <key>RunAtLoad</key>
-  <false/>
+  <true/>
 
   <key>KeepAlive</key>
   <true/>
 
   <key>StandardOutPath</key>
-  <string>${config.logPath}</string>
+  <string>${xmlEscape(config.logPath)}</string>
 
   <key>StandardErrorPath</key>
-  <string>${config.logPath}</string>
+  <string>${xmlEscape(config.logPath)}</string>
 
   <key>ProcessType</key>
   <string>Background</string>
@@ -66,43 +73,59 @@ function buildPlist(config: LaunchAgentConfig): string {
 `;
 }
 
-/** Write the LaunchAgent plist into ~/Library/LaunchAgents. */
+/**
+ * Write the plist and hand it to launchd. Idempotent: if the agent is
+ * already loaded, unload-then-load to pick up any plist changes.
+ */
 export async function install(config: LaunchAgentConfig): Promise<void> {
   const target = plistPath(config.name);
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, buildPlist(config), "utf-8");
   log.info(`Wrote LaunchAgent plist to ${target}`);
+
+  // Best-effort unload (silent if not loaded) then load — makes install idempotent
+  // and ensures launchd picks up plist changes on re-install.
+  await execAsync(`launchctl unload -w ${target}`).catch(() => undefined);
+  await execAsync(`launchctl load -w ${target}`);
+  log.info(`Loaded LaunchAgent ${config.name}`);
 }
 
-/** Remove the LaunchAgent plist (best-effort disable first). */
+/** Unload the agent (best-effort) and delete the plist file. */
 export async function uninstall(name: string): Promise<void> {
+  const target = plistPath(name);
+  await execAsync(`launchctl unload -w ${target}`).catch((err) => {
+    log.debug("Could not unload agent before uninstall (may not be loaded):", err);
+  });
+  await fs.unlink(target);
+  log.info(`Removed LaunchAgent plist ${target}`);
+}
+
+/**
+ * Send SIGTERM to the running daemon. With KeepAlive=true, launchd
+ * immediately respawns it — net effect is a restart with a new PID.
+ * Throws if the agent isn't loaded.
+ */
+export async function restart(name: string): Promise<void> {
+  await execAsync(`launchctl stop ${name}`);
+  log.info(`Restarted LaunchAgent ${name}`);
+}
+
+/**
+ * Query launchctl for the agent's current state.
+ * - `running`: loaded and process is alive (pid > 0)
+ * - `loaded`: loaded but no live process (transient — KeepAlive should respawn)
+ * - `not-installed`: launchctl doesn't know about this label
+ */
+export async function status(name: string): Promise<LaunchAgentStatus> {
+  let stdout: string;
   try {
-    await disable(name);
-  } catch (err) {
-    log.debug("Could not disable agent before uninstall (may not be loaded):", err);
-  }
-  await fs.unlink(plistPath(name));
-  log.info(`Removed LaunchAgent plist ${plistPath(name)}`);
-}
-
-/** Load the agent (`launchctl load -w`). */
-export async function enable(name: string): Promise<void> {
-  await execAsync(`launchctl load -w ${plistPath(name)}`);
-  log.info(`Enabled LaunchAgent ${name}`);
-}
-
-/** Unload the agent (`launchctl unload -w`). */
-export async function disable(name: string): Promise<void> {
-  await execAsync(`launchctl unload -w ${plistPath(name)}`);
-  log.info(`Disabled LaunchAgent ${name}`);
-}
-
-/** True iff the plist file exists in ~/Library/LaunchAgents. */
-export async function isInstalled(name: string): Promise<boolean> {
-  try {
-    await fs.access(plistPath(name));
-    return true;
+    ({ stdout } = await execAsync(`launchctl list ${name}`));
   } catch {
-    return false;
+    return { state: "not-installed" };
   }
+  const firstField = stdout.trim().split(/\s+/)[0];
+  if (firstField === "-") return { state: "loaded" };
+  const pid = Number.parseInt(firstField, 10);
+  if (Number.isFinite(pid) && pid > 0) return { state: "running", pid };
+  return { state: "loaded" };
 }

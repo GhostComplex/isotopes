@@ -175,10 +175,10 @@ Usage:
   isotopes logs [--lines N] [--level LEVEL] [-f]
                                      View daemon logs
 
-  isotopes service install           Install as macOS LaunchAgent
-  isotopes service uninstall         Remove the LaunchAgent
-  isotopes service enable            Load the LaunchAgent
-  isotopes service disable           Unload the LaunchAgent
+  isotopes service install           Install + start as macOS LaunchAgent
+  isotopes service uninstall         Stop + remove the LaunchAgent
+  isotopes service restart           Restart the LaunchAgent (read new config / binary)
+  isotopes service status            Show LaunchAgent status
 
 Options:
   -h, --help       Show this help
@@ -220,7 +220,7 @@ async function handleServiceCommand(): Promise<void> {
   switch (serviceSubcommand) {
     case "install":
       await launchd.install(makeServiceConfig());
-      console.log(`LaunchAgent "${SERVICE_NAME}" installed`);
+      console.log(`LaunchAgent "${SERVICE_NAME}" installed and running`);
       break;
 
     case "uninstall":
@@ -228,20 +228,31 @@ async function handleServiceCommand(): Promise<void> {
       console.log(`LaunchAgent "${SERVICE_NAME}" removed`);
       break;
 
-    case "enable":
-      await launchd.enable(SERVICE_NAME);
-      console.log(`LaunchAgent "${SERVICE_NAME}" enabled`);
+    case "restart":
+      await launchd.restart(SERVICE_NAME);
+      console.log(`LaunchAgent "${SERVICE_NAME}" restarted`);
       break;
 
-    case "disable":
-      await launchd.disable(SERVICE_NAME);
-      console.log(`LaunchAgent "${SERVICE_NAME}" disabled`);
+    case "status": {
+      const s = await launchd.status(SERVICE_NAME);
+      switch (s.state) {
+        case "running":
+          console.log(`Running (pid ${s.pid})`);
+          break;
+        case "loaded":
+          console.log("Loaded but no live process — KeepAlive should respawn shortly");
+          break;
+        case "not-installed":
+          console.log("Not installed");
+          break;
+      }
       break;
+    }
 
     default:
       console.error(
         `Unknown service command: ${serviceSubcommand ?? "(none)"}\n` +
-          `Usage: isotopes service install|uninstall|enable|disable`,
+          `Usage: isotopes service install|uninstall|restart|status`,
       );
       process.exit(1);
   }

@@ -65,7 +65,7 @@ pnpm test:integration
 
 ### `src/legacy/` (transitional)
 
-- `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
+- `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
 - `init/` — `isotopes init` setup wizard built with Ink.
 - `tui/` — Terminal UI for interactive chat mode.
 - `plugins/` — Plugin system (`hooks.ts`, `manager.ts`, `tool-registry.ts`, `ui-registry.ts`, `discovery.ts`, `api.ts`).

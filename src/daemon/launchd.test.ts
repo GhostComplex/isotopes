@@ -9,7 +9,6 @@ vi.mock("node:fs/promises", () => ({
     writeFile: vi.fn(),
     mkdir: vi.fn(),
     unlink: vi.fn(),
-    access: vi.fn(),
   },
 }));
 
@@ -25,7 +24,6 @@ const mockFs = fs as unknown as {
   writeFile: ReturnType<typeof vi.fn>;
   mkdir: ReturnType<typeof vi.fn>;
   unlink: ReturnType<typeof vi.fn>;
-  access: ReturnType<typeof vi.fn>;
 };
 
 const mockExec = exec as unknown as ReturnType<typeof vi.fn>;
@@ -45,58 +43,114 @@ beforeEach(() => {
   mockExec.mockResolvedValue({ stdout: "", stderr: "" });
 });
 
-describe("launchd", () => {
-  it("install() writes a plist file", async () => {
+describe("launchd.install", () => {
+  it("writes a plist with Label, ProgramArguments, RunAtLoad=true, KeepAlive=true", async () => {
     await launchd.install(sampleConfig);
 
-    expect(mockFs.mkdir).toHaveBeenCalled();
     expect(mockFs.writeFile).toHaveBeenCalledWith(
       expect.stringContaining("ai.isotopes.daemon.plist"),
       expect.stringContaining("<key>Label</key>"),
       "utf-8",
     );
+    const plist = mockFs.writeFile.mock.calls[0][1] as string;
+    expect(plist).toContain(sampleConfig.execPath);
+    expect(plist).toContain(sampleConfig.cliPath);
+    expect(plist).toContain("<key>RunAtLoad</key>\n  <true/>");
+    expect(plist).toContain("<key>KeepAlive</key>\n  <true/>");
   });
 
-  it("install() plist embeds execPath, cliPath, and ISOTOPES_DAEMON env var", async () => {
+  it("does not embed the legacy ISOTOPES_DAEMON env var", async () => {
     await launchd.install(sampleConfig);
 
-    const plistContent = mockFs.writeFile.mock.calls[0][1] as string;
-    expect(plistContent).toContain(sampleConfig.execPath);
-    expect(plistContent).toContain(sampleConfig.cliPath);
-    expect(plistContent).toContain("ISOTOPES_DAEMON");
+    const plist = mockFs.writeFile.mock.calls[0][1] as string;
+    expect(plist).not.toContain("ISOTOPES_DAEMON");
   });
 
-  it("uninstall() removes the plist file (after best-effort disable)", async () => {
-    mockExec.mockRejectedValueOnce(new Error("not loaded"));
+  it("XML-escapes plist string fields", async () => {
+    await launchd.install({
+      ...sampleConfig,
+      logPath: "/path/with & and <chars>.log",
+    });
 
+    const plist = mockFs.writeFile.mock.calls[0][1] as string;
+    expect(plist).toContain("/path/with &amp; and &lt;chars&gt;.log");
+    expect(plist).not.toContain("/path/with & and <chars>.log");
+  });
+
+  it("invokes launchctl unload then load (idempotent reload)", async () => {
+    await launchd.install(sampleConfig);
+
+    const calls = mockExec.mock.calls.map((c) => c[0] as string);
+    expect(calls.some((c) => c.includes("launchctl unload"))).toBe(true);
+    expect(calls.some((c) => c.includes("launchctl load"))).toBe(true);
+    // unload comes before load
+    const unloadIdx = calls.findIndex((c) => c.includes("launchctl unload"));
+    const loadIdx = calls.findIndex((c) => c.includes("launchctl load"));
+    expect(unloadIdx).toBeLessThan(loadIdx);
+  });
+
+  it("succeeds even when the agent isn't currently loaded (unload fails silently)", async () => {
+    // First exec call (unload) rejects, second (load) resolves
+    mockExec
+      .mockRejectedValueOnce(new Error("not loaded"))
+      .mockResolvedValueOnce({ stdout: "", stderr: "" });
+
+    await expect(launchd.install(sampleConfig)).resolves.toBeUndefined();
+  });
+});
+
+describe("launchd.uninstall", () => {
+  it("calls launchctl unload then deletes the plist file", async () => {
     await launchd.uninstall("ai.isotopes.daemon");
 
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("launchctl unload"));
     expect(mockFs.unlink).toHaveBeenCalledWith(
       expect.stringContaining("ai.isotopes.daemon.plist"),
     );
   });
 
-  it("enable() calls launchctl load", async () => {
-    await launchd.enable("ai.isotopes.daemon");
+  it("still deletes the plist when launchctl unload fails", async () => {
+    mockExec.mockRejectedValueOnce(new Error("not loaded"));
 
-    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("launchctl load"));
+    await launchd.uninstall("ai.isotopes.daemon");
+
+    expect(mockFs.unlink).toHaveBeenCalled();
+  });
+});
+
+describe("launchd.restart", () => {
+  it("calls launchctl stop (KeepAlive respawns the process)", async () => {
+    await launchd.restart("ai.isotopes.daemon");
+
+    expect(mockExec).toHaveBeenCalledWith("launchctl stop ai.isotopes.daemon");
   });
 
-  it("disable() calls launchctl unload", async () => {
-    await launchd.disable("ai.isotopes.daemon");
+  it("propagates launchctl errors (e.g. agent not loaded)", async () => {
+    mockExec.mockRejectedValueOnce(new Error("Could not find specified service"));
 
-    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("launchctl unload"));
+    await expect(launchd.restart("ai.isotopes.daemon")).rejects.toThrow();
+  });
+});
+
+describe("launchd.status", () => {
+  it("returns running with pid when launchctl reports a numeric pid", async () => {
+    mockExec.mockResolvedValueOnce({ stdout: "12345\t0\tai.isotopes.daemon\n", stderr: "" });
+
+    const s = await launchd.status("ai.isotopes.daemon");
+    expect(s).toEqual({ state: "running", pid: 12345 });
   });
 
-  it("isInstalled() returns true when plist exists", async () => {
-    mockFs.access.mockResolvedValue(undefined);
+  it("returns loaded when launchctl reports '-' as pid", async () => {
+    mockExec.mockResolvedValueOnce({ stdout: "-\t0\tai.isotopes.daemon\n", stderr: "" });
 
-    expect(await launchd.isInstalled("ai.isotopes.daemon")).toBe(true);
+    const s = await launchd.status("ai.isotopes.daemon");
+    expect(s).toEqual({ state: "loaded" });
   });
 
-  it("isInstalled() returns false when plist missing", async () => {
-    mockFs.access.mockRejectedValue(new Error("ENOENT"));
+  it("returns not-installed when launchctl exits non-zero", async () => {
+    mockExec.mockRejectedValueOnce(new Error("Could not find specified service"));
 
-    expect(await launchd.isInstalled("ai.isotopes.daemon")).toBe(false);
+    const s = await launchd.status("ai.isotopes.daemon");
+    expect(s).toEqual({ state: "not-installed" });
   });
 });
