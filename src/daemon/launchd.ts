@@ -30,6 +30,11 @@ function plistPath(name: string): string {
   return path.join(os.homedir(), "Library", "LaunchAgents", `${name}.plist`);
 }
 
+function domainTarget(name: string): string {
+  // gui/<uid>/<label> — modern launchctl service-target syntax
+  return `gui/${process.getuid?.() ?? 0}/${name}`;
+}
+
 function xmlEscape(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -73,28 +78,29 @@ function buildPlist(config: LaunchAgentConfig): string {
 
 export async function install(config: LaunchAgentConfig): Promise<void> {
   const target = plistPath(config.name);
+  const domain = `gui/${process.getuid?.() ?? 0}`;
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, buildPlist(config), "utf-8");
   log.info(`Wrote LaunchAgent plist to ${target}`);
 
-  // unload-then-load so re-install picks up plist changes
-  await execAsync(`launchctl unload -w ${target}`).catch(() => undefined);
-  await execAsync(`launchctl load -w ${target}`);
+  // bootout-then-bootstrap so re-install picks up plist changes
+  await execAsync(`launchctl bootout ${domainTarget(config.name)}`).catch(() => undefined);
+  await execAsync(`launchctl bootstrap ${domain} ${target}`);
   log.info(`Loaded LaunchAgent ${config.name}`);
 }
 
 export async function uninstall(name: string): Promise<void> {
   const target = plistPath(name);
-  await execAsync(`launchctl unload -w ${target}`).catch((err) => {
-    log.debug("Could not unload agent before uninstall (may not be loaded):", err);
+  await execAsync(`launchctl bootout ${domainTarget(name)}`).catch((err) => {
+    log.debug("Could not bootout agent before uninstall (may not be loaded):", err);
   });
   await fs.unlink(target);
   log.info(`Removed LaunchAgent plist ${target}`);
 }
 
-// SIGTERM the daemon; KeepAlive=true makes launchd respawn with a new PID.
+// SIGTERM and respawn in one step. Throws if the agent isn't loaded.
 export async function restart(name: string): Promise<void> {
-  await execAsync(`launchctl stop ${name}`);
+  await execAsync(`launchctl kickstart -k ${domainTarget(name)}`);
   log.info(`Restarted LaunchAgent ${name}`);
 }
 

@@ -77,20 +77,27 @@ describe("launchd.install", () => {
     expect(plist).not.toContain("/path/with & and <chars>.log");
   });
 
-  it("invokes launchctl unload then load (idempotent reload)", async () => {
+  it("invokes launchctl bootout then bootstrap (idempotent reload)", async () => {
     await launchd.install(sampleConfig);
 
     const calls = mockExec.mock.calls.map((c) => c[0] as string);
-    expect(calls.some((c) => c.includes("launchctl unload"))).toBe(true);
-    expect(calls.some((c) => c.includes("launchctl load"))).toBe(true);
-    // unload comes before load
-    const unloadIdx = calls.findIndex((c) => c.includes("launchctl unload"));
-    const loadIdx = calls.findIndex((c) => c.includes("launchctl load"));
-    expect(unloadIdx).toBeLessThan(loadIdx);
+    expect(calls.some((c) => c.includes("launchctl bootout"))).toBe(true);
+    expect(calls.some((c) => c.includes("launchctl bootstrap"))).toBe(true);
+    // bootout comes before bootstrap
+    const bootoutIdx = calls.findIndex((c) => c.includes("launchctl bootout"));
+    const bootstrapIdx = calls.findIndex((c) => c.includes("launchctl bootstrap"));
+    expect(bootoutIdx).toBeLessThan(bootstrapIdx);
   });
 
-  it("succeeds even when the agent isn't currently loaded (unload fails silently)", async () => {
-    // First exec call (unload) rejects, second (load) resolves
+  it("uses gui/<uid>/<label> domain target for bootout", async () => {
+    await launchd.install(sampleConfig);
+
+    const calls = mockExec.mock.calls.map((c) => c[0] as string);
+    const bootout = calls.find((c) => c.includes("launchctl bootout"));
+    expect(bootout).toMatch(/launchctl bootout gui\/\d+\/ai\.isotopes\.daemon/);
+  });
+
+  it("succeeds even when the agent isn't currently loaded (bootout fails silently)", async () => {
     mockExec
       .mockRejectedValueOnce(new Error("not loaded"))
       .mockResolvedValueOnce({ stdout: "", stderr: "" });
@@ -100,16 +107,16 @@ describe("launchd.install", () => {
 });
 
 describe("launchd.uninstall", () => {
-  it("calls launchctl unload then deletes the plist file", async () => {
+  it("calls launchctl bootout then deletes the plist file", async () => {
     await launchd.uninstall("ai.isotopes.daemon");
 
-    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("launchctl unload"));
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("launchctl bootout"));
     expect(mockFs.unlink).toHaveBeenCalledWith(
       expect.stringContaining("ai.isotopes.daemon.plist"),
     );
   });
 
-  it("still deletes the plist when launchctl unload fails", async () => {
+  it("still deletes the plist when launchctl bootout fails", async () => {
     mockExec.mockRejectedValueOnce(new Error("not loaded"));
 
     await launchd.uninstall("ai.isotopes.daemon");
@@ -119,10 +126,11 @@ describe("launchd.uninstall", () => {
 });
 
 describe("launchd.restart", () => {
-  it("calls launchctl stop (KeepAlive respawns the process)", async () => {
+  it("calls launchctl kickstart -k with gui/<uid>/<label> domain target", async () => {
     await launchd.restart("ai.isotopes.daemon");
 
-    expect(mockExec).toHaveBeenCalledWith("launchctl stop ai.isotopes.daemon");
+    const cmd = mockExec.mock.calls[0][0] as string;
+    expect(cmd).toMatch(/launchctl kickstart -k gui\/\d+\/ai\.isotopes\.daemon/);
   });
 
   it("propagates launchctl errors (e.g. agent not loaded)", async () => {
