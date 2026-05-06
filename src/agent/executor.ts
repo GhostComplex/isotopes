@@ -1,0 +1,33 @@
+/** Cap collected stdout/stderr per `execute()` call to prevent OOM from runaway commands. */
+export const EXEC_MAX_OUTPUT_BYTES = 100 * 1024;
+
+export interface ExecResult {
+  exitCode: number;
+  stdout: Buffer;
+  stderr: Buffer;
+  /** True iff stdout or stderr was capped at EXEC_MAX_OUTPUT_BYTES. */
+  truncated?: boolean;
+}
+
+export interface ExecOptions {
+  /** Working directory. Sandbox honors at container-create time, not per-call. */
+  workspacePath?: string;
+  timeout?: number;
+  stdin?: Buffer | string;
+}
+
+/**
+ * Per-agent command execution. HostExecutor runs on the host process;
+ * SandboxExecutor.bind(agentId) runs inside the agent's container.
+ */
+export interface Executor {
+  execute(argv: string[], opts?: ExecOptions): Promise<ExecResult>;
+
+  /**
+   * Returns the host-side argv to spawn for this command. HostExecutor
+   * returns argv as-is; SandboxExecutor prepends `docker exec -i <ctr>`.
+   * Used by background-process tracking — caller spawns the returned argv
+   * itself so it can keep the ChildProcess handle.
+   */
+  buildExecArgv(argv: string[], opts?: ExecOptions): Promise<string[]>;
+}

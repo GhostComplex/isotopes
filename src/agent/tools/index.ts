@@ -14,7 +14,9 @@ import { type SandboxConfig } from "../../sandbox/config.js";
 import { createWebFetchTool } from "./web.js";
 import { createReactTools } from "./react.js";
 import type { LazyTransportContext } from "../../gateway/transport-context.js";
-import { createExecTools, ProcessRegistry } from "../../legacy/tools/exec.js";
+import { createExecTools } from "./exec.js";
+import { HostExecutor } from "../host-executor.js";
+import type { Executor } from "../executor.js";
 import type { AgentRuntime } from "../runtime.js";
 import { RunValidationError } from "../types.js";
 import type { RunRequest } from "../types.js";
@@ -273,7 +275,6 @@ export interface CreateAgentToolsOptions {
   /** Pre-computed list of registered agent ids the LLM can address. */
   spawnableAgentIds?: string[];
   transportContext?: LazyTransportContext;
-  processRegistry: ProcessRegistry;
   agentSandboxConfig?: SandboxConfig;
 }
 
@@ -308,6 +309,9 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   if (isSandboxed && opts.agentSandboxConfig) {
     sandboxExecutor!.registerAgent(opts.agentId, opts.agentSandboxConfig);
   }
+  const executor: Executor = isSandboxed
+    ? sandboxExecutor!.bind(opts.agentId)
+    : new HostExecutor();
   const fs: FsBridge = isSandboxed
     ? new SandboxFs(sandboxExecutor!, opts.agentId)
     : new HostFs();
@@ -321,10 +325,7 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
     createTimeTool(),
     ...createExecTools({
       cwd: opts.workspacePath,
-      registry: opts.processRegistry,
-      sandboxExecutor: sandboxExecutor,
-      agentId: opts.agentId,
-      agentSandboxConfig: opts.agentSandboxConfig,
+      executor,
     }),
   ];
   if (spawnAgentEnabled && opts.runtime && opts.parentAgentId) {
@@ -335,10 +336,7 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
       ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
     }));
   }
-  const networkIsolated = isSandboxed && opts.agentSandboxConfig?.docker?.network === "none";
-  if (!networkIsolated) {
-    tools.push(createWebFetchTool());
-  }
+  tools.push(createWebFetchTool(executor));
   if (opts.transportContext) {
     tools.push(...createReactTools(opts.transportContext));
   }

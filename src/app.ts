@@ -6,7 +6,6 @@ import path from "node:path";
 import { SessionStoreManager } from "./agent/runners/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyTransportContext } from "./gateway/transport-context.js";
-import { ProcessRegistry } from "./legacy/tools/exec.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { configureToolsLayer, shutdownToolsLayer } from "./agent/tools/index.js";
 import {
@@ -58,7 +57,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
-  const processRegistries = new Map<string, ProcessRegistry>();
   const toolRegistries = new Map<string, AgentTool[]>();
 
   const sandboxBaseConfig = config.sandbox
@@ -86,7 +84,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
     if (result.workspacePath !== null) agentWorkspaces.set(result.agent.id, result.workspacePath);
     transportContexts.set(result.agent.id, transportCtx);
-    processRegistries.set(result.agent.id, result.processRegistry);
     if (result.tools.length > 0) toolRegistries.set(result.agent.id, result.tools);
   }
 
@@ -264,10 +261,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     await pluginManager.shutdown();
     await apiServer.stop();
     sessionStoreManager.destroyAll();
-
-    for (const registry of processRegistries.values()) {
-      registry.clear();
-    }
 
     try {
       await shutdownToolsLayer();
