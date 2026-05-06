@@ -5,8 +5,7 @@ import type { Executor } from "../executor.js";
 
 const log = createLogger("tools:exec");
 
-const DEFAULT_TIMEOUT_SEC = 30;
-const MAX_TIMEOUT_MS = 300_000;
+const DEFAULT_TIMEOUT_SEC = 1800;
 
 export interface ExecToolOptions {
   /** Working directory (host or container). */
@@ -22,7 +21,7 @@ function jsonResult(value: unknown): AgentToolResult<undefined> {
 const execSchema = Type.Object({
   command: Type.String({ description: "The shell command to execute" }),
   timeout: Type.Optional(Type.Number({
-    description: "Timeout in seconds (default 30, max 300).",
+    description: "Timeout in seconds (default 1800 = 30 min). No upper limit — pass higher values for known-long tasks.",
   })),
 });
 
@@ -35,7 +34,7 @@ export function createExecTool(options: ExecToolOptions): AgentTool<typeof execS
     label: "exec",
     description:
       "Execute a shell command. Returns stdout, stderr, and exit_code. " +
-      "Default timeout: 30s, max: 300s. " +
+      "Default timeout: 30 min, no upper limit. " +
       "For long-running commands, use shell backgrounding (`cmd > /tmp/log 2>&1 &`) and `kill <pid>` to manage them.",
     parameters: execSchema,
     execute: async (_id, params: Static<typeof execSchema>) => {
@@ -45,10 +44,7 @@ export function createExecTool(options: ExecToolOptions): AgentTool<typeof execS
       }
 
       const argv = ["sh", "-c", command];
-      const timeoutMs = Math.min(
-        Math.max((timeoutSec ?? DEFAULT_TIMEOUT_SEC) * 1000, 1000),
-        MAX_TIMEOUT_MS,
-      );
+      const timeoutMs = Math.max((timeoutSec ?? DEFAULT_TIMEOUT_SEC) * 1000, 1000);
 
       try {
         const result = await executor.execute(argv, { workspacePath: cwd, timeout: timeoutMs });
