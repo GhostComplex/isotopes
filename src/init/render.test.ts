@@ -92,9 +92,9 @@ describe("renderConfig", () => {
     expect(yaml).toContain("token: bot-token-abc");
   });
 
-  it("adds a coding agent when claude is enabled", () => {
+  it("adds a coding agent (spawnable, claude runner) when claude is enabled", () => {
     const yaml = renderConfig({ llm: "skip", channel: "skip", codingAgent: "claude" });
-    expect(yaml).toMatch(/- id: coding\n {4}runner: claude/);
+    expect(yaml).toMatch(/- id: coding\n {4}runner: claude\n {4}spawnable: true/);
   });
 
   it("omits the coding agent when claude is skipped", () => {

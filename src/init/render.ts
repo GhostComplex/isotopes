@@ -25,7 +25,7 @@ function renderProvider(answers: InitAnswers): string {
 function renderAgents(answers: InitAnswers): string {
   const lines = [`agents:`, `  - id: main`];
   if (answers.codingAgent === "claude") {
-    lines.push(`  - id: coding`, `    runner: claude`);
+    lines.push(`  - id: coding`, `    runner: claude`, `    spawnable: true`);
   }
   return lines.join("\n") + "\n";
 }
