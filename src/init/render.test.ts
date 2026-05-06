@@ -17,7 +17,7 @@ describe("renderConfig", () => {
       channel: "skip",
       codingAgent: "skip",
     });
-    expect(yaml).toContain("type: anthropic");
+    expect(yaml).toContain("type: github-copilot");
     expect(yaml).toContain("baseUrl: https://api.example.com");
     expect(yaml).toContain("apiKey: sk-test");
     expect(yaml).toContain("defaultModel: claude-opus-4.7");
@@ -88,7 +88,7 @@ describe("renderConfig", () => {
       discord: { token: "bot-token-abc", dmPolicy: "disabled", groupPolicy: "allowlist" },
       codingAgent: "skip",
     });
-    expect(yaml).toContain("type: anthropic");
+    expect(yaml).toContain("type: github-copilot");
     expect(yaml).toContain("token: bot-token-abc");
   });
 

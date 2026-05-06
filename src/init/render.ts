@@ -15,7 +15,7 @@ function renderProvider(answers: InitAnswers): string {
   if (answers.llm !== "ghc-proxy" || !answers.ghcProxy) return PROVIDER_SKIP;
   const { baseUrl, apiKey, model } = answers.ghcProxy;
   return `provider:
-  type: anthropic
+  type: github-copilot
   baseUrl: ${baseUrl}
   apiKey: ${apiKey}
   defaultModel: ${model}
