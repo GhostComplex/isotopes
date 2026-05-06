@@ -1,28 +1,16 @@
-// Recognizes two inline tags in agent output text:
+// Inline tags an agent may emit in chat output:
 //   [[reply_to_current]]      — reply to the message that triggered this turn
-//   [[reply_to: <message-id>]] — reply to any specific message by ID
-//
-// Tags are channel-agnostic; transports that support a native reply primitive
-// (Discord, Telegram, Feishu, …) translate the resolved id into their native
-// API call. Transports that don't support replies ignore the id.
+//   [[reply_to: <message-id>]] — reply to a specific message id
 
 const REPLY_TAG_RE = /\[\[\s*(?:reply_to_current|reply_to\s*:\s*([^\]\n]+))\s*\]\]/gi;
 
 export interface ResolvedReply {
-  /** Text with all directive tags stripped. */
   stripped: string;
-  /** Reply target id if the agent requested one. Undefined for plain send. */
+  /** Undefined when the agent didn't request a reply for this chunk. */
   replyToId?: string;
 }
 
-/**
- * Parse + strip reply directives from a chunk of agent output.
- *
- * Resolution: an explicit `[[reply_to: <id>]]` wins; otherwise
- * `[[reply_to_current]]` resolves to triggerMessageId; otherwise no reply.
- *
- * Stateless — call once per outbound chunk.
- */
+/** Stateless — call once per outbound chunk. */
 export function parseReplyDirective(
   text: string,
   triggerMessageId?: string,
@@ -40,8 +28,7 @@ export function parseReplyDirective(
     }
   }
 
-  // Two-pass strip: drop directive-only lines entirely, then strip inline
-  // remainders. Tail whitespace before newlines is collapsed.
+  // Drop directive-only lines entirely; strip inline remainders.
   const aloneOnLine = new RegExp(
     `(^|\\n)[ \\t]*(?:${REPLY_TAG_RE.source})[ \\t]*\\n`,
     REPLY_TAG_RE.flags,
@@ -56,11 +43,9 @@ export function parseReplyDirective(
   return replyToId !== undefined ? { stripped, replyToId } : { stripped };
 }
 
-/**
- * System-prompt addendum that teaches the LLM how to use reply directives.
- * Transports that originate runs from a chat surface should pass this string
- * via RunRequest.extraSystemPrompt so the agent learns the syntax.
- */
+// Pass via RunRequest.extraSystemPrompt from any chat transport so the agent
+// learns the tag vocabulary. Tags are honored only on transports that
+// translate replyToId into a native reply primitive.
 export const REPLY_DIRECTIVE_PROMPT = `# Chat Output Directives
 
 When you reply on a chat surface, you may include the following inline tags
