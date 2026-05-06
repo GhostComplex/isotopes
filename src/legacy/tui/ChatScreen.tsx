@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, Static, useInput, useApp } from "ink";
 import { randomUUID } from "node:crypto";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
-import type { ChatMessage, ContentBlock, TuiOptions, Screen, SSEEvent } from "./types.js";
+import type { ChatMessage, ContentBlock, Screen, SSEEvent } from "./types.js";
 import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
@@ -93,19 +93,19 @@ export function historyToChatMessages(items: Array<{ role: string; type?: string
 }
 
 interface Props {
-  options: TuiOptions;
+  agentId: string;
   sessionKey: string;
   mode: "owned" | "attach";
   onSwitchScreen: (screen: Screen) => void;
 }
 
-export function ChatScreen({ options, sessionKey, mode, onSwitchScreen }: Props) {
+export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScreen }: Props) {
   const { exit } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [agentReady, setAgentReady] = useState(false);
-  const [agentId, setAgentId] = useState(options.agent ?? "");
+  const [agentId, setAgentId] = useState(propAgentId);
   const [error, setError] = useState<string | null>(null);
   const sessionKeyRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -114,7 +114,7 @@ export function ChatScreen({ options, sessionKey, mode, onSwitchScreen }: Props)
   const settledRef = useRef<ChatMessage[]>([]);
   const isAttached = mode === "attach";
 
-  const initAgent = useCallback(async (requestedAgent?: string) => {
+  const initAgent = useCallback(async () => {
     setAgentReady(false);
     setError(null);
     try {
@@ -124,18 +124,15 @@ export function ChatScreen({ options, sessionKey, mode, onSwitchScreen }: Props)
         return;
       }
 
-      const resolvedAgentId = requestedAgent ?? "main";
-
       if (mode === "attach") {
         sessionKeyRef.current = sessionKey;
-        setAgentId(resolvedAgentId);
-        const { items: history } = await api.getHistory(resolvedAgentId, sessionKey);
+        const { items: history } = await api.getHistory(propAgentId, sessionKey);
         setMessages(historyToChatMessages(history));
         const attachAbort = new AbortController();
         attachAbortRef.current = attachAbort;
         void (async () => {
           try {
-            await api.attachStream(resolvedAgentId, sessionKey, (m) => {
+            await api.attachStream(propAgentId, sessionKey, (m) => {
               const converted = historyToChatMessages([m.message as { role: string; content: unknown; toolCallId?: string }]);
               if (converted.length > 0) {
                 setMessages((prev) => [...prev, ...converted]);
@@ -151,7 +148,7 @@ export function ChatScreen({ options, sessionKey, mode, onSwitchScreen }: Props)
         return;
       }
 
-      const session = await api.createSession(resolvedAgentId, sessionKey);
+      const session = await api.createSession(propAgentId, sessionKey);
       sessionKeyRef.current = session.key;
       setAgentId(session.agentId);
 
@@ -174,7 +171,7 @@ export function ChatScreen({ options, sessionKey, mode, onSwitchScreen }: Props)
   }, []);
 
   useEffect(() => {
-    void initAgent(options.agent);
+    void initAgent();
     return () => {
       abortRef.current?.abort();
       attachAbortRef.current?.abort();

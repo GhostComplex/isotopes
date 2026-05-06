@@ -4,12 +4,13 @@ import { fetchSessions, isDaemonRunning } from "./api.js";
 import type { Screen, SessionSummary } from "./types.js";
 
 interface Props {
+  currentAgentId: string;
   currentSessionKey: string;
   onSwitchScreen: (screen: Screen) => void;
-  onSelect: (sessionKey: string) => void;
+  onSelect: (agentId: string, sessionKey: string) => void;
 }
 
-export function SessionsScreen({ currentSessionKey, onSwitchScreen, onSelect }: Props) {
+export function SessionsScreen({ currentAgentId, currentSessionKey, onSwitchScreen, onSelect }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [running, setRunning] = useState<boolean | null>(null);
   const [cursor, setCursor] = useState(0);
@@ -48,11 +49,11 @@ export function SessionsScreen({ currentSessionKey, onSwitchScreen, onSelect }: 
     } else if (key.downArrow) {
       setCursor((c) => (c + 1) % sessions.length);
     } else if (key.return) {
-      const chosen = sessions[cursor].key;
-      if (chosen === currentSessionKey) {
+      const chosen = sessions[cursor];
+      if (chosen.agentId === currentAgentId && chosen.key === currentSessionKey) {
         onSwitchScreen("chat");
       } else {
-        onSelect(chosen);
+        onSelect(chosen.agentId, chosen.key);
       }
     }
   });
@@ -77,7 +78,7 @@ export function SessionsScreen({ currentSessionKey, onSwitchScreen, onSelect }: 
         )}
         {sessions.map((s, i) => {
           const selected = i === cursor;
-          const isCurrent = s.key === currentSessionKey;
+          const isCurrent = s.agentId === currentAgentId && s.key === currentSessionKey;
           const time = s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleTimeString() : "";
           return (
             <Text key={s.key}>

@@ -13,7 +13,9 @@ function modeFor(sessionKey: string): "owned" | "attach" {
 }
 
 export function App({ options }: Props) {
+  const launchAgentId = options.agent ?? "main";
   const [screen, setScreen] = useState<Screen>("chat");
+  const [agentId, setAgentId] = useState<string>(launchAgentId);
   const [sessionKey, setSessionKey] = useState<string>("tui");
 
   if (screen === "status") {
@@ -23,10 +25,12 @@ export function App({ options }: Props) {
   if (screen === "sessions") {
     return (
       <SessionsScreen
+        currentAgentId={agentId}
         currentSessionKey={sessionKey}
         onSwitchScreen={setScreen}
-        onSelect={(key) => {
-          setSessionKey(key);
+        onSelect={(nextAgentId, nextKey) => {
+          setAgentId(nextAgentId);
+          setSessionKey(nextKey);
           setScreen("chat");
         }}
       />
@@ -35,8 +39,8 @@ export function App({ options }: Props) {
 
   return (
     <ChatScreen
-      key={sessionKey}
-      options={options}
+      key={`${agentId}:${sessionKey}`}
+      agentId={agentId}
       sessionKey={sessionKey}
       mode={modeFor(sessionKey)}
       onSwitchScreen={setScreen}
