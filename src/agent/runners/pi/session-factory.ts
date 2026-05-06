@@ -12,6 +12,7 @@ import {
 import * as path from "node:path";
 
 import type { ProviderConfig, RegisteredAgent } from "../../types.js";
+import type { AgentToolSettings } from "../../tools/types.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../../workspace/context.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
@@ -86,6 +87,28 @@ function toToolDefinition(t: AgentTool): ToolDefinition {
   };
 }
 
+function buildToolAllowlist(
+  policy: AgentToolSettings | undefined,
+  customTools: ToolDefinition[],
+  resourceLoader: DefaultResourceLoader | undefined,
+): string[] | undefined {
+  if (!policy?.allow && !policy?.deny) return undefined;
+  const extensionToolNames: string[] = [];
+  if (resourceLoader) {
+    for (const ext of resourceLoader.getExtensions().extensions) {
+      for (const name of ext.tools.keys()) extensionToolNames.push(name);
+    }
+  }
+  const allNames = [...customTools.map((t) => t.name), ...extensionToolNames];
+  const denySet = policy.deny ? new Set(policy.deny) : undefined;
+  const allowSet = policy.allow ? new Set(policy.allow) : undefined;
+  return allNames.filter((n) => {
+    if (denySet?.has(n)) return false;
+    if (allowSet && !allowSet.has(n)) return false;
+    return true;
+  });
+}
+
 export async function createPiSession(
   deps: PiSessionDeps,
   opts: { agent: RegisteredAgent; sessionId: string; cwd?: string; extraSystemPrompt?: string },
@@ -112,24 +135,11 @@ export async function createPiSession(
   }
 
   // Extension tools bypass tools.allow/deny unless we pass pi an allowlist.
-  let toolAllowlist: string[] | undefined;
-  const policy = agent.config.toolSettings;
-  if (policy?.allow || policy?.deny) {
-    const extensionToolNames: string[] = [];
-    if (resourceLoader) {
-      for (const ext of resourceLoader.getExtensions().extensions) {
-        for (const name of ext.tools.keys()) extensionToolNames.push(name);
-      }
-    }
-    const allNames = [...customTools.map((t) => t.name), ...extensionToolNames];
-    const denySet = policy.deny ? new Set(policy.deny) : undefined;
-    const allowSet = policy.allow ? new Set(policy.allow) : undefined;
-    toolAllowlist = allNames.filter((n) => {
-      if (denySet?.has(n)) return false;
-      if (allowSet && !allowSet.has(n)) return false;
-      return true;
-    });
-  }
+  const toolAllowlist = buildToolAllowlist(
+    agent.config.toolSettings,
+    customTools,
+    resourceLoader,
+  );
 
   const { session } = await createAgentSession({
     cwd: sessionCwd,
