@@ -94,12 +94,12 @@ export function historyToChatMessages(items: Array<{ role: string; type?: string
 
 interface Props {
   options: TuiOptions;
-  /** When set, attach to this session as observer (no local echo). When undefined, own a `tui` session for the agent. */
-  attachKey?: string;
+  sessionKey: string;
+  mode: "owned" | "attach";
   onSwitchScreen: (screen: Screen) => void;
 }
 
-export function ChatScreen({ options, attachKey, onSwitchScreen }: Props) {
+export function ChatScreen({ options, sessionKey, mode, onSwitchScreen }: Props) {
   const { exit } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -112,7 +112,7 @@ export function ChatScreen({ options, attachKey, onSwitchScreen }: Props) {
   const attachAbortRef = useRef<AbortController | null>(null);
   const pendingSteerRef = useRef<ChatMessage[]>([]);
   const settledRef = useRef<ChatMessage[]>([]);
-  const isAttached = attachKey !== undefined;
+  const isAttached = mode === "attach";
 
   const initAgent = useCallback(async (requestedAgent?: string) => {
     setAgentReady(false);
@@ -126,16 +126,16 @@ export function ChatScreen({ options, attachKey, onSwitchScreen }: Props) {
 
       const resolvedAgentId = requestedAgent ?? "main";
 
-      if (attachKey) {
-        sessionKeyRef.current = attachKey;
+      if (mode === "attach") {
+        sessionKeyRef.current = sessionKey;
         setAgentId(resolvedAgentId);
-        const { items: history } = await api.getHistory(resolvedAgentId, attachKey);
+        const { items: history } = await api.getHistory(resolvedAgentId, sessionKey);
         setMessages(historyToChatMessages(history));
         const attachAbort = new AbortController();
         attachAbortRef.current = attachAbort;
         void (async () => {
           try {
-            await api.attachStream(resolvedAgentId, attachKey, (m) => {
+            await api.attachStream(resolvedAgentId, sessionKey, (m) => {
               const converted = historyToChatMessages([m.message as { role: string; content: unknown; toolCallId?: string }]);
               if (converted.length > 0) {
                 setMessages((prev) => [...prev, ...converted]);
@@ -151,7 +151,7 @@ export function ChatScreen({ options, attachKey, onSwitchScreen }: Props) {
         return;
       }
 
-      const session = await api.createSession(resolvedAgentId, "tui");
+      const session = await api.createSession(resolvedAgentId, sessionKey);
       sessionKeyRef.current = session.key;
       setAgentId(session.agentId);
 
@@ -184,8 +184,6 @@ export function ChatScreen({ options, attachKey, onSwitchScreen }: Props) {
   const sendMessage = async (text: string) => {
     if (!sessionKeyRef.current || isStreaming) return;
 
-    // Attach mode: attachStream is the single source of truth for UI updates.
-    // Skip local user echo and inline streaming preview.
     if (isAttached) {
       setIsStreaming(true);
       const abort = new AbortController();
@@ -308,7 +306,7 @@ export function ChatScreen({ options, attachKey, onSwitchScreen }: Props) {
               if (sessionKeyRef.current) {
                 await api.deleteSession(agentId, sessionKeyRef.current).catch(() => {});
               }
-              const session = await api.createSession(agentId, "tui");
+              const session = await api.createSession(agentId, sessionKey);
               sessionKeyRef.current = session.key;
               setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
             } catch (err) {
@@ -425,7 +423,7 @@ export function ChatScreen({ options, attachKey, onSwitchScreen }: Props) {
         <Text bold>isotopes</Text>
         <Text> — agent: </Text>
         <Text color="cyan">{agentId || "loading..."}</Text>
-        {isAttached && <Text color="magenta"> [attached: {attachKey}]</Text>}
+        {isAttached && <Text color="magenta"> [attached: {sessionKey}]</Text>}
         {isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 

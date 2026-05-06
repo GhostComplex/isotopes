@@ -8,9 +8,13 @@ interface Props {
   options: TuiOptions;
 }
 
+function modeFor(sessionKey: string): "owned" | "attach" {
+  return sessionKey === "tui" || sessionKey.startsWith("tui:") ? "owned" : "attach";
+}
+
 export function App({ options }: Props) {
   const [screen, setScreen] = useState<Screen>("chat");
-  const [attachKey, setAttachKey] = useState<string | undefined>(undefined);
+  const [sessionKey, setSessionKey] = useState<string>("tui");
 
   if (screen === "status") {
     return <StatusScreen onSwitchScreen={setScreen} />;
@@ -19,9 +23,10 @@ export function App({ options }: Props) {
   if (screen === "sessions") {
     return (
       <SessionsScreen
+        currentSessionKey={sessionKey}
         onSwitchScreen={setScreen}
         onSelect={(key) => {
-          setAttachKey(key);
+          setSessionKey(key);
           setScreen("chat");
         }}
       />
@@ -30,9 +35,10 @@ export function App({ options }: Props) {
 
   return (
     <ChatScreen
-      key={attachKey ?? "owned"}
+      key={sessionKey}
       options={options}
-      attachKey={attachKey}
+      sessionKey={sessionKey}
+      mode={modeFor(sessionKey)}
       onSwitchScreen={setScreen}
     />
   );

@@ -4,11 +4,12 @@ import { fetchSessions, isDaemonRunning } from "./api.js";
 import type { Screen, SessionSummary } from "./types.js";
 
 interface Props {
+  currentSessionKey: string;
   onSwitchScreen: (screen: Screen) => void;
   onSelect: (sessionKey: string) => void;
 }
 
-export function SessionsScreen({ onSwitchScreen, onSelect }: Props) {
+export function SessionsScreen({ currentSessionKey, onSwitchScreen, onSelect }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [running, setRunning] = useState<boolean | null>(null);
   const [cursor, setCursor] = useState(0);
@@ -24,8 +25,9 @@ export function SessionsScreen({ onSwitchScreen, onSelect }: Props) {
       try {
         const list = await fetchSessions();
         if (cancelled) return;
-        setSessions(list);
-        setCursor((c) => (list.length === 0 ? 0 : Math.min(c, list.length - 1)));
+        const sorted = [...list].sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? ""));
+        setSessions(sorted);
+        setCursor((c) => (sorted.length === 0 ? 0 : Math.min(c, sorted.length - 1)));
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
@@ -46,7 +48,12 @@ export function SessionsScreen({ onSwitchScreen, onSelect }: Props) {
     } else if (key.downArrow) {
       setCursor((c) => (c + 1) % sessions.length);
     } else if (key.return) {
-      onSelect(sessions[cursor].key);
+      const chosen = sessions[cursor].key;
+      if (chosen === currentSessionKey) {
+        onSwitchScreen("chat");
+      } else {
+        onSelect(chosen);
+      }
     }
   });
 
@@ -70,19 +77,21 @@ export function SessionsScreen({ onSwitchScreen, onSelect }: Props) {
         )}
         {sessions.map((s, i) => {
           const selected = i === cursor;
+          const isCurrent = s.key === currentSessionKey;
           const time = s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleTimeString() : "";
           return (
             <Text key={s.key}>
               <Text color={selected ? "cyan" : undefined}>{selected ? "▸ " : "  "}</Text>
               <Text color={selected ? "cyan" : undefined} bold={selected}>{s.agentId}</Text>
               <Text color="gray"> {s.key} {time}</Text>
+              {isCurrent && <Text color="green"> (current)</Text>}
             </Text>
           );
         })}
       </Box>
 
       <Box borderStyle="single" paddingX={1} marginTop={1}>
-        <Text dimColor>↑↓ navigate  enter attach  esc back</Text>
+        <Text dimColor>↑↓ navigate  enter switch  esc back</Text>
       </Box>
     </Box>
   );
