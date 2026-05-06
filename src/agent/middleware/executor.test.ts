@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SandboxExecutor } from "./executor.js";
 import type { ContainerManager, ContainerInfo } from "./container.js";
-import type { SandboxConfig } from "../../sandbox/config.js";
+import type { SandboxConfig } from "./sandbox-config.js";
 
 // ---------------------------------------------------------------------------
 // Mock ContainerManager

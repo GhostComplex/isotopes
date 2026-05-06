@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
 import { ContainerManager } from "./container.js";
-import type { DockerConfig } from "../../sandbox/config.js";
+import type { DockerConfig } from "./sandbox-config.js";
 
 vi.mock("node:child_process", async () => {
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");

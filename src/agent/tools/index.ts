@@ -10,7 +10,7 @@ import { Type } from "typebox";
 import type { AgentToolSettings } from "./types.js";
 import { HostFs, SandboxFs, type FsBridge } from "../middleware/fs.js";
 import { HostExecutor, type Executor, type SandboxExecutor } from "../middleware/executor.js";
-import { type SandboxConfig } from "../../sandbox/config.js";
+import { type SandboxConfig } from "../middleware/sandbox-config.js";
 import { createWebFetchTool } from "./web.js";
 import { createReactTools } from "./react.js";
 import type { LazyTransportContext } from "../../gateway/transport-context.js";

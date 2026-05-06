@@ -5,7 +5,7 @@ import type { ProviderType, AgentConfig } from "./agent/types.js";
 import type { AgentToolSettings } from "./agent/tools/types.js";
 import type { ChannelsConfig } from "./gateway/types.js";
 import type { CronActionConfig } from "./automation/types.js";
-import { resolveSandboxConfig, type SandboxConfig } from "./sandbox/config.js";
+import { resolveSandboxConfig, type SandboxConfig } from "./agent/middleware/sandbox-config.js";
 import type { PluginConfigEntry } from "./legacy/plugins/types.js";
 
 export interface ProviderConfigFile {

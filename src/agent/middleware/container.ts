@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createLogger } from "../../logging/logger.js";
 import { EXEC_MAX_OUTPUT_BYTES, type ExecResult } from "./executor.js";
-import type { DockerConfig, Mount, WorkspaceAccess } from "../../sandbox/config.js";
+import type { DockerConfig, Mount, WorkspaceAccess } from "./sandbox-config.js";
 
 const log = createLogger("middleware:container");
 

@@ -38,7 +38,7 @@ import { createAgentTools } from "./tools/index.js";
 import { LazyTransportContext } from "../gateway/transport-context.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
-import type { SandboxConfig } from "../sandbox/config.js";
+import type { SandboxConfig } from "./middleware/sandbox-config.js";
 
 const log = createLogger("agents:runtime");
 
