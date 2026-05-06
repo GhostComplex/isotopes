@@ -8,15 +8,13 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import type { AgentToolSettings } from "./types.js";
-import { HostFs, SandboxFs, type FsBridge } from "../../sandbox/fs-bridge.js";
-import { SandboxExecutor } from "../../sandbox/executor.js";
+import { HostFs, SandboxFs, type FsBridge } from "../middleware/fs.js";
+import { HostExecutor, type Executor, type SandboxExecutor } from "../middleware/executor.js";
 import { type SandboxConfig } from "../../sandbox/config.js";
 import { createWebFetchTool } from "./web.js";
 import { createReactTools } from "./react.js";
 import type { LazyTransportContext } from "../../gateway/transport-context.js";
 import { createExecTools } from "./exec.js";
-import { HostExecutor } from "../host-executor.js";
-import type { Executor } from "../executor.js";
 import type { AgentRuntime } from "../runtime.js";
 import { RunValidationError } from "../types.js";
 import type { RunRequest } from "../types.js";
@@ -276,44 +274,26 @@ export interface CreateAgentToolsOptions {
   spawnableAgentIds?: string[];
   transportContext?: LazyTransportContext;
   agentSandboxConfig?: SandboxConfig;
-}
-
-let sandboxExecutor: SandboxExecutor | undefined;
-
-export function configureToolsLayer(opts: { sandboxBaseConfig?: SandboxConfig }): void {
-  if (!opts.sandboxBaseConfig) return;
-  sandboxExecutor = SandboxExecutor.fromConfig(opts.sandboxBaseConfig);
-  if (sandboxExecutor) {
-    log.info(`Sandbox executor initialized (image: ${opts.sandboxBaseConfig.docker?.image})`);
-  }
-}
-
-export async function shutdownToolsLayer(): Promise<void> {
-  if (sandboxExecutor) {
-    try {
-      await sandboxExecutor.cleanup();
-    } finally {
-      sandboxExecutor = undefined;
-    }
-  }
+  /** Required when agentSandboxConfig.enabled — provided by AgentRuntime. */
+  sandboxExecutor?: SandboxExecutor;
 }
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   const isSandboxed = !!opts.agentSandboxConfig?.enabled;
-  if (isSandboxed && !sandboxExecutor) {
+  if (isSandboxed && !opts.sandboxExecutor) {
     throw new Error(
       `agent "${opts.agentId}" requires sandbox but no sandbox infrastructure is configured. ` +
       "Define `sandbox.docker` in isotopes.yaml (top-level or agents.defaults.sandbox).",
     );
   }
   if (isSandboxed && opts.agentSandboxConfig) {
-    sandboxExecutor!.registerAgent(opts.agentId, opts.agentSandboxConfig);
+    opts.sandboxExecutor!.registerAgent(opts.agentId, opts.agentSandboxConfig);
   }
   const executor: Executor = isSandboxed
-    ? sandboxExecutor!.bind(opts.agentId)
+    ? opts.sandboxExecutor!.bind(opts.agentId)
     : new HostExecutor();
   const fs: FsBridge = isSandboxed
-    ? new SandboxFs(sandboxExecutor!, opts.agentId)
+    ? new SandboxFs(opts.sandboxExecutor!, opts.agentId)
     : new HostFs();
   const spawnAgentEnabled = !isSandboxed;
   if (isSandboxed) {

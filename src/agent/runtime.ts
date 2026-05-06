@@ -37,6 +37,8 @@ import { reconcileWorkspaceState } from "./workspace/state.js";
 import { createAgentTools } from "./tools/index.js";
 import { LazyTransportContext } from "../gateway/transport-context.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
+import { SandboxExecutor } from "./middleware/executor.js";
+import type { SandboxConfig } from "../sandbox/config.js";
 
 const log = createLogger("agents:runtime");
 
@@ -64,6 +66,8 @@ export interface AgentRuntimeOptions {
   globalProvider?: ProviderConfig;
   /** Plugin hooks to fire around tool execution. */
   hooks?: HookRegistry;
+  /** Resolved global sandbox config — if present, AgentRuntime owns a SandboxExecutor. */
+  sandboxBaseConfig?: SandboxConfig;
 }
 
 export interface AddAgentOptions {
@@ -111,10 +115,17 @@ export class AgentRuntime {
   private piAuthStorage?: AuthStorage;
   private piModelRegistry?: ModelRegistry;
   private hooks?: HookRegistry;
+  private sandboxExecutor?: SandboxExecutor;
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
     if (opts.hooks) this.hooks = opts.hooks;
+    if (opts.sandboxBaseConfig) {
+      this.sandboxExecutor = SandboxExecutor.fromConfig(opts.sandboxBaseConfig);
+      if (this.sandboxExecutor) {
+        log.info(`Sandbox executor initialized (image: ${opts.sandboxBaseConfig.docker?.image})`);
+      }
+    }
 
     if (opts.globalProvider) {
       const creds: Record<string, { type: "api_key"; key: string }> = {};
@@ -256,6 +267,7 @@ export class AgentRuntime {
       agentSandboxConfig: agentConfig.sandbox,
       transportContext,
       runtime: this,
+      ...(this.sandboxExecutor ? { sandboxExecutor: this.sandboxExecutor } : {}),
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
     });
 
@@ -420,6 +432,17 @@ export class AgentRuntime {
 
   cancelAll(): void {
     for (const sessionId of [...this.runs.keys()]) this.cancel(sessionId);
+  }
+
+  /** Tear down sandbox containers. Idempotent. */
+  async shutdown(): Promise<void> {
+    if (this.sandboxExecutor) {
+      try {
+        await this.sandboxExecutor.cleanup();
+      } finally {
+        this.sandboxExecutor = undefined;
+      }
+    }
   }
 
   /** Push-model steer — inject a user message into an in-flight run mid-turn. */

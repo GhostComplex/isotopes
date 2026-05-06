@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createLogger } from "../logging/logger.js";
-import { EXEC_MAX_OUTPUT_BYTES } from "../agent/executor.js";
+import { EXEC_MAX_OUTPUT_BYTES } from "../agent/middleware/executor.js";
 import type { DockerConfig, Mount, WorkspaceAccess } from "./config.js";
 
 const log = createLogger("sandbox:container");
@@ -15,7 +15,7 @@ export interface ContainerInfo {
   createdAt: Date;
 }
 
-import type { ExecResult } from "../agent/executor.js";
+import type { ExecResult } from "../agent/middleware/executor.js";
 
 /** Wraps the `docker` CLI rather than the API to avoid heavy SDK deps. Stateless — DockerConfig is per-call. */
 export class ContainerManager {

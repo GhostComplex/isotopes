@@ -1,11 +1,123 @@
-// src/sandbox/executor.ts — Per-agent container lifecycle + command routing.
+import { spawn } from "node:child_process";
+import { createLogger } from "../../logging/logger.js";
+import { ContainerManager, type ContainerInfo } from "../../sandbox/container.js";
+import { type DockerConfig, type Mount, type SandboxConfig, type WorkspaceAccess } from "../../sandbox/config.js";
 
-import { createLogger } from "../logging/logger.js";
-import { ContainerManager, type ContainerInfo } from "./container.js";
-import type { Executor, ExecOptions, ExecResult } from "../agent/executor.js";
-import { type DockerConfig, type Mount, type SandboxConfig, type WorkspaceAccess } from "./config.js";
+const log = createLogger("middleware:executor");
 
-const log = createLogger("sandbox:executor");
+/** Cap collected stdout/stderr per `execute()` call to prevent OOM from runaway commands. */
+export const EXEC_MAX_OUTPUT_BYTES = 100 * 1024;
+
+export interface ExecResult {
+  exitCode: number;
+  stdout: Buffer;
+  stderr: Buffer;
+  /** True iff stdout or stderr was capped at EXEC_MAX_OUTPUT_BYTES. */
+  truncated?: boolean;
+}
+
+export interface ExecOptions {
+  /** Working directory. Sandbox honors at container-create time, not per-call. */
+  workspacePath?: string;
+  timeout?: number;
+  stdin?: Buffer | string;
+}
+
+/**
+ * Per-agent command execution. HostExecutor runs on the host process;
+ * SandboxExecutor.bind(agentId) runs inside the agent's container.
+ */
+export interface Executor {
+  execute(argv: string[], opts?: ExecOptions): Promise<ExecResult>;
+
+  /**
+   * Returns the host-side argv to spawn for this command. HostExecutor
+   * returns argv as-is; SandboxExecutor prepends `docker exec -i <ctr>`.
+   * Used by background-process tracking — caller spawns the returned argv
+   * itself so it can keep the ChildProcess handle.
+   */
+  buildExecArgv(argv: string[], opts?: ExecOptions): Promise<string[]>;
+}
+
+/** Thin wrapper over child_process.spawn — host = trust model, no cwd jail / env scrub. */
+export class HostExecutor implements Executor {
+  async execute(argv: string[], opts?: ExecOptions): Promise<ExecResult> {
+    if (argv.length === 0) {
+      return { exitCode: 1, stdout: Buffer.alloc(0), stderr: Buffer.from("argv is empty") };
+    }
+
+    return new Promise<ExecResult>((resolve, reject) => {
+      const child = spawn(argv[0], argv.slice(1), {
+        cwd: opts?.workspacePath,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let stdoutTruncated = false;
+      let stderrTruncated = false;
+
+      const collect = (chunks: Buffer[], chunk: Buffer, getBytes: () => number, setBytes: (n: number) => void, setTruncated: (b: boolean) => void): void => {
+        const bytes = getBytes();
+        if (bytes >= EXEC_MAX_OUTPUT_BYTES) { setTruncated(true); return; }
+        if (bytes + chunk.length > EXEC_MAX_OUTPUT_BYTES) {
+          chunks.push(chunk.subarray(0, EXEC_MAX_OUTPUT_BYTES - bytes));
+          setBytes(EXEC_MAX_OUTPUT_BYTES);
+          setTruncated(true);
+        } else {
+          chunks.push(chunk);
+          setBytes(bytes + chunk.length);
+        }
+      };
+
+      child.stdout?.on("data", (chunk: Buffer) =>
+        collect(stdoutChunks, chunk, () => stdoutBytes, (n) => { stdoutBytes = n; }, (b) => { stdoutTruncated = b; }));
+      child.stderr?.on("data", (chunk: Buffer) =>
+        collect(stderrChunks, chunk, () => stderrBytes, (n) => { stderrBytes = n; }, (b) => { stderrTruncated = b; }));
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let timedOut = false;
+      if (opts?.timeout) {
+        timer = setTimeout(() => {
+          timedOut = true;
+          child.kill("SIGTERM");
+          reject(new Error(`Host execution timed out after ${opts.timeout}ms`));
+        }, opts.timeout);
+      }
+
+      child.on("error", (err) => {
+        if (timer) clearTimeout(timer);
+        reject(err);
+      });
+
+      child.on("close", (code) => {
+        if (timer) clearTimeout(timer);
+        if (timedOut) return;  // already rejected by timer
+        const truncMarker = Buffer.from(`\n[output truncated at ${EXEC_MAX_OUTPUT_BYTES} bytes]`, "utf8");
+        const stdout = stdoutTruncated ? Buffer.concat([...stdoutChunks, truncMarker]) : Buffer.concat(stdoutChunks);
+        const stderr = stderrTruncated ? Buffer.concat([...stderrChunks, truncMarker]) : Buffer.concat(stderrChunks);
+        resolve({
+          exitCode: code ?? 0,
+          stdout,
+          stderr,
+          ...(stdoutTruncated || stderrTruncated ? { truncated: true } : {}),
+        });
+      });
+
+      if (opts?.stdin !== undefined) {
+        child.stdin?.end(opts.stdin);
+      } else {
+        child.stdin?.end();
+      }
+    });
+  }
+
+  async buildExecArgv(argv: string[]): Promise<string[]> {
+    return argv;
+  }
+}
 
 /**
  * Lazily creates one container per agent and routes commands through it.

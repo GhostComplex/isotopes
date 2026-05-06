@@ -14,8 +14,8 @@ vi.mock("../logging/logger.js", () => ({
 }));
 
 import { createExecTool, createExecTools } from "./exec.js";
-import { HostExecutor } from "../host-executor.js";
-import type { Executor } from "../executor.js";
+import { HostExecutor } from "../middleware/executor.js";
+import type { Executor } from "../middleware/executor.js";
 
 function makeMockExecutor(overrides?: Partial<Executor>): Executor {
   return {

@@ -7,7 +7,6 @@ import { SessionStoreManager } from "./agent/runners/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyTransportContext } from "./gateway/transport-context.js";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { configureToolsLayer, shutdownToolsLayer } from "./agent/tools/index.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
@@ -50,19 +49,19 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     throw new Error("config.provider is required (top-level provider config in isotopes.yaml)");
   }
 
+  const sandboxBaseConfig = config.sandbox
+    ? resolveSandboxConfigFromFile("<global>", undefined, config.sandbox)
+    : undefined;
+
   const agentRuntime = new AgentRuntime({
     globalProvider: config.provider,
     hooks: pluginManager.getHooks(),
+    ...(sandboxBaseConfig ? { sandboxBaseConfig } : {}),
   });
 
   const agentWorkspaces = new Map<string, string>();
   const transportContexts = new Map<string, LazyTransportContext>();
   const toolRegistries = new Map<string, AgentTool[]>();
-
-  const sandboxBaseConfig = config.sandbox
-    ? resolveSandboxConfigFromFile("<global>", undefined, config.sandbox)
-    : undefined;
-  configureToolsLayer({ sandboxBaseConfig });
 
   const spawnableAgentIds = config.agents
     .filter((a) => a.spawnable === true && a.enabled !== false)
@@ -263,7 +262,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     sessionStoreManager.destroyAll();
 
     try {
-      await shutdownToolsLayer();
+      await agentRuntime.shutdown();
     } catch (err) {
       log.warn(`Sandbox cleanup error: ${err instanceof Error ? err.message : String(err)}`);
     }
