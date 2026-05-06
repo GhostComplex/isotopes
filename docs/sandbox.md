@@ -70,7 +70,7 @@ When `sandbox.enabled` is true:
 - **Shell commands** (`exec`, background processes) run as `docker exec` on
   the agent's container.
 - **File mutations** (`write_file`, `edit`) are routed through `docker exec`
-  via `SandboxFs` (see `src/sandbox/fs-bridge.ts`). They land inside the
+  via `SandboxFs` (see `src/agent/middleware/fs.ts`). They land inside the
   container's mount view, so any path that isn't bind-mounted (`/etc/passwd`,
   `~/.ssh/...`, etc.) cannot be written even if the JS path validator could
   be tricked into accepting it.
@@ -117,7 +117,7 @@ sandbox:
 ```
 
 Then exec into the running container (containers are named
-`isotopes-sandbox-<agent-id>` — see `src/sandbox/executor.ts`):
+`isotopes-sandbox-<agent-id>` — see `src/agent/middleware/executor.ts`):
 
 ```bash
 docker exec -it isotopes-sandbox-<agent-id> claude
