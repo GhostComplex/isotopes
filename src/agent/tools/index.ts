@@ -7,7 +7,6 @@ import {
   createLsTool,
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import type { AgentToolSettings } from "./types.js";
 import { HostFs, SandboxFs, type FsBridge } from "../middleware/fs.js";
 import { HostExecutor, type Executor, type SandboxExecutor } from "../middleware/executor.js";
 import { type SandboxConfig } from "../middleware/sandbox-config.js";
@@ -239,34 +238,12 @@ function createFsTools(workspacePath: string, fs: FsBridge): AgentTool[] {
 }
 
 // ---------------------------------------------------------------------------
-// Tool policy — per-agent allow/deny filtering
-// ---------------------------------------------------------------------------
-
-export function applyToolPolicy(
-  tools: AgentTool[],
-  policy?: { allow?: string[]; deny?: string[] },
-): AgentTool[] {
-  if (!policy) return tools;
-  const { allow, deny } = policy;
-  if (!allow && !deny) return tools;
-  const denySet = deny ? new Set(deny) : undefined;
-  const allowSet = allow ? new Set(allow) : undefined;
-  return tools.filter((t) => {
-    if (denySet?.has(t.name)) return false;
-    if (allowSet && !allowSet.has(t.name)) return false;
-    return true;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // Agent tool set
 // ---------------------------------------------------------------------------
 
 export interface CreateAgentToolsOptions {
   workspacePath: string;
   agentId: string;
-  settings?: AgentToolSettings;
   parentAgentId?: string;
   /** Required for the spawn_agent tool. */
   runtime?: AgentRuntime;
@@ -321,5 +298,5 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
     tools.push(...createReactTools(opts.transportContext));
   }
 
-  return applyToolPolicy(tools, opts.settings);
+  return tools;
 }

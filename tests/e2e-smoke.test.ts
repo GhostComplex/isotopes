@@ -8,10 +8,7 @@ import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
-import {
-  createAgentTools,
-  applyToolPolicy,
-} from "../src/agent/tools/index.js";
+import { createAgentTools } from "../src/agent/tools/index.js";
 import { createExecTools } from "../src/agent/tools/exec.js";
 import { createWebFetchTool } from "../src/agent/tools/web.js";
 import { HostExecutor } from "../src/agent/middleware/executor.js";
@@ -112,40 +109,6 @@ describe("NO_REPLY suppression", () => {
     expect(shouldSuppress("Hello world")).toBe(false);
     expect(shouldSuppress("NO_REPLY but more text")).toBe(false);
     expect(shouldSuppress("")).toBe(false);
-  });
-});
-
-describe("tool policy deny", () => {
-  it("removes denied tools", () => {
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
-    const filtered = applyToolPolicy(tools, { deny: ["read"] });
-    const names = filtered.map((t) => t.name);
-    expect(names).not.toContain("read");
-    expect(names).toContain("write");
-    expect(names).toContain("edit");
-  });
-
-  it("exec tool denied via policy is not present", () => {
-    const execTools = createExecTools({ cwd: tmpDir, executor: new HostExecutor() });
-    const filtered = applyToolPolicy(execTools, { deny: ["exec"] });
-    expect(filtered).toHaveLength(0);
-  });
-
-  it("allow list restricts to only specified tools", () => {
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
-    const filtered = applyToolPolicy(tools, { allow: ["read", "edit"] });
-    expect(filtered.map((t) => t.name).sort()).toEqual(["edit", "read"]);
-  });
-
-  it("deny takes precedence over allow", () => {
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
-    const filtered = applyToolPolicy(tools, {
-      allow: ["read", "edit"],
-      deny: ["edit"],
-    });
-    const names = filtered.map((t) => t.name);
-    expect(names).toContain("read");
-    expect(names).not.toContain("edit");
   });
 });
 

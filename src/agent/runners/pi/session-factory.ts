@@ -1,17 +1,18 @@
 import { getModel, type Api, type Model } from "@mariozechner/pi-ai";
-import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
   type AuthStorage,
   type ModelRegistry,
   type ToolDefinition,
   createAgentSession,
+  DefaultResourceLoader,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import * as path from "node:path";
 
 import type { ProviderConfig, RegisteredAgent } from "../../types.js";
-import type { HookRegistry } from "../../../legacy/plugins/hooks.js";
+import type { AgentToolSettings } from "../../tools/types.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../../workspace/context.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
@@ -24,7 +25,33 @@ export interface PiSessionDeps {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   getAgentTools: (agentId: string) => AgentTool[];
-  hooks?: HookRegistry;
+  extensionPaths?: string[];
+}
+
+/** Per-agent loader cache; reload() jiti-imports every extension file. */
+const loaderCache = new Map<string, Promise<DefaultResourceLoader>>();
+
+async function getResourceLoader(
+  agentId: string,
+  cwd: string,
+  agentDir: string,
+  settingsManager: SettingsManager,
+  extensionPaths: string[],
+): Promise<DefaultResourceLoader> {
+  const existing = loaderCache.get(agentId);
+  if (existing) return existing;
+  const init = (async () => {
+    const loader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager,
+      additionalExtensionPaths: extensionPaths,
+    });
+    await loader.reload();
+    return loader;
+  })();
+  loaderCache.set(agentId, init);
+  return init;
 }
 
 function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<Api> {
@@ -47,9 +74,7 @@ function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<A
   };
 }
 
-/** AgentTool → SDK ToolDefinition shim. AgentTool's execute has no ctx; the
- * shim adds it (unused) and wraps execution in before/after hooks. */
-function toToolDefinition(t: AgentTool, hooks: HookRegistry | undefined, agentId: string): ToolDefinition {
+function toToolDefinition(t: AgentTool): ToolDefinition {
   return {
     name: t.name,
     label: t.label,
@@ -57,19 +82,31 @@ function toToolDefinition(t: AgentTool, hooks: HookRegistry | undefined, agentId
     parameters: t.parameters,
     ...(t.prepareArguments ? { prepareArguments: t.prepareArguments } : {}),
     ...(t.executionMode ? { executionMode: t.executionMode } : {}),
-    execute: async (toolCallId, params, signal, onUpdate, _ctx) => {
-      if (hooks) await hooks.emit("before_tool_call", { agentId, toolName: t.name, args: params });
-      const result = await t.execute(toolCallId, params, signal, onUpdate);
-      if (hooks) {
-        const text = result.content
-          .filter((c: AgentToolResult<unknown>["content"][number]): c is { type: "text"; text: string } => c.type === "text")
-          .map((c: { text: string }) => c.text)
-          .join("\n");
-        await hooks.emit("after_tool_call", { agentId, toolName: t.name, args: params, result: text });
-      }
-      return result;
-    },
+    execute: async (toolCallId, params, signal, onUpdate, _ctx) =>
+      t.execute(toolCallId, params, signal, onUpdate),
   };
+}
+
+function buildToolAllowlist(
+  policy: AgentToolSettings | undefined,
+  customTools: ToolDefinition[],
+  resourceLoader: DefaultResourceLoader | undefined,
+): string[] | undefined {
+  if (!policy?.allow && !policy?.deny) return undefined;
+  const extensionToolNames: string[] = [];
+  if (resourceLoader) {
+    for (const ext of resourceLoader.getExtensions().extensions) {
+      for (const name of ext.tools.keys()) extensionToolNames.push(name);
+    }
+  }
+  const allNames = [...customTools.map((t) => t.name), ...extensionToolNames];
+  const denySet = policy.deny ? new Set(policy.deny) : undefined;
+  const allowSet = policy.allow ? new Set(policy.allow) : undefined;
+  return allNames.filter((n) => {
+    if (denySet?.has(n)) return false;
+    if (allowSet && !allowSet.has(n)) return false;
+    return true;
+  });
 }
 
 export async function createPiSession(
@@ -81,19 +118,41 @@ export async function createPiSession(
   const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
-  const customTools = deps.getAgentTools(agent.id).map((t) => toToolDefinition(t, deps.hooks, agent.id));
+  const customTools = deps.getAgentTools(agent.id).map(toToolDefinition);
+  const sessionCwd = cwd ?? resolveAgentWorkspacePath(agent.config);
+  const agentDir = path.join(ISOTOPES_HOME, "agents", agent.id, "agent");
+  const settingsManager = SettingsManager.inMemory();
+
+  let resourceLoader: DefaultResourceLoader | undefined;
+  if (deps.extensionPaths && deps.extensionPaths.length > 0) {
+    resourceLoader = await getResourceLoader(
+      agent.id,
+      sessionCwd,
+      agentDir,
+      settingsManager,
+      deps.extensionPaths,
+    );
+  }
+
+  // Extension tools bypass tools.allow/deny unless we pass pi an allowlist.
+  const toolAllowlist = buildToolAllowlist(
+    agent.config.toolSettings,
+    customTools,
+    resourceLoader,
+  );
 
   const { session } = await createAgentSession({
-    cwd: cwd ?? resolveAgentWorkspacePath(agent.config),
-    agentDir: path.join(ISOTOPES_HOME, "agents", agent.id, "agent"),
+    cwd: sessionCwd,
+    agentDir,
     authStorage: deps.authStorage,
     modelRegistry: deps.modelRegistry,
     model: resolveModel(deps.globalProvider, agent.config.model),
-    // Disable SDK built-ins (read/bash/edit/write); customTools are unaffected.
     noTools: "builtin",
     customTools,
     sessionManager,
-    settingsManager: SettingsManager.inMemory(),
+    settingsManager,
+    ...(resourceLoader ? { resourceLoader } : {}),
+    ...(toolAllowlist ? { tools: toolAllowlist } : {}),
   });
 
   const basePrompt = await buildAgentSystemPrompt(agent.config);

@@ -6,7 +6,6 @@ import type { AgentToolSettings } from "./agent/tools/types.js";
 import type { ChannelsConfig } from "./gateway/types.js";
 import type { CronActionConfig } from "./automation/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "./agent/middleware/sandbox-config.js";
-import type { PluginConfigEntry } from "./legacy/plugins/types.js";
 
 export interface ProviderConfigFile {
   type: ProviderType;
@@ -109,7 +108,6 @@ export interface IsotopesConfigFile {
   agents: AgentConfigFile[];
   channels?: ChannelsConfig;
   cron?: CronJobConfigFile[];
-  plugins?: Record<string, PluginConfigEntry>;
 }
 
 export function resolveToolSettings(

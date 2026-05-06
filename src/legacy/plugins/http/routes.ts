@@ -4,19 +4,13 @@ import type { ServerResponse } from "node:http";
 
 import type { CronScheduler } from "../../../automation/cron-job.js";
 import type { SessionStoreManager } from "../../../agent/runners/pi/session-store.js";
-import type { HookRegistry } from "../../plugins/hooks.js";
 import type { AgentRuntime } from "../../../agent/runtime.js";
 import type { ApiRequest } from "./middleware.js";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 /** Dependencies injected into route handlers. */
 export interface RouteDeps {
   cronScheduler: CronScheduler;
   sessionStoreManager?: SessionStoreManager;
-  hooks?: HookRegistry;
   agentRuntime?: AgentRuntime;
 }
 

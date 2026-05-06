@@ -42,6 +42,8 @@ pnpm test:integration
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
 - `init/` — `isotopes init` setup wizard built with Ink.
 - `logging/` — `createLogger("tag")` factory.
+- `extensions/` — Loader for `~/.isotopes/extensions/*.ts` (pi-coding-agent extensions). Per-user custom tools, hooks, slash commands written against pi's native `ExtensionAPI`.
+- `ui/` — Loader for `~/.isotopes/ui/<id>/` static SPA directories, auto-mounted at `/ui/<id>`.
 - `legacy/` — Transitional area being decomposed PR-by-PR. New code should not land here.
 - Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema), `paths.ts` (`ISOTOPES_HOME` resolution), `silent-reply.ts` (silent-reply token detection), `test-helpers.ts` (shared test mocks).
 
@@ -61,21 +63,21 @@ pnpm test:integration
 - `types.ts` — `Transport` interface (start/stop/reply/react) and `ChannelsConfig`.
 - `transport-context.ts` — `TransportContext` / `LazyTransportContext` for passing per-message transport context through tool calls.
 - `commands.ts` — Slash-command parsing.
-- `dedupe.ts` / `debounce.ts` / `mention.ts` / `channel-history.ts` / `session-keys.ts` — Inbound message pipeline utilities. Each is small, transport-agnostic, and consumed by the Discord plugin today.
+- `dedupe.ts` / `debounce.ts` / `mention.ts` / `channel-history.ts` / `session-keys.ts` — Inbound message pipeline utilities. Each is small, transport-agnostic, and consumed by the Discord transport today.
 
 ### `src/legacy/` (transitional)
 
 - `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
 - `tui/` — Terminal UI for interactive chat mode.
-- `plugins/` — Plugin system (`hooks.ts`, `manager.ts`, `tool-registry.ts`, `ui-registry.ts`, `discovery.ts`, `api.ts`).
-- `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives.
-- `plugins/http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status.
+- `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives. Instantiated directly from `app.ts`.
+- `plugins/http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status. Instantiated directly from `app.ts`.
 - `version.ts` — Build version constant.
 
 ### Key patterns
 
-- **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` alternative). Swap runners without touching gateway, sandbox, or plugin code.
+- **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` alternative). Swap runners without touching gateway, sandbox, or transport code.
 - **Tool registry**: Tools are `(schema, handler)` pairs assembled per-agent in `agent/tools/index.ts`; tool guards (CLI, FS) are enforced at registration and injected into system prompts.
+- **Extensions (pi-native)**: User-authored extensions in `~/.isotopes/extensions/*.ts` are loaded via pi-coding-agent's `DefaultResourceLoader` and shared across all agents (loader is cached per-agentId in `session-factory.ts`). Per-agent capability scoping is via `tools.allow` / `tools.deny`, not separate extension sets.
 - **Event streaming**: `AgentRuntime.run()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error. `runtime-adapter.ts` collapses it to a single response for chat consumers.
 - **AsyncLocalStorage context**: `runWithRuntimeContext` (in `agent/runtime-context.ts`) carries the parent session ID through async tool calls so `spawn_agent` can read it inside `execute()`.
 - **Workspace context**: `SOUL.md` / `TOOLS.md` / `MEMORY.md` / `BOOTSTRAP.md` are merged into system prompts and hot-reloaded on change.

@@ -380,7 +380,6 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
       content: body.message,
       ...(cwd ? { cwd } : {}),
       log,
-      ...(deps.hooks ? { hooks: deps.hooks } : {}),
       onEvent: (e) => {
         if (e.type === "message_update") {
           const ame = e.assistantMessageEvent;

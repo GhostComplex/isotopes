@@ -120,7 +120,7 @@ describe("AgentRuntime.run — depth + sibling limits", () => {
       resolveSessionId: (_req) => "stub-session-1",
     }));
     // Manually plant a deep parent chain by injecting a fake run handle at depth = MAX_DEPTH.
-    (rt as unknown as { runs: Map<string, { sessionId: string; depth: number; parentSessionId?: string }> }).runs.set("fake", {
+    (rt as unknown as { runs: Map<string, { sessionId: string; depth: number; parentSessionId?: string }> }).runs.set("deep-parent", {
       sessionId: "deep-parent",
       depth: MAX_DEPTH,
     });
@@ -162,7 +162,7 @@ describe("AgentRuntime.run — depth + sibling limits", () => {
   it("nested run inherits parent.depth + 1", async () => {
     const rt = new AgentRuntime();
     // Fake a parent run sitting at depth 2 with sessionId "parent-1".
-    (rt as unknown as { runs: Map<string, { sessionId: string; depth: number }> }).runs.set("parent-run", {
+    (rt as unknown as { runs: Map<string, { sessionId: string; depth: number }> }).runs.set("parent-1", {
       sessionId: "parent-1",
       depth: 2,
     });
