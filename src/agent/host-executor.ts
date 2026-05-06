@@ -3,10 +3,7 @@ import type { Executor, ExecOptions, ExecResult } from "./executor.js";
 
 const EXEC_MAX_OUTPUT_BYTES = 100 * 1024;
 
-/**
- * Runs commands in the host process. Used for non-sandboxed agents.
- * Thin wrapper over child_process.spawn — host = trust model.
- */
+/** Thin wrapper over child_process.spawn — host = trust model, no cwd jail / env scrub. */
 export class HostExecutor implements Executor {
   async execute(argv: string[], opts?: ExecOptions): Promise<ExecResult> {
     if (argv.length === 0) {

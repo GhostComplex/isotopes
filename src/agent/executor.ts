@@ -9,7 +9,6 @@ export interface ExecResult {
 export interface ExecOptions {
   /** Working directory. Sandbox honors at container-create time, not per-call. */
   workspacePath?: string;
-  /** Hard deadline in ms; rejects on expiry. */
   timeout?: number;
   stdin?: Buffer | string;
 }
@@ -17,7 +16,6 @@ export interface ExecOptions {
 /**
  * Per-agent command execution. HostExecutor runs on the host process;
  * SandboxExecutor.bind(agentId) runs inside the agent's container.
- * Tools take an Executor and don't know which backend they got.
  */
 export interface Executor {
   execute(argv: string[], opts?: ExecOptions): Promise<ExecResult>;
