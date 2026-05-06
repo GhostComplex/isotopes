@@ -1,6 +1,7 @@
 # Isotopes — Example Configuration
 # Copy to ~/.isotopes/isotopes.yaml and customize.
 # Commented values show defaults — uncomment only when you need to change them.
+# Every field in this file is consumed by the runtime; no dead options.
 
 # =============================================================================
 # PROVIDER — single global LLM provider (required)
@@ -16,72 +17,74 @@ provider:
 
 # =============================================================================
 # AGENTS — at least one is required
+#
 # Two equivalent forms:
 #   1) array form (shown below)
 #   2) object form with shared defaults:
 #        agents:
 #          defaults:
 #            tools:
-#              cli: false
-#            compaction:
-#              mode: safeguard
+#              deny: ["shell"]
 #            sandbox:
-#              mode: off
+#              enabled: true
 #          list:
 #            - id: main
 #            - id: helper
-#              model: claude-sonnet-4.5     # per-agent model override
+#              model: claude-sonnet-4.6
 # =============================================================================
 agents:
   - id: main
-    # model: claude-sonnet-4.5              # falls back to provider.defaultModel when omitted
-    # workspace: workspace-main             # absolute or relative to ISOTOPES_HOME
-    # allowedWorkspaces:                    # extra dirs subagents may cwd into
-    #   - /path/to/repo
-    # heartbeatInterval: 0                  # ms; 0 = disabled (legacy field)
-    # heartbeatPrompt: "what's next?"       # custom heartbeat prompt
-    # heartbeat:                            # periodic wake-up (#191)
-    #   enabled: false
-    #   intervalSeconds: 300                # 5 min default
+    # runner: pi                            # pi (default) | claude
+    # enabled: true                         # set false to skip loading this agent
+    # spawnable: false                      # set true to let other agents spawn this one
+    # sessionPolicy: parent-reuse           # parent-reuse (default) | always-new
+    # workspace: workspace-main             # absolute path or relative to ISOTOPES_HOME (default: workspace-<id>/)
+    # model: claude-sonnet-4.6              # falls back to provider.defaultModel when omitted
+    #
     # tools:                                # per-agent override (see global "tools" below)
-    #   cli: true
-    # compaction:                           # per-agent override
-    #   mode: aggressive
+    #   allow: ["read", "write"]            # if non-empty, ONLY these tools are exposed
+    #   deny: ["shell"]                     # always-blocked tools (wins over allow)
+    #
     # sandbox:                              # per-agent override (see global "sandbox" below)
     #   enabled: true
-    # cron:                                 # per-agent scheduled prompts (#193)
+    #
+    # heartbeat:                            # periodic wake-up
+    #   enabled: false
+    #   intervalSeconds: 300                # 5 min default
+    #
+    # cron:                                 # per-agent scheduled prompts
     #   tasks:
     #     - name: morning-standup
-    #       schedule: "0 9 * * 1-5"
-    #       channel: discord:channel-id
+    #       schedule: "0 9 * * 1-5"         # cron expression
+    #       channel: discord:channel-id     # delivery target (currently informational — see #730)
     #       prompt: "Post the daily standup."
-    #       enabled: true
+    #       enabled: true                   # default true
 
 # =============================================================================
 # TOOLS — global default tool policy (per-agent override under agents.<id>.tools)
 # =============================================================================
 # tools:
-#   cli: false                       # allow shell execution
-#   fs:
-#     workspaceOnly: true            # restrict file tools to workspace dir
-#   allow: []                        # if non-empty, ONLY these tools are exposed
-#   deny: []                         # always-blocked tools (wins over allow)
+#   allow: []                       # if non-empty, ONLY these tools are exposed
+#   deny: []                        # always-blocked tools (wins over allow)
 
 # =============================================================================
-# COMPACTION — context window management (default applied to all agents)
+# SANDBOX — Docker-isolated tool execution (default for all agents)
 # =============================================================================
-compaction:
-  mode: safeguard                    # off | safeguard | aggressive
-  # contextWindow: 128000            # token budget
-  # threshold: 0.8                   # safeguard default 0.8, aggressive default 0.5
-  # preserveRecent: 10               # recent messages to keep verbatim
-
-# =============================================================================
-# SESSION — session lifecycle
-# =============================================================================
-# session:
-#   ttl: 86400                       # 24h
-#   cleanupInterval: 3600            # 1h sweep
+# sandbox:
+#   enabled: false                    # true to route exec/file tools through Docker
+#   workspaceAccess: rw               # rw | ro
+#   mounts:                           # extra host paths to expose inside container
+#     - host: /Users/me/data
+#       container: /data
+#       readOnly: true                # default false
+#   docker:
+#     image: isotopes-sandbox:latest
+#     network: bridge                 # bridge | host | none
+#     extraHosts: []
+#     cpuLimit: 1.0
+#     memoryLimit: 512m
+#     pidsLimit: 256
+#     noNewPrivileges: true           # default true; only set false if a tool legitimately needs setuid
 
 # =============================================================================
 # CHANNELS — Discord transport + per-guild settings
@@ -109,6 +112,7 @@ channels:
         #   "bot-user-id": main
         # adminUsers:                    # discord user ids allowed to run /slash commands
         #   - "user-id"
+        # replyToMode: reply             # how the bot addresses messages
 
         threadBindings:
           enabled: true
@@ -116,27 +120,17 @@ channels:
           # sendFarewell: false
           # farewellMessage: "Bye!"
 
-        # subagentStreaming:             # M8: stream subagent output to Discord
-        #   enabled: true
-        #   showToolCalls: true
-
         # context:                       # all fields optional, defaults shown
-        #   historyTurns: 20
         #   channelHistory: true
         #   channelHistoryLimit: 20
         #   dedupe: true
         #   debounce: false
         #   debounceWindowMs: 1500
-        #   pruning:
-        #     protectRecent: 3
-        #     headChars: 1500
-        #     tailChars: 1500
 
         # guilds:                        # per-guild runtime overrides
         #   "1480866703880487034":       # guild id
         #     requireMention: false      # respond to all messages in this guild
         #     context:                   # per-guild context overrides
-        #       historyTurns: 30
         #       channelHistory: true
         #       channelHistoryLimit: 50
 
@@ -146,40 +140,18 @@ channels:
       #   defaultAgentId: helper
 
 # =============================================================================
-# Built-in runners (claude / subagent) live alongside user agents — both are
-# enabled and spawnable by default. Override only if you need to opt out.
-# =============================================================================
-# - id: claude
-#   enabled: false
-# - id: subagent
-#   spawnable: false
-
-# =============================================================================
 # CRON — channel-level scheduled jobs (per-agent cron lives under agents.<id>.cron)
 # =============================================================================
 # cron:
 #   - name: daily-report
 #     expression: "0 9 * * *"
 #     agentId: main
-#     enabled: true
+#     enabled: true                   # default true
 #     action:
 #       type: prompt                  # prompt | message | callback
 #       prompt: "Generate daily report"
 #     # action: { type: message, content: "Good morning!" }
 #     # action: { type: callback, handler: generateReport }
-
-# =============================================================================
-# SANDBOX — Docker-isolated code execution (default for all agents)
-# =============================================================================
-# sandbox:
-#   enabled: false                    # true to route exec/file tools through Docker
-#   workspaceAccess: rw               # rw | ro
-#   docker:
-#     image: isotopes-sandbox:latest
-#     network: bridge                 # bridge | host | none
-#     extraHosts: []
-#     cpuLimit: 1.0
-#     memoryLimit: 512m
 
 # =============================================================================
 # PLUGINS — optional plugin configurations (keyed by plugin id)

@@ -795,34 +795,6 @@ describe("DiscordTransport", () => {
 
       expect(spy).toHaveBeenCalledTimes(1);
     });
-
-    it("calls preparePromptMessages — agent receives truncated history per historyTurns", async () => {
-
-      // Provide messages that would be affected by limitHistoryTurns
-      sessionStore.getMessages = vi.fn().mockResolvedValue([
-        { role: "user", content: ("old") },
-        { role: "assistant", content: ("old reply") },
-        { role: "user", content: ("recent") },
-        { role: "assistant", content: ("recent reply") },
-        { role: "user", content: ("hello bot") },
-      ]);
-
-      const transportCtx = new DiscordTransport({
-        groupAccess: { policy: "open" },
-        token: "test-token",
-
-        agentRuntime: sharedRuntime,
-        sessionStore,
-        defaultAgentId: "default",
-        context: { historyTurns: 2 },
-      });
-      const spy = spyOnRunAgent(transportCtx);
-
-      const msg = makeMsg({ id: "unique-msg" });
-      await (transportCtx as unknown as { handleMessage: (m: MockIncomingMessage) => Promise<void> }).handleMessage(msg);
-
-      expect(spy).toHaveBeenCalledTimes(1);
-    });
   });
 
   describe("inbound_meta injection", () => {

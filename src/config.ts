@@ -103,8 +103,6 @@ export interface SandboxConfigFile {
 
 /** Context management configuration (shared across transports) */
 export interface ContextConfigFile {
-  /** Max user turns to include in prompt context. Default: 20 */
-  historyTurns?: number;
   /** Enable channel history buffer (lurking context). Default: true */
   channelHistory?: boolean;
   /** Max entries in channel history buffer per channel. Default: 20 */
@@ -115,15 +113,6 @@ export interface ContextConfigFile {
   debounce?: boolean;
   /** Debounce window in milliseconds. Default: 1500 */
   debounceWindowMs?: number;
-  /** Tool result pruning options */
-  pruning?: {
-    /** Number of recent assistant messages to protect from pruning. Default: 3 */
-    protectRecent?: number;
-    /** Head chars for soft trim. Default: 1500 */
-    headChars?: number;
-    /** Tail chars for soft trim. Default: 1500 */
-    tailChars?: number;
-  };
 }
 
 /** Cron job configuration in config file */
