@@ -53,9 +53,6 @@ export interface RunRequest {
   parentSessionId?: string;
   cwd?: string;
   timeoutSeconds?: number;
-  /** Optional text appended to the system prompt for this run. Used by
-   * transports to teach transport-specific output directives without
-   * polluting the agent core. */
   extraSystemPrompt?: string;
   /** Fires once after run is registered, before any AgentEvent yields.
    * Use to wire side-channel UI (Discord thread, audit) by sessionId. */

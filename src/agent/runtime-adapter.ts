@@ -13,7 +13,6 @@ export interface RunAgentOptions {
   sessionId: string;
   content: string;
   cwd?: string;
-  /** Optional text appended to the agent's system prompt for this run. */
   extraSystemPrompt?: string;
   log: Logger;
   hooks?: HookRegistry;
