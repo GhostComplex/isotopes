@@ -27,6 +27,36 @@ export interface PiSessionDeps {
   extensionPaths?: string[];
 }
 
+/** ResourceLoader cache: one per agentId. reload() re-imports every extension
+ * file via jiti, so we share the loader across all sessions for the same
+ * agent instead of rebuilding per-session. cwd-local resource discovery
+ * (skills, prompts) is anchored to the agent's default workspace; sessions
+ * with overridden cwd still see the same extensions. */
+const loaderCache = new Map<string, Promise<DefaultResourceLoader>>();
+
+async function getResourceLoader(
+  agentId: string,
+  cwd: string,
+  agentDir: string,
+  settingsManager: SettingsManager,
+  extensionPaths: string[],
+): Promise<DefaultResourceLoader> {
+  const existing = loaderCache.get(agentId);
+  if (existing) return existing;
+  const init = (async () => {
+    const loader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager,
+      additionalExtensionPaths: extensionPaths,
+    });
+    await loader.reload();
+    return loader;
+  })();
+  loaderCache.set(agentId, init);
+  return init;
+}
+
 function resolveModel(globalProvider: ProviderConfig, modelId?: string): Model<Api> {
   const provider = globalProvider.type as Parameters<typeof getModel>[0];
   const id = modelId ?? globalProvider.defaultModel ?? DEFAULT_MODEL;
@@ -76,13 +106,13 @@ export async function createPiSession(
 
   let resourceLoader: DefaultResourceLoader | undefined;
   if (deps.extensionPaths && deps.extensionPaths.length > 0) {
-    resourceLoader = new DefaultResourceLoader({
-      cwd: sessionCwd,
+    resourceLoader = await getResourceLoader(
+      agent.id,
+      sessionCwd,
       agentDir,
       settingsManager,
-      additionalExtensionPaths: deps.extensionPaths,
-    });
-    await resourceLoader.reload();
+      deps.extensionPaths,
+    );
   }
 
   const { session } = await createAgentSession({
