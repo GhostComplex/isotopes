@@ -36,7 +36,7 @@ export type SSEEvent =
   | { type: "turn_end" }
   | { type: "error"; message: string };
 
-export type Screen = "chat" | "status";
+export type Screen = "chat" | "status" | "sessions";
 
 export interface TuiOptions {
   agent?: string;

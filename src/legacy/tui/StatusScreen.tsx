@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { fetchStatus, fetchSessions, isDaemonRunning } from "./api.js";
-import type { DaemonStatus, SessionSummary, Screen } from "./types.js";
+import { fetchStatus, isDaemonRunning } from "./api.js";
+import type { DaemonStatus, Screen } from "./types.js";
 
 interface Props {
   onSwitchScreen: (screen: Screen) => void;
@@ -21,7 +21,6 @@ function formatUptime(seconds: number): string {
 
 export function StatusScreen({ onSwitchScreen }: Props) {
   const [status, setStatus] = useState<DaemonStatus | null>(null);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [running, setRunning] = useState<boolean | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
@@ -29,9 +28,11 @@ export function StatusScreen({ onSwitchScreen }: Props) {
     const isUp = await isDaemonRunning();
     setRunning(isUp);
     if (isUp) {
-      const [s, sess] = await Promise.allSettled([fetchStatus(), fetchSessions()]);
-      if (s.status === "fulfilled") setStatus(s.value);
-      if (sess.status === "fulfilled") setSessions(sess.value);
+      try {
+        setStatus(await fetchStatus());
+      } catch {
+        // keep prior status
+      }
     }
     setLastRefresh(new Date());
   };
@@ -89,18 +90,6 @@ export function StatusScreen({ onSwitchScreen }: Props) {
             <Text>  Cron:    <Text color="cyan">{status.cronJobs} job(s)</Text></Text>
           </Box>
         )}
-
-        <Box flexDirection="column">
-          <Text bold underline>Sessions ({sessions.length})</Text>
-          {sessions.length === 0 && <Text color="gray">  No active sessions</Text>}
-          {sessions.slice(0, 20).map((s) => (
-            <Text key={s.key}>
-              {"  "}<Text color="cyan">{s.agentId}</Text>
-              <Text color="gray"> {s.key} {s.lastActivityAt ? new Date(s.lastActivityAt).toLocaleTimeString() : ""}</Text>
-            </Text>
-          ))}
-          {sessions.length > 20 && <Text color="gray">  ... and {sessions.length - 20} more</Text>}
-        </Box>
       </Box>
 
       <Box borderStyle="single" paddingX={1}>

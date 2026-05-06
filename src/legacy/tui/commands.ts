@@ -20,6 +20,7 @@ export interface CommandCallbacks {
   onNewChat: () => void;
   onExit: () => void;
   onShowStatus: () => void;
+  onShowSessions: () => void;
   onHelp: () => void;
 }
 
@@ -40,6 +41,9 @@ export function dispatch(
     case "status":
       callbacks.onShowStatus();
       return true;
+    case "sessions":
+      callbacks.onShowSessions();
+      return true;
     case "help":
       callbacks.onHelp();
       return true;
@@ -50,6 +54,7 @@ export function dispatch(
 
 export const HELP_TEXT = [
   "/new          — Start a new conversation",
+  "/sessions     — Browse and attach to any session",
   "/status       — Show daemon status",
   "/help         — Show this help",
   "/exit /quit /q — Quit the TUI",
