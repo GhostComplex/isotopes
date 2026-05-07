@@ -1,4 +1,4 @@
-// src/agent/runners/pi/messages.ts — Helper functions for constructing AgentMessages
+// Helper functions for constructing AgentMessages
 // These create properly-typed user/assistant/toolResult messages compatible
 // with the pi-agent-core AgentMessage union.
 

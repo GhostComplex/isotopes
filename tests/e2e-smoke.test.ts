@@ -8,10 +8,10 @@ import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
-import { createAgentTools } from "../src/agent/tools/index.js";
-import { createExecTools } from "../src/agent/tools/exec.js";
-import { createWebFetchTool } from "../src/agent/tools/web.js";
-import { HostExecutor } from "../src/agent/middleware/executor.js";
+import { createAgentTools } from "../src/agents/tools/index.js";
+import { createExecTools } from "../src/agents/tools/exec.js";
+import { createWebFetchTool } from "../src/agents/tools/web.js";
+import { HostExecutor } from "../src/agents/middleware/executor.js";
 
 async function callTool(tool: AgentTool, args: unknown): Promise<string> {
   const result: AgentToolResult<unknown> = await tool.execute("test-call", args as never);

@@ -5,8 +5,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
 import { CronScheduler } from "../../../automation/cron-job.js";
-import { SessionStoreManager } from "../../../agent/runners/pi/session-store.js";
-import { AgentRuntime } from "../../../agent/runtime.js";
+import { SessionStoreManager } from "../../../agents/runners/pi/session-store.js";
+import { AgentRuntime } from "../../../agents/runtime.js";
 import { createMockSessionStore } from "../../../test-helpers.js";
 
 const MOCK_AGENT_ID = "mock";

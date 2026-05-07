@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
-import type { ProviderType, AgentConfig } from "./agent/types.js";
-import type { AgentToolSettings } from "./agent/tools/types.js";
+import type { ProviderType, AgentConfig } from "./agents/types.js";
+import type { AgentToolSettings } from "./agents/tools/types.js";
 import type { ChannelsConfig } from "./gateway/types.js";
 import type { CronActionConfig } from "./automation/types.js";
-import { resolveSandboxConfig, type SandboxConfig } from "./agent/middleware/sandbox-config.js";
+import { resolveSandboxConfig, type SandboxConfig } from "./agents/middleware/sandbox-config.js";
 
 export interface ProviderConfigFile {
   type: ProviderType;

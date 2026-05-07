@@ -17,12 +17,12 @@ import type { SessionStore } from "../../../sessions/types.js";
 import type { Transport } from "../../../gateway/types.js";
 import type { ThreadBindingConfig } from "./types.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
-import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../../agent/runners/pi/messages.js";
+import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../../agents/runners/pi/messages.js";
 import type { ContextConfigFile } from "../../../config.js";
 import { shouldRespondToMessage } from "../../../gateway/mention.js";
 import { loggers } from "../../../logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { runAgent } from "../../../agent/runtime-adapter.js";
+import { runAgent } from "../../../agents/runtime-adapter.js";
 import { runWithDiscordA2AStream, type DiscordA2AStreamContext } from "./a2a-stream-context.js";
 import { isSilentReplyPayloadText } from "../../../silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -143,7 +143,7 @@ export interface DiscordTransportConfig {
    * legacy `runAgentLoop` (kept temporarily for unit tests that pre-date the
    * runtime; will be removed once those tests are migrated).
    */
-  agentRuntime?: import("../../../agent/runtime.js").AgentRuntime;
+  agentRuntime?: import("../../../agents/runtime.js").AgentRuntime;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   /** Default agent ID to use when no @mention routing */

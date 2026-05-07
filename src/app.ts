@@ -2,7 +2,7 @@ import {
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
-import { SessionStoreManager } from "./agent/runners/pi/session-store.js";
+import { SessionStoreManager } from "./agents/runners/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyTransportContext } from "./gateway/transport-context.js";
 import {
@@ -14,8 +14,8 @@ import { ApiServer } from "./legacy/plugins/http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
 import { getIsotopesHome } from "./paths.js";
-import { AgentRuntime } from "./agent/runtime.js";
-import { runAgent } from "./agent/runtime-adapter.js";
+import { AgentRuntime } from "./agents/runtime.js";
+import { runAgent } from "./agents/runtime-adapter.js";
 import { discoverExtensionPaths } from "./extensions/loader.js";
 import { discoverUIEntries } from "./ui/registry.js";
 import { createDiscordTransport } from "./legacy/plugins/discord/index.js";
