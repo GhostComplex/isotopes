@@ -5,8 +5,8 @@ import type { AgentRuntime } from "../runtime.js";
 import { RunValidationError } from "../types.js";
 import type { RunRequest } from "../types.js";
 import { getRuntimeContext } from "../runtime-context.js";
-import { getDiscordA2AStreamContext } from "../../legacy/plugins/discord/a2a-stream-context.js";
-import { DiscordA2ASink } from "../../legacy/plugins/discord/discord-a2a-sink.js";
+import { getDiscordA2AStreamContext } from "../../legacy/discord/a2a-stream-context.js";
+import { DiscordA2ASink } from "../../legacy/discord/discord-a2a-sink.js";
 import { getAgentEndMeta } from "../runners/pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
 

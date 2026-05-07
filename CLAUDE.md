@@ -62,8 +62,8 @@ pnpm test:integration
 - `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
 - `tui/` — Terminal UI for interactive chat mode.
 - `gateway/` — Transport-agnostic message-pipeline utilities (`Transport` interface, dedupe/debounce/mention/channel-history/session-keys, slash-command parsing, reply-directive). Currently consumed by the Discord transport. Marked legacy pending refactor.
-- `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives. Instantiated directly from `app.ts`.
-- `plugins/http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status. Instantiated directly from `app.ts`.
+- `discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives. Instantiated directly from `app.ts`.
+- `http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status. Instantiated directly from `app.ts`.
 - `version.ts` — Build version constant.
 
 ### Key patterns

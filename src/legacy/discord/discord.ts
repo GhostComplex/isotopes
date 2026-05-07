@@ -13,25 +13,25 @@ import {
   type ThreadChannel,
 } from "discord.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { SessionStore } from "../../../sessions/types.js";
-import type { Transport } from "../../../legacy/gateway/types.js";
+import type { SessionStore } from "../../sessions/types.js";
+import type { Transport } from "../gateway/types.js";
 import type { ThreadBindingConfig } from "./types.js";
-import { resolveAgentWorkspacePath } from "../../../paths.js";
-import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../../agent/runners/pi/messages.js";
-import type { ContextConfigFile } from "../../../config.js";
-import { shouldRespondToMessage } from "../../../legacy/gateway/mention.js";
-import { loggers } from "../../../logging/logger.js";
+import { resolveAgentWorkspacePath } from "../../paths.js";
+import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../agent/runners/pi/messages.js";
+import type { ContextConfigFile } from "../../config.js";
+import { shouldRespondToMessage } from "../gateway/mention.js";
+import { loggers } from "../../logging/logger.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { runAgent } from "../../../agent/runtime-adapter.js";
+import { runAgent } from "../../agent/runtime-adapter.js";
 import { runWithDiscordA2AStream, type DiscordA2AStreamContext } from "./a2a-stream-context.js";
-import { isSilentReplyPayloadText } from "../../../silent-reply.js";
+import { isSilentReplyPayloadText } from "../../silent-reply.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
-import { parseReplyDirective, REPLY_DIRECTIVE_PROMPT } from "../../../legacy/gateway/reply-directive.js";
-import { buildSessionKey } from "../../../legacy/gateway/session-keys.js";
-import { ChannelHistoryBuffer, buildHistoryContext } from "../../../legacy/gateway/channel-history.js";
-import { DedupeCache } from "../../../legacy/gateway/dedupe.js";
-import { InboundDebouncer } from "../../../legacy/gateway/debounce.js";
-import { SlashCommandHandler } from "../../../legacy/gateway/commands.js";
+import { parseReplyDirective, REPLY_DIRECTIVE_PROMPT } from "../gateway/reply-directive.js";
+import { buildSessionKey } from "../gateway/session-keys.js";
+import { ChannelHistoryBuffer, buildHistoryContext } from "../gateway/channel-history.js";
+import { DedupeCache } from "../gateway/dedupe.js";
+import { InboundDebouncer } from "../gateway/debounce.js";
+import { SlashCommandHandler } from "../gateway/commands.js";
 
 const log = loggers.discord;
 
@@ -143,7 +143,7 @@ export interface DiscordTransportConfig {
    * legacy `runAgentLoop` (kept temporarily for unit tests that pre-date the
    * runtime; will be removed once those tests are migrated).
    */
-  agentRuntime?: import("../../../agent/runtime.js").AgentRuntime;
+  agentRuntime?: import("../../agent/runtime.js").AgentRuntime;
   sessionStore: SessionStore;
   sessionStoreForAgent?: (agentId: string) => SessionStore;
   /** Default agent ID to use when no @mention routing */

@@ -1,7 +1,0 @@
-{
-  "id": "discord",
-  "name": "Discord Transport",
-  "version": "1.0.0",
-  "description": "Discord bot transport for isotopes",
-  "entry": "./index.js"
-}

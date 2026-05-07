@@ -3,10 +3,10 @@ import { randomUUID } from "node:crypto";
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
-import type { SessionStore } from "../../../sessions/types.js";
+import type { SessionStore } from "../../sessions/types.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { createMockSessionStore } from "../../../test-helpers.js";
-import { AgentRuntime } from "../../../agent/runtime.js";
+import { createMockSessionStore } from "../../test-helpers.js";
+import { AgentRuntime } from "../../agent/runtime.js";
 
 function makeMockRuntime(agentId: string, cache: unknown, sessionStore: SessionStore): AgentRuntime {
   const rt = new AgentRuntime({ globalProvider: { type: "anthropic", defaultModel: "claude-opus-4.5" } });

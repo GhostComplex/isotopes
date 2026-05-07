@@ -1,13 +1,13 @@
-import type { Transport } from "../../../legacy/gateway/types.js";
-import type { SessionStore } from "../../../sessions/types.js";
-import type { LazyTransportContext } from "../../../legacy/gateway/transport-context.js";
-import type { SessionStoreManager } from "../../../agent/runners/pi/session-store.js";
-import type { AgentRuntime } from "../../../agent/runtime.js";
-import type { IsotopesConfigFile } from "../../../config.js";
+import type { Transport } from "../gateway/types.js";
+import type { SessionStore } from "../../sessions/types.js";
+import type { LazyTransportContext } from "../gateway/transport-context.js";
+import type { SessionStoreManager } from "../../agent/runners/pi/session-store.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
+import type { IsotopesConfigFile } from "../../config.js";
 import { DiscordTransportManager } from "./discord-manager.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
 import type { DiscordChannelsConfig } from "./types.js";
-import { createLogger } from "../../../logging/logger.js";
+import { createLogger } from "../../logging/logger.js";
 import path from "node:path";
 
 const log = createLogger("transport:discord");

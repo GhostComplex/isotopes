@@ -10,7 +10,7 @@ import {
   resolveAgentWorkspacePath,
 } from "./paths.js";
 
-import { ApiServer } from "./legacy/plugins/http/server.js";
+import { ApiServer } from "./legacy/http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
 import { getIsotopesHome } from "./paths.js";
@@ -18,7 +18,7 @@ import { AgentRuntime } from "./agent/runtime.js";
 import { runAgent } from "./agent/runtime-adapter.js";
 import { discoverExtensionPaths } from "./extensions/loader.js";
 import { discoverUIEntries } from "./ui/registry.js";
-import { createDiscordTransport } from "./legacy/plugins/discord/index.js";
+import { createDiscordTransport } from "./legacy/discord/index.js";
 import type { Transport } from "./legacy/gateway/types.js";
 
 const log = createLogger("runtime");

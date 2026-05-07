@@ -3,9 +3,9 @@
 
 import http from "node:http";
 import path from "node:path";
-import { createLogger } from "../../../logging/logger.js";
-import type { CronScheduler } from "../../../automation/cron-job.js";
-import type { SessionStoreManager } from "../../../agent/runners/pi/session-store.js";
+import { createLogger } from "../../logging/logger.js";
+import type { CronScheduler } from "../../automation/cron-job.js";
+import type { SessionStoreManager } from "../../agent/runners/pi/session-store.js";
 import {
   applyCors,
   parseJsonBody,
@@ -16,7 +16,7 @@ import {
 } from "./middleware.js";
 import { matchRoute, type RouteDeps } from "./routes.js";
 import { serveStaticFile } from "./static.js";
-import { matchUIEntry, type UIEntry } from "../../../ui/registry.js";
+import { matchUIEntry, type UIEntry } from "../../ui/registry.js";
 
 import "./cron.js";
 import "./logs.js";
@@ -35,7 +35,7 @@ export interface ApiServerDeps {
   cronScheduler: CronScheduler;
   uiEntries?: UIEntry[];
   sessionStoreManager?: SessionStoreManager;
-  agentRuntime?: import("../../../agent/runtime.js").AgentRuntime;
+  agentRuntime?: import("../../agent/runtime.js").AgentRuntime;
 }
 
 export class ApiServer {
