@@ -48,9 +48,10 @@ describe("dispatch", () => {
     expect(calls).toEqual(["new"]);
   });
 
-  it("dispatches /sessions", () => {
+  it("dispatches /sessions and /s alias", () => {
     expect(dispatch("sessions", "", callbacks)).toBe(true);
-    expect(calls).toEqual(["sessions"]);
+    expect(dispatch("s", "", callbacks)).toBe(true);
+    expect(calls).toEqual(["sessions", "sessions"]);
   });
 
   it("dispatches /exit and aliases", () => {

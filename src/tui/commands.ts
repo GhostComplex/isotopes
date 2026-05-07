@@ -42,6 +42,7 @@ export function dispatch(
       callbacks.onShowStatus();
       return true;
     case "sessions":
+    case "s":
       callbacks.onShowSessions();
       return true;
     case "help":
@@ -54,7 +55,7 @@ export function dispatch(
 
 export const HELP_TEXT = [
   "/new          — Start a new conversation",
-  "/sessions     — Browse and attach to any session",
+  "/sessions /s  — Browse and attach to any session",
   "/status       — Show daemon status",
   "/help         — Show this help",
   "/exit /quit /q — Quit the TUI",
