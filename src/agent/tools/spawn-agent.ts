@@ -18,9 +18,6 @@ function textResult(text: string): AgentToolResult<undefined> {
 export interface SpawnAgentToolOptions {
   runtime: AgentRuntime;
   parentAgentId: string;
-  /** Caller's session id — bound at construction so the tool's execute()
-   * stamps it on the child RunRequest. Required for runtime depth/sibling
-   * budgets to work across the spawn chain. */
   parentSessionId: string;
   workspacePath: string;
   allowedAgents?: string[];

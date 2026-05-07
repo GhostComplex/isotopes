@@ -30,8 +30,6 @@ export interface PiSessionDeps {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   getAgentTools: (agentId: string) => AgentTool[];
-  /** Runtime is needed per-session to construct spawn_agent with the
-   * caller sessionId baked in (see createPiSession). */
   runtime: AgentRuntime;
   extensionPaths?: string[];
 }
@@ -131,10 +129,6 @@ export async function createPiSession(
   const agentDir = path.join(ISOTOPES_HOME, "agents", agent.id, "agent");
   const settingsManager = SettingsManager.inMemory();
 
-  // spawn_agent is constructed per-session so the caller sessionId is
-  // captured in closure; this is what makes runtime depth/sibling budgets
-  // work across the spawn chain. Skipped under sandbox: child runners
-  // can't be confined.
   if (agent.config.sandbox?.enabled) {
     log.warn(`spawn_agent disabled for ${agent.id}: sandbox is active and child runners cannot be confined.`);
   } else {

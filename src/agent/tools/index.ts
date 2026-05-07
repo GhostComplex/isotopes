@@ -18,8 +18,6 @@ export interface CreateAgentToolsOptions {
   sandboxExecutor?: SandboxExecutor;
 }
 
-/** Per-agent base tool set. spawn_agent is appended later in session-factory
- * because it needs the caller session id (only known at session creation). */
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   const isSandboxed = !!opts.agentSandboxConfig?.enabled;
   if (isSandboxed && !opts.sandboxExecutor) {
