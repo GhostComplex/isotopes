@@ -4,7 +4,7 @@ import {
 } from "./config.js";
 import { SessionStoreManager } from "./agent/runners/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
-import { LazyTransportContext } from "./gateway/transport-context.js";
+import { LazyTransportContext } from "./legacy/gateway/transport-context.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
@@ -19,7 +19,7 @@ import { runAgent } from "./agent/runtime-adapter.js";
 import { discoverExtensionPaths } from "./extensions/loader.js";
 import { discoverUIEntries } from "./ui/registry.js";
 import { createDiscordTransport } from "./legacy/plugins/discord/index.js";
-import type { Transport } from "./gateway/types.js";
+import type { Transport } from "./legacy/gateway/types.js";
 
 const log = createLogger("runtime");
 

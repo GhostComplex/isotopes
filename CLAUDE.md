@@ -36,7 +36,6 @@ pnpm test:integration
 ### Top-level src/ layout
 
 - `agent/` — Agent runtime, runners, tools, workspace loading, and per-agent host/sandbox middleware (executor, fs bridge, docker container manager, sandbox config). The new home for everything that defines what an agent *is* and how it runs.
-- `gateway/` — Transport-agnostic message-pipeline utilities (dedupe, debounce, mention, channel-history, session-keys, slash-command parsing) plus the `Transport` interface.
 - `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/runners/pi/session-store.ts`.
 - `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
@@ -58,17 +57,11 @@ pnpm test:integration
 - `tools/` — Built-in agent tools (`web` for `web_fetch`, `react` for transport reactions) and the registry (`index.ts`) that assembles per-agent tool sets.
 - `workspace/` — Loads `SOUL.md` / `TOOLS.md` / `MEMORY.md` / `BOOTSTRAP.md` into system prompts; manages workspace state and template files.
 
-### `src/gateway/`
-
-- `types.ts` — `Transport` interface (start/stop/reply/react) and `ChannelsConfig`.
-- `transport-context.ts` — `TransportContext` / `LazyTransportContext` for passing per-message transport context through tool calls.
-- `commands.ts` — Slash-command parsing.
-- `dedupe.ts` / `debounce.ts` / `mention.ts` / `channel-history.ts` / `session-keys.ts` — Inbound message pipeline utilities. Each is small, transport-agnostic, and consumed by the Discord transport today.
-
 ### `src/legacy/` (transitional)
 
 - `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
 - `tui/` — Terminal UI for interactive chat mode.
+- `gateway/` — Transport-agnostic message-pipeline utilities (`Transport` interface, dedupe/debounce/mention/channel-history/session-keys, slash-command parsing, reply-directive). Currently consumed by the Discord transport. Marked legacy pending refactor.
 - `plugins/discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives. Instantiated directly from `app.ts`.
 - `plugins/http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status. Instantiated directly from `app.ts`.
 - `version.ts` — Build version constant.

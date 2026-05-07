@@ -3,8 +3,8 @@ import {
   createMessageReactTool,
   createReactTools,
 } from "./react.js";
-import { LazyTransportContext, type TransportContext } from "../../gateway/transport-context.js";
-import type { Transport } from "../../gateway/types.js";
+import { LazyTransportContext, type TransportContext } from "../../legacy/gateway/transport-context.js";
+import type { Transport } from "../../legacy/gateway/types.js";
 
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 

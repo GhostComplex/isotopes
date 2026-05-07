@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SlashCommandHandler, type CommandContext } from "./commands.js";
-import { createMockSessionStore } from "../test-helpers.js";
-import type { AgentRuntime } from "../agent/runtime.js";
-import type { AgentConfig } from "../agent/types.js";
+import { createMockSessionStore } from "../../test-helpers.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
+import type { AgentConfig } from "../../agent/types.js";
 
 interface FakeAgent {
   id: string;
