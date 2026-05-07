@@ -2,9 +2,9 @@
 
 import type { ServerResponse } from "node:http";
 
-import type { CronScheduler } from "../../../automation/cron-job.js";
-import type { SessionStoreManager } from "../../../agent/runners/pi/session-store.js";
-import type { AgentRuntime } from "../../../agent/runtime.js";
+import type { CronScheduler } from "../../automation/cron-job.js";
+import type { SessionStoreManager } from "../../agent/runners/pi/session-store.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
 import type { ApiRequest } from "./middleware.js";
 
 /** Dependencies injected into route handlers. */

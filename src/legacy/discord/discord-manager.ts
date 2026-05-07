@@ -3,13 +3,13 @@
 
 import type {
   SessionStore,
-} from "../../../sessions/types.js";
+} from "../../sessions/types.js";
 import type { DiscordAccountConfig } from "./types.js";
-import type { AgentRuntime } from "../../../agent/runtime.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
 import { getDiscordToken } from "./config.js";
 import { DiscordTransport } from "./discord.js";
 import { ThreadBindingManager } from "./thread-bindings.js";
-import { createLogger } from "../../../logging/logger.js";
+import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("discord-manager");
 

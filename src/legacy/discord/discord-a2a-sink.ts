@@ -8,7 +8,7 @@
 // for /stop routing; sendEvent(e) posts updates; finish(result) summarizes
 // + unregisters.
 
-import { createLogger } from "../../../logging/logger.js";
+import { createLogger } from "../../logging/logger.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { DiscordA2AStreamContext } from "./a2a-stream-context.js";
 
