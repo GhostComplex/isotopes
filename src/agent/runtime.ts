@@ -1,6 +1,7 @@
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createLogger } from "../logging/logger.js";
 import type {
   RegisteredAgent,
@@ -106,6 +107,10 @@ interface Entry {
   spawnable: boolean;
 }
 
+export interface RuntimeContext {
+  parentSessionId: string;
+}
+
 export class AgentRuntime {
   private entries = new Map<string, Entry>();
   private runs = new Map<string, RunHandle>();
@@ -115,6 +120,7 @@ export class AgentRuntime {
   private piModelRegistry?: ModelRegistry;
   private sandboxExecutor?: SandboxExecutor;
   private extensionPaths: string[] = [];
+  private readonly contextStorage = new AsyncLocalStorage<RuntimeContext>();
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
@@ -376,19 +382,22 @@ export class AgentRuntime {
     }
 
     try {
-      for await (const event of entry.runner.run({
+      const inner = entry.runner.run({
         request: req,
         sessionId,
         abort: abort.signal,
         onSession: (session) => { handle.session = session; },
-      })) {
-        if (event.type === "tool_execution_start") {
-          log.debug("tool_call", { runId, sessionId, agentId: req.to, toolName: event.toolName, id: event.toolCallId });
-        } else if (event.type === "tool_execution_end") {
-          log.debug("tool_result", { runId, sessionId, id: event.toolCallId });
+      });
+      yield* this.contextStorage.run({ parentSessionId: sessionId }, async function* () {
+        for await (const event of inner) {
+          if (event.type === "tool_execution_start") {
+            log.debug("tool_call", { runId, sessionId, agentId: req.to, toolName: event.toolName, id: event.toolCallId });
+          } else if (event.type === "tool_execution_end") {
+            log.debug("tool_result", { runId, sessionId, id: event.toolCallId });
+          }
+          yield event;
         }
-        yield event;
-      }
+      });
     } finally {
       clearTimeout(timeoutHandle);
       // Consumer break → abort inner runner so no orphan SDK work.
@@ -415,6 +424,12 @@ export class AgentRuntime {
   /** True iff there's an active run for this sessionId. */
   isRunning(sessionId: string): boolean {
     return this.runs.has(sessionId);
+  }
+
+  /** Per-turn context, set automatically by run() and readable from inside tool execute().
+   * Returns undefined when called outside any run() (e.g. top-level). */
+  getCurrentContext(): RuntimeContext | undefined {
+    return this.contextStorage.getStore();
   }
 
   get activeCount(): number {

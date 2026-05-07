@@ -4,7 +4,6 @@ import { Type } from "typebox";
 import type { AgentRuntime } from "../runtime.js";
 import { RunValidationError } from "../types.js";
 import type { RunRequest } from "../types.js";
-import { getRuntimeContext } from "../runtime-context.js";
 import { getDiscordA2AStreamContext } from "../../legacy/plugins/discord/a2a-stream-context.js";
 import { DiscordA2ASink } from "../../legacy/plugins/discord/discord-a2a-sink.js";
 import { getAgentEndMeta } from "../runners/pi/messages.js";
@@ -77,7 +76,7 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
-      const ctx = getRuntimeContext();
+      const ctx = runtime.getCurrentContext();
 
       let cancelReason: string | undefined;
       const req: RunRequest = {
