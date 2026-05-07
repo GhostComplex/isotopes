@@ -1,6 +1,6 @@
-import type { SessionStore } from "../sessions/types.js";
-import type { AgentRuntime } from "../agent/runtime.js";
-import { createLogger } from "../logging/logger.js";
+import type { SessionStore } from "../../sessions/types.js";
+import type { AgentRuntime } from "../../agent/runtime.js";
+import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("commands");
 

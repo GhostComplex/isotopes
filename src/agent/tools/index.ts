@@ -4,7 +4,7 @@ import { HostExecutor, type Executor, type SandboxExecutor } from "../middleware
 import { type SandboxConfig } from "../middleware/sandbox-config.js";
 import { createWebFetchTool } from "./web.js";
 import { createReactTools } from "./react.js";
-import type { LazyTransportContext } from "../../gateway/transport-context.js";
+import type { LazyTransportContext } from "../../legacy/gateway/transport-context.js";
 import { createExecTools } from "./exec.js";
 import type { AgentRuntime } from "../runtime.js";
 import { createLogger } from "../../logging/logger.js";

@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
 import { createLogger } from "../../logging/logger.js";
-import type { TransportContext } from "../../gateway/transport-context.js";
+import type { TransportContext } from "../../legacy/gateway/transport-context.js";
 
 const log = createLogger("tools:react");
 

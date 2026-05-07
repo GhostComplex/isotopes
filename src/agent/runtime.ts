@@ -34,7 +34,7 @@ import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
 import { createAgentTools } from "./tools/index.js";
-import { LazyTransportContext } from "../gateway/transport-context.js";
+import { LazyTransportContext } from "../legacy/gateway/transport-context.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
 import type { SandboxConfig } from "./middleware/sandbox-config.js";
