@@ -1,0 +1,121 @@
+import type { AgentRuntime } from "../agent/runtime.js";
+import type { SessionStoreManager } from "../agent/runners/pi/session-store.js";
+import type { RunRequest } from "../agent/types.js";
+import type {
+  DispatchCallbacks,
+  DispatchResult,
+  Gateway,
+  Message,
+} from "./types.js";
+import { createLogger } from "../logging/logger.js";
+import { getAgentEndMeta } from "../agent/runners/pi/messages.js";
+
+const log = createLogger("gateway");
+
+export interface GatewayDeps {
+  runtime: AgentRuntime;
+  sessionStoreManager: SessionStoreManager;
+}
+
+// State carried by the dispatch that owns a session's current run.
+// Mutated by `consume` as events arrive; `done` resolves at agent_end.
+interface ActiveHandle {
+  callbacks?: DispatchCallbacks;
+  responseText: string;
+  errorMessage: string | null;
+  done: Promise<void>;
+  resolveDone: () => void;
+}
+
+export function createGateway(deps: GatewayDeps): Gateway {
+  // sessionId → handle for the dispatch currently driving that session's run
+  const active = new Map<string, ActiveHandle>();
+
+  async function resolveSessionId(msg: Message): Promise<string> {
+    const store = await deps.sessionStoreManager.getOrCreate(msg.agentId);
+    if (msg.sessionKey) {
+      const existing = await store.findByKey(msg.sessionKey);
+      if (existing) return existing.id;
+      const created = await store.create(msg.agentId, { key: msg.sessionKey });
+      return created.id;
+    }
+    return (await store.create(msg.agentId)).id;
+  }
+
+  function buildRequest(msg: Message, sessionId: string): RunRequest {
+    return {
+      to: msg.agentId,
+      sessionId,
+      content: msg.content,
+      ...(msg.cwd ? { cwd: msg.cwd } : {}),
+      ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
+    };
+  }
+
+  async function consume(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
+    try {
+      for await (const event of deps.runtime.run(buildRequest(msg, sessionId))) {
+        handle.callbacks?.onEvent?.(event);
+        if (event.type === "message_update") {
+          const ame = event.assistantMessageEvent;
+          if (ame.type === "text_delta") {
+            handle.responseText += ame.delta;
+            handle.callbacks?.onTextDelta?.(ame.delta);
+          }
+        } else if (event.type === "tool_execution_start") {
+          handle.callbacks?.onToolStart?.({ id: event.toolCallId, name: event.toolName, args: event.args });
+        } else if (event.type === "tool_execution_end") {
+          handle.callbacks?.onToolEnd?.({ id: event.toolCallId, name: event.toolName, result: event.result, isError: event.isError });
+        } else if (event.type === "agent_end") {
+          const meta = getAgentEndMeta(event.messages);
+          if (meta.stopReason === "error") handle.errorMessage = meta.errorMessage ?? "Unknown agent error";
+        }
+      }
+    } catch (err) {
+      handle.errorMessage = err instanceof Error ? err.message : String(err);
+      log.error(`consume error for ${sessionId}: ${handle.errorMessage}`);
+    } finally {
+      active.delete(sessionId);
+      handle.resolveDone();
+    }
+  }
+
+  async function dispatch(msg: Message, callbacks?: DispatchCallbacks): Promise<DispatchResult> {
+    const sessionId = await resolveSessionId(msg);
+
+    if (active.has(sessionId)) {
+      try {
+        await deps.runtime.steer(sessionId, msg.content);
+      } catch (err) {
+        log.warn(`steer failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      return { sessionId, state: "queued", responseText: "", errorMessage: null };
+    }
+
+    let resolveDone!: () => void;
+    const done = new Promise<void>((r) => { resolveDone = r; });
+    const handle: ActiveHandle = {
+      callbacks,
+      responseText: "",
+      errorMessage: null,
+      done,
+      resolveDone,
+    };
+    active.set(sessionId, handle);
+    void consume(sessionId, msg, handle);
+
+    await handle.done;
+    return {
+      sessionId,
+      state: "started",
+      responseText: handle.responseText,
+      errorMessage: handle.errorMessage,
+    };
+  }
+
+  async function abort(sessionId: string, reason?: string): Promise<void> {
+    deps.runtime.cancel(sessionId, reason ? { reason } : undefined);
+  }
+
+  return { dispatch, abort };
+}
