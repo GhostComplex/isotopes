@@ -15,12 +15,9 @@ import type { ProviderConfig, RegisteredAgent } from "../../types.js";
 import type { AgentToolSettings } from "../../tools/types.js";
 import type { AgentRuntime } from "../../runtime.js";
 import { createSpawnAgentTool } from "../../tools/spawn-agent.js";
-import { createLogger } from "../../../logging/logger.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../../workspace/context.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
-
-const log = createLogger("pi-runner");
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -97,8 +94,9 @@ function buildToolAllowlist(
   policy: AgentToolSettings | undefined,
   customTools: ToolDefinition[],
   resourceLoader: DefaultResourceLoader | undefined,
+  sandboxed: boolean,
 ): string[] | undefined {
-  if (!policy?.allow && !policy?.deny) return undefined;
+  if (!policy?.allow && !policy?.deny && !sandboxed) return undefined;
   const extensionToolNames: string[] = [];
   if (resourceLoader) {
     for (const ext of resourceLoader.getExtensions().extensions) {
@@ -106,10 +104,11 @@ function buildToolAllowlist(
     }
   }
   const allNames = [...customTools.map((t) => t.name), ...extensionToolNames];
-  const denySet = policy.deny ? new Set(policy.deny) : undefined;
-  const allowSet = policy.allow ? new Set(policy.allow) : undefined;
+  const denySet = new Set(policy?.deny ?? []);
+  if (sandboxed) denySet.add("spawn_agent");
+  const allowSet = policy?.allow ? new Set(policy.allow) : undefined;
   return allNames.filter((n) => {
-    if (denySet?.has(n)) return false;
+    if (denySet.has(n)) return false;
     if (allowSet && !allowSet.has(n)) return false;
     return true;
   });
@@ -129,17 +128,13 @@ export async function createPiSession(
   const agentDir = path.join(ISOTOPES_HOME, "agents", agent.id, "agent");
   const settingsManager = SettingsManager.inMemory();
 
-  if (agent.config.sandbox?.enabled) {
-    log.warn(`spawn_agent disabled for ${agent.id}: sandbox is active and child runners cannot be confined.`);
-  } else {
-    customTools.push(toToolDefinition(createSpawnAgentTool({
-      runtime: deps.runtime,
-      parentAgentId: agent.id,
-      parentSessionId: sessionId,
-      workspacePath: sessionCwd,
-      ...(agent.spawnableAgentIds ? { spawnableAgentIds: agent.spawnableAgentIds } : {}),
-    })));
-  }
+  customTools.push(toToolDefinition(createSpawnAgentTool({
+    runtime: deps.runtime,
+    parentAgentId: agent.id,
+    parentSessionId: sessionId,
+    workspacePath: sessionCwd,
+    ...(agent.spawnableAgentIds ? { spawnableAgentIds: agent.spawnableAgentIds } : {}),
+  })));
 
   let resourceLoader: DefaultResourceLoader | undefined;
   if (deps.extensionPaths && deps.extensionPaths.length > 0) {
@@ -152,11 +147,11 @@ export async function createPiSession(
     );
   }
 
-  // Extension tools bypass tools.allow/deny unless we pass pi an allowlist.
   const toolAllowlist = buildToolAllowlist(
     agent.config.toolSettings,
     customTools,
     resourceLoader,
+    agent.config.sandbox?.enabled ?? false,
   );
 
   const { session } = await createAgentSession({
