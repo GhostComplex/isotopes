@@ -14,7 +14,8 @@ import * as path from "node:path";
 import type { ProviderConfig, RegisteredAgent } from "../../types.js";
 import type { AgentToolSettings } from "../../tools/types.js";
 import type { AgentRuntime } from "../../runtime.js";
-import { createSpawnAgentTool } from "../../tools/spawn-agent.js";
+import type { SandboxExecutor } from "../../middleware/executor.js";
+import { createAgentTools } from "../../tools/index.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../../workspace/context.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
@@ -26,12 +27,11 @@ export interface PiSessionDeps {
   globalProvider: ProviderConfig;
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
-  getAgentTools: (agentId: string) => AgentTool[];
   runtime: AgentRuntime;
+  sandboxExecutor?: SandboxExecutor;
   extensionPaths?: string[];
 }
 
-/** Per-agent loader cache; reload() jiti-imports every extension file. */
 const loaderCache = new Map<string, Promise<DefaultResourceLoader>>();
 
 async function getResourceLoader(
@@ -123,18 +123,22 @@ export async function createPiSession(
   const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
-  const customTools = deps.getAgentTools(agent.id).map(toToolDefinition);
   const sessionCwd = cwd ?? resolveAgentWorkspacePath(agent.config);
   const agentDir = path.join(ISOTOPES_HOME, "agents", agent.id, "agent");
   const settingsManager = SettingsManager.inMemory();
 
-  customTools.push(toToolDefinition(createSpawnAgentTool({
-    runtime: deps.runtime,
+  const tools = createAgentTools({
+    workspacePath: sessionCwd,
+    agentId: agent.id,
     parentAgentId: agent.id,
     parentSessionId: sessionId,
-    workspacePath: sessionCwd,
+    runtime: deps.runtime,
     ...(agent.spawnableAgentIds ? { spawnableAgentIds: agent.spawnableAgentIds } : {}),
-  })));
+    ...(agent.transportContext ? { transportContext: agent.transportContext } : {}),
+    ...(agent.config.sandbox ? { agentSandboxConfig: agent.config.sandbox } : {}),
+    ...(deps.sandboxExecutor ? { sandboxExecutor: deps.sandboxExecutor } : {}),
+  });
+  const customTools = tools.map(toToolDefinition);
 
   let resourceLoader: DefaultResourceLoader | undefined;
   if (deps.extensionPaths && deps.extensionPaths.length > 0) {

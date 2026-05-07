@@ -33,7 +33,6 @@ import {
 import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
-import { createAgentTools } from "./tools/index.js";
 import { LazyTransportContext } from "../legacy/gateway/transport-context.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
@@ -109,7 +108,6 @@ interface Entry {
 export class AgentRuntime {
   private entries = new Map<string, Entry>();
   private runs = new Map<string, RunHandle>();
-  private toolRegistries = new Map<string, Map<string, AgentTool>>();
   private piGlobalProvider?: ProviderConfig;
   private piAuthStorage?: AuthStorage;
   private piModelRegistry?: ModelRegistry;
@@ -150,8 +148,8 @@ export class AgentRuntime {
       globalProvider: this.piGlobalProvider,
       authStorage: this.piAuthStorage,
       modelRegistry: this.piModelRegistry,
-      getAgentTools: (id) => this.getAgentTools(id),
       runtime: this,
+      ...(this.sandboxExecutor ? { sandboxExecutor: this.sandboxExecutor } : {}),
       ...(this.extensionPaths.length > 0 ? { extensionPaths: this.extensionPaths } : {}),
     };
   }
@@ -186,21 +184,6 @@ export class AgentRuntime {
       if (entry.spawnable) out.push(name);
     }
     return out;
-  }
-
-  setAgentTools(agentId: string, tools: Iterable<AgentTool>): void {
-    const map = new Map<string, AgentTool>();
-    for (const t of tools) map.set(t.name, t);
-    this.toolRegistries.set(agentId, map);
-  }
-
-  clearAgentTools(agentId: string): void {
-    this.toolRegistries.delete(agentId);
-  }
-
-  getAgentTools(agentId: string): AgentTool[] {
-    const map = this.toolRegistries.get(agentId);
-    return map ? Array.from(map.values()) : [];
   }
 
   validateCwd(cwd: string): void {
@@ -259,33 +242,25 @@ export class AgentRuntime {
     await reconcileWorkspaceState(workspacePath);
     await ensureWorkspaceStructure(workspacePath);
 
-    const tools: AgentTool[] = createAgentTools({
-      workspacePath,
-      agentId: agentConfig.id,
-      agentSandboxConfig: agentConfig.sandbox,
-      transportContext,
-      ...(this.sandboxExecutor ? { sandboxExecutor: this.sandboxExecutor } : {}),
-    });
-
     const agent: RegisteredAgent = {
       id: agentConfig.id,
       config: agentConfig,
       sessionStore,
-      capabilities: { tools: tools.map((t) => t.name), canBeAddressed: true },
+      capabilities: { tools: [], canBeAddressed: true },
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
+      ...(transportContext ? { transportContext } : {}),
     };
 
-    this.setAgentTools(agent.id, tools);
     const runner = new PiRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(agent.id, runner, { spawnable: agentConfig.spawnable === true });
 
-    log.info(`Added agent: ${agent.id} (runner: pi, workspace: ${workspacePath}, tools: ${tools.length})`);
+    log.info(`Added agent: ${agent.id} (runner: pi, workspace: ${workspacePath})`);
 
     return {
       agent,
       workspacePath,
-      tools,
+      tools: [],
       ...(transportContext ? { transportContext } : {}),
     };
   }
@@ -306,7 +281,6 @@ export class AgentRuntime {
   unregisterAgent(id: string): boolean {
     const entry = this.entries.get(id);
     if (!entry?.runner.agent?.()) return false;
-    this.toolRegistries.delete(id);
     this.entries.delete(id);
     return true;
   }
