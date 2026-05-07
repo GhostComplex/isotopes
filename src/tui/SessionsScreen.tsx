@@ -35,15 +35,15 @@ export function SessionsScreen({ currentAgentId, currentSessionKey, onSwitchScre
 
   usePolling(refresh, REFRESH_MS);
 
-  useInput((_ch, key) => {
+  useInput((ch, key) => {
     if (key.escape) {
       onSwitchScreen("chat");
       return;
     }
     if (sessions.length === 0) return;
-    if (key.upArrow) {
+    if (key.upArrow || ch === "k") {
       setCursor((c) => (c - 1 + sessions.length) % sessions.length);
-    } else if (key.downArrow) {
+    } else if (key.downArrow || ch === "j") {
       setCursor((c) => (c + 1) % sessions.length);
     } else if (key.return) {
       const chosen = sessions[cursor];
@@ -89,7 +89,7 @@ export function SessionsScreen({ currentAgentId, currentSessionKey, onSwitchScre
       </Box>
 
       <Box borderStyle="single" paddingX={1} marginTop={1}>
-        <Text dimColor>↑↓ navigate  enter switch  esc back</Text>
+        <Text dimColor>↑↓ / jk navigate  enter switch  esc back</Text>
       </Box>
     </Box>
   );
