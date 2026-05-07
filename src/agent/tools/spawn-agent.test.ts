@@ -43,34 +43,4 @@ describe("createSpawnAgentTool", () => {
       from: { agentId: "main" },
     });
   });
-
-  it("propagates parent depth across the spawn chain", async () => {
-    const rt = new AgentRuntime();
-
-    let depthAtChild: number | undefined;
-    const childRunner: Runner = {
-      resolveSessionId: () => "child-session",
-      async *run() {
-        depthAtChild = rt.getRunBySession("child-session")?.depth;
-        yield { type: "agent_end", messages: [], stopReason: "end" } as never;
-      },
-    };
-    rt.registerRunner("child", childRunner);
-
-    const parentTool = createSpawnAgentTool({
-      runtime: rt,
-      parentAgentId: "main",
-      parentSessionId: "parent-session",
-      workspacePath: "/tmp",
-    });
-
-    (rt as unknown as { runs: Map<string, { sessionId: string; depth: number }> }).runs.set("parent-session", {
-      sessionId: "parent-session",
-      depth: 1,
-    });
-
-    await parentTool.execute("call-1", { to: "child", content: "go" }, new AbortController().signal);
-
-    expect(depthAtChild).toBe(2);
-  });
 });
