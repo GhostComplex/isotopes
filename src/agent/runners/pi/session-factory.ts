@@ -13,9 +13,14 @@ import * as path from "node:path";
 
 import type { ProviderConfig, RegisteredAgent } from "../../types.js";
 import type { AgentToolSettings } from "../../tools/types.js";
+import type { AgentRuntime } from "../../runtime.js";
+import { createSpawnAgentTool } from "../../tools/spawn-agent.js";
+import { createLogger } from "../../../logging/logger.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../../workspace/context.js";
 import { resolveAgentWorkspacePath } from "../../../paths.js";
+
+const log = createLogger("pi-runner");
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -25,6 +30,9 @@ export interface PiSessionDeps {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   getAgentTools: (agentId: string) => AgentTool[];
+  /** Runtime is needed per-session to construct spawn_agent with the
+   * caller sessionId baked in (see createPiSession). */
+  runtime: AgentRuntime;
   extensionPaths?: string[];
 }
 
@@ -122,6 +130,22 @@ export async function createPiSession(
   const sessionCwd = cwd ?? resolveAgentWorkspacePath(agent.config);
   const agentDir = path.join(ISOTOPES_HOME, "agents", agent.id, "agent");
   const settingsManager = SettingsManager.inMemory();
+
+  // spawn_agent is constructed per-session so the caller sessionId is
+  // captured in closure; this is what makes runtime depth/sibling budgets
+  // work across the spawn chain. Skipped under sandbox: child runners
+  // can't be confined.
+  if (agent.config.sandbox?.enabled) {
+    log.warn(`spawn_agent disabled for ${agent.id}: sandbox is active and child runners cannot be confined.`);
+  } else {
+    customTools.push(toToolDefinition(createSpawnAgentTool({
+      runtime: deps.runtime,
+      parentAgentId: agent.id,
+      parentSessionId: sessionId,
+      workspacePath: sessionCwd,
+      ...(agent.spawnableAgentIds ? { spawnableAgentIds: agent.spawnableAgentIds } : {}),
+    })));
+  }
 
   let resourceLoader: DefaultResourceLoader | undefined;
   if (deps.extensionPaths && deps.extensionPaths.length > 0) {

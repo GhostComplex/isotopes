@@ -43,6 +43,9 @@ export interface RegisteredAgent {
   };
   /** Defaults to "parent-reuse". */
   readonly sessionPolicy?: AgentSessionPolicy;
+  /** Other agent ids this agent may spawn (besides built-in runner names).
+   * Read by session-factory when constructing the spawn_agent tool. */
+  readonly spawnableAgentIds?: readonly string[];
 }
 
 export interface RunRequest {

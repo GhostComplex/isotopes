@@ -151,6 +151,7 @@ export class AgentRuntime {
       authStorage: this.piAuthStorage,
       modelRegistry: this.piModelRegistry,
       getAgentTools: (id) => this.getAgentTools(id),
+      runtime: this,
       ...(this.extensionPaths.length > 0 ? { extensionPaths: this.extensionPaths } : {}),
     };
   }
@@ -260,13 +261,10 @@ export class AgentRuntime {
 
     const tools: AgentTool[] = createAgentTools({
       workspacePath,
-      parentAgentId: agentConfig.id,
       agentId: agentConfig.id,
       agentSandboxConfig: agentConfig.sandbox,
       transportContext,
-      runtime: this,
       ...(this.sandboxExecutor ? { sandboxExecutor: this.sandboxExecutor } : {}),
-      ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
     });
 
     const agent: RegisteredAgent = {
@@ -275,6 +273,7 @@ export class AgentRuntime {
       sessionStore,
       capabilities: { tools: tools.map((t) => t.name), canBeAddressed: true },
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
+      ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
     };
 
     this.setAgentTools(agent.id, tools);
