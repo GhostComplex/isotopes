@@ -17,7 +17,6 @@ function makeRuntime(): AgentRuntime {
     id: MOCK_AGENT_ID,
     config: { id: MOCK_AGENT_ID },
     sessionStore: createMockSessionStore() as never,
-    capabilities: { tools: [], canBeAddressed: true },
   };
   rt.registerRunner(MOCK_AGENT_ID, {
     agent: () => agent,

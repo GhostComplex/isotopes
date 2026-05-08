@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createTimeTool } from "./time.js";
 import { createAgentTools } from "./index.js";
+import { AgentRuntime } from "../runtime.js";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
   const block = result.content.find((c) => c.type === "text");
@@ -36,9 +37,12 @@ describe("createAgentTools", () => {
   const baseOpts = () => ({
     workspacePath: "/tmp/ws",
     agentId: "test",
+    parentAgentId: "test",
+    parentSessionId: "session-1",
+    runtime: new AgentRuntime(),
   });
 
-  it("registers fs tools + time + exec by default", () => {
+  it("registers fs tools + time + exec + spawn_agent by default", () => {
     const tools = createAgentTools(baseOpts());
     const names = tools.map((t) => t.name);
     expect(names).toContain("read");
@@ -47,6 +51,7 @@ describe("createAgentTools", () => {
     expect(names).toContain("ls");
     expect(names).toContain("get_current_time");
     expect(names).toContain("exec");
+    expect(names).toContain("spawn_agent");
   });
 
   it("registers web_fetch by default", () => {

@@ -8,6 +8,7 @@ import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+import { AgentRuntime } from "../src/agent/runtime.js";
 import { createAgentTools } from "../src/agent/tools/index.js";
 import { createExecTools } from "../src/agent/tools/exec.js";
 import { createWebFetchTool } from "../src/agent/tools/web.js";
@@ -49,7 +50,7 @@ describe("workspace context", () => {
 
 describe("read tool (SDK)", () => {
   it("reads a file from the workspace", async () => {
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", parentAgentId: "test", parentSessionId: "s", runtime: new AgentRuntime() });
     const result = await callTool(findTool(tools, "read"), { path: "hello.txt" });
     expect(result).toContain("Hello, world!");
   });
@@ -60,7 +61,7 @@ describe("edit tool (SDK)", () => {
     const editFile = path.join(tmpDir, "editable.txt");
     await fs.writeFile(editFile, "foo bar baz\n");
 
-    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test" });
+    const tools = createAgentTools({ workspacePath: tmpDir, agentId: "test", parentAgentId: "test", parentSessionId: "s", runtime: new AgentRuntime() });
     await callTool(findTool(tools, "edit"), {
       path: editFile,
       edits: [{ oldText: "bar", newText: "qux" }],
@@ -117,7 +118,9 @@ describe("full tool wiring", () => {
     const all = createAgentTools({
       workspacePath: tmpDir,
       agentId: "test",
-      
+      parentAgentId: "test",
+      parentSessionId: "s",
+      runtime: new AgentRuntime(),
     });
     const names = new Set(all.map((t) => t.name));
 

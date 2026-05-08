@@ -4,7 +4,6 @@ import { Type } from "typebox";
 import type { AgentRuntime } from "../runtime.js";
 import { RunValidationError } from "../types.js";
 import type { RunRequest } from "../types.js";
-import { getRuntimeContext } from "../runtime-context.js";
 import { getDiscordA2AStreamContext } from "../../legacy/discord/a2a-stream-context.js";
 import { DiscordA2ASink } from "../../legacy/discord/discord-a2a-sink.js";
 import { getAgentEndMeta } from "../runners/pi/messages.js";
@@ -19,13 +18,14 @@ function textResult(text: string): AgentToolResult<undefined> {
 export interface SpawnAgentToolOptions {
   runtime: AgentRuntime;
   parentAgentId: string;
+  parentSessionId: string;
   workspacePath: string;
   allowedAgents?: string[];
-  spawnableAgentIds?: string[];
+  spawnableAgentIds?: readonly string[];
 }
 
 export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool {
-  const { runtime, parentAgentId, workspacePath, allowedAgents, spawnableAgentIds } = options;
+  const { runtime, parentAgentId, parentSessionId, workspacePath, allowedAgents, spawnableAgentIds } = options;
   const computedTargets: string[] = [...runtime.spawnableRunnerNames()];
   if (spawnableAgentIds) {
     for (const id of spawnableAgentIds) {
@@ -77,7 +77,6 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
       const cwd = working_directory
         ? path.resolve(workspacePath, working_directory)
         : workspacePath;
-      const ctx = getRuntimeContext();
 
       let cancelReason: string | undefined;
       const req: RunRequest = {
@@ -85,10 +84,10 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
         content,
         cwd,
         from: { agentId: parentAgentId },
-        ...(ctx?.parentSessionId ? { parentSessionId: ctx.parentSessionId } : {}),
+        parentSessionId,
         onCancel: (reason) => { cancelReason = reason; },
       };
-      log.info("spawn_agent", { from: parentAgentId, to, cwd, parent: ctx?.parentSessionId });
+      log.info("spawn_agent", { from: parentAgentId, to, cwd, parent: parentSessionId });
 
       const discordCtx = getDiscordA2AStreamContext();
       let sink: DiscordA2ASink | undefined;

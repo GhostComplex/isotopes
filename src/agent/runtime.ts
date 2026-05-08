@@ -12,7 +12,7 @@ import type { ProviderConfig } from "./types.js";
 import type { PiSessionDeps } from "./runners/pi/session-factory.js";
 import { PiRunner } from "./runners/pi/runner.js";
 import { ClaudeRunner } from "./runners/claude/runner.js";
-import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
   AuthStorage,
@@ -33,7 +33,6 @@ import {
 import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
-import { createAgentTools } from "./tools/index.js";
 import { LazyTransportContext } from "../legacy/gateway/transport-context.js";
 import type { DefaultSessionStore } from "./runners/pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
@@ -83,7 +82,6 @@ export interface AddAgentResult {
   agent: RegisteredAgent;
   /** null when the runner has no workspace (e.g. claude). */
   workspacePath: string | null;
-  tools: AgentTool[];
   transportContext?: LazyTransportContext;
 }
 
@@ -109,7 +107,6 @@ interface Entry {
 export class AgentRuntime {
   private entries = new Map<string, Entry>();
   private runs = new Map<string, RunHandle>();
-  private toolRegistries = new Map<string, Map<string, AgentTool>>();
   private piGlobalProvider?: ProviderConfig;
   private piAuthStorage?: AuthStorage;
   private piModelRegistry?: ModelRegistry;
@@ -150,7 +147,8 @@ export class AgentRuntime {
       globalProvider: this.piGlobalProvider,
       authStorage: this.piAuthStorage,
       modelRegistry: this.piModelRegistry,
-      getAgentTools: (id) => this.getAgentTools(id),
+      runtime: this,
+      ...(this.sandboxExecutor ? { sandboxExecutor: this.sandboxExecutor } : {}),
       ...(this.extensionPaths.length > 0 ? { extensionPaths: this.extensionPaths } : {}),
     };
   }
@@ -187,21 +185,6 @@ export class AgentRuntime {
     return out;
   }
 
-  setAgentTools(agentId: string, tools: Iterable<AgentTool>): void {
-    const map = new Map<string, AgentTool>();
-    for (const t of tools) map.set(t.name, t);
-    this.toolRegistries.set(agentId, map);
-  }
-
-  clearAgentTools(agentId: string): void {
-    this.toolRegistries.delete(agentId);
-  }
-
-  getAgentTools(agentId: string): AgentTool[] {
-    const map = this.toolRegistries.get(agentId);
-    return map ? Array.from(map.values()) : [];
-  }
-
   validateCwd(cwd: string): void {
     const resolved = resolve(cwd);
     let normalized: string;
@@ -227,12 +210,11 @@ export class AgentRuntime {
     const agent: RegisteredAgent = {
       id: agentConfig.id,
       config: agentConfig,
-      capabilities: { tools: [], canBeAddressed: true },
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
     };
     this.registerRunner(agentConfig.id, new ClaudeRunner(), { spawnable: agentConfig.spawnable === true });
     log.info(`Added agent: ${agent.id} (runner: claude)`);
-    return { agent, workspacePath: null, tools: [] };
+    return { agent, workspacePath: null };
   }
 
   private async registerPi(
@@ -258,35 +240,26 @@ export class AgentRuntime {
     await reconcileWorkspaceState(workspacePath);
     await ensureWorkspaceStructure(workspacePath);
 
-    const tools: AgentTool[] = createAgentTools({
-      workspacePath,
-      parentAgentId: agentConfig.id,
-      agentId: agentConfig.id,
-      agentSandboxConfig: agentConfig.sandbox,
-      transportContext,
-      runtime: this,
-      ...(this.sandboxExecutor ? { sandboxExecutor: this.sandboxExecutor } : {}),
-      ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
-    });
-
     const agent: RegisteredAgent = {
       id: agentConfig.id,
       config: agentConfig,
       sessionStore,
-      capabilities: { tools: tools.map((t) => t.name), canBeAddressed: true },
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
+      ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
+      ...(transportContext ? { transportContext } : {}),
     };
 
-    this.setAgentTools(agent.id, tools);
     const runner = new PiRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(agent.id, runner, { spawnable: agentConfig.spawnable === true });
 
-    log.info(`Added agent: ${agent.id} (runner: pi, workspace: ${workspacePath}, tools: ${tools.length})`);
+    log.info(`Added agent: ${agent.id} (runner: pi, workspace: ${workspacePath})`);
+    if (agentConfig.sandbox?.enabled) {
+      log.info(`spawn_agent disabled for ${agentConfig.id} (sandbox active)`);
+    }
 
     return {
       agent,
       workspacePath,
-      tools,
       ...(transportContext ? { transportContext } : {}),
     };
   }
@@ -307,7 +280,6 @@ export class AgentRuntime {
   unregisterAgent(id: string): boolean {
     const entry = this.entries.get(id);
     if (!entry?.runner.agent?.()) return false;
-    this.toolRegistries.delete(id);
     this.entries.delete(id);
     return true;
   }
