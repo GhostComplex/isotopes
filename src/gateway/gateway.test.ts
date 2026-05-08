@@ -80,7 +80,7 @@ const baseMsg: Message = { agentId: "main", content: "hi", source: "tui" };
 describe("gateway.dispatch (started)", () => {
   it("returns started + accumulates responseText", async () => {
     const runtime = buildRuntime(fastRunner(["hel", "lo, ", "world"]));
-    const gateway = createGateway({ runtime, sessionStoreManager: makeStores() });
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const result = await gateway.dispatch(baseMsg);
     expect(result.state).toBe("started");
@@ -107,7 +107,7 @@ describe("gateway.dispatch (started)", () => {
       },
     };
     const runtime = buildRuntime(runner);
-    const gateway = createGateway({ runtime, sessionStoreManager: makeStores() });
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const onTextDelta = vi.fn();
     const onToolStart = vi.fn();
@@ -122,7 +122,7 @@ describe("gateway.dispatch (started)", () => {
 
   it("captures errorMessage from agent_end", async () => {
     const runtime = buildRuntime(fastRunner(["x"], "error", "boom"));
-    const gateway = createGateway({ runtime, sessionStoreManager: makeStores() });
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const result = await gateway.dispatch(baseMsg);
     expect(result.errorMessage).toBe("boom");
@@ -141,7 +141,7 @@ describe("gateway.dispatch (queued)", () => {
     };
     const runtime = buildRuntime(longRunner);
     const steerSpy = vi.spyOn(runtime, "steer").mockResolvedValue();
-    const gateway = createGateway({ runtime, sessionStoreManager: makeStores() });
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "first" });
     await new Promise((r) => setTimeout(r, 5));
@@ -168,7 +168,7 @@ describe("gateway.abort", () => {
       },
     };
     const runtime = buildRuntime(runner);
-    const gateway = createGateway({ runtime, sessionStoreManager: makeStores() });
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     let capturedSid = "";
     const fut = gateway.dispatch(baseMsg, {

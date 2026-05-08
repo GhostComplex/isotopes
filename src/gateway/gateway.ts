@@ -12,7 +12,7 @@ import { getAgentEndMeta } from "../agent/runners/pi/messages.js";
 const log = createLogger("gateway");
 
 export interface GatewayDeps {
-  runtime: AgentRuntime;
+  agentRuntime: AgentRuntime;
   sessionStoreManager: SessionStoreManager;
 }
 
@@ -43,7 +43,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
 
   async function consume(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
     try {
-      for await (const event of deps.runtime.run({
+      for await (const event of deps.agentRuntime.run({
         to: msg.agentId,
         sessionId,
         content: msg.content,
@@ -79,7 +79,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
 
     if (active.has(sessionId)) {
       try {
-        await deps.runtime.steer(sessionId, msg.content);
+        await deps.agentRuntime.steer(sessionId, msg.content);
       } catch (err) {
         log.warn(`steer failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -108,7 +108,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
   }
 
   async function abort(sessionId: string, reason?: string): Promise<void> {
-    deps.runtime.cancel(sessionId, reason ? { reason } : undefined);
+    deps.agentRuntime.cancel(sessionId, reason ? { reason } : undefined);
   }
 
   return { dispatch, abort };
