@@ -39,7 +39,6 @@ export interface RegisteredAgent {
   /** Absent → in-memory session (no continuity across calls). */
   readonly sessionStore?: DefaultSessionStore;
   readonly capabilities: {
-    tools: string[];
     canBeAddressed: boolean;
   };
   /** Defaults to "parent-reuse". */

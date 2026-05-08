@@ -12,7 +12,7 @@ import type { ProviderConfig } from "./types.js";
 import type { PiSessionDeps } from "./runners/pi/session-factory.js";
 import { PiRunner } from "./runners/pi/runner.js";
 import { ClaudeRunner } from "./runners/claude/runner.js";
-import type { AgentEvent, AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
   AuthStorage,
@@ -82,7 +82,6 @@ export interface AddAgentResult {
   agent: RegisteredAgent;
   /** null when the runner has no workspace (e.g. claude). */
   workspacePath: string | null;
-  tools: AgentTool[];
   transportContext?: LazyTransportContext;
 }
 
@@ -211,12 +210,12 @@ export class AgentRuntime {
     const agent: RegisteredAgent = {
       id: agentConfig.id,
       config: agentConfig,
-      capabilities: { tools: [], canBeAddressed: true },
+      capabilities: { canBeAddressed: true },
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
     };
     this.registerRunner(agentConfig.id, new ClaudeRunner(), { spawnable: agentConfig.spawnable === true });
     log.info(`Added agent: ${agent.id} (runner: claude)`);
-    return { agent, workspacePath: null, tools: [] };
+    return { agent, workspacePath: null };
   }
 
   private async registerPi(
@@ -246,7 +245,7 @@ export class AgentRuntime {
       id: agentConfig.id,
       config: agentConfig,
       sessionStore,
-      capabilities: { tools: [], canBeAddressed: true },
+      capabilities: { canBeAddressed: true },
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
       ...(transportContext ? { transportContext } : {}),
@@ -260,7 +259,6 @@ export class AgentRuntime {
     return {
       agent,
       workspacePath,
-      tools: [],
       ...(transportContext ? { transportContext } : {}),
     };
   }
