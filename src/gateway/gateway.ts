@@ -34,8 +34,15 @@ interface ActiveHandle {
 export function createGateway(deps: GatewayDeps): Gateway {
   // sessionId → handle for the dispatch currently driving that session's run
   const active = new Map<string, ActiveHandle>();
+  // In-flight resolveSessionId calls keyed by `${agentId}::${sessionKey}`.
+  // Concurrent dispatches with the same sessionKey share a single resolve
+  // promise so only one session is created. Without this, two near-simultaneous
+  // dispatches both see findByKey → undefined and each call create, producing
+  // two distinct sessions for what callers intend as one logical session.
+  // (No cache for missing sessionKey — anonymous dispatches always get a fresh session.)
+  const resolving = new Map<string, Promise<string>>();
 
-  async function resolveSessionId(msg: Message): Promise<string> {
+  async function doResolveSessionId(msg: Message): Promise<string> {
     const store = await deps.sessionStoreManager.getOrCreate(msg.agentId);
     if (msg.sessionKey) {
       const existing = await store.findByKey(msg.sessionKey);
@@ -44,6 +51,16 @@ export function createGateway(deps: GatewayDeps): Gateway {
       return created.id;
     }
     return (await store.create(msg.agentId)).id;
+  }
+
+  function resolveSessionId(msg: Message): Promise<string> {
+    if (!msg.sessionKey) return doResolveSessionId(msg);
+    const cacheKey = `${msg.agentId}::${msg.sessionKey}`;
+    const pending = resolving.get(cacheKey);
+    if (pending) return pending;
+    const promise = doResolveSessionId(msg).finally(() => resolving.delete(cacheKey));
+    resolving.set(cacheKey, promise);
+    return promise;
   }
 
   async function triggerRun(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
