@@ -19,7 +19,8 @@ export interface GatewayDeps {
 // State for the dispatch driving this session's run.
 // `ready` resolves once the underlying runner has registered the run
 // (i.e. the first event has arrived) so steer can safely target it.
-// `done` resolves at agent_end.
+// `done` resolves at agent_end; it never rejects — runner errors are
+// captured into `errorMessage` and surfaced via DispatchResult.
 interface ActiveHandle {
   callbacks?: DispatchCallbacks;
   responseText: string;
@@ -100,40 +101,52 @@ export function createGateway(deps: GatewayDeps): Gateway {
   async function dispatch(msg: Message, callbacks?: DispatchCallbacks): Promise<DispatchResult> {
     const sessionId = await resolveSessionId(msg);
 
-    const existing = active.get(sessionId);
-    if (existing) {
-      await existing.ready;
-      try {
-        await deps.agentRuntime.steer(sessionId, msg.content);
-      } catch (err) {
-        log.warn(`steer failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+    // Loop to handle the case where the active run ends between when we
+    // observe it and when we try to steer — fall through to start a fresh run.
+    while (true) {
+      const existing = active.get(sessionId);
+      if (existing) {
+        await existing.ready;
+        // The run may have ended while we awaited ready (finally also resolves
+        // ready). If `active` no longer holds our handle, retry as a fresh run.
+        if (active.get(sessionId) !== existing) continue;
+        try {
+          await deps.agentRuntime.steer(sessionId, msg.content);
+          return { sessionId, state: "queued", responseText: "", errorMessage: null };
+        } catch (err) {
+          // Steer can still race with the run ending between recheck and the
+          // steer call. If the run is gone, retry as fresh; otherwise the
+          // failure is something else — log and return queued with no effect.
+          if (!active.has(sessionId)) continue;
+          log.warn(`steer failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+          return { sessionId, state: "queued", responseText: "", errorMessage: null };
+        }
       }
-      return { sessionId, state: "queued", responseText: "", errorMessage: null };
+
+      let resolveReady!: () => void;
+      const ready = new Promise<void>((r) => { resolveReady = r; });
+      let resolveDone!: () => void;
+      const done = new Promise<void>((r) => { resolveDone = r; });
+      const handle: ActiveHandle = {
+        callbacks,
+        responseText: "",
+        errorMessage: null,
+        ready,
+        resolveReady,
+        done,
+        resolveDone,
+      };
+      active.set(sessionId, handle);
+      void triggerRun(sessionId, msg, handle);
+
+      await handle.done;
+      return {
+        sessionId,
+        state: "started",
+        responseText: handle.responseText,
+        errorMessage: handle.errorMessage,
+      };
     }
-
-    let resolveReady!: () => void;
-    const ready = new Promise<void>((r) => { resolveReady = r; });
-    let resolveDone!: () => void;
-    const done = new Promise<void>((r) => { resolveDone = r; });
-    const handle: ActiveHandle = {
-      callbacks,
-      responseText: "",
-      errorMessage: null,
-      ready,
-      resolveReady,
-      done,
-      resolveDone,
-    };
-    active.set(sessionId, handle);
-    void triggerRun(sessionId, msg, handle);
-
-    await handle.done;
-    return {
-      sessionId,
-      state: "started",
-      responseText: handle.responseText,
-      errorMessage: handle.errorMessage,
-    };
   }
 
   async function abort(sessionId: string, reason?: string): Promise<void> {

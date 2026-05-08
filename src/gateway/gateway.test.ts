@@ -188,6 +188,25 @@ describe("gateway.dispatch (queued)", () => {
     await gateway.abort(second.sessionId);
     await first;
   });
+
+  it("falls through to a fresh run if the prior run ended between observe and steer", async () => {
+    // First run completes immediately. Second dispatch grabs a stale handle
+    // (active still set from the just-finished run could in theory be observed
+    // before the finally-delete; we simulate by serializing dispatches across
+    // a completed first run). The second dispatch must start a fresh run, not
+    // attempt to steer into the dead one.
+    const runtime = buildRuntime(fastRunner(["one"]));
+    const steerSpy = vi.spyOn(runtime, "steer");
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
+
+    const first = await gateway.dispatch({ ...baseMsg, sessionKey: "ended", content: "first" });
+    expect(first.state).toBe("started");
+
+    const second = await gateway.dispatch({ ...baseMsg, sessionKey: "ended", content: "second" });
+    expect(second.state).toBe("started");
+    expect(second.responseText).toBe("one");
+    expect(steerSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("gateway.abort", () => {
