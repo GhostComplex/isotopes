@@ -253,6 +253,9 @@ export class AgentRuntime {
     this.registerRunner(agent.id, runner, { spawnable: agentConfig.spawnable === true });
 
     log.info(`Added agent: ${agent.id} (runner: pi, workspace: ${workspacePath})`);
+    if (agentConfig.sandbox?.enabled) {
+      log.info(`spawn_agent disabled for ${agentConfig.id} (sandbox active)`);
+    }
 
     return {
       agent,
