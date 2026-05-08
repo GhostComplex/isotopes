@@ -41,7 +41,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return (await store.create(msg.agentId)).id;
   }
 
-  async function consume(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
+  async function triggerRun(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
     try {
       for await (const event of deps.agentRuntime.run({
         to: msg.agentId,
@@ -67,7 +67,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
       }
     } catch (err) {
       handle.errorMessage = err instanceof Error ? err.message : String(err);
-      log.error(`consume error for ${sessionId}: ${handle.errorMessage}`);
+      log.error(`triggerRun error for ${sessionId}: ${handle.errorMessage}`);
     } finally {
       active.delete(sessionId);
       handle.resolveDone();
@@ -96,7 +96,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
       resolveDone,
     };
     active.set(sessionId, handle);
-    void consume(sessionId, msg, handle);
+    void triggerRun(sessionId, msg, handle);
 
     await handle.done;
     return {
