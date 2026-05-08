@@ -17,11 +17,15 @@ export interface GatewayDeps {
 }
 
 // State for the dispatch driving this session's run.
-// Filled in as runtime events arrive; `done` resolves at agent_end.
+// `ready` resolves once the underlying runner has registered the run
+// (i.e. the first event has arrived) so steer can safely target it.
+// `done` resolves at agent_end.
 interface ActiveHandle {
   callbacks?: DispatchCallbacks;
   responseText: string;
   errorMessage: string | null;
+  ready: Promise<void>;
+  resolveReady: () => void;
   done: Promise<void>;
   resolveDone: () => void;
 }
@@ -42,6 +46,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
   }
 
   async function triggerRun(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
+    let readyResolved = false;
     try {
       for await (const event of deps.agentRuntime.run({
         to: msg.agentId,
@@ -50,6 +55,10 @@ export function createGateway(deps: GatewayDeps): Gateway {
         ...(msg.cwd ? { cwd: msg.cwd } : {}),
         ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
       })) {
+        if (!readyResolved) {
+          readyResolved = true;
+          handle.resolveReady();
+        }
         if (event.type === "message_update") {
           const ame = event.assistantMessageEvent;
           if (ame.type === "text_delta") {
@@ -70,14 +79,30 @@ export function createGateway(deps: GatewayDeps): Gateway {
       log.error(`triggerRun error for ${sessionId}: ${handle.errorMessage}`);
     } finally {
       active.delete(sessionId);
+      if (!readyResolved) handle.resolveReady();
       handle.resolveDone();
     }
   }
 
+  /**
+   * Dispatch a message to an agent.
+   *
+   * - If the session has no active run, starts one and streams events through
+   *   `callbacks` until agent_end. Returns `state: "started"` with the final
+   *   responseText.
+   * - If the session already has an active run, forwards `msg.content` to the
+   *   runner's native queue via `steer` and returns `state: "queued"` immediately.
+   *   The steered content's output continues streaming through the **original**
+   *   handle's callbacks (the first dispatcher's). The `callbacks` argument
+   *   passed on a queued call is **ignored** — there is one transport sink per
+   *   session, owned by whoever started the run.
+   */
   async function dispatch(msg: Message, callbacks?: DispatchCallbacks): Promise<DispatchResult> {
     const sessionId = await resolveSessionId(msg);
 
-    if (active.has(sessionId)) {
+    const existing = active.get(sessionId);
+    if (existing) {
+      await existing.ready;
       try {
         await deps.agentRuntime.steer(sessionId, msg.content);
       } catch (err) {
@@ -86,12 +111,16 @@ export function createGateway(deps: GatewayDeps): Gateway {
       return { sessionId, state: "queued", responseText: "", errorMessage: null };
     }
 
+    let resolveReady!: () => void;
+    const ready = new Promise<void>((r) => { resolveReady = r; });
     let resolveDone!: () => void;
     const done = new Promise<void>((r) => { resolveDone = r; });
     const handle: ActiveHandle = {
       callbacks,
       responseText: "",
       errorMessage: null,
+      ready,
+      resolveReady,
       done,
       resolveDone,
     };

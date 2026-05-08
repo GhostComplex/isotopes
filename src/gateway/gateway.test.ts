@@ -144,12 +144,46 @@ describe("gateway.dispatch (queued)", () => {
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "first" });
+    // Let `first` finish resolveSessionId + set active before second dispatches.
+    // (resolveSessionId is not race-safe across concurrent dispatches with the
+    // same sessionKey — separate concern, not the steer race fixed by handle.ready.)
     await new Promise((r) => setTimeout(r, 5));
 
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "second" });
     expect(second.state).toBe("queued");
     expect(second.sessionId).toMatch(/^sess-/);
     expect(steerSpy).toHaveBeenCalledWith(second.sessionId, "second");
+
+    await gateway.abort(second.sessionId);
+    await first;
+  });
+
+  it("steer awaits run readiness (no race against runner registration)", async () => {
+    let runnerStarted = false;
+    let steerCalledBeforeRunReady = false;
+    const slowStartRunner: Runner = {
+      resolveSessionId: (req) => req.sessionId ?? "stub",
+      async *run({ abort }) {
+        // Simulate runner doing async setup before pi registers the run.
+        await new Promise((r) => setTimeout(r, 20));
+        runnerStarted = true;
+        yield textDelta("ready");
+        await new Promise((r) => abort.addEventListener("abort", r, { once: true }));
+        yield agentEnd();
+      },
+    };
+    const runtime = buildRuntime(slowStartRunner);
+    vi.spyOn(runtime, "steer").mockImplementation(async () => {
+      if (!runnerStarted) steerCalledBeforeRunReady = true;
+    });
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
+
+    const first = gateway.dispatch({ ...baseMsg, sessionKey: "race", content: "a" });
+    await new Promise((r) => setTimeout(r, 5));
+    const second = await gateway.dispatch({ ...baseMsg, sessionKey: "race", content: "b" });
+
+    expect(second.state).toBe("queued");
+    expect(steerCalledBeforeRunReady).toBe(false);
 
     await gateway.abort(second.sessionId);
     await first;
