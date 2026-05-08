@@ -55,7 +55,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
   async function consume(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
     try {
       for await (const event of deps.runtime.run(buildRequest(msg, sessionId))) {
-        handle.callbacks?.onEvent?.(event);
         if (event.type === "message_update") {
           const ame = event.assistantMessageEvent;
           if (ame.type === "text_delta") {

@@ -1,5 +1,3 @@
-import type { AgentEvent } from "@mariozechner/pi-agent-core";
-
 export type MessageSource = "channel" | "tui" | "ui" | "cron" | "heartbeat" | "spawn";
 
 export interface Message {
@@ -17,7 +15,6 @@ export interface DispatchCallbacks {
   onTextDelta?: (delta: string) => void;
   onToolStart?: (call: { id: string; name: string; args: unknown }) => void;
   onToolEnd?: (result: { id: string; name: string; result: unknown; isError: boolean }) => void;
-  onEvent?: (event: AgentEvent) => void;
 }
 
 export interface DispatchResult {
