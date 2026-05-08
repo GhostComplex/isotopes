@@ -9,9 +9,9 @@ import type {
 } from "./types.js";
 import { RunValidationError } from "./types.js";
 import type { ProviderConfig } from "./types.js";
-import type { PiSessionDeps } from "./runners/pi/session-factory.js";
-import { PiRunner } from "./runners/pi/runner.js";
-import { ClaudeRunner } from "./runners/claude/runner.js";
+import type { PiSessionDeps } from "./pi/session-factory.js";
+import { PiRunner } from "./pi/runner.js";
+import { ClaudeRunner } from "./adapters/claude/runner.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -34,7 +34,7 @@ import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
 import { LazyTransportContext } from "../legacy/gateway/transport-context.js";
-import type { DefaultSessionStore } from "./runners/pi/session-store.js";
+import type { DefaultSessionStore } from "./pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
 import type { SandboxConfig } from "./middleware/sandbox-config.js";
 

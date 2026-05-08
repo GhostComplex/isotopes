@@ -2,7 +2,7 @@ import {
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
-import { SessionStoreManager } from "./agent/runners/pi/session-store.js";
+import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyTransportContext } from "./legacy/gateway/transport-context.js";
 import {

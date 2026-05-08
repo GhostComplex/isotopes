@@ -2,7 +2,7 @@
 // directly for raw event streams.
 
 import type { AgentRuntime } from "./runtime.js";
-import { getAgentEndMeta } from "./runners/pi/messages.js";
+import { getAgentEndMeta } from "./pi/messages.js";
 import type { Logger } from "../logging/logger.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 

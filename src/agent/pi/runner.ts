@@ -1,7 +1,7 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { randomUUID } from "node:crypto";
-import type { RegisteredAgent, RunRequest } from "../../types.js";
+import type { RegisteredAgent, RunRequest } from "../types.js";
 import { createPiSession, type PiSessionDeps } from "./session-factory.js";
 
 export interface PiRunnerOptions {
