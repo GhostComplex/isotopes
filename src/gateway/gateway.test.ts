@@ -207,6 +207,30 @@ describe("gateway.dispatch (queued)", () => {
     expect(second.responseText).toBe("one");
     expect(steerSpy).not.toHaveBeenCalled();
   });
+
+  it("surfaces non-race steer failures via errorMessage (not silent null)", async () => {
+    const longRunner: Runner = {
+      resolveSessionId: (req) => req.sessionId ?? "stub",
+      async *run({ abort }) {
+        yield textDelta("running");
+        await new Promise((r) => abort.addEventListener("abort", r, { once: true }));
+        yield agentEnd();
+      },
+    };
+    const runtime = buildRuntime(longRunner);
+    vi.spyOn(runtime, "steer").mockRejectedValue(new Error("pi rejected"));
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
+
+    const first = gateway.dispatch({ ...baseMsg, sessionKey: "fail", content: "first" });
+    await new Promise((r) => setTimeout(r, 5));
+    const second = await gateway.dispatch({ ...baseMsg, sessionKey: "fail", content: "second" });
+
+    expect(second.state).toBe("queued");
+    expect(second.errorMessage).toBe("pi rejected");
+
+    await gateway.abort(second.sessionId);
+    await first;
+  });
 });
 
 describe("gateway.abort", () => {

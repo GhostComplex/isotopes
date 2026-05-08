@@ -118,8 +118,9 @@ export function createGateway(deps: GatewayDeps): Gateway {
           // steer call. If the run is gone, retry as fresh; otherwise the
           // failure is something else — log and return queued with no effect.
           if (!active.has(sessionId)) continue;
-          log.warn(`steer failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
-          return { sessionId, state: "queued", responseText: "", errorMessage: null };
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          log.warn(`steer failed for ${sessionId}: ${errorMessage}`);
+          return { sessionId, state: "queued", responseText: "", errorMessage };
         }
       }
 
