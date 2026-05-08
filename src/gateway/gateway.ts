@@ -1,6 +1,5 @@
 import type { AgentRuntime } from "../agent/runtime.js";
 import type { SessionStoreManager } from "../agent/runners/pi/session-store.js";
-import type { RunRequest } from "../agent/types.js";
 import type {
   DispatchCallbacks,
   DispatchResult,
@@ -42,19 +41,15 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return (await store.create(msg.agentId)).id;
   }
 
-  function buildRequest(msg: Message, sessionId: string): RunRequest {
-    return {
-      to: msg.agentId,
-      sessionId,
-      content: msg.content,
-      ...(msg.cwd ? { cwd: msg.cwd } : {}),
-      ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
-    };
-  }
-
   async function consume(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
     try {
-      for await (const event of deps.runtime.run(buildRequest(msg, sessionId))) {
+      for await (const event of deps.runtime.run({
+        to: msg.agentId,
+        sessionId,
+        content: msg.content,
+        ...(msg.cwd ? { cwd: msg.cwd } : {}),
+        ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
+      })) {
         if (event.type === "message_update") {
           const ame = event.assistantMessageEvent;
           if (ame.type === "text_delta") {
