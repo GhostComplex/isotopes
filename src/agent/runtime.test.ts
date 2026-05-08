@@ -15,7 +15,6 @@ function fakeAgent(id: string): RegisteredAgent {
     id,
     config: { id } as RegisteredAgent["config"],
     sessionStore: {} as RegisteredAgent["sessionStore"],
-    capabilities: { canBeAddressed: true },
   };
 }
 

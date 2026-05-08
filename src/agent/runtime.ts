@@ -210,7 +210,6 @@ export class AgentRuntime {
     const agent: RegisteredAgent = {
       id: agentConfig.id,
       config: agentConfig,
-      capabilities: { canBeAddressed: true },
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
     };
     this.registerRunner(agentConfig.id, new ClaudeRunner(), { spawnable: agentConfig.spawnable === true });
@@ -245,7 +244,6 @@ export class AgentRuntime {
       id: agentConfig.id,
       config: agentConfig,
       sessionStore,
-      capabilities: { canBeAddressed: true },
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
       ...(transportContext ? { transportContext } : {}),

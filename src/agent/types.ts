@@ -38,9 +38,6 @@ export interface RegisteredAgent {
   config: AgentConfig;
   /** Absent → in-memory session (no continuity across calls). */
   readonly sessionStore?: DefaultSessionStore;
-  readonly capabilities: {
-    canBeAddressed: boolean;
-  };
   /** Defaults to "parent-reuse". */
   readonly sessionPolicy?: AgentSessionPolicy;
   readonly spawnableAgentIds?: readonly string[];
