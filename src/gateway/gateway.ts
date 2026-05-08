@@ -17,8 +17,8 @@ export interface GatewayDeps {
   sessionStoreManager: SessionStoreManager;
 }
 
-// State carried by the dispatch that owns a session's current run.
-// Mutated by `consume` as events arrive; `done` resolves at agent_end.
+// State for the dispatch driving this session's run.
+// Filled in as runtime events arrive; `done` resolves at agent_end.
 interface ActiveHandle {
   callbacks?: DispatchCallbacks;
   responseText: string;
