@@ -1,5 +1,5 @@
 import type { AgentRuntime } from "../agent/runtime.js";
-import type { SessionStoreManager } from "../agent/runners/pi/session-store.js";
+import type { SessionStoreManager } from "../agent/pi/session-store.js";
 import type {
   DispatchCallbacks,
   DispatchResult,
@@ -7,7 +7,7 @@ import type {
   Message,
 } from "./types.js";
 import { createLogger } from "../logging/logger.js";
-import { getAgentEndMeta } from "../agent/runners/pi/messages.js";
+import { getAgentEndMeta } from "../agent/pi/messages.js";
 
 const log = createLogger("gateway");
 
