@@ -80,19 +80,6 @@ export interface SandboxConfigFile {
   docker?: SandboxDockerConfigFile;
 }
 
-export interface ContextConfigFile {
-  /** Default: true */
-  channelHistory?: boolean;
-  /** Default: 20 */
-  channelHistoryLimit?: number;
-  /** Default: true */
-  dedupe?: boolean;
-  /** Default: false */
-  debounce?: boolean;
-  /** Default: 1500 */
-  debounceWindowMs?: number;
-}
-
 export interface CronJobConfigFile {
   name: string;
   expression: string;

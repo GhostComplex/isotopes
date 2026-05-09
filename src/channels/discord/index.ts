@@ -13,9 +13,8 @@
 //
 // NOT yet wired here (deferred until S5/app.ts rewires the larger surface):
 //  - channel history buffer / inbound metadata enrichment
-//  - inbound debouncer
 //  - image attachment extraction
-//  - slash commands beyond /stop|/cancel (admin commands stay legacy for now)
+//  - slash commands beyond /stop|/cancel (admin commands removed with legacy)
 //  - the spawn_agent → thread streaming bridge (a2a-sink); this is wired
 //    elsewhere (spawn-agent.ts, S1) and doesn't need adapter glue here.
 
@@ -73,7 +72,7 @@ const defaultClientFactory: ClientFactory = () =>
   }) as unknown as ClientLike;
 
 // ---------------------------------------------------------------------------
-// Allowlist policy (lifted from legacy/discord/discord.ts)
+// Allowlist policy (DM + group access)
 // ---------------------------------------------------------------------------
 
 interface ResolvedGroupPolicy {
@@ -299,8 +298,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
 
   // discord.js v14 doesn't reliably emit messageCreate for DMs even with
   // Partials.Channel. Intercept raw gateway packets and manually fetch the
-  // Message object for DM MESSAGE_CREATE events. Mirrors the workaround from
-  // legacy/discord/discord.ts ~line 247-267.
+  // Message object for DM MESSAGE_CREATE events.
   client.on("raw", (...rawArgs: unknown[]) => {
     const packet = rawArgs[0] as { t?: string; d?: unknown } | undefined;
     if (!packet || packet.t !== "MESSAGE_CREATE") return;
