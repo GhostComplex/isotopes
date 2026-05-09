@@ -39,8 +39,9 @@ describe("loadChannels", () => {
     await expect(result.stopAll()).resolves.toBeUndefined();
   });
 
-  it("logs a warning and does not throw when discord adapter import fails", async () => {
-    // No mock registered — the import will fail because the file does not exist.
+  it("loads the discord adapter when channels.discord is configured (no-accounts no-op)", async () => {
+    // The real adapter module now exists. With no accounts in config, it
+    // starts as a no-op and logs the "no accounts configured" warning.
     const logger = makeLogger();
     const result = await loadChannels({
       gateway: fakeGateway,
@@ -48,7 +49,7 @@ describe("loadChannels", () => {
       logger,
     });
     expect(logger.warnings).toHaveLength(1);
-    expect(logger.warnings[0]).toMatch(/discord adapter not loadable/);
+    expect(logger.warnings[0]).toMatch(/no accounts configured/);
     await expect(result.stopAll()).resolves.toBeUndefined();
   });
 
