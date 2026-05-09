@@ -200,5 +200,17 @@ export async function receiveDiscordMessage(
   };
 
   // 6. Dispatch. Outbound callbacks are produced by the caller (outbound.ts).
-  await deps.gateway.dispatch(message, ctx.buildCallbacks(msg));
+  //    If the callbacks expose a `flushRemaining()` hook (the OutboundCallbacks
+  //    contract from outbound.ts), invoke it after dispatch so any text still
+  //    sitting in the segmented stream buffer is delivered.
+  const callbacks = ctx.buildCallbacks(msg);
+  await deps.gateway.dispatch(message, callbacks);
+  const maybeFlush = (callbacks as { flushRemaining?: () => Promise<void> }).flushRemaining;
+  if (typeof maybeFlush === "function") {
+    try {
+      await maybeFlush.call(callbacks);
+    } catch (err) {
+      log.warn(`flushRemaining failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 }
