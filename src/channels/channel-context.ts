@@ -4,7 +4,7 @@ export interface ChannelContext {
   getChannel(): Channel | undefined;
 }
 
-/** Late-binding — tools are constructed before channels start. */
+/** Late-binding so agent tools can be constructed before channels start. */
 export class LazyChannelContext implements ChannelContext {
   private channel: Channel | undefined;
   setChannel(channel: Channel): void { this.channel = channel; }

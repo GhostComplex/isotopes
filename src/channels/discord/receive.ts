@@ -8,87 +8,49 @@ import { loggers } from "../../logging/logger.js";
 
 const log = loggers.discord;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Per-guild override knobs consumed by the inbound pipeline. */
 export interface GuildReceiveConfig {
   requireMention?: boolean;
 }
 
 export interface ReceiveDeps {
-  /** Gateway to dispatch the inbound Message to. */
   gateway: Gateway;
-  /** botUserId → agentId. Empty/undefined means "fall back to defaultAgentId". */
+  /** botUserId → agentId. Falls back to defaultAgentId when no binding matches. */
   agentBindings?: Record<string, string>;
-  /** Default agent when no binding matches. */
   defaultAgentId?: string;
-  /** Shared dedupe cache (carry across calls; usually owned by the channel). */
   dedupe: DedupeCache;
-  /** Per-guild config (currently just requireMention). */
   guilds?: Record<string, GuildReceiveConfig>;
-  /** Whether to honor the dedupe cache. Default: true. */
+  /** Default true. */
   dedupeEnabled?: boolean;
-  /** Whether to respond to messages from other bots. Default: false. */
+  /** Default false. */
   allowBots?: boolean;
-  /**
-   * Optional hook to transform the cleaned message content before dispatch.
-   * Used by the channel adapter to prepend inbound metadata (sender, channel,
-   * timestamp) so the agent has multi-user context.
-   */
+  /** Hook to prepend inbound metadata (sender, channel) before dispatch. */
   transformContent?: (content: string, msg: DiscordMessage, mentionKind: MentionKind) => string;
 }
 
-/**
- * `DispatchCallbacks` extended with an optional post-dispatch hook. Adapters
- * with stateful outbound buffers (the Discord one drains its sentence-boundary
- * stream buffer here) implement `flushRemaining`. Plain DispatchCallbacks
- * remain compatible (the field is optional).
- */
+/** DispatchCallbacks + a post-dispatch cleanup hook (e.g. drain a buffer). */
 export interface ReceiveCallbacks extends DispatchCallbacks {
   flushRemaining?(): Promise<void>;
 }
 
 export interface ReceiveContext {
-  /** This bot's user id (i.e. client.user.id). Required for mention/dedupe/session keys. */
   botId: string;
-  /** Build the per-message callbacks (outbound concerns live in caller). */
   buildCallbacks: (msg: DiscordMessage) => ReceiveCallbacks;
 }
-
-// ---------------------------------------------------------------------------
-// Mention detection — preserves the 4 implicit kinds.
-// ---------------------------------------------------------------------------
 
 export type MentionKind = "precise" | "dm" | "reply_chain" | "quoted";
 
 /**
- * Determine which mention kind (if any) addresses this bot.
- * Returns null when the message is not addressed to the bot.
- *
- * Kinds:
- *  - "precise"      — explicit `<@botId>` mention
- *  - "dm"           — direct message channel (no guild)
- *  - "reply_chain"  — user replied to a message previously authored by this bot
- *  - "quoted"       — forwarded message snapshot containing the bot's mention
+ * Returns the implicit mention kind addressing this bot, or null.
+ * Kinds: precise (`<@botId>`), dm, reply_chain, quoted (forwarded snapshot).
  */
 export function detectMentionKind(msg: DiscordMessage, botId: string): MentionKind | null {
-  // 1. Precise @mention
   if (msg.mentions?.has?.(botId)) return "precise";
-
-  // 2. DM
   if (!msg.guild) return "dm";
 
-  // 3. Reply-chain: user replied to a message authored by this bot.
-  // discord.js exposes `referencedMessage` lazily; fall back to `reference.messageId`
-  // and let the caller resolve if needed. We only treat it as reply_chain when the
-  // referenced author is known to be this bot.
   const referenced = (msg as unknown as { referencedMessage?: { author?: { id?: string } } })
     .referencedMessage;
   if (referenced?.author?.id === botId) return "reply_chain";
 
-  // 4. Quoted/forwarded snapshot containing a mention of this bot.
   const snapshots = (msg as unknown as {
     messageSnapshots?: Map<string, { mentions?: { has?: (id: string) => boolean }; content?: string }>
       | Array<{ mentions?: { has?: (id: string) => boolean }; content?: string }>;
@@ -106,16 +68,11 @@ export function detectMentionKind(msg: DiscordMessage, botId: string): MentionKi
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
-/** Strip Discord-style numeric @mentions from text. */
 export function stripMentions(text: string): string {
   return text.replace(/<@!?\d+>/g, "").trim();
 }
 
-/** Resolve agentId from bindings: first matching mention wins, then default. */
 export function resolveAgentId(
   msg: DiscordMessage,
   agentBindings: Record<string, string> | undefined,
@@ -129,25 +86,12 @@ export function resolveAgentId(
   return defaultAgentId;
 }
 
-/** Build the session key for a Discord message (thread > dm > channel). */
 export function resolveSessionKey(msg: DiscordMessage, botId: string): string {
-  if (msg.thread) {
-    return buildSessionKey("discord", botId, "thread", msg.thread.id);
-  }
-  if (!msg.guild) {
-    return buildSessionKey("discord", botId, "dm", msg.author.id);
-  }
+  if (msg.thread) return buildSessionKey("discord", botId, "thread", msg.thread.id);
+  if (!msg.guild) return buildSessionKey("discord", botId, "dm", msg.author.id);
   return buildSessionKey("discord", botId, "channel", msg.channelId);
 }
 
-// ---------------------------------------------------------------------------
-// Pipeline entry
-// ---------------------------------------------------------------------------
-
-/**
- * Handle a Discord `messageCreate` event. Returns silently when the message
- * should be ignored (self, other bot, dedupe hit, not addressed).
- */
 export async function receiveDiscordMessage(
   msg: DiscordMessage,
   deps: ReceiveDeps,
@@ -200,9 +144,8 @@ export async function receiveDiscordMessage(
   try {
     await deps.gateway.dispatch(message, callbacks);
   } finally {
-    // flushRemaining MUST run even when dispatch threw — outbound implementations
-    // may hold per-dispatch resources (typing interval, edit timers) that only
-    // release in here.
+    // Must run even on dispatch error: outbound holds per-dispatch resources
+    // (typing interval, edit timers) that only release here.
     if (callbacks.flushRemaining) {
       try {
         await callbacks.flushRemaining();

@@ -31,7 +31,7 @@ import type {
 const log = loggers.discord;
 
 
-/** Minimal Discord client surface the adapter actually uses. */
+/** Minimum surface the adapter touches — testable without discord.js. */
 export interface ClientLike {
   user: { id: string; tag?: string } | null;
   channels: { fetch: (id: string) => Promise<unknown>; cache: Map<string, unknown> };
@@ -41,7 +41,7 @@ export interface ClientLike {
   destroy(): unknown;
 }
 
-/** Factory so tests can inject a mock Client without touching discord.js. */
+/** Test seam: inject a mock Client without depending on discord.js. */
 export type ClientFactory = () => ClientLike;
 
 const defaultClientFactory: ClientFactory = () =>
@@ -87,10 +87,7 @@ function isDmAllowed(account: DiscordAccountConfig, userId: string): boolean {
   return false;
 }
 
-/**
- * Pre-receive policy gate. Returns true when the message is allowed to flow
- * into the inbound pipeline; false silently drops it.
- */
+/** Pre-receive policy gate. False = silently drop. */
 function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConfig): boolean {
   if (!msg.guild) {
     const ok = isDmAllowed(account, msg.author.id);
@@ -119,11 +116,7 @@ function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConfig): bo
 
 const STOP_CMD_RE = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i;
 
-/**
- * If the message is a /stop or /cancel directed at this bot, abort the
- * current run for the resolved sessionKey and return true. Returns false
- * when the message is not a stop command.
- */
+/** Returns true if the message was a /stop directed at this bot (consumed). */
 async function maybeHandleStop(
   msg: DiscordMessage,
   botId: string,
@@ -160,10 +153,6 @@ export interface CreateDiscordChannelOptions {
   threadBindingManager?: ThreadBindingManager;
 }
 
-/**
- * Build a Discord ChannelAdapter from a `channels.discord` config block.
- * The returned adapter is started by the channel loader.
- */
 export function createDiscordChannel(
   rawConfig: unknown,
   options: CreateDiscordChannelOptions = {},
@@ -424,11 +413,6 @@ function mapGuildsForReceive(
   return Object.keys(out).length === 0 ? undefined : out;
 }
 
-/**
- * autoBindThread is called from the threadCreate handler — its parent channel
- * gates entirely on group-policy allowlist. agentId falls back to "default"
- * when no defaultAgentId is configured.
- */
 function autoBindThread(
   thread: ThreadChannel,
   account: DiscordAccountConfig,
@@ -454,11 +438,7 @@ function autoBindThread(
   threadBindings.bind(thread.id, { parentChannelId: thread.parentId, agentId });
 }
 
-/**
- * Add an emoji reaction to a message. Tries channelId fast-path first, then
- * falls back to scanning every cached channel across all bots. Used by the
- * `message_react` agent tool via the LazyChannelContext binding.
- */
+/** Tries channelId fast-path then falls back to scanning all bots' caches. */
 async function reactToMessage(
   clients: Map<string, ClientLike>,
   messageId: string,
@@ -494,11 +474,6 @@ async function reactToMessage(
   throw new Error(`Message not found: ${messageId}`);
 }
 
-/**
- * Build the per-inbound DiscordA2AStreamContext that spawn_agent reads from
- * AsyncLocalStorage to decide whether to surface a sub-run in a Discord
- * thread under the same channel.
- */
 function buildA2AStreamContext(
   client: ClientLike,
   parentChannelId: string,

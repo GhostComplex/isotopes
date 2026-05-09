@@ -10,12 +10,12 @@ const SENTENCE_BOUNDARIES = [". ", "! ", "? ", "\n\n"];
 const DEFAULT_MAX_BUFFER_SIZE = 500;
 
 /**
- * Buffers streaming text and flushes at sentence/paragraph boundaries.
- * Sends NEW messages (not message.edit) so other bots in the channel never
- * read truncated mid-edit content — required for multi-agent safety.
+ * Buffers streaming text and flushes at sentence boundaries via NEW messages
+ * (not message.edit). Edit-in-place would let other bots in the channel read
+ * truncated mid-edit content — a real footgun in multi-agent setups.
  *
- * Calls to `append` and `flushRemaining` are serialized via an internal tail
- * promise so concurrent text deltas can't produce out-of-order Discord posts.
+ * append/flushRemaining serialize via a tail promise so concurrent text
+ * deltas can't interleave into out-of-order Discord posts.
  */
 export class SegmentedStreamBuffer {
   private buffer = "";
@@ -33,8 +33,7 @@ export class SegmentedStreamBuffer {
       this.buffer += text;
       await this.tryFlush();
     }).catch((err) => {
-      // Don't let one transient Discord error poison the rest of the stream.
-      // Drop the buffer slice that failed; subsequent deltas keep flowing.
+      // Don't poison subsequent appends on a transient Discord error.
       this.buffer = "";
       log.warn(`SegmentedStreamBuffer flush failed: ${err instanceof Error ? err.message : String(err)}`);
     });
@@ -80,7 +79,6 @@ export class SegmentedStreamBuffer {
 }
 
 export interface OutboundCallbacks extends DispatchCallbacks {
-  /** Must be called after gateway.dispatch returns to drain the buffer. */
   flushRemaining(): Promise<void>;
 }
 
@@ -91,11 +89,6 @@ export interface OutboundContext {
   showToolCalls?: boolean;
 }
 
-/**
- * Build a DispatchCallbacks for `gateway.dispatch(msg, callbacks)` that
- * streams text into Discord. The caller MUST `await flushRemaining()` after
- * `gateway.dispatch` resolves.
- */
 export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks {
   const { channel, triggerMessage, showToolCalls = false } = ctx;
   const triggerMessageId = triggerMessage.id;

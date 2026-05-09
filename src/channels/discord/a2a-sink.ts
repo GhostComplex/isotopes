@@ -1,13 +1,3 @@
-// src/plugins/discord/discord-a2a-sink.ts
-//
-// Streams a single sub-run's AgentEvent stream to a dedicated Discord thread.
-// Used by the `spawn_agent` tool when invoked from inside a Discord chat
-// (DiscordA2AStreamContext is set in AsyncLocalStorage).
-//
-// Lifecycle: start(label) creates thread + registers (threadId → sessionId)
-// for /stop routing; sendEvent(e) posts updates; finish(result) summarizes
-// + unregisters.
-
 import { createLogger } from "../../logging/logger.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { DiscordA2AStreamContext } from "./a2a-stream-context.js";
@@ -137,7 +127,7 @@ export class DiscordA2ASink {
 
   private async send(content: string): Promise<void> {
     if (!this.threadId) return;
-    const chunks = chunkContent(content);
+    const chunks = chunkDiscordMessage(content, MAX_DISCORD_LEN);
     for (const c of chunks) {
       try {
         await this.ctx.sendMessage(this.threadId, c);
@@ -157,18 +147,9 @@ export class DiscordA2ASink {
   }
 }
 
-function chunkContent(content: string, maxLength = MAX_DISCORD_LEN): string[] {
-  return chunkDiscordMessage(content, maxLength);
-}
-
-/** Discord max message length. */
 const DISCORD_MAX_MESSAGE_LENGTH = 2000;
 
-/**
- * Split a string into Discord-sendable chunks (≤ maxLength chars), preferring
- * newline / space break points to avoid mid-word splits. Trailing remainder
- * is included even if it falls under the threshold.
- */
+/** Split into Discord-sendable chunks, preferring newline / space breaks. */
 export function chunkDiscordMessage(content: string, maxLength = DISCORD_MAX_MESSAGE_LENGTH): string[] {
   if (content.length <= maxLength) return [content];
   const out: string[] = [];
