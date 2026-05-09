@@ -12,14 +12,16 @@ interface Mocks {
   triggerMessage: DiscordMessage;
   send: SendMock;
   reply: ReplyMock;
+  sendTyping: ReturnType<typeof vi.fn>;
 }
 
 function makeMocks(triggerId = "trigger-123"): Mocks {
   const send: SendMock = vi.fn().mockResolvedValue({ id: "sent-1" });
   const reply: ReplyMock = vi.fn().mockResolvedValue({ id: "reply-1" });
-  const channel = { send } as unknown as SendableChannels;
+  const sendTyping = vi.fn().mockResolvedValue(undefined);
+  const channel = { send, sendTyping } as unknown as SendableChannels;
   const triggerMessage = { id: triggerId, reply } as unknown as DiscordMessage;
-  return { channel, triggerMessage, send, reply };
+  return { channel, triggerMessage, send, reply, sendTyping };
 }
 
 describe("SegmentedStreamBuffer", () => {
@@ -187,5 +189,21 @@ describe("createDiscordCallbacks", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("typing indicator fires immediately and clears after flushRemaining", async () => {
+    vi.useFakeTimers();
+    try {
+      const { channel, triggerMessage, sendTyping } = makeMocks();
+      const cb = createDiscordCallbacks({ channel, triggerMessage });
+      expect(sendTyping).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(7000);
+      expect(sendTyping).toHaveBeenCalledTimes(2);
+      await cb.flushRemaining();
+      vi.advanceTimersByTime(20000);
+      expect(sendTyping).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

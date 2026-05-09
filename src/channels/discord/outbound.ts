@@ -100,6 +100,18 @@ export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks 
   const { channel, triggerMessage, showToolCalls = false } = ctx;
   const triggerMessageId = triggerMessage.id;
 
+  // Discord's typing indicator lasts ~10s; refresh every 7s while active.
+  let typingTimer: ReturnType<typeof setInterval> | null = null;
+  const startTyping = (): void => {
+    if (typingTimer || !("sendTyping" in channel)) return;
+    const ping = () => { void channel.sendTyping().catch(() => {}); };
+    ping();
+    typingTimer = setInterval(ping, 7000);
+  };
+  const stopTyping = (): void => {
+    if (typingTimer) { clearInterval(typingTimer); typingTimer = null; }
+  };
+
   const sendChunk = async (chunk: string, replyToId: string | undefined, isFirst: boolean): Promise<void> => {
     if (!isFirst || !replyToId) {
       await channel.send(chunk);
@@ -125,13 +137,20 @@ export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks 
   };
 
   const buffer = new SegmentedStreamBuffer(flushSegment);
+  startTyping();
 
   const callbacks: OutboundCallbacks = {
     onTextDelta: (delta) => {
       if (delta.length === 0) return;
       void buffer.append(delta);
     },
-    flushRemaining: () => buffer.flushRemaining(),
+    flushRemaining: async () => {
+      try {
+        await buffer.flushRemaining();
+      } finally {
+        stopTyping();
+      }
+    },
   };
 
   if (showToolCalls) {
