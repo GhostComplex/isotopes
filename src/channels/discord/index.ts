@@ -33,7 +33,7 @@ import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
-import { receiveDiscordMessage, type GuildReceiveConfig } from "./receive.js";
+import { receiveDiscordMessage, resolveSessionKey, type GuildReceiveConfig } from "./receive.js";
 import { createDiscordCallbacks } from "./outbound.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
@@ -52,7 +52,9 @@ const log = loggers.discord;
 /** Minimal Discord client surface the adapter actually uses. */
 export interface ClientLike {
   user: { id: string; tag?: string } | null;
+  channels: { fetch: (id: string) => Promise<unknown> };
   on(event: string, handler: (...args: unknown[]) => void): unknown;
+  removeAllListeners?(): unknown;
   login(token: string): Promise<unknown>;
   destroy(): unknown;
 }
@@ -196,8 +198,8 @@ export function createDiscordChannel(
   const accounts = config.accounts ?? {};
   const clientFactory = options.clientFactory ?? defaultClientFactory;
 
-  // One client per account; populated in start()
   const clients = new Map<string, ClientLike>();
+  const dedupes = new Map<string, DedupeCache>();
   let threadBindings: ThreadBindingManager | null = options.threadBindingManager ?? null;
 
   return {
@@ -219,28 +221,38 @@ export function createDiscordChannel(
         }
       }
 
-      for (const [accountId, account] of Object.entries(accounts)) {
-        await startAccount({
-          accountId,
-          account,
-          gateway,
-          logger,
-          clientFactory,
-          clients,
-          threadBindings,
-        });
-      }
+      const tb = threadBindings;
+      await Promise.all(
+        Object.entries(accounts).map(([accountId, account]) =>
+          startAccount({
+            accountId,
+            account,
+            gateway,
+            logger,
+            clientFactory,
+            clients,
+            dedupes,
+            threadBindings: tb,
+          }),
+        ),
+      );
     },
 
     async stop() {
-      for (const [, client] of clients) {
-        try {
-          client.destroy();
-        } catch (err) {
-          log.warn(`discord: destroy failed: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
+      await Promise.all(
+        Array.from(clients.values()).map(async (client) => {
+          try {
+            client.removeAllListeners?.();
+            const result = client.destroy();
+            if (result && typeof (result as Promise<void>).then === "function") await result;
+          } catch (err) {
+            log.warn(`discord: destroy failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }),
+      );
       clients.clear();
+      for (const dedupe of dedupes.values()) dedupe.clear();
+      dedupes.clear();
     },
   };
 }
@@ -256,11 +268,12 @@ interface StartAccountArgs {
   logger: Logger;
   clientFactory: ClientFactory;
   clients: Map<string, ClientLike>;
+  dedupes: Map<string, DedupeCache>;
   threadBindings: ThreadBindingManager;
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, logger, clientFactory, clients, threadBindings } = args;
+  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, threadBindings } = args;
 
   const token = resolveToken(account);
   if (!token) {
@@ -272,6 +285,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
   clients.set(accountId, client);
 
   const dedupe = new DedupeCache();
+  dedupes.set(accountId, dedupe);
   const guildsForReceive = mapGuildsForReceive(account.guilds);
 
   client.on("clientReady", () => {
@@ -309,12 +323,15 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
     const messageId = data.id as string | undefined;
     if (!channelId || !messageId) return;
 
+    const botId = client.user?.id;
+    if (!botId) return;
+    // Cheap pre-gate: if messageCreate already processed this DM, skip the
+    // two HTTP fetches below. Real dedupe happens inside receive.ts.
+    if (dedupe.peek(`${botId}:${channelId}:${messageId}`)) return;
+
     void (async () => {
       try {
-        const channels = (client as unknown as {
-          channels?: { fetch?: (id: string) => Promise<unknown> };
-        }).channels;
-        const channel = (await channels?.fetch?.(channelId)) as
+        const channel = (await client.channels.fetch(channelId)) as
           | { isTextBased?: () => boolean; messages?: { fetch: (id: string) => Promise<DiscordMessage> } }
           | null
           | undefined;
@@ -370,9 +387,7 @@ async function handleInbound(args: InboundArgs): Promise<void> {
   if (!passesAllowlist(msg, account)) return;
 
   // /stop handling — needs the same sessionKey logic the receive pipeline uses.
-  const stopped = await maybeHandleStop(msg, botId, gateway, (m) =>
-    buildSessionIdForStop(m, botId),
-  );
+  const stopped = await maybeHandleStop(msg, botId, gateway, (m) => resolveSessionKey(m, botId));
   if (stopped) return;
 
   await receiveDiscordMessage(
@@ -424,22 +439,10 @@ function mapGuildsForReceive(
 }
 
 /**
- * Build the sessionId used by `gateway.abort` for /stop.
- *
- * IMPORTANT: This is the *sessionKey* (e.g. `discord:bot:channel:123`), not
- * an underlying session UUID. The current Gateway abort contract takes a
- * session identifier; until the resolveSessionId step is fully internalized,
- * we pass the sessionKey and rely on the gateway/runtime to map it. The
- * legacy code resolved the UUID itself; in this refactor we lean on the
- * gateway abstraction.
+ * autoBindThread is called from the threadCreate handler — its parent channel
+ * gates entirely on group-policy allowlist. agentId falls back to "default"
+ * when no defaultAgentId is configured.
  */
-function buildSessionIdForStop(msg: DiscordMessage, botId: string): string {
-  // Mirror resolveSessionKey from receive.ts (kept private there).
-  if (msg.thread) return `discord:${botId}:thread:${msg.thread.id}`;
-  if (!msg.guild) return `discord:${botId}:dm:${msg.author.id}`;
-  return `discord:${botId}:channel:${msg.channelId}`;
-}
-
 function autoBindThread(
   thread: ThreadChannel,
   account: DiscordAccountConfig,

@@ -27,6 +27,7 @@ function makeFakeClient(botId: string): FakeClient {
   const destroyMock = vi.fn();
   const client: FakeClient = {
     user: { id: botId, tag: `bot#${botId}` },
+    channels: { fetch: vi.fn().mockResolvedValue(null) },
     handlers,
     on(event, handler) {
       const arr = handlers.get(event) ?? [];
