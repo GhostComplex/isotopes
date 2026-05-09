@@ -48,7 +48,7 @@ export class DiscordA2ASink {
     private readonly config: DiscordA2ASinkConfig = {},
   ) {}
 
-  async start(taskLabel: string, headerMessageId?: string): Promise<string | undefined> {
+  async start(taskLabel: string, headerMessageId?: string): Promise<{ threadId?: string; error?: string }> {
     this.startedAt = Date.now();
     try {
       const headerMsg = headerMessageId
@@ -62,14 +62,15 @@ export class DiscordA2ASink {
       this.threadId = thread.id;
       this.ctx.registerA2AThread(thread.id, this.sessionId);
       log.debug("Sub-run thread opened", { sessionId: this.sessionId, threadId: thread.id });
-      return thread.id;
+      return { threadId: thread.id };
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       log.warn("Failed to open sub-run thread; streaming disabled", {
         sessionId: this.sessionId,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMessage,
       });
       this.threadId = undefined;
-      return undefined;
+      return { error: errorMessage };
     }
   }
 
