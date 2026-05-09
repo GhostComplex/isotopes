@@ -11,8 +11,17 @@ import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("tools:spawn");
 
-function textResult(text: string): AgentToolResult<undefined> {
-  return { content: [{ type: "text", text }], details: undefined };
+export type SpawnAgentThreadInfo =
+  | { status: "ok"; threadId: string }
+  | { status: "error"; error: string }
+  | { status: "silent" };
+
+export interface SpawnAgentDetails {
+  thread: SpawnAgentThreadInfo;
+}
+
+function textResult(text: string, thread: SpawnAgentThreadInfo): AgentToolResult<SpawnAgentDetails> {
+  return { content: [{ type: "text", text }], details: { thread } };
 }
 
 export interface SpawnAgentToolOptions {
@@ -47,12 +56,18 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
         "(sets the claude subprocess cwd). For pi agents (subagent, registered ones), " +
         "passed in the prompt as task context — the agent uses absolute paths if it cares.",
     })),
+    threadName: Type.Optional(Type.String({
+      description:
+        "Optional human-readable name for the Discord thread (or other transport surface) " +
+        "that streams this sub-run. If omitted, a label is auto-derived from `to` and `content`.",
+    })),
   });
 
   type Params = {
     to: string;
     content: string;
     working_directory?: string;
+    threadName?: string;
   };
 
   return {
@@ -69,9 +84,10 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
     parameters: schema,
     execute: async (_toolCallId, rawParams) => {
       const params = rawParams as Params;
-      const { to, content, working_directory } = params;
+      const { to, content, working_directory, threadName } = params;
+      let threadInfo: SpawnAgentThreadInfo = { status: "silent" };
       if (!targets.includes(to)) {
-        return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`);
+        return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`, threadInfo);
       }
       const isRunner = runtime.hasRunner(to);
       const cwd = working_directory
@@ -93,12 +109,18 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
       let sink: DiscordA2ASink | undefined;
       const startedAt = Date.now();
       const taskLabel = `${to}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`;
+      const label = threadName ?? taskLabel;
 
+      let sinkStartPromise: Promise<void> | undefined;
       req.onRunStart = (sessionId: string) => {
         if (discordCtx) {
           const showToolCalls = discordCtx.showToolCalls ?? true;
           sink = new DiscordA2ASink(discordCtx, sessionId, { showToolCalls });
-          void sink.start(taskLabel);
+          sinkStartPromise = sink.start(label).then((res) => {
+            threadInfo = res.threadId
+              ? { status: "ok", threadId: res.threadId }
+              : { status: "error", error: res.error ?? "unknown error" };
+          });
         }
       };
 
@@ -106,6 +128,7 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
       let errorMessage: string | null = null;
       try {
         for await (const event of runtime.run(req)) {
+          if (sinkStartPromise) { await sinkStartPromise; sinkStartPromise = undefined; }
           if (sink) await sink.sendEvent(event);
           if (event.type === "message_update") {
             const ame = event.assistantMessageEvent;
@@ -118,18 +141,21 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
           }
         }
       } catch (err) {
+        if (sinkStartPromise) { await sinkStartPromise; sinkStartPromise = undefined; }
         const msg = err instanceof Error ? err.message : String(err);
         if (err instanceof RunValidationError) {
           if (sink) await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
-          return textResult(`[error] ${msg}`);
+          return textResult(`[error] ${msg}`, threadInfo);
         }
         if (sink) await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
-        return textResult(`[spawn_agent failed] ${msg}`);
+        return textResult(`[spawn_agent failed] ${msg}`, threadInfo);
       }
+
+      if (sinkStartPromise) { await sinkStartPromise; sinkStartPromise = undefined; }
 
       if (cancelReason === "user") {
         if (sink) await sink.finish({ success: false, error: "cancelled by user", durationMs: Date.now() - startedAt });
-        return textResult(`[spawn_agent cancelled by user — do not retry this same request]`);
+        return textResult(`[spawn_agent cancelled by user — do not retry this same request]`, threadInfo);
       }
 
       if (sink) {
@@ -141,10 +167,13 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
         });
       }
       if (errorMessage) {
-        return textResult(`[spawn_agent failed] ${errorMessage}`);
+        return textResult(`[spawn_agent failed] ${errorMessage}`, threadInfo);
       }
       const trimmed = assistantText.trim();
-      return textResult(trimmed.length > 0 ? trimmed : (isRunner ? `[${to} completed with no output]` : "[no reply]"));
+      return textResult(
+        trimmed.length > 0 ? trimmed : (isRunner ? `[${to} completed with no output]` : "[no reply]"),
+        threadInfo,
+      );
     },
   };
 }
