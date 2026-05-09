@@ -174,6 +174,27 @@ describe("createDiscordChannel — lifecycle", () => {
     expect(channel).toBeDefined();
     expect(typeof channel!.react).toBe("function");
   });
+
+  it("wraps inbound dispatch in DiscordA2AStreamContext for spawn_agent threads", async () => {
+    const { getDiscordA2AStreamContext } = await import("./a2a-stream-context.js");
+    const client = makeFakeClient("bot-A");
+    let observed: ReturnType<typeof getDiscordA2AStreamContext>;
+    const gateway = makeGateway();
+    gateway.dispatch.mockImplementation(async () => {
+      observed = getDiscordA2AStreamContext();
+      return { sessionId: "s", state: "started", responseText: "", errorMessage: null };
+    });
+    const adapter = createDiscordChannel(
+      { accounts: { acct: { token: "t", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway, config: {}, logger: silentLogger() });
+    client.emit("messageCreate", fakeMsg({ mentionedIds: ["bot-A"] }));
+    await new Promise((r) => setImmediate(r));
+    expect(observed).toBeDefined();
+    expect(observed!.parentChannelId).toBe("channel-1");
+    expect(typeof observed!.createThread).toBe("function");
+  });
 });
 
 describe("createDiscordChannel — inbound wiring", () => {

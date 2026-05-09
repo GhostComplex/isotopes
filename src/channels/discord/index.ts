@@ -18,6 +18,10 @@ import { receiveDiscordMessage, resolveAgentId, resolveSessionKey, type GuildRec
 import { createDiscordCallbacks } from "./outbound.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
+import {
+  type DiscordA2AStreamContext,
+  runWithDiscordA2AStream,
+} from "./a2a-stream-context.js";
 import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
@@ -170,6 +174,9 @@ export function createDiscordChannel(
 
   const clients = new Map<string, ClientLike>();
   const dedupes = new Map<string, DedupeCache>();
+  // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
+  // to route /stop posted in a sub-run thread to the right cancel target.
+  const a2aThreads = new Map<string, string>();
   let threadBindings: ThreadBindingManager | null = options.threadBindingManager ?? null;
 
   return {
@@ -202,6 +209,7 @@ export function createDiscordChannel(
             clientFactory,
             clients,
             dedupes,
+            a2aThreads,
             threadBindings: tb,
           }),
         ),
@@ -245,11 +253,12 @@ interface StartAccountArgs {
   clientFactory: ClientFactory;
   clients: Map<string, ClientLike>;
   dedupes: Map<string, DedupeCache>;
+  a2aThreads: Map<string, string>;
   threadBindings: ThreadBindingManager;
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, threadBindings } = args;
+  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, a2aThreads, threadBindings } = args;
 
   const token = resolveToken(account);
   if (!token) {
@@ -281,6 +290,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       gateway,
       dedupe,
       guildsForReceive,
+      a2aThreads,
     }).catch((err) => {
       logger.error(`discord: receive failed: ${err instanceof Error ? err.message : String(err)}`);
     });
@@ -321,6 +331,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
           gateway,
           dedupe,
           guildsForReceive,
+          a2aThreads,
         });
       } catch (err) {
         logger.warn(
@@ -352,10 +363,11 @@ interface InboundArgs {
   gateway: Gateway;
   dedupe: DedupeCache;
   guildsForReceive: Record<string, GuildReceiveConfig> | undefined;
+  a2aThreads: Map<string, string>;
 }
 
 async function handleInbound(args: InboundArgs): Promise<void> {
-  const { msg, account, client, gateway, dedupe, guildsForReceive } = args;
+  const { msg, account, client, gateway, dedupe, guildsForReceive, a2aThreads } = args;
   const botId = client.user?.id;
   if (!botId) return;
 
@@ -366,7 +378,8 @@ async function handleInbound(args: InboundArgs): Promise<void> {
   const stopped = await maybeHandleStop(msg, botId, gateway, agentId, sessionKey);
   if (stopped) return;
 
-  await receiveDiscordMessage(
+  const a2aCtx = buildA2AStreamContext(client, msg.channelId, a2aThreads);
+  await runWithDiscordA2AStream(a2aCtx, () => receiveDiscordMessage(
     msg,
     {
       gateway,
@@ -390,7 +403,7 @@ async function handleInbound(args: InboundArgs): Promise<void> {
           triggerMessage: triggerMsg,
         }),
     },
-  );
+  ));
 }
 
 
@@ -479,4 +492,38 @@ async function reactToMessage(
     }
   }
   throw new Error(`Message not found: ${messageId}`);
+}
+
+/**
+ * Build the per-inbound DiscordA2AStreamContext that spawn_agent reads from
+ * AsyncLocalStorage to decide whether to surface a sub-run in a Discord
+ * thread under the same channel.
+ */
+function buildA2AStreamContext(
+  client: ClientLike,
+  parentChannelId: string,
+  a2aThreads: Map<string, string>,
+): DiscordA2AStreamContext {
+  return {
+    parentChannelId,
+    showToolCalls: true,
+    sendMessage: async (channelId, content) => {
+      const ch = (await client.channels.fetch(channelId)) as
+        | { send?: (c: string) => Promise<{ id: string }> }
+        | null;
+      if (!ch?.send) throw new Error(`Channel ${channelId} not sendable`);
+      const sent = await ch.send(content);
+      return { id: sent.id };
+    },
+    createThread: async (parentId, name, messageId) => {
+      const ch = (await client.channels.fetch(parentId)) as
+        | { threads?: { create: (opts: { name: string; startMessage: string; autoArchiveDuration: number }) => Promise<{ id: string }> } }
+        | null;
+      if (!ch?.threads) throw new Error(`Channel ${parentId} does not support threads`);
+      const thread = await ch.threads.create({ name, startMessage: messageId, autoArchiveDuration: 60 });
+      return { id: thread.id };
+    },
+    registerA2AThread: (threadId, sessionId) => { a2aThreads.set(threadId, sessionId); },
+    unregisterA2AThread: (threadId) => { a2aThreads.delete(threadId); },
+  };
 }
