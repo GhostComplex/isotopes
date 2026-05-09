@@ -217,7 +217,8 @@ describe("gateway.dispatch (queued)", () => {
     expect(createSpy).toHaveBeenCalledTimes(1);
 
     await gateway.abort(second.sessionId);
-    await first;
+    const firstResult = await first;
+    expect(firstResult.sessionId).toBe(second.sessionId);
   });
 
   it("falls through to a fresh run if the prior run ended between observe and steer", async () => {
