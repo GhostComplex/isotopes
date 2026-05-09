@@ -12,9 +12,9 @@ export interface UIEntry {
   spaFallback: boolean;
 }
 
-/** Scan ~/.isotopes/ui/<id>/ — each subdirectory becomes a mounted SPA at /ui/<id>. */
+/** Scan ~/.isotopes/extensions/ui/<id>/ — each subdirectory becomes a mounted SPA at /ui/<id>. */
 export function discoverUIEntries(): UIEntry[] {
-  const root = path.join(getIsotopesHome(), "ui");
+  const root = path.join(getIsotopesHome(), "extensions", "ui");
   if (!fs.existsSync(root)) return [];
   const entries: UIEntry[] = [];
   for (const e of fs.readdirSync(root, { withFileTypes: true })) {

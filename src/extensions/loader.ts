@@ -6,7 +6,7 @@ import { createLogger } from "../logging/logger.js";
 const log = createLogger("extensions");
 
 export function discoverExtensionPaths(): string[] {
-  const dir = path.join(getIsotopesHome(), "extensions");
+  const dir = path.join(getIsotopesHome(), "extensions", "pi");
   if (!fs.existsSync(dir)) return [];
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   const paths: string[] = [];
