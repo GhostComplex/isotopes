@@ -158,6 +158,18 @@ export class DiscordA2ASink {
 }
 
 function chunkContent(content: string, maxLength = MAX_DISCORD_LEN): string[] {
+  return chunkDiscordMessage(content, maxLength);
+}
+
+/** Discord max message length. */
+const DISCORD_MAX_MESSAGE_LENGTH = 2000;
+
+/**
+ * Split a string into Discord-sendable chunks (≤ maxLength chars), preferring
+ * newline / space break points to avoid mid-word splits. Trailing remainder
+ * is included even if it falls under the threshold.
+ */
+export function chunkDiscordMessage(content: string, maxLength = DISCORD_MAX_MESSAGE_LENGTH): string[] {
   if (content.length <= maxLength) return [content];
   const out: string[] = [];
   let remaining = content;
