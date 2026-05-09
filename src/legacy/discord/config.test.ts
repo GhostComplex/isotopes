@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { getDiscordToken } from "./config.js";
-import type { DiscordAccountConfig } from "./types.js";
+import type { DiscordAccountConfig } from "../../channels/discord/types.js";
 
 describe("getDiscordToken", () => {
   afterEach(() => {

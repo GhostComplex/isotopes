@@ -10,7 +10,7 @@
 
 import { createLogger } from "../../logging/logger.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { DiscordA2AStreamContext } from "./a2a-stream-context.js";
+import type { DiscordA2AStreamContext } from "../../legacy/discord/a2a-stream-context.js";
 
 const log = createLogger("discord-a2a-sink");
 

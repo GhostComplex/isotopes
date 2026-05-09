@@ -15,21 +15,21 @@ import {
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { SessionStore } from "../../sessions/types.js";
 import type { Transport } from "../gateway/types.js";
-import type { ThreadBindingConfig } from "./types.js";
+import type { ThreadBindingConfig } from "../../channels/discord/types.js";
 import { resolveAgentWorkspacePath } from "../../paths.js";
 import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../agent/pi/messages.js";
 import type { ContextConfigFile } from "../../config.js";
-import { shouldRespondToMessage } from "../gateway/mention.js";
+import { shouldRespondToMessage } from "../../channels/discord/mention.js";
 import { loggers } from "../../logging/logger.js";
-import { ThreadBindingManager } from "./thread-bindings.js";
+import { ThreadBindingManager } from "../../channels/discord/thread-binding.js";
 import { runAgent } from "../../agent/runtime-adapter.js";
 import { runWithDiscordA2AStream, type DiscordA2AStreamContext } from "./a2a-stream-context.js";
 import { isSilentReplyPayloadText } from "../../silent-reply.js";
-import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
-import { parseReplyDirective, REPLY_DIRECTIVE_PROMPT } from "../gateway/reply-directive.js";
-import { buildSessionKey } from "../gateway/session-keys.js";
+import { extractDiscordMetadata, formatInboundMeta } from "../../channels/discord/message-metadata.js";
+import { parseReplyDirective, REPLY_DIRECTIVE_PROMPT } from "../../channels/discord/reply-directive.js";
+import { buildSessionKey } from "../../channels/discord/session-key.js";
 import { ChannelHistoryBuffer, buildHistoryContext } from "../gateway/channel-history.js";
-import { DedupeCache } from "../gateway/dedupe.js";
+import { DedupeCache } from "../../channels/discord/dedupe.js";
 import { InboundDebouncer } from "../gateway/debounce.js";
 import { SlashCommandHandler } from "../gateway/commands.js";
 
@@ -162,7 +162,7 @@ export interface DiscordTransportConfig {
     guildAllowlist?: string[];
   };
   /** Per-guild settings (e.g. requireMention) */
-  guilds?: Record<string, import("./types.js").GuildConfig>;
+  guilds?: Record<string, import("../../channels/discord/types.js").GuildConfig>;
   /** Configuration for automatic thread-to-session binding */
   threadBindings?: ThreadBindingConfig;
   /** Thread binding manager instance (created automatically if not provided) */

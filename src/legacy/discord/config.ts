@@ -1,6 +1,6 @@
 // src/plugins/discord/config.ts — Discord-specific config helpers
 
-import type { DiscordAccountConfig } from "./types.js";
+import type { DiscordAccountConfig } from "../../channels/discord/types.js";
 
 export function getDiscordToken(account: DiscordAccountConfig): string {
   if (account.token) {

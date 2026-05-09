@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ThreadBindingManager } from "./thread-bindings.js";
+import { ThreadBindingManager } from "./thread-binding.js";
 
 describe("ThreadBindingManager", () => {
   let manager: ThreadBindingManager;
