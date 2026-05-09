@@ -5,8 +5,8 @@ import type { SessionStoreManager } from "../../agent/pi/session-store.js";
 import type { AgentRuntime } from "../../agent/runtime.js";
 import type { IsotopesConfigFile } from "../../config.js";
 import { DiscordTransportManager } from "./discord-manager.js";
-import { ThreadBindingManager } from "./thread-bindings.js";
-import type { DiscordChannelsConfig } from "./types.js";
+import { ThreadBindingManager } from "../../channels/discord/thread-binding.js";
+import type { DiscordChannelsConfig } from "../../channels/discord/types.js";
 import { createLogger } from "../../logging/logger.js";
 import path from "node:path";
 

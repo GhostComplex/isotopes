@@ -1,7 +1,7 @@
 // src/gateway/session-keys.test.ts — Unit tests for the shared session key builder
 
 import { describe, it, expect } from "vitest";
-import { buildSessionKey } from "./session-keys.js";
+import { buildSessionKey } from "./session-key.js";
 
 describe("buildSessionKey", () => {
   it("builds a colon-delimited key", () => {

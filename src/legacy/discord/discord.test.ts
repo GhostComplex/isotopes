@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DiscordTransport } from "./discord.js";
 import type { SessionStore } from "../../sessions/types.js";
-import { ThreadBindingManager } from "./thread-bindings.js";
+import { ThreadBindingManager } from "../../channels/discord/thread-binding.js";
 import { createMockSessionStore } from "../../test-helpers.js";
 import { AgentRuntime } from "../../agent/runtime.js";
 
