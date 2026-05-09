@@ -12,9 +12,9 @@ import { sendJson, sendError } from "./middleware.js";
 import { createLogger } from "../../logging/logger.js";
 import { randomUUID } from "node:crypto";
 import { runAgent } from "../../agent/runtime-adapter.js";
-import { userMessage } from "../../agent/runners/pi/messages.js";
+import { userMessage } from "../../agent/pi/messages.js";
 import { resolveAgentWorkspacePath } from "../../paths.js";
-import type { DefaultSessionStore } from "../../agent/runners/pi/session-store.js";
+import type { DefaultSessionStore } from "../../agent/pi/session-store.js";
 import type { Session } from "../../sessions/types.js";
 
 const log = createLogger("api:sessions");

@@ -1,7 +1,7 @@
 import type { Transport } from "../gateway/types.js";
 import type { SessionStore } from "../../sessions/types.js";
 import type { LazyTransportContext } from "../gateway/transport-context.js";
-import type { SessionStoreManager } from "../../agent/runners/pi/session-store.js";
+import type { SessionStoreManager } from "../../agent/pi/session-store.js";
 import type { AgentRuntime } from "../../agent/runtime.js";
 import type { IsotopesConfigFile } from "../../config.js";
 import { DiscordTransportManager } from "./discord-manager.js";

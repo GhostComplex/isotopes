@@ -17,7 +17,7 @@ import type { SessionStore } from "../../sessions/types.js";
 import type { Transport } from "../gateway/types.js";
 import type { ThreadBindingConfig } from "./types.js";
 import { resolveAgentWorkspacePath } from "../../paths.js";
-import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../agent/runners/pi/messages.js";
+import { userMessage as mkUserMsg, userMessageWithImages as mkUserMsgWithImages } from "../../agent/pi/messages.js";
 import type { ContextConfigFile } from "../../config.js";
 import { shouldRespondToMessage } from "../gateway/mention.js";
 import { loggers } from "../../logging/logger.js";

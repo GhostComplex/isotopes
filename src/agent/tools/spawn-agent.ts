@@ -6,7 +6,7 @@ import { RunValidationError } from "../types.js";
 import type { RunRequest } from "../types.js";
 import { getDiscordA2AStreamContext } from "../../legacy/discord/a2a-stream-context.js";
 import { DiscordA2ASink } from "../../legacy/discord/discord-a2a-sink.js";
-import { getAgentEndMeta } from "../runners/pi/messages.js";
+import { getAgentEndMeta } from "../pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("tools:spawn");

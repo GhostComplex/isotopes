@@ -11,14 +11,14 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import * as path from "node:path";
 
-import type { ProviderConfig, RegisteredAgent } from "../../types.js";
-import type { AgentToolSettings } from "../../tools/types.js";
-import type { AgentRuntime } from "../../runtime.js";
-import type { SandboxExecutor } from "../../middleware/executor.js";
-import { createAgentTools } from "../../tools/index.js";
+import type { ProviderConfig, RegisteredAgent } from "../types.js";
+import type { AgentToolSettings } from "../tools/types.js";
+import type { AgentRuntime } from "../runtime.js";
+import type { SandboxExecutor } from "../middleware/executor.js";
+import { createAgentTools } from "../tools/index.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
-import { buildAgentSystemPrompt } from "../../workspace/context.js";
-import { resolveAgentWorkspacePath } from "../../../paths.js";
+import { buildAgentSystemPrompt } from "../workspace/context.js";
+import { resolveAgentWorkspacePath } from "../../paths.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";

@@ -10,12 +10,12 @@ import type {
   SessionStore,
   TranscriptListener,
   TranscriptUpdate,
-} from "../../../sessions/types.js";
+} from "../../sessions/types.js";
 import {
   ensureAgentSessionsDir,
   normalizeAgentId,
-} from "../../../paths.js";
-import { createLogger } from "../../../logging/logger.js";
+} from "../../paths.js";
+import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("session-store");
 

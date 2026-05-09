@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { DefaultSessionStore, SessionStoreManager } from "./session-store.js";
-import { getAgentSessionsDir, normalizeAgentId } from "../../../paths.js";
+import { getAgentSessionsDir, normalizeAgentId } from "../../paths.js";
 
 import { userMessage, assistantMessage, messageText } from "./messages.js";
 
