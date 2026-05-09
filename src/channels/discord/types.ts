@@ -36,8 +36,6 @@ export interface DiscordAccountContextConfig {
   channelHistory?: boolean;
   channelHistoryLimit?: number;
   dedupe?: boolean;
-  debounce?: boolean;
-  debounceWindowMs?: number;
 }
 
 export interface DiscordAccountConfig {

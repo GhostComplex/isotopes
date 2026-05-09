@@ -36,12 +36,14 @@ pnpm test:integration
 ### Top-level src/ layout
 
 - `agent/` — Agent runtime, runners, tools, workspace loading, and per-agent host/sandbox middleware (executor, fs bridge, docker container manager, sandbox config). The new home for everything that defines what an agent *is* and how it runs.
+- `gateway/` — Typed Gateway abstraction (steer-only): the canonical entrypoint for channel adapters to dispatch inbound messages, stream callbacks, and abort sessions.
+- `channels/` — Channel adapters. Today: `channels/discord/` (full Discord adapter — receive, outbound, mention, dedupe, reply directives, thread bindings, message metadata, allowlists, /stop, A2A stream context).
 - `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/pi/session-store.ts`.
 - `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
 - `init/` — `isotopes init` setup wizard built with Ink.
 - `logging/` — `createLogger("tag")` factory.
-- `extensions/` — Discovery for user-managed customization at `~/.isotopes/extensions/`. Three typed slots: `pi/loader.ts` (pi-coding-agent extensions from `~/.isotopes/extensions/pi/*.ts`), `ui/loader.ts` (static SPA dirs from `~/.isotopes/extensions/ui/<id>/`, mounted at `/ui/<id>`), and `channels/` (reserved for future channel adapter discovery).
+- `extensions/` — Discovery for user-managed customization at `~/.isotopes/extensions/`. Three typed slots: `pi/loader.ts` (pi-coding-agent extensions from `~/.isotopes/extensions/pi/*.ts`), `ui/loader.ts` (static SPA dirs from `~/.isotopes/extensions/ui/<id>/`, mounted at `/ui/<id>`), and `channels/loader.ts` (loads built-in channel adapters from `channels/`).
 - `legacy/` — Transitional area being decomposed PR-by-PR. New code should not land here.
 - Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema), `paths.ts` (`ISOTOPES_HOME` resolution), `silent-reply.ts` (silent-reply token detection), `test-helpers.ts` (shared test mocks).
 
@@ -59,8 +61,7 @@ pnpm test:integration
 
 - `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
 - `tui/` — Terminal UI for interactive chat mode.
-- `gateway/` — Transport-agnostic message-pipeline utilities (`Transport` interface, dedupe/debounce/mention/channel-history/session-keys, slash-command parsing, reply-directive). Currently consumed by the Discord transport. Marked legacy pending refactor.
-- `discord/` — Discord transport: channels, threads, DMs, mention handling, per-account `agentBindings`, `ThreadBindingManager`, message metadata, reply directives. Instantiated directly from `app.ts`.
+- `gateway/` — Holdovers from the pre-Gateway transport layer: `transport-context.ts` (LazyTransportContext for late-binding `react` tools to a transport) and `types.ts` (the legacy `Transport` interface + `ChannelsConfig` shape). Pending a final refactor into `gateway/` proper.
 - `http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status. Instantiated directly from `app.ts`.
 - `version.ts` — Build version constant.
 

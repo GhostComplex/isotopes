@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import type { AgentRuntime } from "../runtime.js";
 import { RunValidationError } from "../types.js";
 import type { RunRequest } from "../types.js";
-import { getDiscordA2AStreamContext } from "../../legacy/discord/a2a-stream-context.js";
+import { getDiscordA2AStreamContext } from "../../channels/discord/a2a-stream-context.js";
 import { DiscordA2ASink } from "../../channels/discord/a2a-sink.js";
 import { getAgentEndMeta } from "../pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
