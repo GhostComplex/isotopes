@@ -9,6 +9,7 @@ import type { Message as DiscordMessage } from "discord.js";
 import { createDiscordChannel, type ClientLike } from "./index.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
+import { LazyTransportContext } from "../../legacy/gateway/transport-context.js";
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -27,7 +28,7 @@ function makeFakeClient(botId: string): FakeClient {
   const destroyMock = vi.fn();
   const client: FakeClient = {
     user: { id: botId, tag: `bot#${botId}` },
-    channels: { fetch: vi.fn().mockResolvedValue(null) },
+    channels: { fetch: vi.fn().mockResolvedValue(null), cache: new Map() },
     handlers,
     on(event, handler) {
       const arr = handlers.get(event) ?? [];
@@ -157,6 +158,21 @@ describe("createDiscordChannel — lifecycle", () => {
     await adapter.start({ gateway: makeGateway(), config: {}, logger });
     expect(c.loginMock).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("no token"));
+  });
+
+  it("binds itself as a Transport into per-agent transport contexts so message_react works", async () => {
+    const client = makeFakeClient("bot-A");
+    const adapter = createDiscordChannel(
+      { accounts: { acct1: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
+      { clientFactory: () => client },
+    );
+    const ctx = new LazyTransportContext();
+    const transportContexts = new Map([["main", ctx]]);
+    await adapter.start({ gateway: makeGateway(), config: {}, logger: silentLogger(), transportContexts });
+
+    const transport = ctx.getTransport();
+    expect(transport).toBeDefined();
+    expect(typeof transport!.react).toBe("function");
   });
 });
 

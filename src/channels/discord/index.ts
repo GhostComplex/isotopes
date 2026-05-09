@@ -10,6 +10,7 @@ import path from "node:path";
 import type { ChannelAdapter, ChannelAdapterDeps } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
+import type { Transport } from "../../legacy/gateway/types.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
@@ -29,7 +30,7 @@ const log = loggers.discord;
 /** Minimal Discord client surface the adapter actually uses. */
 export interface ClientLike {
   user: { id: string; tag?: string } | null;
-  channels: { fetch: (id: string) => Promise<unknown> };
+  channels: { fetch: (id: string) => Promise<unknown>; cache: Map<string, unknown> };
   on(event: string, handler: (...args: unknown[]) => void): unknown;
   removeAllListeners?(): unknown;
   login(token: string): Promise<unknown>;
@@ -205,6 +206,17 @@ export function createDiscordChannel(
           }),
         ),
       );
+
+      // Bind react capability into per-agent transport contexts so the
+      // `message_react` agent tool can call back into Discord.
+      if (deps.transportContexts && clients.size > 0) {
+        const transport: Transport = {
+          start: async () => {},
+          stop: async () => {},
+          react: (id, emoji, channelId) => reactToMessage(clients, id, emoji, channelId),
+        };
+        for (const ctx of deps.transportContexts.values()) ctx.setTransport(transport);
+      }
     },
 
     async stop() {
@@ -429,4 +441,44 @@ function autoBindThread(
   const agentId = account.defaultAgentId ?? "default";
   logger.info(`discord: thread ${thread.id} created in ${thread.parentId}, binding to agent ${agentId}`);
   threadBindings.bind(thread.id, { parentChannelId: thread.parentId, agentId });
+}
+
+/**
+ * Add an emoji reaction to a message. Tries channelId fast-path first, then
+ * falls back to scanning every cached channel across all bots. Used by the
+ * `message_react` agent tool via the LazyTransportContext binding.
+ */
+async function reactToMessage(
+  clients: Map<string, ClientLike>,
+  messageId: string,
+  emoji: string,
+  channelId?: string,
+): Promise<void> {
+  for (const client of clients.values()) {
+    if (channelId) {
+      try {
+        const channel = (await client.channels.fetch(channelId)) as
+          | { messages?: { fetch: (id: string) => Promise<{ react: (e: string) => Promise<unknown> }> } }
+          | null;
+        const target = await channel?.messages?.fetch(messageId);
+        if (target) {
+          await target.react(emoji);
+          return;
+        }
+      } catch { /* try slow path */ }
+    }
+
+    for (const ch of client.channels.cache.values()) {
+      const messages = (ch as { messages?: { fetch: (id: string) => Promise<{ react: (e: string) => Promise<unknown> }> } }).messages;
+      if (!messages) continue;
+      try {
+        const target = await messages.fetch(messageId);
+        if (target) {
+          await target.react(emoji);
+          return;
+        }
+      } catch { /* not in this channel */ }
+    }
+  }
+  throw new Error(`Message not found: ${messageId}`);
 }

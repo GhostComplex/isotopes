@@ -8,12 +8,19 @@
 
 import type { Gateway } from "../gateway/index.js";
 import type { Logger } from "../logging/logger.js";
+import type { LazyTransportContext } from "../legacy/gateway/transport-context.js";
 
 export interface ChannelAdapterDeps {
   gateway: Gateway;
   /** Adapter-specific config section. The adapter narrows this itself. */
   config: unknown;
   logger: Logger;
+  /**
+   * Per-agent transport contexts the adapter binds itself to so agent tools
+   * (e.g. `message_react`) can call back into the channel. Optional — channels
+   * without callback capability ignore this.
+   */
+  transportContexts?: Map<string, LazyTransportContext>;
 }
 
 export interface ChannelAdapter {

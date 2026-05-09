@@ -59,6 +59,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   });
 
   const agentWorkspaces = new Map<string, string>();
+  const transportContexts = new Map<string, LazyTransportContext>();
 
   const spawnableAgentIds = config.agents
     .filter((a) => a.spawnable === true && a.enabled !== false)
@@ -67,6 +68,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   for (const agentFile of config.agents) {
     if (agentFile.enabled === false) continue;
     const transportCtx = new LazyTransportContext();
+    transportContexts.set(agentFile.id, transportCtx);
     const sessionStore = await sessionStoreManager.getOrCreate(agentFile.id);
     const result = await agentRuntime.register({
       agentFile,
@@ -188,6 +190,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       gateway,
       config,
       logger: log,
+      transportContexts,
     });
     transports.push(channels);
   }
