@@ -64,7 +64,7 @@ export interface AgentRuntimeOptions {
   globalProvider?: ProviderConfig;
   /** Resolved global sandbox config — if present, AgentRuntime owns a SandboxExecutor. */
   sandboxBaseConfig?: SandboxConfig;
-  /** pi extension file paths discovered from ~/.isotopes/extensions/. */
+  /** pi extension file paths discovered from ~/.isotopes/extensions/pi/. */
   extensionPaths?: string[];
 }
 
