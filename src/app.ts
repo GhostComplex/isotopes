@@ -13,13 +13,12 @@ import {
 import { ApiServer } from "./legacy/http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
-import { getIsotopesHome } from "./paths.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { runAgent } from "./agent/runtime-adapter.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
 import { discoverUIEntries } from "./extensions/ui/loader.js";
-import { createDiscordTransport } from "./legacy/discord/index.js";
-import type { Transport } from "./legacy/gateway/types.js";
+import { loadChannels } from "./extensions/channels/loader.js";
+import { createGateway } from "./gateway/index.js";
 
 const log = createLogger("runtime");
 
@@ -60,7 +59,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   });
 
   const agentWorkspaces = new Map<string, string>();
-  const transportContexts = new Map<string, LazyTransportContext>();
 
   const spawnableAgentIds = config.agents
     .filter((a) => a.spawnable === true && a.enabled !== false)
@@ -81,7 +79,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     });
 
     if (result.workspacePath !== null) agentWorkspaces.set(result.agent.id, result.workspacePath);
-    transportContexts.set(result.agent.id, transportCtx);
   }
 
   const heartbeatManagers: HeartbeatManager[] = [];
@@ -184,21 +181,15 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron scheduler started with ${cronScheduler.listJobs().length} job(s)`);
   }
 
-  const transports: Transport[] = [];
-  if (config.channels?.discord) {
-    try {
-      const discord = await createDiscordTransport({
-        config,
-        sessionStoreManager,
-        agentRuntime,
-        transportContexts,
-        isotopesHome: getIsotopesHome(),
-      });
-      await discord.start();
-      transports.push(discord);
-    } catch (err) {
-      log.error(`Failed to start Discord transport: ${err instanceof Error ? err.message : String(err)}`);
-    }
+  const transports: { stopAll: () => Promise<void> }[] = [];
+  {
+    const gateway = createGateway({ agentRuntime, sessionStoreManager });
+    const channels = await loadChannels({
+      gateway,
+      config,
+      logger: log,
+    });
+    transports.push(channels);
   }
 
   const uiEntries = discoverUIEntries();
@@ -221,7 +212,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
     for (const t of transports) {
-      try { await t.stop(); } catch { /* ignore */ }
+      try { await t.stopAll(); } catch { /* ignore */ }
     }
     await apiServer.stop();
     sessionStoreManager.destroyAll();
