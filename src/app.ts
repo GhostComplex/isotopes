@@ -4,7 +4,7 @@ import {
 } from "./config.js";
 import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
-import { LazyChannelContext } from "./legacy/gateway/channel-context.js";
+import { LazyChannelContext } from "./channels/channel-context.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,

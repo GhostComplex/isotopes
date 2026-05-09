@@ -1,4 +1,4 @@
-// src/channels/types.ts — ChannelAdapter contract.
+// src/channels/types.ts — Channel adapter contracts.
 //
 // A ChannelAdapter is a channel-side integration (Discord, Feishu, …) that
 // owns its connection lifecycle and pushes messages into the gateway.
@@ -8,7 +8,7 @@
 
 import type { Gateway } from "../gateway/index.js";
 import type { Logger } from "../logging/logger.js";
-import type { LazyChannelContext } from "../legacy/gateway/channel-context.js";
+import type { LazyChannelContext } from "./channel-context.js";
 
 export interface ChannelAdapterDeps {
   gateway: Gateway;
@@ -26,4 +26,17 @@ export interface ChannelAdapterDeps {
 export interface ChannelAdapter {
   start(deps: ChannelAdapterDeps): Promise<void>;
   stop(): Promise<void>;
+}
+
+/** Config slot — `config.channels.<name>` is opaque to everything but the adapter. */
+export type ChannelsConfig = Record<string, unknown>;
+
+/**
+ * Callback surface a channel adapter exposes to agent tools (via
+ * LazyChannelContext) — currently `message_react` and the unused `reply`
+ * primitive. Distinct from ChannelAdapter (which owns lifecycle).
+ */
+export interface Channel {
+  reply?(messageId: string, content: string, channelId?: string, attachments?: Array<{ buffer: Buffer; name: string }>): Promise<{ messageId: string }>;
+  react?(messageId: string, emoji: string, channelId?: string): Promise<void>;
 }

@@ -33,7 +33,7 @@ import {
 import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
-import { LazyChannelContext } from "../legacy/gateway/channel-context.js";
+import { LazyChannelContext } from "../channels/channel-context.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
 import type { SandboxConfig } from "./middleware/sandbox-config.js";

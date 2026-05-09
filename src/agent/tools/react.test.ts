@@ -3,8 +3,8 @@ import {
   createMessageReactTool,
   createReactTools,
 } from "./react.js";
-import { LazyChannelContext, type ChannelContext } from "../../legacy/gateway/channel-context.js";
-import type { Channel } from "../../legacy/gateway/types.js";
+import { LazyChannelContext, type ChannelContext } from "../../channels/channel-context.js";
+import type { Channel } from "../../channels/types.js";
 
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 
@@ -17,8 +17,6 @@ async function callTool(tool: AgentTool, args: unknown): Promise<string> {
 
 function createMockChannel(overrides: Partial<Channel> = {}): Channel {
   return {
-    start: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
     react: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };

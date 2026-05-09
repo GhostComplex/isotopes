@@ -3,7 +3,7 @@ import path from "node:path";
 import YAML from "yaml";
 import type { ProviderType, AgentConfig } from "./agent/types.js";
 import type { AgentToolSettings } from "./agent/tools/types.js";
-import type { ChannelsConfig } from "./legacy/gateway/types.js";
+import type { ChannelsConfig } from "./channels/types.js";
 import type { CronActionConfig } from "./automation/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "./agent/middleware/sandbox-config.js";
 

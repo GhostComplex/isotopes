@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
 import { createLogger } from "../../logging/logger.js";
-import type { ChannelContext } from "../../legacy/gateway/channel-context.js";
+import type { ChannelContext } from "../../channels/channel-context.js";
 
 const log = createLogger("tools:react");
 

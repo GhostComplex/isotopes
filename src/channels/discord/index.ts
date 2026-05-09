@@ -10,7 +10,7 @@ import path from "node:path";
 import type { ChannelAdapter, ChannelAdapterDeps } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
-import type { Channel } from "../../legacy/gateway/types.js";
+import type { Channel } from "../../channels/types.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
@@ -211,8 +211,6 @@ export function createDiscordChannel(
       // `message_react` agent tool can call back into Discord.
       if (deps.channelContexts && clients.size > 0) {
         const channel: Channel = {
-          start: async () => {},
-          stop: async () => {},
           react: (id, emoji, channelId) => reactToMessage(clients, id, emoji, channelId),
         };
         for (const ctx of deps.channelContexts.values()) ctx.setChannel(channel);
