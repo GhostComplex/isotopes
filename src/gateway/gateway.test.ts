@@ -144,11 +144,6 @@ describe("gateway.dispatch (queued)", () => {
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "first" });
-    // Let `first` finish resolveSessionId + set active before second dispatches.
-    // (resolveSessionId is not race-safe across concurrent dispatches with the
-    // same sessionKey — separate concern, not the steer race fixed by handle.ready.)
-    await new Promise((r) => setTimeout(r, 5));
-
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "second" });
     expect(second.state).toBe("queued");
     expect(second.sessionId).toMatch(/^sess-/);
@@ -179,7 +174,6 @@ describe("gateway.dispatch (queued)", () => {
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "race", content: "a" });
-    await new Promise((r) => setTimeout(r, 5));
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "race", content: "b" });
 
     expect(second.state).toBe("queued");
@@ -187,6 +181,44 @@ describe("gateway.dispatch (queued)", () => {
 
     await gateway.abort(second.sessionId);
     await first;
+  });
+
+  it("dedupes concurrent resolveSessionId calls for the same sessionKey", async () => {
+    const longRunner: Runner = {
+      resolveSessionId: (req) => req.sessionId ?? "stub",
+      async *run({ abort }) {
+        yield textDelta("running");
+        await new Promise((r) => abort.addEventListener("abort", r, { once: true }));
+        yield agentEnd();
+      },
+    };
+    const runtime = buildRuntime(longRunner);
+    vi.spyOn(runtime, "steer").mockResolvedValue();
+    const stores = makeStores();
+    const createSpy = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = stores as any;
+    const origGetOrCreate = s.getOrCreate.bind(s);
+    s.getOrCreate = async (agentId: string) => {
+      const store = await origGetOrCreate(agentId);
+      const origCreate = store.create.bind(store);
+      store.create = async (aid: string, metadata?: { key?: string }) => {
+        createSpy(aid, metadata?.key);
+        return origCreate(aid, metadata);
+      };
+      return store;
+    };
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: stores });
+
+    const first = gateway.dispatch({ ...baseMsg, sessionKey: "dup", content: "a" });
+    const second = await gateway.dispatch({ ...baseMsg, sessionKey: "dup", content: "b" });
+
+    expect(second.sessionId).toBeDefined();
+    expect(createSpy).toHaveBeenCalledTimes(1);
+
+    await gateway.abort(second.sessionId);
+    const firstResult = await first;
+    expect(firstResult.sessionId).toBe(second.sessionId);
   });
 
   it("falls through to a fresh run if the prior run ended between observe and steer", async () => {
@@ -222,7 +254,6 @@ describe("gateway.dispatch (queued)", () => {
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "fail", content: "first" });
-    await new Promise((r) => setTimeout(r, 5));
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "fail", content: "second" });
 
     expect(second.state).toBe("queued");
