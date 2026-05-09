@@ -58,7 +58,12 @@ function makeGateway(): Gateway & {
       errorMessage: null,
     }),
     abort: vi.fn().mockResolvedValue(undefined),
-  } as Gateway & { dispatch: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn> };
+    abortByKey: vi.fn().mockResolvedValue(false),
+  } as Gateway & {
+    dispatch: ReturnType<typeof vi.fn>;
+    abort: ReturnType<typeof vi.fn>;
+    abortByKey: ReturnType<typeof vi.fn>;
+  };
 }
 
 function silentLogger(): Logger {
@@ -391,7 +396,7 @@ describe("createDiscordChannel — /stop interception", () => {
     client.emit("messageCreate", msg);
     await new Promise((r) => setImmediate(r));
 
-    expect(gateway.abort).toHaveBeenCalledWith("discord:bot-A:channel:channel-1", "user");
+    expect(gateway.abortByKey).toHaveBeenCalledWith("main", "discord:bot-A:channel:channel-1", "user");
     expect(gateway.dispatch).not.toHaveBeenCalled();
   });
 

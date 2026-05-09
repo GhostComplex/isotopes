@@ -68,6 +68,7 @@ function makeGateway(): Gateway & { dispatch: ReturnType<typeof vi.fn> } {
       errorMessage: null,
     }),
     abort: vi.fn().mockResolvedValue(undefined),
+    abortByKey: vi.fn().mockResolvedValue(false),
   } as Gateway & { dispatch: ReturnType<typeof vi.fn> };
 }
 
@@ -267,5 +268,35 @@ describe("receiveDiscordMessage", () => {
     );
     expect(transform).toHaveBeenCalledWith("hi there", msg, "precise");
     expect(gateway.dispatch.mock.calls[0][0].content).toBe("<meta/>\nhi there");
+  });
+
+  it("calls flushRemaining on the callbacks after dispatch resolves", async () => {
+    const gateway = makeGateway();
+    const dedupe = new DedupeCache();
+    const msg = fakeMsg({ content: "<@bot> hi", mentionedIds: ["bot"] });
+    const flushRemaining = vi.fn().mockResolvedValue(undefined);
+    const onTextDelta = vi.fn();
+    const callbacks = { onTextDelta, flushRemaining };
+    await receiveDiscordMessage(
+      msg,
+      { gateway, dedupe, defaultAgentId: "main" },
+      { botId: "bot", buildCallbacks: () => callbacks },
+    );
+    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
+    expect(flushRemaining).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not throw when callbacks omit flushRemaining (plain DispatchCallbacks)", async () => {
+    const gateway = makeGateway();
+    const dedupe = new DedupeCache();
+    const msg = fakeMsg({ content: "<@bot> hi", mentionedIds: ["bot"] });
+    const callbacks = { onTextDelta: vi.fn() };
+    await expect(
+      receiveDiscordMessage(
+        msg,
+        { gateway, dedupe, defaultAgentId: "main" },
+        { botId: "bot", buildCallbacks: () => callbacks },
+      ),
+    ).resolves.toBeUndefined();
   });
 });

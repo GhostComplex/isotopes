@@ -40,11 +40,21 @@ export interface ReceiveDeps {
   transformContent?: (content: string, msg: DiscordMessage, mentionKind: MentionKind) => string;
 }
 
+/**
+ * `DispatchCallbacks` extended with an optional post-dispatch hook. Adapters
+ * with stateful outbound buffers (the Discord one drains its sentence-boundary
+ * stream buffer here) implement `flushRemaining`. Plain DispatchCallbacks
+ * remain compatible (the field is optional).
+ */
+export interface ReceiveCallbacks extends DispatchCallbacks {
+  flushRemaining?(): Promise<void>;
+}
+
 export interface ReceiveContext {
   /** This bot's user id (i.e. client.user.id). Required for mention/dedupe/session keys. */
   botId: string;
-  /** Build the per-message DispatchCallbacks (outbound concerns live in caller). */
-  buildCallbacks: (msg: DiscordMessage) => DispatchCallbacks;
+  /** Build the per-message callbacks (outbound concerns live in caller). */
+  buildCallbacks: (msg: DiscordMessage) => ReceiveCallbacks;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,10 +198,9 @@ export async function receiveDiscordMessage(
 
   const callbacks = ctx.buildCallbacks(msg);
   await deps.gateway.dispatch(message, callbacks);
-  const maybeFlush = (callbacks as { flushRemaining?: () => Promise<void> }).flushRemaining;
-  if (typeof maybeFlush === "function") {
+  if (callbacks.flushRemaining) {
     try {
-      await maybeFlush.call(callbacks);
+      await callbacks.flushRemaining();
     } catch (err) {
       log.warn(`flushRemaining failed: ${err instanceof Error ? err.message : String(err)}`);
     }

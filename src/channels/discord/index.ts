@@ -13,7 +13,7 @@ import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
-import { receiveDiscordMessage, resolveSessionKey, type GuildReceiveConfig } from "./receive.js";
+import { receiveDiscordMessage, resolveAgentId, resolveSessionKey, type GuildReceiveConfig } from "./receive.js";
 import { createDiscordCallbacks } from "./outbound.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
@@ -123,22 +123,23 @@ async function maybeHandleStop(
   msg: DiscordMessage,
   botId: string,
   gateway: Gateway,
-  buildSessionId: (msg: DiscordMessage) => string,
+  agentId: string,
+  sessionKey: string,
 ): Promise<boolean> {
   if (!STOP_CMD_RE.test(msg.content.trim())) return false;
   // In guild channels we still require the @mention so a shared /stop in a
   // multi-bot channel only aborts the addressed bot's session. DMs are 1:1.
   if (msg.guild && !msg.mentions?.has?.(botId)) return true; // not for us, but consume
-  const sessionId = buildSessionId(msg);
+  let cancelled = false;
   try {
-    await gateway.abort(sessionId, "user");
-    log.info(`discord: /stop sent abort for sessionId=${sessionId}`);
+    cancelled = await gateway.abortByKey(agentId, sessionKey, "user");
+    log.info(`discord: /stop ${cancelled ? "aborted" : "no active run"} for sessionKey=${sessionKey}`);
   } catch (err) {
     log.warn(`discord: /stop abort failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   if ("send" in msg.channel) {
     try {
-      await (msg.channel as SendableChannels).send("🛑 Stopped.");
+      await (msg.channel as SendableChannels).send(cancelled ? "🛑 Stopped." : "(nothing to stop)");
     } catch {
       /* ignore */
     }
@@ -348,11 +349,11 @@ async function handleInbound(args: InboundArgs): Promise<void> {
   const botId = client.user?.id;
   if (!botId) return;
 
-  // Fail-closed allowlist gate before anything else.
   if (!passesAllowlist(msg, account)) return;
 
-  // /stop handling — needs the same sessionKey logic the receive pipeline uses.
-  const stopped = await maybeHandleStop(msg, botId, gateway, (m) => resolveSessionKey(m, botId));
+  const agentId = resolveAgentId(msg, account.agentBindings, account.defaultAgentId ?? "default");
+  const sessionKey = resolveSessionKey(msg, botId);
+  const stopped = await maybeHandleStop(msg, botId, gateway, agentId, sessionKey);
   if (stopped) return;
 
   await receiveDiscordMessage(

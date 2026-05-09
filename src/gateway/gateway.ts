@@ -167,5 +167,12 @@ export function createGateway(deps: GatewayDeps): Gateway {
     deps.agentRuntime.cancel(sessionId, reason ? { reason } : undefined);
   }
 
-  return { dispatch, abort };
+  async function abortByKey(agentId: string, sessionKey: string, reason?: string): Promise<boolean> {
+    const store = await deps.sessionStoreManager.getOrCreate(agentId);
+    const session = await store.findByKey(sessionKey);
+    if (!session) return false;
+    return deps.agentRuntime.cancel(session.id, reason ? { reason } : undefined);
+  }
+
+  return { dispatch, abort, abortByKey };
 }

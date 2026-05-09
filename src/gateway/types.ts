@@ -27,4 +27,9 @@ export interface DispatchResult {
 export interface Gateway {
   dispatch(msg: Message, callbacks?: DispatchCallbacks): Promise<DispatchResult>;
   abort(sessionId: string, reason?: string): Promise<void>;
+  /**
+   * Abort by sessionKey — resolves key→id via the session store and cancels.
+   * Returns true on cancel, false if no session exists for the key.
+   */
+  abortByKey(agentId: string, sessionKey: string, reason?: string): Promise<boolean>;
 }
