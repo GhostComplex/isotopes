@@ -144,9 +144,6 @@ describe("gateway.dispatch (queued)", () => {
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "first" });
-    // Without #769 dedupe, second's resolveSessionId would race with first's
-    // and create a separate session. With dedupe, second sees the in-flight
-    // resolve, awaits the same promise, and ends up steering the same run.
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "second" });
     expect(second.state).toBe("queued");
     expect(second.sessionId).toMatch(/^sess-/);
@@ -186,7 +183,7 @@ describe("gateway.dispatch (queued)", () => {
     await first;
   });
 
-  it("dedupes concurrent resolveSessionId calls for the same sessionKey (#769)", async () => {
+  it("dedupes concurrent resolveSessionId calls for the same sessionKey", async () => {
     const longRunner: Runner = {
       resolveSessionId: (req) => req.sessionId ?? "stub",
       async *run({ abort }) {
@@ -213,13 +210,10 @@ describe("gateway.dispatch (queued)", () => {
     };
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: stores });
 
-    // Fire both dispatches synchronously — both call resolveSessionId before
-     // either finishes. Without dedupe, both would call store.create.
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "dup", content: "a" });
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "dup", content: "b" });
 
     expect(second.sessionId).toBeDefined();
-    // Only one create call — the second dispatch reused the in-flight resolve.
     expect(createSpy).toHaveBeenCalledTimes(1);
 
     await gateway.abort(second.sessionId);

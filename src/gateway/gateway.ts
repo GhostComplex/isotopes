@@ -34,12 +34,8 @@ interface ActiveHandle {
 export function createGateway(deps: GatewayDeps): Gateway {
   // sessionId → handle for the dispatch currently driving that session's run
   const active = new Map<string, ActiveHandle>();
-  // In-flight resolveSessionId calls keyed by `${agentId}::${sessionKey}`.
-  // Concurrent dispatches with the same sessionKey share a single resolve
-  // promise so only one session is created. Without this, two near-simultaneous
-  // dispatches both see findByKey → undefined and each call create, producing
-  // two distinct sessions for what callers intend as one logical session.
-  // (No cache for missing sessionKey — anonymous dispatches always get a fresh session.)
+  // Dedupes concurrent resolveSessionId calls so two dispatches with the same
+  // sessionKey share one create instead of racing into two distinct sessions.
   const resolving = new Map<string, Promise<string>>();
 
   async function doResolveSessionId(msg: Message): Promise<string> {
