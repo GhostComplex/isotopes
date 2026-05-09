@@ -41,8 +41,7 @@ pnpm test:integration
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
 - `init/` — `isotopes init` setup wizard built with Ink.
 - `logging/` — `createLogger("tag")` factory.
-- `extensions/` — Loader for `~/.isotopes/extensions/*.ts` (pi-coding-agent extensions). Per-user custom tools, hooks, slash commands written against pi's native `ExtensionAPI`.
-- `ui/` — Loader for `~/.isotopes/ui/<id>/` static SPA directories, auto-mounted at `/ui/<id>`.
+- `extensions/` — Discovery for user-managed customization at `~/.isotopes/extensions/`. Three typed slots: `pi/loader.ts` (pi-coding-agent extensions from `~/.isotopes/extensions/pi/*.ts`), `ui/loader.ts` (static SPA dirs from `~/.isotopes/extensions/ui/<id>/`, mounted at `/ui/<id>`), and `channels/` (reserved for future channel adapter discovery).
 - `legacy/` — Transitional area being decomposed PR-by-PR. New code should not land here.
 - Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema), `paths.ts` (`ISOTOPES_HOME` resolution), `silent-reply.ts` (silent-reply token detection), `test-helpers.ts` (shared test mocks).
 
@@ -69,7 +68,7 @@ pnpm test:integration
 
 - **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` alternative). Swap runners without touching gateway, sandbox, or transport code.
 - **Tool registry**: Tools are `(schema, handler)` pairs assembled per-agent in `agent/tools/index.ts`; tool guards (CLI, FS) are enforced at registration and injected into system prompts.
-- **Extensions (pi-native)**: User-authored extensions in `~/.isotopes/extensions/*.ts` are loaded via pi-coding-agent's `DefaultResourceLoader` and shared across all agents (loader is cached per-agentId in `session-factory.ts`). Per-agent capability scoping is via `tools.allow` / `tools.deny`, not separate extension sets.
+- **Extensions (pi-native)**: User-authored extensions in `~/.isotopes/extensions/pi/*.ts` are loaded via pi-coding-agent's `DefaultResourceLoader` and shared across all agents (loader is cached per-agentId in `session-factory.ts`). Per-agent capability scoping is via `tools.allow` / `tools.deny`, not separate extension sets.
 - **Event streaming**: `AgentRuntime.run()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error. `runtime-adapter.ts` collapses it to a single response for chat consumers.
 - **Workspace context**: `SOUL.md` / `TOOLS.md` / `MEMORY.md` / `BOOTSTRAP.md` are merged into system prompts and hot-reloaded on change.
 
