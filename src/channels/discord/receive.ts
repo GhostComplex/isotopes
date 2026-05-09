@@ -197,12 +197,18 @@ export async function receiveDiscordMessage(
   };
 
   const callbacks = ctx.buildCallbacks(msg);
-  await deps.gateway.dispatch(message, callbacks);
-  if (callbacks.flushRemaining) {
-    try {
-      await callbacks.flushRemaining();
-    } catch (err) {
-      log.warn(`flushRemaining failed: ${err instanceof Error ? err.message : String(err)}`);
+  try {
+    await deps.gateway.dispatch(message, callbacks);
+  } finally {
+    // flushRemaining MUST run even when dispatch threw — outbound implementations
+    // may hold per-dispatch resources (typing interval, edit timers) that only
+    // release in here.
+    if (callbacks.flushRemaining) {
+      try {
+        await callbacks.flushRemaining();
+      } catch (err) {
+        log.warn(`flushRemaining failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 }

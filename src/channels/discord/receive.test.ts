@@ -299,4 +299,21 @@ describe("receiveDiscordMessage", () => {
       ),
     ).resolves.toBeUndefined();
   });
+
+  it("calls flushRemaining even when gateway.dispatch throws (no resource leak)", async () => {
+    const gateway = makeGateway();
+    gateway.dispatch.mockRejectedValueOnce(new Error("boom"));
+    const dedupe = new DedupeCache();
+    const msg = fakeMsg({ content: "<@bot> hi", mentionedIds: ["bot"] });
+    const flushRemaining = vi.fn().mockResolvedValue(undefined);
+    const callbacks = { onTextDelta: vi.fn(), flushRemaining };
+    await expect(
+      receiveDiscordMessage(
+        msg,
+        { gateway, dedupe, defaultAgentId: "main" },
+        { botId: "bot", buildCallbacks: () => callbacks },
+      ),
+    ).rejects.toThrow("boom");
+    expect(flushRemaining).toHaveBeenCalledTimes(1);
+  });
 });
