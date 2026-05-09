@@ -16,7 +16,7 @@ import {
 } from "./middleware.js";
 import { matchRoute, type RouteDeps } from "./routes.js";
 import { serveStaticFile } from "./static.js";
-import { matchUIEntry, type UIEntry } from "../../extensions/ui/registry.js";
+import { matchUIEntry, type UIEntry } from "../../extensions/ui/loader.js";
 
 import "./cron.js";
 import "./logs.js";

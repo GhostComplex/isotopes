@@ -17,7 +17,7 @@ import { getIsotopesHome } from "./paths.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { runAgent } from "./agent/runtime-adapter.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
-import { discoverUIEntries } from "./extensions/ui/registry.js";
+import { discoverUIEntries } from "./extensions/ui/loader.js";
 import { createDiscordTransport } from "./legacy/discord/index.js";
 import type { Transport } from "./legacy/gateway/types.js";
 
