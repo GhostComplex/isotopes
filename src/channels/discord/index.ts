@@ -36,6 +36,7 @@ import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
 import { receiveDiscordMessage, type GuildReceiveConfig } from "./receive.js";
 import { createDiscordCallbacks } from "./outbound.js";
+import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
 import type {
   DiscordAccountConfig,
@@ -386,6 +387,11 @@ async function handleInbound(args: InboundArgs): Promise<void> {
       ...(guildsForReceive ? { guilds: guildsForReceive } : {}),
       ...(account.context?.dedupe === false ? { dedupeEnabled: false } : {}),
       ...(account.allowBots ? { allowBots: account.allowBots } : {}),
+      transformContent: (content, triggerMsg) => {
+        const meta = extractDiscordMetadata(triggerMsg);
+        const chatType = triggerMsg.guild ? "group" : "direct";
+        return `${formatInboundMeta(meta, chatType)}\n\n${content}`;
+      },
     },
     {
       botId,

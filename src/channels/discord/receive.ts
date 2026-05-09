@@ -45,6 +45,12 @@ export interface ReceiveDeps {
   dedupeEnabled?: boolean;
   /** Whether to respond to messages from other bots. Default: false. */
   allowBots?: boolean;
+  /**
+   * Optional hook to transform the cleaned message content before dispatch.
+   * Used by the channel adapter to prepend inbound metadata (sender, channel,
+   * timestamp) so the agent has multi-user context.
+   */
+  transformContent?: (content: string, msg: DiscordMessage, mentionKind: MentionKind) => string;
 }
 
 export interface ReceiveContext {
@@ -188,7 +194,10 @@ export async function receiveDiscordMessage(
   const sessionKey = resolveSessionKey(msg, ctx.botId);
 
   // 5. Build the gateway Message.
-  const content = stripMentions(msg.content);
+  const cleanedText = stripMentions(msg.content);
+  const content = deps.transformContent
+    ? deps.transformContent(cleanedText, msg, kind!)
+    : cleanedText;
   const message: Message = {
     agentId,
     sessionKey,
