@@ -36,6 +36,7 @@ import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
 import { receiveDiscordMessage, type GuildReceiveConfig } from "./receive.js";
 import { createDiscordCallbacks } from "./outbound.js";
+import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
 import type {
   DiscordAccountConfig,
@@ -296,6 +297,49 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
     });
   });
 
+  // discord.js v14 doesn't reliably emit messageCreate for DMs even with
+  // Partials.Channel. Intercept raw gateway packets and manually fetch the
+  // Message object for DM MESSAGE_CREATE events. Mirrors the workaround from
+  // legacy/discord/discord.ts ~line 247-267.
+  client.on("raw", (...rawArgs: unknown[]) => {
+    const packet = rawArgs[0] as { t?: string; d?: unknown } | undefined;
+    if (!packet || packet.t !== "MESSAGE_CREATE") return;
+    const data = (packet.d ?? {}) as Record<string, unknown>;
+    if (data.guild_id) return; // only DMs
+
+    const channelId = data.channel_id as string | undefined;
+    const messageId = data.id as string | undefined;
+    if (!channelId || !messageId) return;
+
+    void (async () => {
+      try {
+        const channels = (client as unknown as {
+          channels?: { fetch?: (id: string) => Promise<unknown> };
+        }).channels;
+        const channel = (await channels?.fetch?.(channelId)) as
+          | { isTextBased?: () => boolean; messages?: { fetch: (id: string) => Promise<DiscordMessage> } }
+          | null
+          | undefined;
+        if (!channel || (channel.isTextBased && !channel.isTextBased())) return;
+        const fetched = await channel.messages?.fetch(messageId);
+        if (!fetched) return;
+        await handleInbound({
+          msg: fetched,
+          account,
+          client,
+          gateway,
+          dedupe,
+          guildsForReceive,
+        });
+      } catch (err) {
+        logger.warn(
+          `discord: raw DM fetch failed for channel=${channelId} message=${messageId}: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    })();
+  });
+
   if (account.threadBindings?.enabled) {
     client.on("threadCreate", (...rawArgs: unknown[]) => {
       const thread = rawArgs[0] as ThreadChannel;
@@ -343,6 +387,11 @@ async function handleInbound(args: InboundArgs): Promise<void> {
       ...(guildsForReceive ? { guilds: guildsForReceive } : {}),
       ...(account.context?.dedupe === false ? { dedupeEnabled: false } : {}),
       ...(account.allowBots ? { allowBots: account.allowBots } : {}),
+      transformContent: (content, triggerMsg) => {
+        const meta = extractDiscordMetadata(triggerMsg);
+        const chatType = triggerMsg.guild ? "group" : "direct";
+        return `${formatInboundMeta(meta, chatType)}\n\n${content}`;
+      },
     },
     {
       botId,

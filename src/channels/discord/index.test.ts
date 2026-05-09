@@ -263,6 +263,111 @@ describe("createDiscordChannel — inbound wiring", () => {
   });
 });
 
+describe("createDiscordChannel — DM raw packet workaround", () => {
+  it("fetches and dispatches DM messages arriving via raw MESSAGE_CREATE", async () => {
+    const client = makeFakeClient("bot-A");
+    // Add channels.fetch to the fake client
+    const fetchedMsg = fakeMsg({
+      id: "dm-1",
+      channelId: "dm-chan",
+      authorId: "user-9",
+      guildId: null,
+    });
+    const messagesFetch = vi.fn().mockResolvedValue(fetchedMsg);
+    const channelsFetch = vi.fn().mockResolvedValue({
+      isTextBased: () => true,
+      messages: { fetch: messagesFetch },
+    });
+    (client as unknown as { channels: { fetch: typeof channelsFetch } }).channels = {
+      fetch: channelsFetch,
+    };
+
+    const gateway = makeGateway();
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: {
+            token: "tok",
+            defaultAgentId: "main",
+            dmAccess: { policy: "allowlist", allowlist: ["user-9"] },
+          },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway, config: {}, logger: silentLogger() });
+
+    client.emit("raw", { t: "MESSAGE_CREATE", d: { id: "dm-1", channel_id: "dm-chan" } });
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    expect(channelsFetch).toHaveBeenCalledWith("dm-chan");
+    expect(messagesFetch).toHaveBeenCalledWith("dm-1");
+    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
+    expect(gateway.dispatch.mock.calls[0][0].sessionKey).toBe("discord:bot-A:dm:user-9");
+  });
+
+  it("ignores raw MESSAGE_CREATE for guild messages", async () => {
+    const client = makeFakeClient("bot-A");
+    const channelsFetch = vi.fn();
+    (client as unknown as { channels: { fetch: typeof channelsFetch } }).channels = {
+      fetch: channelsFetch,
+    };
+    const gateway = makeGateway();
+    const adapter = createDiscordChannel(
+      { accounts: { alpha: { token: "tok", defaultAgentId: "main" } } },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway, config: {}, logger: silentLogger() });
+
+    client.emit("raw", {
+      t: "MESSAGE_CREATE",
+      d: { id: "x", channel_id: "y", guild_id: "g" },
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(channelsFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("createDiscordChannel — message metadata enrichment", () => {
+  it("prepends inbound_meta block to dispatched content", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: {
+            token: "tok",
+            defaultAgentId: "main",
+            groupAccess: { policy: "open" },
+          },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway, config: {}, logger: silentLogger() });
+
+    const msg = fakeMsg({
+      mentionedIds: ["bot-A"],
+      content: "<@bot-A> hello",
+      authorId: "user-42",
+    });
+    // The metadata extractor reads msg.channel.type / .name; provide minimal shape.
+    (msg.channel as unknown as { type: number; name: string }).type = 0;
+    (msg.channel as unknown as { type: number; name: string }).name = "general";
+
+    client.emit("messageCreate", msg);
+    await new Promise((r) => setImmediate(r));
+
+    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
+    const dispatched = gateway.dispatch.mock.calls[0][0];
+    expect(dispatched.content).toContain("<inbound_meta");
+    expect(dispatched.content).toContain("<sender_id>user-42</sender_id>");
+    expect(dispatched.content).toContain("<chat_type>group</chat_type>");
+    expect(dispatched.content).toContain("hello");
+  });
+});
+
 describe("createDiscordChannel — /stop interception", () => {
   it("/stop in a guild channel with @mention aborts via gateway", async () => {
     const client = makeFakeClient("bot-A");

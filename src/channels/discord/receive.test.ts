@@ -256,4 +256,16 @@ describe("receiveDiscordMessage", () => {
     await receiveDiscordMessage(msg, opts, ctx());
     expect(gateway.dispatch).toHaveBeenCalledTimes(2);
   });
+
+  it("applies transformContent hook to dispatched content", async () => {
+    const msg = fakeMsg({ mentionedIds: [BOT_ID], content: `<@${BOT_ID}> hi there` });
+    const transform = vi.fn((content: string) => `<meta/>\n${content}`);
+    await receiveDiscordMessage(
+      msg,
+      { gateway, dedupe, defaultAgentId: "main", transformContent: transform },
+      ctx(),
+    );
+    expect(transform).toHaveBeenCalledWith("hi there", msg, "precise");
+    expect(gateway.dispatch.mock.calls[0][0].content).toBe("<meta/>\nhi there");
+  });
 });
