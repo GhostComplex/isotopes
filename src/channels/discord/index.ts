@@ -1,23 +1,3 @@
-// src/channels/discord/index.ts — Discord ChannelAdapter.
-//
-// This is the integrating module for the Discord channel: it owns the
-// Discord.js Client lifecycle (one per account), wires inbound messages
-// through the receive pipeline (./receive.ts) into the gateway, and builds
-// per-message outbound callbacks (./outbound.ts) that stream agent text
-// back to the channel.
-//
-// Scope kept intentionally narrow per the migration plan:
-//  - allowlist policy (DM + group) lifted from legacy (fail-closed)
-//  - /stop and /cancel routed through gateway.abort
-//  - ThreadBindingManager instantiated per adapter, threadCreate auto-binds
-//
-// NOT yet wired here (deferred until S5/app.ts rewires the larger surface):
-//  - channel history buffer / inbound metadata enrichment
-//  - image attachment extraction
-//  - slash commands beyond /stop|/cancel (admin commands removed with legacy)
-//  - the spawn_agent → thread streaming bridge (a2a-sink); this is wired
-//    elsewhere (spawn-agent.ts, S1) and doesn't need adapter glue here.
-
 import {
   Client,
   GatewayIntentBits,
@@ -45,9 +25,6 @@ import type {
 
 const log = loggers.discord;
 
-// ---------------------------------------------------------------------------
-// Client factory (small wrapper to make the adapter testable)
-// ---------------------------------------------------------------------------
 
 /** Minimal Discord client surface the adapter actually uses. */
 export interface ClientLike {
@@ -73,9 +50,6 @@ const defaultClientFactory: ClientFactory = () =>
     partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember],
   }) as unknown as ClientLike;
 
-// ---------------------------------------------------------------------------
-// Allowlist policy (DM + group access)
-// ---------------------------------------------------------------------------
 
 interface ResolvedGroupPolicy {
   policy: "disabled" | "allowlist" | "open";
@@ -137,9 +111,6 @@ function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConfig): bo
   return true;
 }
 
-// ---------------------------------------------------------------------------
-// /stop interception
-// ---------------------------------------------------------------------------
 
 const STOP_CMD_RE = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i;
 
@@ -175,9 +146,6 @@ async function maybeHandleStop(
   return true;
 }
 
-// ---------------------------------------------------------------------------
-// Adapter factory
-// ---------------------------------------------------------------------------
 
 export interface CreateDiscordChannelOptions {
   /** Test seam: override Discord.js Client construction. */
@@ -257,9 +225,6 @@ export function createDiscordChannel(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Per-account wiring
-// ---------------------------------------------------------------------------
 
 interface StartAccountArgs {
   accountId: string;
@@ -417,9 +382,6 @@ async function handleInbound(args: InboundArgs): Promise<void> {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function resolveToken(account: DiscordAccountConfig): string | null {
   if (account.token) return account.token;

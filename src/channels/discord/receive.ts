@@ -1,16 +1,3 @@
-// src/channels/discord/receive.ts — Discord inbound pipeline.
-//
-// Lifts the inbound concerns out of the legacy DiscordTransport.handleMessage:
-//   1. dedupe (drop replays)
-//   2. mention check (precise @, DM, reply-chain, quoted/forwarded)
-//   3. resolve agentId via agentBindings
-//   4. resolve sessionKey (channel | dm | thread)
-//   5. build a Gateway Message
-//   6. dispatch to the gateway with caller-supplied callbacks
-//
-// Outbound (text streaming, replies, reactions) is intentionally NOT here —
-// see ./outbound.ts (subtask #781) and ./index.ts (subtask #782) for wiring.
-
 import type { Message as DiscordMessage } from "discord.js";
 import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
 import { DedupeCache } from "./dedupe.js";
@@ -156,14 +143,12 @@ export async function receiveDiscordMessage(
   deps: ReceiveDeps,
   ctx: ReceiveContext,
 ): Promise<void> {
-  // 0. Drop self & (by default) other bots.
   if (msg.author.id === ctx.botId) return;
   if (msg.author.bot && !deps.allowBots) {
     log.debug(`discord receive: drop bot message from ${msg.author.username}`);
     return;
   }
 
-  // 1. Dedupe.
   if (deps.dedupeEnabled !== false) {
     const dedupeKey = `${ctx.botId}:${msg.channelId}:${msg.id}`;
     if (deps.dedupe.isDuplicate(dedupeKey)) {
@@ -172,8 +157,6 @@ export async function receiveDiscordMessage(
     }
   }
 
-  // 2. Mention check. DMs always pass; in guilds we honor requireMention
-  //    against the union of the 4 implicit mention kinds.
   const kind = detectMentionKind(msg, ctx.botId);
   const isDM = !msg.guild;
   const requireMention = msg.guild ? deps.guilds?.[msg.guild.id]?.requireMention ?? true : false;
@@ -187,13 +170,8 @@ export async function receiveDiscordMessage(
     return;
   }
 
-  // 3. Resolve agentId.
   const agentId = resolveAgentId(msg, deps.agentBindings, deps.defaultAgentId ?? "default");
-
-  // 4. Session key.
   const sessionKey = resolveSessionKey(msg, ctx.botId);
-
-  // 5. Build the gateway Message.
   const cleanedText = stripMentions(msg.content);
   const content = deps.transformContent
     ? deps.transformContent(cleanedText, msg, kind!)
@@ -208,10 +186,6 @@ export async function receiveDiscordMessage(
     extraSystemPrompt: REPLY_DIRECTIVE_PROMPT,
   };
 
-  // 6. Dispatch. Outbound callbacks are produced by the caller (outbound.ts).
-  //    If the callbacks expose a `flushRemaining()` hook (the OutboundCallbacks
-  //    contract from outbound.ts), invoke it after dispatch so any text still
-  //    sitting in the segmented stream buffer is delivered.
   const callbacks = ctx.buildCallbacks(msg);
   await deps.gateway.dispatch(message, callbacks);
   const maybeFlush = (callbacks as { flushRemaining?: () => Promise<void> }).flushRemaining;
