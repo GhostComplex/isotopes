@@ -4,7 +4,7 @@ import {
 } from "./config.js";
 import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
-import { LazyTransportContext } from "./legacy/gateway/transport-context.js";
+import { LazyChannelContext } from "./legacy/gateway/channel-context.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
@@ -59,7 +59,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   });
 
   const agentWorkspaces = new Map<string, string>();
-  const transportContexts = new Map<string, LazyTransportContext>();
+  const channelContexts = new Map<string, LazyChannelContext>();
 
   const spawnableAgentIds = config.agents
     .filter((a) => a.spawnable === true && a.enabled !== false)
@@ -67,15 +67,15 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   for (const agentFile of config.agents) {
     if (agentFile.enabled === false) continue;
-    const transportCtx = new LazyTransportContext();
-    transportContexts.set(agentFile.id, transportCtx);
+    const channelCtx = new LazyChannelContext();
+    channelContexts.set(agentFile.id, channelCtx);
     const sessionStore = await sessionStoreManager.getOrCreate(agentFile.id);
     const result = await agentRuntime.register({
       agentFile,
       provider: config.provider,
       globalTools: config.tools,
       sandbox: config.sandbox,
-      transportContext: transportCtx,
+      channelContext: channelCtx,
       spawnableAgentIds,
       sessionStore,
     });
@@ -183,16 +183,16 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron scheduler started with ${cronScheduler.listJobs().length} job(s)`);
   }
 
-  const transports: { stopAll: () => Promise<void> }[] = [];
+  const channelLoaders: { stopAll: () => Promise<void> }[] = [];
   {
     const gateway = createGateway({ agentRuntime, sessionStoreManager });
     const channels = await loadChannels({
       gateway,
       config,
       logger: log,
-      transportContexts,
+      channelContexts,
     });
-    transports.push(channels);
+    channelLoaders.push(channels);
   }
 
   const uiEntries = discoverUIEntries();
@@ -214,7 +214,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info("Shutting down...");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
-    for (const t of transports) {
+    for (const t of channelLoaders) {
       try { await t.stopAll(); } catch { /* ignore */ }
     }
     await apiServer.stop();

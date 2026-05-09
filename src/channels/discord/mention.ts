@@ -1,5 +1,5 @@
 // src/gateway/mention.ts — Mention detection for message handling
-// Transport-agnostic: determines whether a bot should respond based on mention rules.
+// Channel-agnostic: determines whether a bot should respond based on mention rules.
 
 // ---------------------------------------------------------------------------
 // Types

@@ -10,7 +10,7 @@ import path from "node:path";
 import type { ChannelAdapter, ChannelAdapterDeps } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
-import type { Transport } from "../../legacy/gateway/types.js";
+import type { Channel } from "../../legacy/gateway/types.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
@@ -207,15 +207,15 @@ export function createDiscordChannel(
         ),
       );
 
-      // Bind react capability into per-agent transport contexts so the
+      // Bind react capability into per-agent channel contexts so the
       // `message_react` agent tool can call back into Discord.
-      if (deps.transportContexts && clients.size > 0) {
-        const transport: Transport = {
+      if (deps.channelContexts && clients.size > 0) {
+        const channel: Channel = {
           start: async () => {},
           stop: async () => {},
           react: (id, emoji, channelId) => reactToMessage(clients, id, emoji, channelId),
         };
-        for (const ctx of deps.transportContexts.values()) ctx.setTransport(transport);
+        for (const ctx of deps.channelContexts.values()) ctx.setChannel(channel);
       }
     },
 
@@ -446,7 +446,7 @@ function autoBindThread(
 /**
  * Add an emoji reaction to a message. Tries channelId fast-path first, then
  * falls back to scanning every cached channel across all bots. Used by the
- * `message_react` agent tool via the LazyTransportContext binding.
+ * `message_react` agent tool via the LazyChannelContext binding.
  */
 async function reactToMessage(
   clients: Map<string, ClientLike>,

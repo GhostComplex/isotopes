@@ -43,8 +43,8 @@ export function parseReplyDirective(
   return replyToId !== undefined ? { stripped, replyToId } : { stripped };
 }
 
-// Pass via RunRequest.extraSystemPrompt from any chat transport so the agent
-// learns the tag vocabulary. Tags are honored only on transports that
+// Pass via RunRequest.extraSystemPrompt from any chat channel so the agent
+// learns the tag vocabulary. Tags are honored only on channels that
 // translate replyToId into a native reply primitive.
 export const REPLY_DIRECTIVE_PROMPT = `# Chat Output Directives
 
@@ -61,5 +61,5 @@ underlying feature; channels without support silently ignore them.
 
 Place the tag at the start of your response, before any other text.
 Whitespace inside the brackets is allowed. Tags are channel-agnostic — the
-transport (currently Discord) renders them in the platform's native reply
+channel (currently Discord) renders them in the platform's native reply
 primitive.`;

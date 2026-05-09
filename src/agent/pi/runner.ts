@@ -25,7 +25,7 @@ export class PiRunner {
     if (req.sessionId) return req.sessionId;
     const store = this.opts.agent.sessionStore!;
     const policy = this.opts.agent.sessionPolicy ?? "parent-reuse";
-    const fromId = req.from?.agentId ?? "transport";
+    const fromId = req.from?.agentId ?? "channel";
     const suffix = policy === "parent-reuse" && req.parentSessionId
       ? req.parentSessionId
       : randomUUID();

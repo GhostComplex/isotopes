@@ -1,4 +1,4 @@
-// src/transports/message-metadata.ts — Structured message metadata for transports
+// src/channels/message-metadata.ts — Structured message metadata for channels
 
 import type { Message as DiscordMessage } from "discord.js";
 
@@ -13,7 +13,7 @@ export type ChannelType = "text" | "dm" | "thread" | "voice" | "news" | "unknown
 // MessageMetadata
 // ---------------------------------------------------------------------------
 
-/** Structured metadata extracted from an incoming transport message. */
+/** Structured metadata extracted from an incoming channel message. */
 export interface MessageMetadata {
   /** The message's own ID (snowflake) */
   messageId: string;

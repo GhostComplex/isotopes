@@ -28,7 +28,7 @@ describe("buildSessionKey", () => {
     );
   });
 
-  it("produces unique keys for different transports", () => {
+  it("produces unique keys for different channels", () => {
     const k1 = buildSessionKey("discord", "id", "dm", "u1");
     const k2 = buildSessionKey("feishu", "id", "dm", "u1");
     expect(k1).not.toBe(k2);

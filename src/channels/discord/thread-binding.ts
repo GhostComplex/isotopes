@@ -15,7 +15,7 @@ export type ThreadUnbindCallback = (binding: ThreadBinding, reason?: string) => 
 /**
  * ThreadBindingManager — manages the mapping of Discord threads to agent sessions.
  *
- * When a Discord thread is created in a monitored channel, the transport calls
+ * When a Discord thread is created in a monitored channel, the channel calls
  * `bind()` to record the association. Downstream consumers can subscribe via
  * `onBind()` or look up bindings by thread/session ID.
  */

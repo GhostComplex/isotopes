@@ -1,4 +1,4 @@
-// src/transports/message-metadata.test.ts — Tests for message metadata extraction
+// src/channels/message-metadata.test.ts — Tests for message metadata extraction
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { extractDiscordMetadata, formatInboundMeta, type MessageMetadata } from "./message-metadata.js";

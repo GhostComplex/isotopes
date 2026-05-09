@@ -9,10 +9,10 @@ export interface DedupeCacheOptions {
 }
 
 /**
- * Prevents duplicate message processing when transport gateways deliver
+ * Prevents duplicate message processing when channel gateways deliver
  * the same message more than once (e.g. Discord reconnect replays).
  *
- * Transports build the key from their own identifiers:
+ * Channels build the key from their own identifiers:
  * - Discord: `${botId}:${channelId}:${messageId}`
  */
 export class DedupeCache {
@@ -60,7 +60,7 @@ export class DedupeCache {
     return existing !== undefined && Date.now() - existing < this.ttlMs;
   }
 
-  /** Drop all entries — call on transport shutdown. */
+  /** Drop all entries — call on channel shutdown. */
   clear(): void {
     this.cache.clear();
   }

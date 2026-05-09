@@ -58,7 +58,7 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
     })),
     threadName: Type.Optional(Type.String({
       description:
-        "Optional human-readable name for the Discord thread (or other transport surface) " +
+        "Optional human-readable name for the Discord thread (or other channel surface) " +
         "that streams this sub-run. If omitted, a label is auto-derived from `to` and `content`.",
     })),
   });

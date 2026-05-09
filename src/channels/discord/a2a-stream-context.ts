@@ -1,10 +1,10 @@
 // src/plugins/discord/a2a-stream-context.ts
 //
-// AsyncLocalStorage that the Discord transport sets while driving the parent
+// AsyncLocalStorage that the Discord channel sets while driving the parent
 // agent loop. The in-agent `spawn_agent` tool reads this context to decide
 // whether to stream a sub-run's intermediate output to a dedicated Discord
 // thread (and to register the (threadId → sessionId) mapping that lets the
-// transport route a `/stop` posted in that thread back to runtime.cancel).
+// channel route a `/stop` posted in that thread back to runtime.cancel).
 
 import { AsyncLocalStorage } from "node:async_hooks";
 

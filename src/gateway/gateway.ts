@@ -108,7 +108,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
    *   runner's native queue via `steer` and returns `state: "queued"` immediately.
    *   The steered content's output continues streaming through the **original**
    *   handle's callbacks (the first dispatcher's). The `callbacks` argument
-   *   passed on a queued call is **ignored** — there is one transport sink per
+   *   passed on a queued call is **ignored** — there is one channel sink per
    *   session, owned by whoever started the run.
    */
   async function dispatch(msg: Message, callbacks?: DispatchCallbacks): Promise<DispatchResult> {

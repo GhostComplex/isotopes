@@ -33,7 +33,7 @@ import {
 import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
-import { LazyTransportContext } from "../legacy/gateway/transport-context.js";
+import { LazyChannelContext } from "../legacy/gateway/channel-context.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
 import type { SandboxConfig } from "./middleware/sandbox-config.js";
@@ -73,7 +73,7 @@ export interface AddAgentOptions {
   provider?: ProviderConfigFile;
   globalTools?: AgentToolsConfigFile;
   sandbox?: SandboxConfigFile;
-  transportContext?: LazyTransportContext;
+  channelContext?: LazyChannelContext;
   spawnableAgentIds?: string[];
   sessionStore: DefaultSessionStore;
 }
@@ -82,7 +82,7 @@ export interface AddAgentResult {
   agent: RegisteredAgent;
   /** null when the runner has no workspace (e.g. claude). */
   workspacePath: string | null;
-  transportContext?: LazyTransportContext;
+  channelContext?: LazyChannelContext;
 }
 
 export interface Runner {
@@ -221,7 +221,7 @@ export class AgentRuntime {
     agentConfig: import("./types.js").AgentConfig,
     opts: AddAgentOptions,
   ): Promise<AddAgentResult> {
-    const { agentFile, transportContext, spawnableAgentIds, sessionStore } = opts;
+    const { agentFile, channelContext, spawnableAgentIds, sessionStore } = opts;
 
     let workspacePath: string;
     if (agentFile.workspace) {
@@ -246,7 +246,7 @@ export class AgentRuntime {
       sessionStore,
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
       ...(spawnableAgentIds ? { spawnableAgentIds } : {}),
-      ...(transportContext ? { transportContext } : {}),
+      ...(channelContext ? { channelContext } : {}),
     };
 
     const runner = new PiRunner({ agent, piDeps: this.piDeps() });
@@ -260,7 +260,7 @@ export class AgentRuntime {
     return {
       agent,
       workspacePath,
-      ...(transportContext ? { transportContext } : {}),
+      ...(channelContext ? { channelContext } : {}),
     };
   }
 

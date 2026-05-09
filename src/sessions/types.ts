@@ -11,7 +11,7 @@ export interface TranscriptUpdate {
 
 export type TranscriptListener = (update: TranscriptUpdate) => void;
 
-/** A conversation session binding an agent to a transport channel. */
+/** A conversation session binding an agent to a channel channel. */
 export interface Session {
   id: string;
   agentId: string;
@@ -20,12 +20,12 @@ export interface Session {
 }
 
 /**
- * Session metadata. `transport` is set for sessions originating from a chat
- * transport (discord/web).
+ * Session metadata. `channel` is set for sessions originating from a chat
+ * channel (discord/web).
  */
 export interface SessionMetadata {
   key?: string;                        // Unique key for session lookup (e.g., discord:{botId}:channel:{id}:{agentId})
-  transport?: string;
+  channel?: string;
   channelId?: string;
   channelName?: string;
   guildName?: string;
