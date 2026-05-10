@@ -105,10 +105,6 @@ export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks 
       await channel.send(chunk);
       return;
     }
-    if (replyToId === triggerMessageId) {
-      await triggerMessage.reply({ content: chunk });
-      return;
-    }
     await channel.send({
       content: chunk,
       reply: { messageReference: replyToId, failIfNotExists: false },

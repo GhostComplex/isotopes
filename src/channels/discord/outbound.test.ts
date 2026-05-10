@@ -94,14 +94,17 @@ describe("createDiscordCallbacks", () => {
     expect(reply).not.toHaveBeenCalled();
   });
 
-  it("[[reply_to_current]] routes to triggerMessage.reply", async () => {
-    const { channel, triggerMessage, send, reply } = makeMocks();
+  it("[[reply_to_current]] routes to channel.send with reply ref to trigger", async () => {
+    const { channel, triggerMessage, send, reply } = makeMocks("trigger-123");
     const cb = createDiscordCallbacks({ channel, triggerMessage });
     cb.onTextDelta!("[[reply_to_current]]\nhi there");
     await cb.flushRemaining();
-    expect(reply).toHaveBeenCalledTimes(1);
-    expect(reply).toHaveBeenCalledWith({ content: "hi there" });
-    expect(send).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith({
+      content: "hi there",
+      reply: { messageReference: "trigger-123", failIfNotExists: false },
+    });
+    expect(reply).not.toHaveBeenCalled();
   });
 
   it("[[reply_to: <id>]] uses channel.send with reply messageReference", async () => {
@@ -133,8 +136,11 @@ describe("createDiscordCallbacks", () => {
     const cb = createDiscordCallbacks({ channel, triggerMessage });
     cb.onTextDelta!("[[reply_to_current]]\n" + "x".repeat(2500));
     await cb.flushRemaining();
-    expect(reply).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledTimes(1); // remaining chunk goes via channel.send
+    expect(reply).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(2);
+    // First chunk carries reply ref, second is plain.
+    expect(send.mock.calls[0][0]).toMatchObject({ reply: { messageReference: "trigger-123" } });
+    expect(typeof send.mock.calls[1][0]).toBe("string");
   });
 
   it("ignores zero-length deltas", async () => {
