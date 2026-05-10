@@ -1,19 +1,13 @@
-import { createLogger } from "../../logging/logger.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { DiscordA2AStreamContext } from "./a2a-stream-context.js";
+import { createLogger } from "../../logging/logger.js";
+import type {
+  A2ASink,
+  A2ASinkStartInfo,
+  A2ASinkStartResult,
+  A2ASinkSummary,
+} from "../../agent/a2a-sink.js";
 
 const log = createLogger("discord-a2a-sink");
-
-export interface DiscordA2ASinkConfig {
-  showToolCalls?: boolean;
-}
-
-export interface DiscordA2ASinkSummary {
-  success: boolean;
-  output?: string;
-  error?: string;
-  durationMs: number;
-}
 
 const HEADER_PREFIX = "🤖";
 const TOOL_PREFIX = "🔧";
@@ -21,86 +15,91 @@ const OK_PREFIX = "✅";
 const FAIL_PREFIX = "❌";
 const MAX_DISCORD_LEN = 1900;
 
+/** Discord-specific deps the sink needs. Built per inbound by the channel adapter. */
+export interface DiscordA2ASinkDeps {
+  parentChannelId: string;
+  showToolCalls?: boolean;
+  sendMessage(channelId: string, content: string): Promise<{ id: string }>;
+  createThread(parentChannelId: string, name: string, messageId: string): Promise<{ id: string }>;
+  registerA2AThread(threadId: string, sessionId: string): void;
+  unregisterA2AThread(threadId: string): void;
+}
+
 function truncate(s: string, max = MAX_DISCORD_LEN): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
 }
 
-export class DiscordA2ASink {
+export class DiscordA2ASink implements A2ASink {
   private threadId: string | undefined;
+  private sessionId: string | undefined;
   private buffer = "";
   private toolCallNames = new Map<string, string>();
-  private startedAt = 0;
 
-  constructor(
-    private readonly ctx: DiscordA2AStreamContext,
-    private readonly sessionId: string,
-    private readonly config: DiscordA2ASinkConfig = {},
-  ) {}
+  constructor(private readonly deps: DiscordA2ASinkDeps) {}
 
-  async start(taskLabel: string, headerMessageId?: string): Promise<{ threadId?: string; error?: string }> {
-    this.startedAt = Date.now();
+  async start(info: A2ASinkStartInfo): Promise<A2ASinkStartResult> {
+    this.sessionId = info.sessionId;
     try {
-      const headerMsg = headerMessageId
-        ? { id: headerMessageId }
-        : await this.ctx.sendMessage(this.ctx.parentChannelId, `${HEADER_PREFIX} Starting: ${truncate(taskLabel, 200)}`);
-      const thread = await this.ctx.createThread(
-        this.ctx.parentChannelId,
-        truncate(taskLabel, 100),
+      const headerMsg = await this.deps.sendMessage(
+        this.deps.parentChannelId,
+        `${HEADER_PREFIX} Starting: ${truncate(info.label, 200)}`,
+      );
+      const thread = await this.deps.createThread(
+        this.deps.parentChannelId,
+        truncate(info.label, 100),
         headerMsg.id,
       );
       this.threadId = thread.id;
-      this.ctx.registerA2AThread(thread.id, this.sessionId);
-      log.debug("Sub-run thread opened", { sessionId: this.sessionId, threadId: thread.id });
-      return { threadId: thread.id };
+      this.deps.registerA2AThread(thread.id, info.sessionId);
+      log.debug("Sub-run thread opened", { sessionId: info.sessionId, threadId: thread.id });
+      return { status: "ok", surfaceId: thread.id };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const error = err instanceof Error ? err.message : String(err);
       log.warn("Failed to open sub-run thread; streaming disabled", {
-        sessionId: this.sessionId,
-        error: errorMessage,
+        sessionId: info.sessionId,
+        error,
       });
       this.threadId = undefined;
-      return { error: errorMessage };
+      return { status: "error", error };
     }
   }
 
-  async sendEvent(event: AgentEvent): Promise<void> {
+  async send(event: AgentEvent): Promise<void> {
     if (!this.threadId) return;
 
     if (event.type === "message_update") {
       const ame = event.assistantMessageEvent;
       if (ame.type === "text_delta" && ame.delta) {
         this.buffer += ame.delta;
-        // Soft-flush at paragraph boundaries to keep UX live without spamming.
         if (this.buffer.length > 800 && (this.buffer.includes("\n\n") || this.buffer.includes(". "))) {
           await this.flushBuffer();
         }
       }
     } else if (event.type === "turn_end") {
       await this.flushBuffer();
-    } else if (event.type === "tool_execution_start" && this.config.showToolCalls) {
+    } else if (event.type === "tool_execution_start" && this.deps.showToolCalls) {
       this.toolCallNames.set(event.toolCallId, event.toolName);
-      await this.send(`${TOOL_PREFIX} ${event.toolName}`);
-    } else if (event.type === "tool_execution_end" && this.config.showToolCalls) {
+      await this.sendToThread(`${TOOL_PREFIX} ${event.toolName}`);
+    } else if (event.type === "tool_execution_end" && this.deps.showToolCalls) {
       const name = this.toolCallNames.get(event.toolCallId) ?? event.toolName;
       const status = event.isError ? FAIL_PREFIX : OK_PREFIX;
       const preview = typeof event.result === "string"
         ? truncate(event.result.split("\n")[0] ?? "", 200)
         : "";
-      await this.send(`${status} ${name}${preview ? ` — ${preview}` : ""}`);
+      await this.sendToThread(`${status} ${name}${preview ? ` — ${preview}` : ""}`);
     } else if (event.type === "agent_end") {
       await this.flushBuffer();
     }
   }
 
-  async finish(summary: DiscordA2ASinkSummary): Promise<void> {
+  async finish(summary: A2ASinkSummary): Promise<void> {
     await this.flushBuffer();
     if (!this.threadId) return;
 
     const seconds = (summary.durationMs / 1000).toFixed(1);
-    // Success: just the status line — assistant text already streamed via
-    // sendEvent(message_update). Failure: append the error since it doesn't
-    // come through the message_update channel.
+    // Success: just the status line — assistant text already streamed via send(message_update).
+    // Failure: append the error since it doesn't come through the message_update channel.
     const head = summary.success
       ? `${OK_PREFIX} done in ${seconds}s`
       : `${FAIL_PREFIX} failed in ${seconds}s`;
@@ -108,12 +107,12 @@ export class DiscordA2ASink {
       ? ""
       : (summary.error ? `\n${truncate(summary.error, 1500)}` : "");
     try {
-      await this.ctx.sendMessage(this.threadId, head + body);
+      await this.deps.sendMessage(this.threadId, head + body);
     } catch (err) {
       log.warn("Failed to post summary", { sessionId: this.sessionId, error: err instanceof Error ? err.message : String(err) });
     }
     try {
-      this.ctx.unregisterA2AThread(this.threadId);
+      this.deps.unregisterA2AThread(this.threadId);
     } catch { /* ignore */ }
   }
 
@@ -122,15 +121,15 @@ export class DiscordA2ASink {
     const text = this.buffer.trim();
     this.buffer = "";
     if (text.length === 0) return;
-    await this.send(text);
+    await this.sendToThread(text);
   }
 
-  private async send(content: string): Promise<void> {
+  private async sendToThread(content: string): Promise<void> {
     if (!this.threadId) return;
     const chunks = chunkDiscordMessage(content, MAX_DISCORD_LEN);
     for (const c of chunks) {
       try {
-        await this.ctx.sendMessage(this.threadId, c);
+        await this.deps.sendMessage(this.threadId, c);
       } catch (err) {
         log.warn("Failed to send message to sub-run thread", {
           sessionId: this.sessionId,
@@ -140,10 +139,6 @@ export class DiscordA2ASink {
         return;
       }
     }
-  }
-
-  getThreadId(): string | undefined {
-    return this.threadId;
   }
 }
 

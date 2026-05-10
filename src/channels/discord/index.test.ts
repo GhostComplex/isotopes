@@ -175,13 +175,13 @@ describe("createDiscordChannel — lifecycle", () => {
     expect(typeof channel!.react).toBe("function");
   });
 
-  it("wraps inbound dispatch in DiscordA2AStreamContext for spawn_agent threads", async () => {
-    const { getDiscordA2AStreamContext } = await import("./a2a-stream-context.js");
+  it("wraps inbound dispatch in A2A sink factory for spawn_agent threads", async () => {
+    const { getA2ASinkFactory } = await import("../../agent/a2a-sink.js");
     const client = makeFakeClient("bot-A");
-    let observed: ReturnType<typeof getDiscordA2AStreamContext>;
+    let observed: ReturnType<typeof getA2ASinkFactory>;
     const gateway = makeGateway();
     gateway.dispatch.mockImplementation(async () => {
-      observed = getDiscordA2AStreamContext();
+      observed = getA2ASinkFactory();
       return { sessionId: "s", state: "started", responseText: "", errorMessage: null };
     });
     const adapter = createDiscordChannel(
@@ -192,8 +192,11 @@ describe("createDiscordChannel — lifecycle", () => {
     client.emit("messageCreate", fakeMsg({ mentionedIds: ["bot-A"] }));
     await new Promise((r) => setImmediate(r));
     expect(observed).toBeDefined();
-    expect(observed!.parentChannelId).toBe("channel-1");
-    expect(typeof observed!.createThread).toBe("function");
+    expect(typeof observed).toBe("function");
+    const sink = observed!();
+    expect(typeof sink.start).toBe("function");
+    expect(typeof sink.send).toBe("function");
+    expect(typeof sink.finish).toBe("function");
   });
 });
 

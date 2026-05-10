@@ -18,10 +18,8 @@ import { receiveDiscordMessage, resolveAgentId, resolveSessionKey, type GuildRec
 import { createDiscordCallbacks } from "./outbound.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
-import {
-  type DiscordA2AStreamContext,
-  runWithDiscordA2AStream,
-} from "./a2a-stream-context.js";
+import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
+import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
 import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
@@ -367,8 +365,8 @@ async function handleInbound(args: InboundArgs): Promise<void> {
   const stopped = await maybeHandleStop(msg, botId, gateway, agentId, sessionKey);
   if (stopped) return;
 
-  const a2aCtx = buildA2AStreamContext(client, msg.channelId, a2aThreads);
-  await runWithDiscordA2AStream(a2aCtx, () => receiveDiscordMessage(
+  const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
+  await runWithA2A(sinkFactory, () => receiveDiscordMessage(
     msg,
     {
       gateway,
@@ -474,12 +472,12 @@ async function reactToMessage(
   throw new Error(`Message not found: ${messageId}`);
 }
 
-function buildA2AStreamContext(
+function buildSinkFactory(
   client: ClientLike,
   parentChannelId: string,
   a2aThreads: Map<string, string>,
-): DiscordA2AStreamContext {
-  return {
+): A2ASinkFactory {
+  const deps: DiscordA2ASinkDeps = {
     parentChannelId,
     showToolCalls: true,
     sendMessage: async (channelId, content) => {
@@ -501,4 +499,5 @@ function buildA2AStreamContext(
     registerA2AThread: (threadId, sessionId) => { a2aThreads.set(threadId, sessionId); },
     unregisterA2AThread: (threadId) => { a2aThreads.delete(threadId); },
   };
+  return () => new DiscordA2ASink(deps);
 }

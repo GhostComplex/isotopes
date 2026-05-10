@@ -4,24 +4,23 @@ import { Type } from "typebox";
 import type { AgentRuntime } from "../runtime.js";
 import { RunValidationError } from "../types.js";
 import type { RunRequest } from "../types.js";
-import { getDiscordA2AStreamContext } from "../../channels/discord/a2a-stream-context.js";
-import { DiscordA2ASink } from "../../channels/discord/a2a-sink.js";
+import { type A2ASink, getA2ASinkFactory } from "../a2a-sink.js";
 import { getAgentEndMeta } from "../pi/messages.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("tools:spawn");
 
-export type SpawnAgentThreadInfo =
-  | { status: "ok"; threadId: string }
+export type A2ASurfaceInfo =
+  | { status: "ok"; surfaceId: string }
   | { status: "error"; error: string }
   | { status: "silent" };
 
 export interface SpawnAgentDetails {
-  thread: SpawnAgentThreadInfo;
+  surface: A2ASurfaceInfo;
 }
 
-function textResult(text: string, thread: SpawnAgentThreadInfo): AgentToolResult<SpawnAgentDetails> {
-  return { content: [{ type: "text", text }], details: { thread } };
+function textResult(text: string, surface: A2ASurfaceInfo): AgentToolResult<SpawnAgentDetails> {
+  return { content: [{ type: "text", text }], details: { surface } };
 }
 
 export interface SpawnAgentToolOptions {
@@ -85,9 +84,9 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
     execute: async (_toolCallId, rawParams) => {
       const params = rawParams as Params;
       const { to, content, working_directory, threadName } = params;
-      let threadInfo: SpawnAgentThreadInfo = { status: "silent" };
+      let surface: A2ASurfaceInfo = { status: "silent" };
       if (!targets.includes(to)) {
-        return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`, threadInfo);
+        return textResult(`[error] Unknown target: ${to}. Available: ${targets.join(", ")}`, surface);
       }
       const isRunner = runtime.hasRunner(to);
       const cwd = working_directory
@@ -105,21 +104,20 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
       };
       log.info("spawn_agent", { from: parentAgentId, to, cwd, parent: parentSessionId });
 
-      const discordCtx = getDiscordA2AStreamContext();
-      let sink: DiscordA2ASink | undefined;
+      const sinkFactory = getA2ASinkFactory();
+      let sink: A2ASink | undefined;
       const startedAt = Date.now();
       const taskLabel = `${to}: ${content.slice(0, 80)}${content.length > 80 ? "…" : ""}`;
       const label = threadName ?? taskLabel;
 
       let sinkStartPromise: Promise<void> | undefined;
       req.onRunStart = (sessionId: string) => {
-        if (discordCtx) {
-          const showToolCalls = discordCtx.showToolCalls ?? true;
-          sink = new DiscordA2ASink(discordCtx, sessionId, { showToolCalls });
-          sinkStartPromise = sink.start(label).then((res) => {
-            threadInfo = res.threadId
-              ? { status: "ok", threadId: res.threadId }
-              : { status: "error", error: res.error ?? "unknown error" };
+        if (sinkFactory) {
+          sink = sinkFactory();
+          sinkStartPromise = sink.start({ sessionId, label }).then((res) => {
+            surface = res.status === "ok"
+              ? { status: "ok", surfaceId: res.surfaceId }
+              : { status: "error", error: res.error };
           });
         }
       };
@@ -129,7 +127,7 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
       try {
         for await (const event of runtime.run(req)) {
           if (sinkStartPromise) { await sinkStartPromise; sinkStartPromise = undefined; }
-          if (sink) await sink.sendEvent(event);
+          if (sink) await sink.send(event);
           if (event.type === "message_update") {
             const ame = event.assistantMessageEvent;
             if (ame.type === "text_delta") assistantText += ame.delta;
@@ -145,17 +143,17 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
         const msg = err instanceof Error ? err.message : String(err);
         if (err instanceof RunValidationError) {
           if (sink) await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
-          return textResult(`[error] ${msg}`, threadInfo);
+          return textResult(`[error] ${msg}`, surface);
         }
         if (sink) await sink.finish({ success: false, error: msg, durationMs: Date.now() - startedAt });
-        return textResult(`[spawn_agent failed] ${msg}`, threadInfo);
+        return textResult(`[spawn_agent failed] ${msg}`, surface);
       }
 
       if (sinkStartPromise) { await sinkStartPromise; sinkStartPromise = undefined; }
 
       if (cancelReason === "user") {
         if (sink) await sink.finish({ success: false, error: "cancelled by user", durationMs: Date.now() - startedAt });
-        return textResult(`[spawn_agent cancelled by user — do not retry this same request]`, threadInfo);
+        return textResult(`[spawn_agent cancelled by user — do not retry this same request]`, surface);
       }
 
       if (sink) {
@@ -167,12 +165,12 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
         });
       }
       if (errorMessage) {
-        return textResult(`[spawn_agent failed] ${errorMessage}`, threadInfo);
+        return textResult(`[spawn_agent failed] ${errorMessage}`, surface);
       }
       const trimmed = assistantText.trim();
       return textResult(
         trimmed.length > 0 ? trimmed : (isRunner ? `[${to} completed with no output]` : "[no reply]"),
-        threadInfo,
+        surface,
       );
     },
   };
