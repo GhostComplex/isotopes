@@ -175,6 +175,37 @@ describe("createDiscordChannel — lifecycle", () => {
     expect(typeof channel!.react).toBe("function");
   });
 
+  it("per-agent react binding: agent A's react uses bot A only, not bot B", async () => {
+    const fakeMsgWithReact = (id: string) => ({ id, react: vi.fn().mockResolvedValue(undefined) });
+    const msgA = fakeMsgWithReact("msg-1");
+    const msgB = fakeMsgWithReact("msg-1");
+    const clientA = makeFakeClient("bot-A");
+    const clientB = makeFakeClient("bot-B");
+    // Both clients have the message in cache; if react were broadcast it would fire on both.
+    clientA.channels.cache.set("ch-1", { messages: { fetch: vi.fn().mockResolvedValue(msgA) } } as never);
+    clientB.channels.cache.set("ch-1", { messages: { fetch: vi.fn().mockResolvedValue(msgB) } } as never);
+    const factories = [clientA, clientB];
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          a: { token: "ta", defaultAgentId: "agentA", groupAccess: { policy: "open" } },
+          b: { token: "tb", defaultAgentId: "agentB", groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => factories.shift()! },
+    );
+    const ctxA = new LazyChannelContext();
+    const ctxB = new LazyChannelContext();
+    await adapter.start({
+      gateway: makeGateway(),
+      logger: silentLogger(),
+      channelContexts: new Map([["agentA", ctxA], ["agentB", ctxB]]),
+    });
+    await ctxA.getChannelActions()!.react!("msg-1", "👀");
+    expect(msgA.react).toHaveBeenCalledWith("👀");
+    expect(msgB.react).not.toHaveBeenCalled();
+  });
+
   it("wraps inbound dispatch in A2A sink factory for spawn_agent threads", async () => {
     const { getA2ASinkFactory } = await import("../../agent/a2a-sink.js");
     const client = makeFakeClient("bot-A");

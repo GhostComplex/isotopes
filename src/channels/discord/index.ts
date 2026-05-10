@@ -14,7 +14,7 @@ import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
 import { receiveDiscordMessage, resolveAgentId, resolveSessionKey, type GuildReceiveConfig } from "./receive.js";
-import { createDiscordCallbacks } from "./outbound.js";
+import { createDiscordCallbacks, reactToMessage } from "./outbound.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
@@ -201,13 +201,18 @@ export function createDiscordChannel(
         ),
       );
 
-      // Bind react capability into per-agent channel contexts so the
-      // `message_react` agent tool can call back into Discord.
+      // Per-agent: bind each context to ONLY the bots that serve that agent
+      // (defaultAgentId or agentBindings match). Honors agent↔bot identity for
+      // tools like message_react that must act as the agent's bot.
       if (deps.channelContexts && clients.size > 0) {
-        const actions: ChannelActions = {
-          react: (id, emoji, channelId) => reactToMessage(clients, id, emoji, channelId),
-        };
-        for (const ctx of deps.channelContexts.values()) ctx.setChannelActions(actions);
+        for (const [agentId, ctx] of deps.channelContexts.entries()) {
+          const agentClients = clientsForAgent(agentId, accounts, clients);
+          if (agentClients.length === 0) continue;
+          const actions: ChannelActions = {
+            react: (id, emoji, channelId) => reactToMessage(agentClients, id, emoji, channelId),
+          };
+          ctx.setChannelActions(actions);
+        }
       }
     },
 
@@ -435,40 +440,22 @@ function autoBindThread(
   threadBindings.bind(thread.id, { parentChannelId: thread.parentId, agentId });
 }
 
-/** Tries channelId fast-path then falls back to scanning all bots' caches. */
-async function reactToMessage(
+/** Find every account whose defaultAgentId or agentBindings serves this agent. */
+function clientsForAgent(
+  agentId: string,
+  accounts: Record<string, DiscordAccountConfig>,
   clients: Map<string, ClientLike>,
-  messageId: string,
-  emoji: string,
-  channelId?: string,
-): Promise<void> {
-  for (const client of clients.values()) {
-    if (channelId) {
-      try {
-        const channel = (await client.channels.fetch(channelId)) as
-          | { messages?: { fetch: (id: string) => Promise<{ react: (e: string) => Promise<unknown> }> } }
-          | null;
-        const target = await channel?.messages?.fetch(messageId);
-        if (target) {
-          await target.react(emoji);
-          return;
-        }
-      } catch { /* try slow path */ }
-    }
-
-    for (const ch of client.channels.cache.values()) {
-      const messages = (ch as { messages?: { fetch: (id: string) => Promise<{ react: (e: string) => Promise<unknown> }> } }).messages;
-      if (!messages) continue;
-      try {
-        const target = await messages.fetch(messageId);
-        if (target) {
-          await target.react(emoji);
-          return;
-        }
-      } catch { /* not in this channel */ }
+): ClientLike[] {
+  const matched: ClientLike[] = [];
+  for (const [accountId, account] of Object.entries(accounts)) {
+    const bindingMatch = account.agentBindings
+      && Object.values(account.agentBindings).includes(agentId);
+    if (account.defaultAgentId === agentId || bindingMatch) {
+      const client = clients.get(accountId);
+      if (client) matched.push(client);
     }
   }
-  throw new Error(`Message not found: ${messageId}`);
+  return matched;
 }
 
 function buildSinkFactory(

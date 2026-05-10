@@ -1,8 +1,7 @@
 // Tests for the Discord outbound streaming pipeline.
 import { describe, it, expect, vi } from "vitest";
 import type { Message as DiscordMessage, SendableChannels } from "discord.js";
-import { SegmentedStreamBuffer, createDiscordCallbacks } from "./outbound.js";
-import { chunkDiscordMessage } from "./a2a-sink.js";
+import { SegmentedStreamBuffer, createDiscordCallbacks, chunkDiscordMessage } from "./outbound.js";
 
 type SendMock = ReturnType<typeof vi.fn>;
 type ReplyMock = ReturnType<typeof vi.fn>;
