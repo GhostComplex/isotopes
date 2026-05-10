@@ -91,7 +91,7 @@ export function resolveSessionKey(msg: DiscordMessage, botId: string): string {
   return buildSessionKey("discord", botId, "channel", msg.channelId);
 }
 
-export async function receiveDiscordMessage(
+export async function handleInbound(
   msg: DiscordMessage,
   deps: InboundDeps,
   ctx: InboundContext,

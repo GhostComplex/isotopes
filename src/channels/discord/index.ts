@@ -13,7 +13,7 @@ import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
-import { receiveDiscordMessage, resolveAgentId, resolveSessionKey, type GuildInboundConfig } from "./inbound.js";
+import { handleInbound, resolveAgentId, resolveSessionKey, type GuildInboundConfig } from "./inbound.js";
 import { createDiscordCallbacks, reactToMessage } from "./outbound.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
@@ -274,7 +274,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
 
   client.on("messageCreate", (...rawArgs: unknown[]) => {
     const msg = rawArgs[0] as DiscordMessage;
-    void handleInbound({
+    void dispatchInbound({
       msg,
       account,
       client,
@@ -311,7 +311,7 @@ interface InboundArgs {
   a2aThreads: Map<string, string>;
 }
 
-async function handleInbound(args: InboundArgs): Promise<void> {
+async function dispatchInbound(args: InboundArgs): Promise<void> {
   const { msg, account, client, gateway, dedupe, guildsForReceive, a2aThreads } = args;
   const botId = client.user?.id;
   if (!botId) return;
@@ -324,7 +324,7 @@ async function handleInbound(args: InboundArgs): Promise<void> {
   if (stopped) return;
 
   const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
-  await runWithA2A(sinkFactory, () => receiveDiscordMessage(
+  await runWithA2A(sinkFactory, () => handleInbound(
     msg,
     {
       gateway,

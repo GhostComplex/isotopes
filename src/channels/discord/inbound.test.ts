@@ -5,7 +5,7 @@ import type { Message as DiscordMessage } from "discord.js";
 import { DedupeCache } from "./dedupe.js";
 import {
   detectMentionKind,
-  receiveDiscordMessage,
+  handleInbound,
   resolveAgentId,
   resolveSessionKey,
   stripMentions,
@@ -127,7 +127,7 @@ describe("detectMentionKind", () => {
   });
 });
 
-describe("receiveDiscordMessage", () => {
+describe("handleInbound", () => {
   let gateway: ReturnType<typeof makeGateway>;
   let dedupe: DedupeCache;
   let buildCallbacks: ReturnType<typeof vi.fn>;
@@ -144,26 +144,26 @@ describe("receiveDiscordMessage", () => {
 
   it("drops duplicate messages on second receive", async () => {
     const msg = fakeMsg({ mentionedIds: [BOT_ID] });
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });
 
   it("drops self-authored messages", async () => {
     const msg = fakeMsg({ authorId: BOT_ID });
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch).not.toHaveBeenCalled();
   });
 
   it("drops other bots by default", async () => {
     const msg = fakeMsg({ authorBot: true, mentionedIds: [BOT_ID] });
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch).not.toHaveBeenCalled();
   });
 
   it("respects allowBots=true", async () => {
     const msg = fakeMsg({ authorBot: true, mentionedIds: [BOT_ID] });
-    await receiveDiscordMessage(
+    await handleInbound(
       msg,
       { gateway, dedupe, allowBots: true, defaultAgentId: "main" },
       ctx(),
@@ -173,7 +173,7 @@ describe("receiveDiscordMessage", () => {
 
   it("dispatches on precise @mention", async () => {
     const msg = fakeMsg({ mentionedIds: [BOT_ID], content: `<@${BOT_ID}> hi there` });
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
     const [message, callbacks] = gateway.dispatch.mock.calls[0];
     expect(message).toMatchObject({
@@ -190,32 +190,32 @@ describe("receiveDiscordMessage", () => {
 
   it("dispatches on DM regardless of mention", async () => {
     const msg = fakeMsg({ guildId: null });
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
     expect(gateway.dispatch.mock.calls[0][0].sessionKey).toBe(`discord:${BOT_ID}:dm:user-1`);
   });
 
   it("dispatches on reply-chain (user replies to bot)", async () => {
     const msg = fakeMsg({ referencedAuthorId: BOT_ID });
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });
 
   it("dispatches on quoted/forwarded snapshot mentioning bot", async () => {
     const msg = fakeMsg({ snapshots: [{ mentionedIds: [BOT_ID] }] });
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });
 
   it("drops guild messages with no mention when requireMention=true (default)", async () => {
     const msg = fakeMsg();
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch).not.toHaveBeenCalled();
   });
 
   it("dispatches guild messages with no mention when requireMention=false", async () => {
     const msg = fakeMsg({ guildId: "g-1" });
-    await receiveDiscordMessage(
+    await handleInbound(
       msg,
       {
         gateway,
@@ -230,7 +230,7 @@ describe("receiveDiscordMessage", () => {
 
   it("routes via agentBindings when a bound user is mentioned", async () => {
     const msg = fakeMsg({ mentionedIds: ["222222"], guildId: "g-1" });
-    await receiveDiscordMessage(
+    await handleInbound(
       msg,
       {
         gateway,
@@ -246,22 +246,22 @@ describe("receiveDiscordMessage", () => {
 
   it("uses thread session key when message is in a thread", async () => {
     const msg = fakeMsg({ threadId: "thr-42", mentionedIds: [BOT_ID] });
-    await receiveDiscordMessage(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
+    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch.mock.calls[0][0].sessionKey).toBe(`discord:${BOT_ID}:thread:thr-42`);
   });
 
   it("can disable dedupe via dedupeEnabled=false", async () => {
     const msg = fakeMsg({ mentionedIds: [BOT_ID] });
     const opts = { gateway, dedupe, defaultAgentId: "main", dedupeEnabled: false };
-    await receiveDiscordMessage(msg, opts, ctx());
-    await receiveDiscordMessage(msg, opts, ctx());
+    await handleInbound(msg, opts, ctx());
+    await handleInbound(msg, opts, ctx());
     expect(gateway.dispatch).toHaveBeenCalledTimes(2);
   });
 
   it("applies transformContent hook to dispatched content", async () => {
     const msg = fakeMsg({ mentionedIds: [BOT_ID], content: `<@${BOT_ID}> hi there` });
     const transform = vi.fn((content: string) => `<meta/>\n${content}`);
-    await receiveDiscordMessage(
+    await handleInbound(
       msg,
       { gateway, dedupe, defaultAgentId: "main", transformContent: transform },
       ctx(),
@@ -277,7 +277,7 @@ describe("receiveDiscordMessage", () => {
     const flushRemaining = vi.fn().mockResolvedValue(undefined);
     const onTextDelta = vi.fn();
     const callbacks = { onTextDelta, flushRemaining };
-    await receiveDiscordMessage(
+    await handleInbound(
       msg,
       { gateway, dedupe, defaultAgentId: "main" },
       { botId: "bot", buildCallbacks: () => callbacks },
@@ -292,7 +292,7 @@ describe("receiveDiscordMessage", () => {
     const msg = fakeMsg({ content: "<@bot> hi", mentionedIds: ["bot"] });
     const callbacks = { onTextDelta: vi.fn() };
     await expect(
-      receiveDiscordMessage(
+      handleInbound(
         msg,
         { gateway, dedupe, defaultAgentId: "main" },
         { botId: "bot", buildCallbacks: () => callbacks },
@@ -308,7 +308,7 @@ describe("receiveDiscordMessage", () => {
     const flushRemaining = vi.fn().mockResolvedValue(undefined);
     const callbacks = { onTextDelta: vi.fn(), flushRemaining };
     await expect(
-      receiveDiscordMessage(
+      handleInbound(
         msg,
         { gateway, dedupe, defaultAgentId: "main" },
         { botId: "bot", buildCallbacks: () => callbacks },

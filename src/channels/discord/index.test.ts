@@ -329,7 +329,7 @@ describe("createDiscordChannel — inbound wiring", () => {
 
     const msg = fakeMsg({ mentionedIds: ["bot-A"] });
     client.emit("messageCreate", msg);
-    // Allow async chain (handleInbound → receive → dispatch → flushRemaining) to settle
+    // Allow async chain (dispatchInbound → receive → dispatch → flushRemaining) to settle
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
 
