@@ -63,3 +63,8 @@ export interface DiscordChannelsConfig {
   enabled?: boolean;
   accounts?: Record<string, DiscordAccountConfig>;
 }
+
+/** Per-guild config consumed by the inbound pipeline. */
+export interface GuildInboundConfig {
+  requireMention?: boolean;
+}

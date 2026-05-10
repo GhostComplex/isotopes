@@ -4,12 +4,9 @@ import { DedupeCache } from "./dedupe.js";
 import { buildSessionKey } from "./session-key.js";
 import { REPLY_DIRECTIVE_PROMPT } from "./reply-directive.js";
 import { loggers } from "../../logging/logger.js";
+import type { GuildInboundConfig } from "./types.js";
 
 const log = loggers.discord;
-
-export interface GuildInboundConfig {
-  requireMention?: boolean;
-}
 
 export interface InboundDeps {
   gateway: Gateway;

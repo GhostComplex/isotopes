@@ -13,7 +13,7 @@ import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
-import { handleInbound, resolveAgentId, resolveSessionKey, type GuildInboundConfig } from "./inbound.js";
+import { handleInbound, resolveAgentId, resolveSessionKey } from "./inbound.js";
 import { createDiscordCallbacks, reactToMessage } from "./outbound.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
@@ -23,6 +23,7 @@ import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
   GuildConfig,
+  GuildInboundConfig,
 } from "./types.js";
 
 const log = loggers.discord;
