@@ -9,14 +9,9 @@ const log = loggers.discord;
 const SENTENCE_BOUNDARIES = [". ", "! ", "? ", "\n\n"];
 const DEFAULT_MAX_BUFFER_SIZE = 500;
 
-/**
- * Buffers streaming text and flushes at sentence boundaries via NEW messages
- * (not message.edit). Edit-in-place would let other bots in the channel read
- * truncated mid-edit content — a real footgun in multi-agent setups.
- *
- * append/flushRemaining serialize via a tail promise so concurrent text
- * deltas can't interleave into out-of-order Discord posts.
- */
+// NEW messages (not edit) — edit-in-place would let other bots read truncated
+// mid-edit content. Tail-promise serializes append/flushRemaining so concurrent
+// deltas can't reorder Discord posts.
 export class SegmentedStreamBuffer {
   private buffer = "";
   private readonly maxBufferSize: number;
