@@ -2,8 +2,9 @@ const TTL_MS = 5 * 60 * 1000;
 const MAX_SIZE = 5000;
 
 /**
- * Lazy eviction (no timers; cleanup on insertion). Used to drop replays from
- * channel gateways (e.g. Discord reconnect resends).
+ * Lazy eviction (no timers; cleanup on insertion). Drops Discord WS RESUME
+ * replays — when the gateway reconnects after a network blip, the same
+ * MESSAGE_CREATE event can be redelivered.
  * Discord key format: `${botId}:${channelId}:${messageId}`.
  */
 export class DedupeCache {
@@ -26,12 +27,6 @@ export class DedupeCache {
 
   get size(): number {
     return this.cache.size;
-  }
-
-  /** Like isDuplicate but doesn't record — gate expensive work before the real check. */
-  peek(key: string): boolean {
-    const existing = this.cache.get(key);
-    return existing !== undefined && Date.now() - existing < TTL_MS;
   }
 
   clear(): void {

@@ -287,52 +287,6 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
     });
   });
 
-  // discord.js v14 doesn't reliably emit messageCreate for DMs even with
-  // Partials.Channel. Intercept raw gateway packets and manually fetch the
-  // Message object for DM MESSAGE_CREATE events.
-  client.on("raw", (...rawArgs: unknown[]) => {
-    const packet = rawArgs[0] as { t?: string; d?: unknown } | undefined;
-    if (!packet || packet.t !== "MESSAGE_CREATE") return;
-    const data = (packet.d ?? {}) as Record<string, unknown>;
-    if (data.guild_id) return; // only DMs
-
-    const channelId = data.channel_id as string | undefined;
-    const messageId = data.id as string | undefined;
-    if (!channelId || !messageId) return;
-
-    const botId = client.user?.id;
-    if (!botId) return;
-    // Cheap pre-gate: if messageCreate already processed this DM, skip the
-    // two HTTP fetches below. Real dedupe happens inside receive.ts.
-    if (dedupe.peek(`${botId}:${channelId}:${messageId}`)) return;
-
-    void (async () => {
-      try {
-        const channel = (await client.channels.fetch(channelId)) as
-          | { isTextBased?: () => boolean; messages?: { fetch: (id: string) => Promise<DiscordMessage> } }
-          | null
-          | undefined;
-        if (!channel || (channel.isTextBased && !channel.isTextBased())) return;
-        const fetched = await channel.messages?.fetch(messageId);
-        if (!fetched) return;
-        await handleInbound({
-          msg: fetched,
-          account,
-          client,
-          gateway,
-          dedupe,
-          guildsForReceive,
-          a2aThreads,
-        });
-      } catch (err) {
-        logger.warn(
-          `discord: raw DM fetch failed for channel=${channelId} message=${messageId}: ` +
-            `${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    })();
-  });
-
   if (account.threadBindings?.enabled) {
     client.on("threadCreate", (...rawArgs: unknown[]) => {
       const thread = rawArgs[0] as ThreadChannel;
