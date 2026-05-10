@@ -7,7 +7,7 @@ import type { GuildInboundConfig } from "./types.js";
 
 const log = loggers.discord;
 
-export interface InboundDeps {
+interface InboundDeps {
   gateway: Gateway;
   /** botUserId → agentId. Falls back to defaultAgentId when no binding matches. */
   agentBindings?: Record<string, string>;
@@ -23,16 +23,16 @@ export interface InboundDeps {
 }
 
 /** DispatchCallbacks + a post-dispatch cleanup hook (e.g. drain a buffer). */
-export interface InboundCallbacks extends DispatchCallbacks {
+interface InboundCallbacks extends DispatchCallbacks {
   flushRemaining?(): Promise<void>;
 }
 
-export interface InboundContext {
+interface InboundContext {
   botId: string;
   buildCallbacks: (msg: DiscordMessage) => InboundCallbacks;
 }
 
-export type Engagement = "mention" | "dm" | "reply_chain" | "quoted";
+type Engagement = "mention" | "dm" | "reply_chain" | "quoted";
 
 /**
  * Returns how this message engages the bot, or null if it doesn't.
@@ -62,7 +62,6 @@ export function detectEngagement(msg: DiscordMessage, botId: string): Engagement
 
   return null;
 }
-
 
 export function stripMentions(text: string): string {
   return text.replace(/<@!?\d+>/g, "").trim();
