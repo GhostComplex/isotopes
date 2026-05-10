@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Message as DiscordMessage } from "discord.js";
 import { DedupeCache } from "./dedupe.js";
 import {
-  detectMentionKind,
+  detectEngagement,
   handleInbound,
   resolveAgentId,
   resolveSessionKey,
@@ -104,26 +104,26 @@ describe("resolveSessionKey", () => {
   });
 });
 
-describe("detectMentionKind", () => {
+describe("detectEngagement", () => {
   it("returns precise on explicit mention", () => {
-    expect(detectMentionKind(fakeMsg({ mentionedIds: [BOT_ID] }), BOT_ID)).toBe("precise");
+    expect(detectEngagement(fakeMsg({ mentionedIds: [BOT_ID] }), BOT_ID)).toBe("precise");
   });
   it("returns dm in a DM", () => {
-    expect(detectMentionKind(fakeMsg({ guildId: null }), BOT_ID)).toBe("dm");
+    expect(detectEngagement(fakeMsg({ guildId: null }), BOT_ID)).toBe("dm");
   });
   it("returns reply_chain when replying to bot's earlier message", () => {
-    expect(detectMentionKind(fakeMsg({ referencedAuthorId: BOT_ID }), BOT_ID)).toBe("reply_chain");
+    expect(detectEngagement(fakeMsg({ referencedAuthorId: BOT_ID }), BOT_ID)).toBe("reply_chain");
   });
   it("returns quoted when forwarded snapshot mentions the bot", () => {
     const msg = fakeMsg({ snapshots: [{ mentionedIds: [BOT_ID] }] });
-    expect(detectMentionKind(msg, BOT_ID)).toBe("quoted");
+    expect(detectEngagement(msg, BOT_ID)).toBe("quoted");
   });
   it("returns quoted when forwarded snapshot content has <@bot>", () => {
     const msg = fakeMsg({ snapshots: [{ content: `hey <@${BOT_ID}> look` }] });
-    expect(detectMentionKind(msg, BOT_ID)).toBe("quoted");
+    expect(detectEngagement(msg, BOT_ID)).toBe("quoted");
   });
   it("returns null when not addressed", () => {
-    expect(detectMentionKind(fakeMsg(), BOT_ID)).toBeNull();
+    expect(detectEngagement(fakeMsg(), BOT_ID)).toBeNull();
   });
 });
 

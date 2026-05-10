@@ -23,7 +23,7 @@ export interface InboundDeps {
   /** Default false. */
   allowBots?: boolean;
   /** Hook to prepend inbound metadata (sender, channel) before dispatch. */
-  transformContent?: (content: string, msg: DiscordMessage, mentionKind: MentionKind) => string;
+  transformContent?: (content: string, msg: DiscordMessage, engagement: Engagement) => string;
 }
 
 /** DispatchCallbacks + a post-dispatch cleanup hook (e.g. drain a buffer). */
@@ -36,13 +36,13 @@ export interface InboundContext {
   buildCallbacks: (msg: DiscordMessage) => InboundCallbacks;
 }
 
-export type MentionKind = "precise" | "dm" | "reply_chain" | "quoted";
+export type Engagement = "precise" | "dm" | "reply_chain" | "quoted";
 
 /**
- * Returns the implicit mention kind addressing this bot, or null.
+ * Returns how this message engages the bot, or null if it doesn't.
  * Kinds: precise (`<@botId>`), dm, reply_chain, quoted (forwarded snapshot).
  */
-export function detectMentionKind(msg: DiscordMessage, botId: string): MentionKind | null {
+export function detectEngagement(msg: DiscordMessage, botId: string): Engagement | null {
   if (msg.mentions?.has?.(botId)) return "precise";
   if (!msg.guild) return "dm";
 
@@ -110,13 +110,13 @@ export async function handleInbound(
     }
   }
 
-  const kind = detectMentionKind(msg, ctx.botId);
+  const engagement = detectEngagement(msg, ctx.botId);
   const isDM = !msg.guild;
-  const isMentioned = kind !== null && kind !== "dm";
+  const isEngaged = engagement !== null && engagement !== "dm";
   const requireMention = msg.guild ? deps.guilds?.[msg.guild.id]?.requireMention ?? true : false;
-  // Respond if: DM, OR mention not required, OR explicitly mentioned.
-  if (!isDM && requireMention && !isMentioned) {
-    log.debug(`discord receive: not addressed (id=${msg.id}, kind=${kind})`);
+  // Respond if: DM, OR mention not required, OR explicitly engaged.
+  if (!isDM && requireMention && !isEngaged) {
+    log.debug(`discord receive: not engaged (id=${msg.id}, engagement=${engagement})`);
     return;
   }
 
@@ -124,7 +124,7 @@ export async function handleInbound(
   const sessionKey = resolveSessionKey(msg, ctx.botId);
   const cleanedText = stripMentions(msg.content);
   const content = deps.transformContent
-    ? deps.transformContent(cleanedText, msg, kind!)
+    ? deps.transformContent(cleanedText, msg, engagement!)
     : cleanedText;
   const message: Message = {
     agentId,
