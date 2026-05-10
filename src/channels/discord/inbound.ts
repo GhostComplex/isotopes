@@ -1,7 +1,6 @@
 import type { Message as DiscordMessage } from "discord.js";
 import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
 import { DedupeCache } from "./dedupe.js";
-import { buildSessionKey } from "./session-key.js";
 import { REPLY_DIRECTIVE_PROMPT } from "./reply-directive.js";
 import { loggers } from "../../logging/logger.js";
 import type { GuildInboundConfig } from "./types.js";
@@ -83,9 +82,9 @@ export function resolveAgentId(
 }
 
 export function resolveSessionKey(msg: DiscordMessage, botId: string): string {
-  if (msg.thread) return buildSessionKey("discord", botId, "thread", msg.thread.id);
-  if (!msg.guild) return buildSessionKey("discord", botId, "dm", msg.author.id);
-  return buildSessionKey("discord", botId, "channel", msg.channelId);
+  if (msg.thread) return `discord:${botId}:thread:${msg.thread.id}`;
+  if (!msg.guild) return `discord:${botId}:dm:${msg.author.id}`;
+  return `discord:${botId}:channel:${msg.channelId}`;
 }
 
 export async function handleInbound(
