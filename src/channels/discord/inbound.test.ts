@@ -106,7 +106,7 @@ describe("resolveSessionKey", () => {
 
 describe("detectEngagement", () => {
   it("returns precise on explicit mention", () => {
-    expect(detectEngagement(fakeMsg({ mentionedIds: [BOT_ID] }), BOT_ID)).toBe("precise");
+    expect(detectEngagement(fakeMsg({ mentionedIds: [BOT_ID] }), BOT_ID)).toBe("mention");
   });
   it("returns dm in a DM", () => {
     expect(detectEngagement(fakeMsg({ guildId: null }), BOT_ID)).toBe("dm");
@@ -266,7 +266,7 @@ describe("handleInbound", () => {
       { gateway, dedupe, defaultAgentId: "main", transformContent: transform },
       ctx(),
     );
-    expect(transform).toHaveBeenCalledWith("hi there", msg, "precise");
+    expect(transform).toHaveBeenCalledWith("hi there", msg, "mention");
     expect(gateway.dispatch.mock.calls[0][0].content).toBe("<meta/>\nhi there");
   });
 
