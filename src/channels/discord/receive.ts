@@ -1,7 +1,6 @@
 import type { Message as DiscordMessage } from "discord.js";
 import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
 import { DedupeCache } from "./dedupe.js";
-import { shouldRespondToMessage } from "./mention.js";
 import { buildSessionKey } from "./session-key.js";
 import { REPLY_DIRECTIVE_PROMPT } from "./reply-directive.js";
 import { loggers } from "../../logging/logger.js";
@@ -113,13 +112,10 @@ export async function receiveDiscordMessage(
 
   const kind = detectMentionKind(msg, ctx.botId);
   const isDM = !msg.guild;
+  const isMentioned = kind !== null && kind !== "dm";
   const requireMention = msg.guild ? deps.guilds?.[msg.guild.id]?.requireMention ?? true : false;
-  const addressed = shouldRespondToMessage({
-    isMentioned: kind !== null && kind !== "dm",
-    isDM,
-    requireMention,
-  });
-  if (!addressed) {
+  // Respond if: DM, OR mention not required, OR explicitly mentioned.
+  if (!isDM && requireMention && !isMentioned) {
     log.debug(`discord receive: not addressed (id=${msg.id}, kind=${kind})`);
     return;
   }
