@@ -387,7 +387,7 @@ async function handleInbound(args: InboundArgs): Promise<void> {
       buildCallbacks: (triggerMsg) =>
         createDiscordCallbacks({
           channel: triggerMsg.channel as SendableChannels,
-          triggerMessage: triggerMsg,
+          triggerMessageId: triggerMsg.id,
         }),
     },
   ));

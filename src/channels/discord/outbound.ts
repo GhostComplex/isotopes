@@ -1,4 +1,4 @@
-import type { Message as DiscordMessage, SendableChannels } from "discord.js";
+import type { SendableChannels } from "discord.js";
 import type { DispatchCallbacks } from "../../gateway/index.js";
 import { parseReplyDirective } from "./reply-directive.js";
 import { chunkDiscordMessage } from "./a2a-sink.js";
@@ -79,14 +79,13 @@ export interface OutboundCallbacks extends DispatchCallbacks {
 
 export interface OutboundContext {
   channel: SendableChannels;
-  /** Triggering message — used to satisfy [[reply_to_current]]. */
-  triggerMessage: DiscordMessage;
+  /** Trigger message id — used to resolve [[reply_to_current]]. */
+  triggerMessageId: string;
   showToolCalls?: boolean;
 }
 
 export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks {
-  const { channel, triggerMessage, showToolCalls = false } = ctx;
-  const triggerMessageId = triggerMessage.id;
+  const { channel, triggerMessageId, showToolCalls = false } = ctx;
 
   // Discord's typing indicator lasts ~10s; refresh every 7s while active.
   let typingTimer: ReturnType<typeof setInterval> | null = null;

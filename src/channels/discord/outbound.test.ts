@@ -86,7 +86,7 @@ describe("chunkDiscordMessage", () => {
 describe("createDiscordCallbacks", () => {
   it("plain text flushed via flushRemaining calls channel.send", async () => {
     const { channel, triggerMessage, send, reply } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
     cb.onTextDelta!("hello world");
     await cb.flushRemaining();
     expect(send).toHaveBeenCalledTimes(1);
@@ -96,7 +96,7 @@ describe("createDiscordCallbacks", () => {
 
   it("[[reply_to_current]] routes to channel.send with reply ref to trigger", async () => {
     const { channel, triggerMessage, send, reply } = makeMocks("trigger-123");
-    const cb = createDiscordCallbacks({ channel, triggerMessage });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
     cb.onTextDelta!("[[reply_to_current]]\nhi there");
     await cb.flushRemaining();
     expect(send).toHaveBeenCalledTimes(1);
@@ -109,7 +109,7 @@ describe("createDiscordCallbacks", () => {
 
   it("[[reply_to: <id>]] uses channel.send with reply messageReference", async () => {
     const { channel, triggerMessage, send, reply } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
     cb.onTextDelta!("[[reply_to: 9876]]\nhi");
     await cb.flushRemaining();
     expect(send).toHaveBeenCalledTimes(1);
@@ -122,7 +122,7 @@ describe("createDiscordCallbacks", () => {
 
   it("chunks long messages over 2000 chars", async () => {
     const { channel, triggerMessage, send } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
     const huge = "x".repeat(2500);
     cb.onTextDelta!(huge);
     await cb.flushRemaining();
@@ -133,7 +133,7 @@ describe("createDiscordCallbacks", () => {
 
   it("reply directive applies only to first chunk when chunked", async () => {
     const { channel, triggerMessage, send, reply } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
     cb.onTextDelta!("[[reply_to_current]]\n" + "x".repeat(2500));
     await cb.flushRemaining();
     expect(reply).not.toHaveBeenCalled();
@@ -145,7 +145,7 @@ describe("createDiscordCallbacks", () => {
 
   it("ignores zero-length deltas", async () => {
     const { channel, triggerMessage, send } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
     cb.onTextDelta!("");
     await cb.flushRemaining();
     expect(send).not.toHaveBeenCalled();
@@ -153,7 +153,7 @@ describe("createDiscordCallbacks", () => {
 
   it("directive-only chunk produces no send", async () => {
     const { channel, triggerMessage, send, reply } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
     cb.onTextDelta!("[[reply_to_current]]\n");
     await cb.flushRemaining();
     expect(send).not.toHaveBeenCalled();
@@ -162,14 +162,14 @@ describe("createDiscordCallbacks", () => {
 
   it("does not register tool callbacks when showToolCalls is false (default)", () => {
     const { channel, triggerMessage } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
     expect(cb.onToolStart).toBeUndefined();
     expect(cb.onToolEnd).toBeUndefined();
   });
 
   it("onToolStart posts a status line when showToolCalls=true", async () => {
     const { channel, triggerMessage, send } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage, showToolCalls: true });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id, showToolCalls: true });
     expect(cb.onToolStart).toBeDefined();
     cb.onToolStart!({ id: "t1", name: "web_fetch", args: {} });
     // Allow microtasks queued by `void channel.send(...)` to settle.
@@ -180,7 +180,7 @@ describe("createDiscordCallbacks", () => {
 
   it("onToolEnd posts a failure line on error when showToolCalls=true", async () => {
     const { channel, triggerMessage, send } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage, showToolCalls: true });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id, showToolCalls: true });
     expect(cb.onToolEnd).toBeDefined();
     cb.onToolEnd!({ id: "t1", name: "web_fetch", result: null, isError: true });
     await Promise.resolve();
@@ -190,7 +190,7 @@ describe("createDiscordCallbacks", () => {
 
   it("onToolEnd is silent on success", async () => {
     const { channel, triggerMessage, send } = makeMocks();
-    const cb = createDiscordCallbacks({ channel, triggerMessage, showToolCalls: true });
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id, showToolCalls: true });
     cb.onToolEnd!({ id: "t1", name: "web_fetch", result: "ok", isError: false });
     await Promise.resolve();
     await Promise.resolve();
@@ -201,7 +201,7 @@ describe("createDiscordCallbacks", () => {
     vi.useFakeTimers();
     try {
       const { channel, triggerMessage, sendTyping } = makeMocks();
-      const cb = createDiscordCallbacks({ channel, triggerMessage });
+      const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
       expect(sendTyping).toHaveBeenCalledTimes(1);
       vi.advanceTimersByTime(7000);
       expect(sendTyping).toHaveBeenCalledTimes(2);
