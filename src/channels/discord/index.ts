@@ -13,7 +13,7 @@ import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
-import { receiveDiscordMessage, resolveAgentId, resolveSessionKey, type GuildReceiveConfig } from "./receive.js";
+import { receiveDiscordMessage, resolveAgentId, resolveSessionKey, type GuildInboundConfig } from "./inbound.js";
 import { createDiscordCallbacks, reactToMessage } from "./outbound.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
@@ -307,7 +307,7 @@ interface InboundArgs {
   client: ClientLike;
   gateway: Gateway;
   dedupe: DedupeCache;
-  guildsForReceive: Record<string, GuildReceiveConfig> | undefined;
+  guildsForReceive: Record<string, GuildInboundConfig> | undefined;
   a2aThreads: Map<string, string>;
 }
 
@@ -360,9 +360,9 @@ function resolveToken(account: DiscordAccountConfig): string | null {
 
 function mapGuildsForReceive(
   guilds: Record<string, GuildConfig> | undefined,
-): Record<string, GuildReceiveConfig> | undefined {
+): Record<string, GuildInboundConfig> | undefined {
   if (!guilds) return undefined;
-  const out: Record<string, GuildReceiveConfig> = {};
+  const out: Record<string, GuildInboundConfig> = {};
   for (const [id, g] of Object.entries(guilds)) {
     if (g.requireMention !== undefined) out[id] = { requireMention: g.requireMention };
   }

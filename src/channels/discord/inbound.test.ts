@@ -9,7 +9,7 @@ import {
   resolveAgentId,
   resolveSessionKey,
   stripMentions,
-} from "./receive.js";
+} from "./inbound.js";
 import type { Gateway, DispatchCallbacks } from "../../gateway/index.js";
 
 const BOT_ID = "111111";

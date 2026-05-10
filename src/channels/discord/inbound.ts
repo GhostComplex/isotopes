@@ -7,17 +7,17 @@ import { loggers } from "../../logging/logger.js";
 
 const log = loggers.discord;
 
-export interface GuildReceiveConfig {
+export interface GuildInboundConfig {
   requireMention?: boolean;
 }
 
-export interface ReceiveDeps {
+export interface InboundDeps {
   gateway: Gateway;
   /** botUserId → agentId. Falls back to defaultAgentId when no binding matches. */
   agentBindings?: Record<string, string>;
   defaultAgentId?: string;
   dedupe: DedupeCache;
-  guilds?: Record<string, GuildReceiveConfig>;
+  guilds?: Record<string, GuildInboundConfig>;
   /** Default true. */
   dedupeEnabled?: boolean;
   /** Default false. */
@@ -27,13 +27,13 @@ export interface ReceiveDeps {
 }
 
 /** DispatchCallbacks + a post-dispatch cleanup hook (e.g. drain a buffer). */
-export interface ReceiveCallbacks extends DispatchCallbacks {
+export interface InboundCallbacks extends DispatchCallbacks {
   flushRemaining?(): Promise<void>;
 }
 
-export interface ReceiveContext {
+export interface InboundContext {
   botId: string;
-  buildCallbacks: (msg: DiscordMessage) => ReceiveCallbacks;
+  buildCallbacks: (msg: DiscordMessage) => InboundCallbacks;
 }
 
 export type MentionKind = "precise" | "dm" | "reply_chain" | "quoted";
@@ -93,8 +93,8 @@ export function resolveSessionKey(msg: DiscordMessage, botId: string): string {
 
 export async function receiveDiscordMessage(
   msg: DiscordMessage,
-  deps: ReceiveDeps,
-  ctx: ReceiveContext,
+  deps: InboundDeps,
+  ctx: InboundContext,
 ): Promise<void> {
   if (msg.author.id === ctx.botId) return;
   if (msg.author.bot && !deps.allowBots) {
