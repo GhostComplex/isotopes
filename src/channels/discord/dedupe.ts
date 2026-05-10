@@ -2,20 +2,14 @@ const TTL_MS = 5 * 60 * 1000;
 const MAX_SIZE = 5000;
 
 /**
- * TTL-based dedupe with lazy eviction (no timers; cleanup on insertion).
- * Prevents duplicate processing when channel gateways replay messages
- * (e.g. Discord reconnect resends).
- *
- * Channels build the key from their own identifiers:
- * - Discord: `${botId}:${channelId}:${messageId}`
+ * Lazy eviction (no timers; cleanup on insertion). Used to drop replays from
+ * channel gateways (e.g. Discord reconnect resends).
+ * Discord key format: `${botId}:${channelId}:${messageId}`.
  */
 export class DedupeCache {
   private cache = new Map<string, number>();
 
-  /**
-   * Returns true if the key has been seen recently.
-   * Returns false and **records the key** if it's new or expired.
-   */
+  /** Returns true if seen; otherwise **records the key** and returns false. */
   isDuplicate(key: string): boolean {
     const now = Date.now();
     const existing = this.cache.get(key);
