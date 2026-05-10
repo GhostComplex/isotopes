@@ -4,7 +4,6 @@ import type { LazyChannelContext } from "./channel-context.js";
 
 export interface ChannelAdapterDeps {
   gateway: Gateway;
-  config: unknown;
   logger: Logger;
   /** Per-agent contexts the adapter binds to so agent tools can call back. */
   channelContexts?: Map<string, LazyChannelContext>;
@@ -19,6 +18,5 @@ export type ChannelsConfig = Record<string, unknown>;
 
 /** Callback surface a channel exposes to agent tools (via LazyChannelContext). */
 export interface Channel {
-  reply?(messageId: string, content: string, channelId?: string, attachments?: Array<{ buffer: Buffer; name: string }>): Promise<{ messageId: string }>;
   react?(messageId: string, emoji: string, channelId?: string): Promise<void>;
 }
