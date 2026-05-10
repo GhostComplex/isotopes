@@ -1,9 +1,5 @@
-export interface DedupeCacheOptions {
-  /** Default: 5 minutes. */
-  ttlMs?: number;
-  /** Default: 5000. */
-  maxSize?: number;
-}
+const TTL_MS = 5 * 60 * 1000;
+const MAX_SIZE = 5000;
 
 /**
  * TTL-based dedupe with lazy eviction (no timers; cleanup on insertion).
@@ -15,13 +11,6 @@ export interface DedupeCacheOptions {
  */
 export class DedupeCache {
   private cache = new Map<string, number>();
-  private readonly ttlMs: number;
-  private readonly maxSize: number;
-
-  constructor(opts?: DedupeCacheOptions) {
-    this.ttlMs = opts?.ttlMs ?? 300_000;
-    this.maxSize = opts?.maxSize ?? 5000;
-  }
 
   /**
    * Returns true if the key has been seen recently.
@@ -31,7 +20,7 @@ export class DedupeCache {
     const now = Date.now();
     const existing = this.cache.get(key);
 
-    if (existing !== undefined && now - existing < this.ttlMs) {
+    if (existing !== undefined && now - existing < TTL_MS) {
       return true;
     }
 
@@ -48,24 +37,24 @@ export class DedupeCache {
   /** Like isDuplicate but doesn't record — gate expensive work before the real check. */
   peek(key: string): boolean {
     const existing = this.cache.get(key);
-    return existing !== undefined && Date.now() - existing < this.ttlMs;
+    return existing !== undefined && Date.now() - existing < TTL_MS;
   }
 
   clear(): void {
     this.cache.clear();
   }
 
-  /** Remove expired entries, then evict oldest if still over maxSize. */
+  /** Remove expired entries, then evict oldest if still over MAX_SIZE. */
   private prune(now: number): void {
     for (const [key, ts] of this.cache) {
-      if (now - ts >= this.ttlMs) {
+      if (now - ts >= TTL_MS) {
         this.cache.delete(key);
       } else {
         break; // Map is insertion-ordered — once we hit a non-expired entry, the rest are newer.
       }
     }
 
-    while (this.cache.size > this.maxSize) {
+    while (this.cache.size > MAX_SIZE) {
       const oldest = this.cache.keys().next().value as string;
       this.cache.delete(oldest);
     }
