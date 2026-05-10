@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
-import type { ChannelAdapter } from "../../channels/types.js";
+import type { Channel } from "../../channels/types.js";
 import { loadChannels } from "./loader.js";
 
 function makeLogger(): Logger & { warnings: string[] } {
@@ -54,9 +54,9 @@ describe("loadChannels", () => {
   });
 
   it("starts the discord adapter when the import succeeds", async () => {
-    const start = vi.fn<ChannelAdapter["start"]>(async () => {});
-    const stop = vi.fn<ChannelAdapter["stop"]>(async () => {});
-    const adapter: ChannelAdapter = { start, stop };
+    const start = vi.fn<Channel["start"]>(async () => {});
+    const stop = vi.fn<Channel["stop"]>(async () => {});
+    const adapter: Channel = { start, stop };
     const createDiscordChannel = vi.fn(() => adapter);
 
     vi.doMock("../../channels/discord/index.js", () => ({ createDiscordChannel }));

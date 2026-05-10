@@ -31,11 +31,11 @@ export function createMessageReactTool(ctx: ChannelContext): AgentTool<typeof me
     execute: async (_id, { message_id, channel_id, emoji }) => {
       if (!message_id || !message_id.trim()) return jsonResult({ error: "message_id must not be empty" });
       if (!emoji || !emoji.trim()) return jsonResult({ error: "emoji must not be empty" });
-      const channel = ctx.getChannel();
-      if (!channel) return jsonResult({ error: "Channel not available" });
-      if (!channel.react) return jsonResult({ error: "Channel does not support reactions" });
+      const actions = ctx.getChannelActions();
+      if (!actions) return jsonResult({ error: "Channel not available" });
+      if (!actions.react) return jsonResult({ error: "Channel does not support reactions" });
       try {
-        await channel.react(message_id, emoji, channel_id);
+        await actions.react(message_id, emoji, channel_id);
         log.info("Reaction added", { messageId: message_id, emoji });
         return jsonResult({ success: true });
       } catch (err) {

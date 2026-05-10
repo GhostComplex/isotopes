@@ -170,7 +170,7 @@ describe("createDiscordChannel — lifecycle", () => {
     const channelContexts = new Map([["main", ctx]]);
     await adapter.start({ gateway: makeGateway(), logger: silentLogger(), channelContexts });
 
-    const channel = ctx.getChannel();
+    const channel = ctx.getChannelActions();
     expect(channel).toBeDefined();
     expect(typeof channel!.react).toBe("function");
   });

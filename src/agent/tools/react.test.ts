@@ -4,7 +4,7 @@ import {
   createReactTools,
 } from "./react.js";
 import { LazyChannelContext, type ChannelContext } from "../../channels/channel-context.js";
-import type { Channel } from "../../channels/types.js";
+import type { ChannelActions } from "../../channels/types.js";
 
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 
@@ -15,20 +15,20 @@ async function callTool(tool: AgentTool, args: unknown): Promise<string> {
 }
 
 
-function createMockChannel(overrides: Partial<Channel> = {}): Channel {
+function createMockChannel(overrides: Partial<ChannelActions> = {}): ChannelActions {
   return {
     react: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
 
-function wrapChannel(channel: Channel): ChannelContext {
-  return { getChannel: () => channel };
+function wrapChannel(channel: ChannelActions): ChannelContext {
+  return { getChannelActions: () => channel };
 }
 
 describe("message_react tool", () => {
   let ctx: ChannelContext;
-  let channel: Channel;
+  let channel: ChannelActions;
 
   beforeEach(() => {
     channel = createMockChannel();
@@ -64,7 +64,7 @@ describe("message_react tool", () => {
   });
 
   it("returns error when channel is not available", async () => {
-    const tool = createMessageReactTool({ getChannel: () => undefined });
+    const tool = createMessageReactTool({ getChannelActions: () => undefined });
     const result = JSON.parse(await callTool(tool, { message_id: "msg-1", emoji: "\u{1F44D}" }));
     expect(result.error).toBe("Channel not available");
   });
@@ -89,14 +89,14 @@ describe("message_react tool", () => {
 describe("LazyChannelContext", () => {
   it("returns undefined before channel is set", () => {
     const ctx = new LazyChannelContext();
-    expect(ctx.getChannel()).toBeUndefined();
+    expect(ctx.getChannelActions()).toBeUndefined();
   });
 
-  it("returns channel after setChannel is called", () => {
+  it("returns channel after setChannelActions is called", () => {
     const ctx = new LazyChannelContext();
     const channel = createMockChannel();
-    ctx.setChannel(channel);
-    expect(ctx.getChannel()).toBe(channel);
+    ctx.setChannelActions(channel);
+    expect(ctx.getChannelActions()).toBe(channel);
   });
 
   it("works end-to-end with tool handlers", async () => {
@@ -109,7 +109,7 @@ describe("LazyChannelContext", () => {
 
     // After channel is set → success
     const channel = createMockChannel();
-    ctx.setChannel(channel);
+    ctx.setChannelActions(channel);
     const after = JSON.parse(await callTool(tool, { message_id: "m1", emoji: "\u{1F44D}" }));
     expect(after.success).toBe(true);
   });

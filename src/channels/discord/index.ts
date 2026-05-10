@@ -7,10 +7,9 @@ import {
   type ThreadChannel,
 } from "discord.js";
 import path from "node:path";
-import type { ChannelAdapter, ChannelAdapterDeps } from "../types.js";
+import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
-import type { Channel } from "../../channels/types.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
@@ -154,7 +153,7 @@ export interface CreateDiscordChannelOptions {
 export function createDiscordChannel(
   rawConfig: unknown,
   options: CreateDiscordChannelOptions = {},
-): ChannelAdapter {
+): Channel {
   const config = (rawConfig ?? {}) as DiscordChannelsConfig;
   const accounts = config.accounts ?? {};
   const clientFactory = options.clientFactory ?? defaultClientFactory;
@@ -167,7 +166,7 @@ export function createDiscordChannel(
   let threadBindings: ThreadBindingManager | null = options.threadBindingManager ?? null;
 
   return {
-    async start(deps: ChannelAdapterDeps) {
+    async start(deps: ChannelDeps) {
       const { gateway, logger } = deps;
       const accountIds = Object.keys(accounts);
       if (accountIds.length === 0) {
@@ -205,10 +204,10 @@ export function createDiscordChannel(
       // Bind react capability into per-agent channel contexts so the
       // `message_react` agent tool can call back into Discord.
       if (deps.channelContexts && clients.size > 0) {
-        const channel: Channel = {
+        const actions: ChannelActions = {
           react: (id, emoji, channelId) => reactToMessage(clients, id, emoji, channelId),
         };
-        for (const ctx of deps.channelContexts.values()) ctx.setChannel(channel);
+        for (const ctx of deps.channelContexts.values()) ctx.setChannelActions(actions);
       }
     },
 
