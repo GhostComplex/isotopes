@@ -32,15 +32,15 @@ interface InboundContext {
   buildCallbacks: (msg: DiscordMessage) => InboundCallbacks;
 }
 
-type Engagement = "mention" | "dm" | "reply_chain" | "quoted";
+type Engagement = "dm" | "mention" | "reply_chain" | "quoted";
 
 /**
  * Returns how this message engages the bot, or null if it doesn't.
- * Kinds: mention (`<@botId>`), dm, reply_chain, quoted (forwarded snapshot).
+ * Kinds: dm, mention (`<@botId>`), reply_chain, quoted (forwarded snapshot).
  */
 export function detectEngagement(msg: DiscordMessage, botId: string): Engagement | null {
-  if (msg.mentions?.has?.(botId)) return "mention";
   if (!msg.guild) return "dm";
+  if (msg.mentions?.has?.(botId)) return "mention";
 
   const referenced = (msg as unknown as { referencedMessage?: { author?: { id?: string } } })
     .referencedMessage;
