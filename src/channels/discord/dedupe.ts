@@ -1,16 +1,14 @@
-// src/gateway/dedupe.ts — TTL-based message deduplication cache.
-// Lazy eviction (no timers) — cleanup runs on insertion.
-
 export interface DedupeCacheOptions {
-  /** TTL in milliseconds. Default: 300_000 (5 minutes) */
+  /** Default: 5 minutes. */
   ttlMs?: number;
-  /** Maximum entries before oldest are evicted. Default: 5000 */
+  /** Default: 5000. */
   maxSize?: number;
 }
 
 /**
- * Prevents duplicate message processing when channel gateways deliver
- * the same message more than once (e.g. Discord reconnect replays).
+ * TTL-based dedupe with lazy eviction (no timers; cleanup on insertion).
+ * Prevents duplicate processing when channel gateways replay messages
+ * (e.g. Discord reconnect resends).
  *
  * Channels build the key from their own identifiers:
  * - Discord: `${botId}:${channelId}:${messageId}`
@@ -26,9 +24,8 @@ export class DedupeCache {
   }
 
   /**
-   * Check if a key has been seen recently.
-   * Returns `true` if duplicate (already seen and not expired).
-   * Returns `false` and records the key if it's new or expired.
+   * Returns true if the key has been seen recently.
+   * Returns false and **records the key** if it's new or expired.
    */
   isDuplicate(key: string): boolean {
     const now = Date.now();
@@ -38,14 +35,12 @@ export class DedupeCache {
       return true;
     }
 
-    // Record as new (or refresh expired)
     this.cache.delete(key); // re-insert for LRU ordering
     this.cache.set(key, now);
     this.prune(now);
     return false;
   }
 
-  /** Number of keys currently tracked. */
   get size(): number {
     return this.cache.size;
   }
@@ -62,16 +57,14 @@ export class DedupeCache {
 
   /** Remove expired entries, then evict oldest if still over maxSize. */
   private prune(now: number): void {
-    // Remove expired
     for (const [key, ts] of this.cache) {
       if (now - ts >= this.ttlMs) {
         this.cache.delete(key);
       } else {
-        break; // Map is ordered by insertion — once we hit a non-expired entry, the rest are newer
+        break; // Map is insertion-ordered — once we hit a non-expired entry, the rest are newer.
       }
     }
 
-    // Evict oldest if still over capacity
     while (this.cache.size > this.maxSize) {
       const oldest = this.cache.keys().next().value as string;
       this.cache.delete(oldest);
