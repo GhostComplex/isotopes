@@ -50,17 +50,12 @@ export class DedupeCache {
     return this.cache.size;
   }
 
-  /**
-   * Non-marking check: returns true if the key has been seen recently, without
-   * recording it. Use to gate expensive work (network fetches) before a real
-   * `isDuplicate` call elsewhere in the pipeline.
-   */
+  /** Like isDuplicate but doesn't record — gate expensive work before the real check. */
   peek(key: string): boolean {
     const existing = this.cache.get(key);
     return existing !== undefined && Date.now() - existing < this.ttlMs;
   }
 
-  /** Drop all entries — call on channel shutdown. */
   clear(): void {
     this.cache.clear();
   }
