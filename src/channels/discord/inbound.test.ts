@@ -25,7 +25,6 @@ interface FakeMsgOpts {
   content?: string;
   mentionedIds?: string[];
   referencedAuthorId?: string;
-  snapshots?: Array<{ mentionedIds?: string[]; content?: string }>;
   timestamp?: number;
 }
 
@@ -33,12 +32,6 @@ function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
   const mentionedIds = new Set(opts.mentionedIds ?? []);
   const referencedMessage = opts.referencedAuthorId
     ? { author: { id: opts.referencedAuthorId } }
-    : undefined;
-  const messageSnapshots = opts.snapshots
-    ? opts.snapshots.map((s) => ({
-        mentions: { has: (id: string) => (s.mentionedIds ?? []).includes(id) },
-        content: s.content,
-      }))
     : undefined;
   const guild = opts.guildId === null ? null : { id: opts.guildId ?? "guild-1" };
   return {
@@ -55,7 +48,6 @@ function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
     thread: opts.threadId ? { id: opts.threadId } : null,
     mentions: { has: (id: string) => mentionedIds.has(id) },
     referencedMessage,
-    messageSnapshots,
   } as unknown as DiscordMessage;
 }
 
@@ -111,16 +103,8 @@ describe("detectEngagement", () => {
   it("returns dm in a DM", () => {
     expect(detectEngagement(fakeMsg({ guildId: null }), BOT_ID)).toBe("dm");
   });
-  it("returns reply_chain when replying to bot's earlier message", () => {
-    expect(detectEngagement(fakeMsg({ referencedAuthorId: BOT_ID }), BOT_ID)).toBe("reply_chain");
-  });
-  it("returns quoted when forwarded snapshot mentions the bot", () => {
-    const msg = fakeMsg({ snapshots: [{ mentionedIds: [BOT_ID] }] });
-    expect(detectEngagement(msg, BOT_ID)).toBe("quoted");
-  });
-  it("returns quoted when forwarded snapshot content has <@bot>", () => {
-    const msg = fakeMsg({ snapshots: [{ content: `hey <@${BOT_ID}> look` }] });
-    expect(detectEngagement(msg, BOT_ID)).toBe("quoted");
+  it("returns reply when replying to bot's earlier message", () => {
+    expect(detectEngagement(fakeMsg({ referencedAuthorId: BOT_ID }), BOT_ID)).toBe("reply");
   });
   it("returns null when not addressed", () => {
     expect(detectEngagement(fakeMsg(), BOT_ID)).toBeNull();
@@ -197,12 +181,6 @@ describe("handleInbound", () => {
 
   it("dispatches on reply-chain (user replies to bot)", async () => {
     const msg = fakeMsg({ referencedAuthorId: BOT_ID });
-    await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
-    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
-  });
-
-  it("dispatches on quoted/forwarded snapshot mentioning bot", async () => {
-    const msg = fakeMsg({ snapshots: [{ mentionedIds: [BOT_ID] }] });
     await handleInbound(msg, { gateway, dedupe, defaultAgentId: "main" }, ctx());
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });

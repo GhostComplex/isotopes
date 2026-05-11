@@ -32,11 +32,11 @@ interface InboundContext {
   buildCallbacks: (msg: DiscordMessage) => InboundCallbacks;
 }
 
-type Engagement = "dm" | "mention" | "reply_chain" | "quoted";
+type Engagement = "dm" | "mention" | "reply";
 
 /**
  * Returns how this message engages the bot, or null if it doesn't.
- * Kinds: dm, mention (`<@botId>`), reply_chain, quoted (forwarded snapshot).
+ * Kinds: dm, mention (`<@botId>`), reply (to a bot message).
  */
 export function detectEngagement(msg: DiscordMessage, botId: string): Engagement | null {
   if (!msg.guild) return "dm";
@@ -44,21 +44,7 @@ export function detectEngagement(msg: DiscordMessage, botId: string): Engagement
 
   const referenced = (msg as unknown as { referencedMessage?: { author?: { id?: string } } })
     .referencedMessage;
-  if (referenced?.author?.id === botId) return "reply_chain";
-
-  const snapshots = (msg as unknown as {
-    messageSnapshots?: Map<string, { mentions?: { has?: (id: string) => boolean }; content?: string }>
-      | Array<{ mentions?: { has?: (id: string) => boolean }; content?: string }>;
-  }).messageSnapshots;
-  if (snapshots) {
-    const iter: Iterable<{ mentions?: { has?: (id: string) => boolean }; content?: string }> =
-      snapshots instanceof Map ? snapshots.values() : snapshots;
-    for (const snap of iter) {
-      if (snap.mentions?.has?.(botId)) return "quoted";
-      if (snap.content && snap.content.includes(`<@${botId}>`)) return "quoted";
-      if (snap.content && snap.content.includes(`<@!${botId}>`)) return "quoted";
-    }
-  }
+  if (referenced?.author?.id === botId) return "reply";
 
   return null;
 }
