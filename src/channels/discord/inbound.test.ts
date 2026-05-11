@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Message as DiscordMessage } from "discord.js";
 import { DedupeCache } from "./dedupe.js";
 import {
-  detectEngagement,
   handleInbound,
   passesAllowlist,
 } from "./inbound.js";
@@ -24,15 +23,11 @@ interface FakeMsgOpts {
   parentChannelId?: string;
   content?: string;
   mentionedIds?: string[];
-  referencedAuthorId?: string;
   timestamp?: number;
 }
 
 function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
   const mentionedIds = new Set(opts.mentionedIds ?? []);
-  const referencedMessage = opts.referencedAuthorId
-    ? { author: { id: opts.referencedAuthorId } }
-    : undefined;
   const guild = opts.guildId === null ? null : { id: opts.guildId ?? "guild-1" };
   // In real Discord, a thread message has channelId = thread id and
   // channel.isThread() === true. parentId is the parent channel.
@@ -54,7 +49,6 @@ function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
     guild,
     channel,
     mentions: { has: (id: string) => mentionedIds.has(id) },
-    referencedMessage,
   } as unknown as DiscordMessage;
 }
 
@@ -70,21 +64,6 @@ function makeGateway(): Gateway & { dispatch: ReturnType<typeof vi.fn> } {
     abortByKey: vi.fn().mockResolvedValue(false),
   } as Gateway & { dispatch: ReturnType<typeof vi.fn> };
 }
-
-describe("detectEngagement", () => {
-  it("returns precise on explicit mention", () => {
-    expect(detectEngagement(fakeMsg({ mentionedIds: [BOT_ID] }), BOT_ID)).toBe("mention");
-  });
-  it("returns dm in a DM", () => {
-    expect(detectEngagement(fakeMsg({ guildId: null }), BOT_ID)).toBe("dm");
-  });
-  it("returns reply when replying to bot's earlier message", () => {
-    expect(detectEngagement(fakeMsg({ referencedAuthorId: BOT_ID }), BOT_ID)).toBe("reply");
-  });
-  it("returns null when not addressed", () => {
-    expect(detectEngagement(fakeMsg(), BOT_ID)).toBeNull();
-  });
-});
 
 describe("handleInbound", () => {
   let gateway: ReturnType<typeof makeGateway>;
@@ -163,12 +142,6 @@ describe("handleInbound", () => {
     expect(gateway.dispatch.mock.calls[0][0].sessionKey).toBe(`discord:${BOT_ID}:dm:user-1`);
   });
 
-  it("dispatches on reply-chain (user replies to bot)", async () => {
-    const msg = fakeMsg({ referencedAuthorId: BOT_ID });
-    await handleInbound(msg, route(msg), { gateway, dedupe }, ctx());
-    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
-  });
-
   it("drops guild messages with no mention when requireMention=true (default)", async () => {
     const msg = fakeMsg();
     await handleInbound(msg, route(msg), { gateway, dedupe }, ctx());
@@ -229,7 +202,7 @@ describe("handleInbound", () => {
       { gateway, dedupe, transformContent: transform },
       ctx(),
     );
-    expect(transform).toHaveBeenCalledWith("hi there", msg, "mention");
+    expect(transform).toHaveBeenCalledWith("hi there", msg);
     expect(gateway.dispatch.mock.calls[0][0].content).toBe("<meta/>\nhi there");
   });
 

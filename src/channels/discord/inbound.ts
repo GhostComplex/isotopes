@@ -98,7 +98,7 @@ interface InboundDeps {
   /** Default false. */
   allowBots?: boolean;
   /** Hook to prepend inbound metadata (sender, channel) before dispatch. */
-  transformContent?: (content: string, msg: DiscordMessage, engagement: Engagement) => string;
+  transformContent?: (content: string, msg: DiscordMessage) => string;
 }
 
 /** DispatchCallbacks + a post-dispatch cleanup hook (e.g. drain a buffer). */
@@ -109,23 +109,6 @@ interface InboundCallbacks extends DispatchCallbacks {
 interface InboundContext {
   botId: string;
   buildCallbacks: (msg: DiscordMessage) => InboundCallbacks;
-}
-
-type Engagement = "dm" | "mention" | "reply";
-
-/**
- * Returns how this message engages the bot, or null if it doesn't.
- * Kinds: dm, mention (`<@botId>`), reply (to a bot message).
- */
-export function detectEngagement(msg: DiscordMessage, botId: string): Engagement | null {
-  if (!msg.guild) return "dm";
-  if (msg.mentions?.has?.(botId)) return "mention";
-
-  const referenced = (msg as unknown as { referencedMessage?: { author?: { id?: string } } })
-    .referencedMessage;
-  if (referenced?.author?.id === botId) return "reply";
-
-  return null;
 }
 
 export async function handleInbound(
@@ -151,14 +134,14 @@ export async function handleInbound(
     return;
   }
 
-  const engagement = detectEngagement(msg, ctx.botId);
-  const isDM = !msg.guild;
-  const isEngaged = engagement !== null && engagement !== "dm";
-  const requireMention = msg.guild ? deps.guilds?.[msg.guild.id]?.requireMention ?? true : false;
-  // Respond if: DM, OR mention not required, OR explicitly engaged.
-  if (!isDM && requireMention && !isEngaged) {
-    log.debug(`discord receive: not engaged (id=${msg.id}, engagement=${engagement})`);
-    return;
+  // Guild gate: drop if requireMention=true (default) and bot wasn't @-mentioned.
+  // DMs always pass.
+  if (msg.guild) {
+    const requireMention = deps.guilds?.[msg.guild.id]?.requireMention ?? true;
+    if (requireMention && !msg.mentions?.has?.(ctx.botId)) {
+      log.debug(`discord receive: not mentioned (id=${msg.id})`);
+      return;
+    }
   }
 
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
@@ -166,7 +149,7 @@ export async function handleInbound(
   // Don't dispatch a wholly empty turn (no text + no images).
   if (!cleanedText && images.length === 0) return;
   const content = deps.transformContent
-    ? deps.transformContent(cleanedText, msg, engagement!)
+    ? deps.transformContent(cleanedText, msg)
     : cleanedText;
   const message: Message = {
     agentId: routing.agentId,
