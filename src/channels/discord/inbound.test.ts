@@ -365,7 +365,8 @@ describe("maybeHandleStop sub-run routing", () => {
     const consumed = await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:thread:thr-1", a2aThreads);
     expect(consumed).toBe(true);
     expect(gateway.abort).toHaveBeenCalledWith("sub-session-id", "user");
-    expect(gateway.abortByKey).not.toHaveBeenCalled();
+    // Also aborts own session for the same channel (best-effort).
+    expect(gateway.abortByKey).toHaveBeenCalledWith("main", "discord:bot:thread:thr-1", "user");
     expect(channel.send).toHaveBeenCalledWith("🛑 Stopped.");
   });
 
@@ -384,5 +385,56 @@ describe("maybeHandleStop sub-run routing", () => {
     await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:channel:chan-other", a2aThreads);
     expect(gateway.abort).not.toHaveBeenCalled();
     expect(gateway.abortByKey).toHaveBeenCalledWith("main", "discord:bot:channel:chan-other", "user");
+  });
+
+  it("consumes /stop in guild without @ but does not abort or reply", async () => {
+    const gateway = makeGateway();
+    const channel = { send: vi.fn().mockResolvedValue(undefined) };
+    const msg = {
+      id: "m",
+      channelId: "chan-1",
+      content: "/stop",
+      guild: { id: "g" },
+      mentions: { has: () => false },
+      channel,
+    } as unknown as DiscordMessage;
+    const consumed = await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
+    expect(consumed).toBe(true);
+    expect(gateway.abort).not.toHaveBeenCalled();
+    expect(gateway.abortByKey).not.toHaveBeenCalled();
+    expect(channel.send).not.toHaveBeenCalled();
+  });
+
+  it("consumes /stop targeted at another bot silently", async () => {
+    const gateway = makeGateway();
+    const channel = { send: vi.fn().mockResolvedValue(undefined) };
+    const msg = {
+      id: "m",
+      channelId: "chan-1",
+      content: "<@other-bot> /stop",
+      guild: { id: "g" },
+      mentions: { has: (id: string) => id === "other-bot" },
+      channel,
+    } as unknown as DiscordMessage;
+    const consumed = await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
+    expect(consumed).toBe(true);
+    expect(gateway.abort).not.toHaveBeenCalled();
+    expect(gateway.abortByKey).not.toHaveBeenCalled();
+    expect(channel.send).not.toHaveBeenCalled();
+  });
+
+  it("does not return true for non-/stop messages", async () => {
+    const gateway = makeGateway();
+    const channel = { send: vi.fn().mockResolvedValue(undefined) };
+    const msg = {
+      id: "m",
+      channelId: "chan-1",
+      content: "/stop please",
+      guild: { id: "g" },
+      mentions: { has: () => true },
+      channel,
+    } as unknown as DiscordMessage;
+    const consumed = await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
+    expect(consumed).toBe(false);
   });
 });

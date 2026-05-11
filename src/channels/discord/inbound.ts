@@ -56,58 +56,60 @@ export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConf
   return true;
 }
 
-/** Returns true if the message was a /stop directed at this bot (consumed). */
+/** Returns true if the message was a /stop and this handler consumed it. */
 export async function maybeHandleStop(
   msg: DiscordMessage,
   botId: string,
   gateway: Gateway,
   agentId: string,
   sessionKey: string,
-  /** threadId → sub-run sessionId. /stop in a registered sub-run thread
-   * aborts that child session directly (bypasses sessionKey lookup). */
+  /** threadId → sub-run sessionId. The bot that spawned the thread aborts
+   * the child session when /stop arrives in that thread. */
   a2aThreads?: Map<string, string>,
 ): Promise<boolean> {
-  // Accept "/stop" optionally preceded by a discord mention like "<@123>".
+  // Accept "/stop" optionally preceded by a single discord mention like "<@123>".
   let text = msg.content.trim().toLowerCase();
   if (text.startsWith("<@")) {
     const close = text.indexOf(">");
     if (close > 0) text = text.slice(close + 1).trim();
   }
   if (text !== "/stop") return false;
-  // In guild channels we still require the @mention so a shared /stop in a
-  // multi-bot channel only aborts the addressed bot's session. DMs are 1:1.
-  if (msg.guild && !msg.mentions?.has?.(botId)) return true; // not for us, but consume
 
-  // Sub-run path: /stop posted in a spawn_agent thread targets the child
-  // session (its sessionId was registered when the thread was created).
+  // Consume /stop in every bot's handler so the command never leaks into
+  // any LLM session or channel-history buffer. Only the addressed bot
+  // (or the DM peer) actually aborts and confirms.
+  const isAddressed = !msg.guild || msg.mentions?.has?.(botId) === true;
+  if (!isAddressed) return true;
+
+  let didStop = false;
+
+  // Sub-run path: this bot spawned a child whose thread is msg.channel.
   const subSessionId = a2aThreads?.get(msg.channelId);
   if (subSessionId) {
-    let aborted = true;
     try {
       await gateway.abort(subSessionId, "user");
+      didStop = true;
       log.info(`discord: /stop sub-run aborted (sessionId=${subSessionId})`);
     } catch (err) {
-      aborted = false;
       log.warn(`discord: /stop sub-run abort failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-    if ("send" in msg.channel) {
-      try {
-        await (msg.channel as SendableChannels).send(aborted ? "🛑 Stopped." : "(nothing to stop)");
-      } catch { /* ignore */ }
-    }
-    return true;
   }
 
-  let stopped = false;
+  // Own-session path: abort the bot's session for this channel/thread/dm.
   try {
-    stopped = await gateway.abortByKey(agentId, sessionKey, "user");
-    log.info(`discord: /stop ${stopped ? "aborted" : "no active run"} for sessionKey=${sessionKey}`);
+    if (await gateway.abortByKey(agentId, sessionKey, "user")) {
+      didStop = true;
+      log.info(`discord: /stop aborted sessionKey=${sessionKey}`);
+    } else {
+      log.info(`discord: /stop no active run for sessionKey=${sessionKey}`);
+    }
   } catch (err) {
     log.warn(`discord: /stop abort failed: ${err instanceof Error ? err.message : String(err)}`);
   }
+
   if ("send" in msg.channel) {
     try {
-      await (msg.channel as SendableChannels).send(stopped ? "🛑 Stopped." : "(nothing to stop)");
+      await (msg.channel as SendableChannels).send(didStop ? "🛑 Stopped." : "(nothing to stop)");
     } catch {
       /* ignore */
     }

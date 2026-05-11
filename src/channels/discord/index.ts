@@ -209,6 +209,15 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
 
   if (!passesAllowlist(msg, account)) return;
 
+  const agentId = resolveAgentId(msg, account.agentBindings, account.defaultAgentId ?? "default");
+  const sessionKey = resolveSessionKey(msg, botId);
+
+  // /stop runs before history.append so the command never leaks into channel
+  // history (or any LLM session). Every bot consumes /stop; only the
+  // addressed bot actually aborts.
+  const stopped = await maybeHandleStop(msg, botId, gateway, agentId, sessionKey, a2aThreads);
+  if (stopped) return;
+
   // Observe every allowlisted guild msg into the channel history buffer
   // (DMs are 1:1 — session memory is enough). Buffer is consumed (with
   // trigger excluded) and cleared by transformContent on engaged dispatch.
@@ -220,11 +229,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
       timestamp: msg.createdTimestamp,
     });
   }
-
-  const agentId = resolveAgentId(msg, account.agentBindings, account.defaultAgentId ?? "default");
-  const sessionKey = resolveSessionKey(msg, botId);
-  const stopped = await maybeHandleStop(msg, botId, gateway, agentId, sessionKey, a2aThreads);
-  if (stopped) return;
 
   const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
   await runWithA2A(sinkFactory, () => handleInbound(
