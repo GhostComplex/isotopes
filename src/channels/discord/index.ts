@@ -15,7 +15,6 @@ import { handleInbound, passesAllowlist, maybeHandleStop } from "./inbound.js";
 import { createDiscordCallbacks } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
-import { resolveAgentId } from "./routing.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
 import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
@@ -317,4 +316,11 @@ function resolveSessionKey(msg: DiscordMessage, botId: string): string {
   if (ch?.isThread?.()) return `discord:${botId}:thread:${msg.channelId}`;
   if (!msg.guild) return `discord:${botId}:dm:${msg.author.id}`;
   return `discord:${botId}:channel:${msg.channelId}`;
+}
+
+function resolveAgentId(msg: DiscordMessage, account: DiscordAccountConfig): string {
+  // Threads inherit their parent channel's perChannelAgent mapping.
+  const ch = msg.channel as { isThread?: () => boolean; parentId?: string | null };
+  const lookupChannelId = ch.isThread?.() && ch.parentId ? ch.parentId : msg.channelId;
+  return account.perChannelAgent?.[lookupChannelId] ?? account.defaultAgentId;
 }
