@@ -4,20 +4,16 @@ const MAX_SIZE = 5000;
 /**
  * Lazy eviction (no timers; cleanup on insertion). Drops Discord WS RESUME
  * replays — when the gateway reconnects after a network blip, the same
- * MESSAGE_CREATE event can be redelivered.
- * Discord key format: `${botId}:${channelId}:${messageId}`.
+ * MESSAGE_CREATE event can be redelivered. Key is the message id (snowflake).
  */
 export class DedupeCache {
   private cache = new Map<string, number>();
 
-  /** Returns true if seen; otherwise **records the key** and returns false. */
+  /** Returns true if seen; otherwise records the key and returns false. */
   isDuplicate(key: string): boolean {
     const now = Date.now();
     const existing = this.cache.get(key);
-
-    if (existing !== undefined && now - existing < TTL_MS) {
-      return true;
-    }
+    if (existing !== undefined && now - existing < TTL_MS) return true;
 
     this.cache.delete(key); // re-insert for LRU ordering
     this.cache.set(key, now);
@@ -33,16 +29,12 @@ export class DedupeCache {
     this.cache.clear();
   }
 
-  /** Remove expired entries, then evict oldest if still over MAX_SIZE. */
   private prune(now: number): void {
+    // Map is insertion-ordered — once we hit a non-expired entry, the rest are newer.
     for (const [key, ts] of this.cache) {
-      if (now - ts >= TTL_MS) {
-        this.cache.delete(key);
-      } else {
-        break; // Map is insertion-ordered — once we hit a non-expired entry, the rest are newer.
-      }
+      if (now - ts < TTL_MS) break;
+      this.cache.delete(key);
     }
-
     while (this.cache.size > MAX_SIZE) {
       const oldest = this.cache.keys().next().value as string;
       this.cache.delete(oldest);
