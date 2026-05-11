@@ -75,47 +75,17 @@ describe("extractDiscordMetadata", () => {
     expect(metadata.channel).toEqual({
       id: "channel-456",
       name: "general",
-      type: "text",
     });
   });
 
-  it("resolves DM channel type", () => {
+  it("handles DM channel without a name", () => {
     const msg = createMockDiscordMessage({
       channel: { type: 1, name: null },
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const metadata = extractDiscordMetadata(msg as any);
 
-    expect(metadata.channel.type).toBe("dm");
     expect(metadata.channel.name).toBeUndefined();
-  });
-
-  it("resolves thread channel types", () => {
-    for (const threadType of [10, 11, 12]) {
-      const msg = createMockDiscordMessage({
-        channel: { type: threadType, name: "my-thread" },
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const metadata = extractDiscordMetadata(msg as any);
-      expect(metadata.channel.type).toBe("thread");
-    }
-  });
-
-  it("resolves voice and news channel types", () => {
-    const voiceMsg = createMockDiscordMessage({ channel: { type: 2, name: "vc" } });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect(extractDiscordMetadata(voiceMsg as any).channel.type).toBe("voice");
-
-    const newsMsg = createMockDiscordMessage({ channel: { type: 5, name: "announcements" } });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect(extractDiscordMetadata(newsMsg as any).channel.type).toBe("news");
-  });
-
-  it("returns 'unknown' for unrecognized channel types", () => {
-    const msg = createMockDiscordMessage({ channel: { type: 99, name: "wat" } });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const metadata = extractDiscordMetadata(msg as any);
-    expect(metadata.channel.type).toBe("unknown");
   });
 
   it("extracts replyTo when message has a reference", () => {
@@ -187,7 +157,7 @@ describe("formatInboundMeta", () => {
       messageId: "msg-001",
       sender: { id: "123", username: "testuser", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
-      channel: { id: "456", name: "general", type: "text" },
+      channel: { id: "456", name: "general" },
     };
 
     const result = formatInboundMeta(meta, "group");
@@ -208,7 +178,7 @@ describe("formatInboundMeta", () => {
       messageId: "msg-002",
       sender: { id: "123", username: "testuser", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
-      channel: { id: "789", type: "dm" },
+      channel: { id: "789" },
     };
     
     const result = formatInboundMeta(meta, "direct");
@@ -222,7 +192,7 @@ describe("formatInboundMeta", () => {
       messageId: "msg-003",
       sender: { id: "123", username: "testuser", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
-      channel: { id: "456", type: "text" },
+      channel: { id: "456" },
       replyTo: "msg-999",
     };
     
@@ -236,7 +206,7 @@ describe("formatInboundMeta", () => {
       messageId: "msg-004",
       sender: { id: "123", username: "testuser", displayName: "Test User", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
-      channel: { id: "456", type: "text" },
+      channel: { id: "456" },
     };
 
     const result = formatInboundMeta(meta, "group");
@@ -249,7 +219,7 @@ describe("formatInboundMeta", () => {
       messageId: "msg-005",
       sender: { id: "123", username: "test<user>", displayName: "Test & User", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
-      channel: { id: "456", name: "chat\"room'1", type: "text" },
+      channel: { id: "456", name: "chat\"room'1" },
     };
     
     const result = formatInboundMeta(meta, "group");

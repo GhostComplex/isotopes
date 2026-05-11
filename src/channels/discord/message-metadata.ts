@@ -1,8 +1,5 @@
 import type { Message as DiscordMessage } from "discord.js";
 
-/** The kind of channel the message was sent in. */
-type ChannelType = "text" | "dm" | "thread" | "voice" | "news" | "unknown";
-
 /** Structured metadata extracted from an incoming channel message. */
 export interface MessageMetadata {
   /** The message's own ID (snowflake) */
@@ -27,28 +24,10 @@ export interface MessageMetadata {
   channel: {
     id: string;
     name?: string;
-    type: ChannelType;
   };
 
   /** Message ID this is replying to, if any */
   replyTo?: string;
-}
-
-/** Map discord.js channel types to our ChannelType enum. */
-function resolveDiscordChannelType(channelType: number): ChannelType {
-  // discord.js ChannelType enum values:
-  // 0 = GuildText, 1 = DM, 2 = GuildVoice, 5 = GuildAnnouncement (news),
-  // 10 = AnnouncementThread, 11 = PublicThread, 12 = PrivateThread
-  switch (channelType) {
-    case 0: return "text";
-    case 1: return "dm";
-    case 2: return "voice";
-    case 5: return "news";
-    case 10:
-    case 11:
-    case 12: return "thread";
-    default: return "unknown";
-  }
 }
 
 /**
@@ -71,7 +50,6 @@ export function extractDiscordMetadata(msg: DiscordMessage): MessageMetadata {
     channel: {
       id: msg.channelId,
       name: "name" in msg.channel ? (msg.channel.name ?? undefined) : undefined,
-      type: resolveDiscordChannelType(msg.channel.type),
     },
     replyTo: msg.reference?.messageId ?? undefined,
   };
