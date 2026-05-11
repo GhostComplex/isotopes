@@ -146,8 +146,7 @@ export async function handleInbound(
     return;
   }
 
-  const dedupeKey = `${ctx.botId}:${msg.channelId}:${msg.id}`;
-  if (deps.dedupe.isDuplicate(dedupeKey)) {
+  if (deps.dedupe.isDuplicate(msg.id)) {
     log.debug(`discord receive: dedupe drop ${msg.id}`);
     return;
   }
