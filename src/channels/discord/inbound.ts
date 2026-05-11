@@ -117,7 +117,7 @@ export async function handleStopCommand(
 interface InboundDeps {
   gateway: Gateway;
   guilds?: Record<string, GuildConfig>;
-  /** Default false. */
+  /** Default true. Set false to drop messages authored by other bots. */
   allowBots?: boolean;
   /** Hook to prepend inbound metadata (sender, channel) before dispatch. */
   transformContent?: (content: string, msg: DiscordMessage) => string;
@@ -140,7 +140,7 @@ export async function handleInbound(
   ctx: InboundContext,
 ): Promise<void> {
   if (msg.author.id === ctx.botId) return;
-  if (msg.author.bot && !deps.allowBots) {
+  if (msg.author.bot && deps.allowBots === false) {
     log.debug(`discord receive: drop bot message from ${msg.author.username}`);
     return;
   }

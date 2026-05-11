@@ -242,7 +242,7 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     {
       gateway,
       ...(account.guilds ? { guilds: account.guilds } : {}),
-      ...(account.allowBots ? { allowBots: account.allowBots } : {}),
+      ...(account.allowBots !== undefined ? { allowBots: account.allowBots } : {}),
       transformContent: (content, triggerMsg) => {
         const meta = extractDiscordMetadata(triggerMsg);
         const chatType = triggerMsg.guild ? "group" : "direct";

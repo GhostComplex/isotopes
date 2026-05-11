@@ -97,16 +97,16 @@ describe("handleInbound", () => {
     expect(gateway.dispatch).not.toHaveBeenCalled();
   });
 
-  it("drops other bots by default", async () => {
+  it("dispatches other bots by default (allowBots default true)", async () => {
     const msg = fakeMsg({ authorBot: true, mentionedIds: [BOT_ID] });
     await handleInbound(msg, route(msg), { gateway }, ctx());
-    expect(gateway.dispatch).not.toHaveBeenCalled();
+    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });
 
-  it("respects allowBots=true", async () => {
+  it("respects allowBots=false", async () => {
     const msg = fakeMsg({ authorBot: true, mentionedIds: [BOT_ID] });
-    await handleInbound(msg, route(msg), { gateway, allowBots: true }, ctx());
-    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
+    await handleInbound(msg, route(msg), { gateway, allowBots: false }, ctx());
+    expect(gateway.dispatch).not.toHaveBeenCalled();
   });
 
   it("dispatches on precise @mention", async () => {

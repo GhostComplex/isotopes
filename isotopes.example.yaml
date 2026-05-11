@@ -93,7 +93,7 @@ channels:
           #   - "channel-id"             # threads under these channels are also allowed
           # guildAllowlist:              # guild/server IDs (only when policy=allowlist)
           #   - "guild-id"
-        # allowBots: false               # respond to messages from other bots
+        # allowBots: true                # set false to ignore messages from other bots (default true)
         # perChannelAgent:               # channel id → agent id (override defaultAgentId)
         #   "channel-id": helper
 
