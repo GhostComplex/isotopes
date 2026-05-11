@@ -1,10 +1,3 @@
-// plugins/discord/types.ts — Discord-specific type definitions
-// Moved from src/core/types.ts to decouple Discord from core.
-
-// ---------------------------------------------------------------------------
-// Channel config
-// ---------------------------------------------------------------------------
-
 export interface GuildConfig {
   requireMention?: boolean;
   /** Default true. Set false to ignore all messages in threads under this guild. */
