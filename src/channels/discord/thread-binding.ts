@@ -7,10 +7,10 @@ import type { ThreadBinding } from "./types.js";
 import { logger } from "../../logging/logger.js";
 
 /** Callback invoked when a new thread binding is created */
-export type ThreadBindingCallback = (binding: ThreadBinding) => void;
+type ThreadBindingCallback = (binding: ThreadBinding) => void;
 
 /** Callback invoked when a thread binding is removed */
-export type ThreadUnbindCallback = (binding: ThreadBinding, reason?: string) => void;
+type ThreadUnbindCallback = (binding: ThreadBinding, reason?: string) => void;
 
 /**
  * ThreadBindingManager — manages the mapping of Discord threads to agent sessions.

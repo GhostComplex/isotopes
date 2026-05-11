@@ -7,7 +7,7 @@ import type { Message as DiscordMessage } from "discord.js";
 // ---------------------------------------------------------------------------
 
 /** The kind of channel the message was sent in. */
-export type ChannelType = "text" | "dm" | "thread" | "voice" | "news" | "unknown";
+type ChannelType = "text" | "dm" | "thread" | "voice" | "news" | "unknown";
 
 // ---------------------------------------------------------------------------
 // MessageMetadata

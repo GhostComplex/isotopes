@@ -77,7 +77,7 @@ export interface OutboundCallbacks extends DispatchCallbacks {
   flushRemaining(): Promise<void>;
 }
 
-export interface OutboundContext {
+interface OutboundContext {
   channel: SendableChannels;
   /** Trigger message id — used to resolve [[reply_to_current]]. */
   triggerMessageId: string;

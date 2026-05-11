@@ -40,7 +40,7 @@ export interface ClientLike {
 }
 
 /** Test seam: inject a mock Client without depending on discord.js. */
-export type ClientFactory = () => ClientLike;
+type ClientFactory = () => ClientLike;
 
 const defaultClientFactory: ClientFactory = () =>
   new Client({
@@ -144,7 +144,7 @@ async function maybeHandleStop(
 }
 
 
-export interface CreateDiscordChannelOptions {
+interface CreateDiscordChannelOptions {
   /** Test seam: override Discord.js Client construction. */
   clientFactory?: ClientFactory;
   /** Test seam: override ThreadBindingManager. */

@@ -4,7 +4,7 @@
 
 const REPLY_TAG_RE = /\[\[\s*(?:reply_to_current|reply_to\s*:\s*([^\]\n]+))\s*\]\]/gi;
 
-export interface ResolvedReply {
+interface ResolvedReply {
   stripped: string;
   /** Undefined when the agent didn't request a reply for this chunk. */
   replyToId?: string;
@@ -31,10 +31,9 @@ export function parseReplyDirective(
     `(^|\\n)[ \\t]*(?:${REPLY_TAG_RE.source})[ \\t]*\\n`,
     REPLY_TAG_RE.flags,
   );
-  const inline = new RegExp(REPLY_TAG_RE.source, REPLY_TAG_RE.flags);
   const stripped = text
     .replace(aloneOnLine, "$1")
-    .replace(inline, "")
+    .replace(REPLY_TAG_RE, "")
     .replace(/[ \t]+\n/g, "\n");
 
   const replyToId = explicitReplyToId ?? (useCurrent ? triggerMessageId : undefined);
