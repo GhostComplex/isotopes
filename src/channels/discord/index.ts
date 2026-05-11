@@ -327,10 +327,9 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
   await runWithA2A(sinkFactory, () => handleInbound(
     msg,
+    { agentId, sessionKey },
     {
       gateway,
-      ...(account.agentBindings ? { agentBindings: account.agentBindings } : {}),
-      ...(account.defaultAgentId ? { defaultAgentId: account.defaultAgentId } : {}),
       dedupe,
       ...(guildsForReceive ? { guilds: guildsForReceive } : {}),
       ...(account.context?.dedupe === false ? { dedupeEnabled: false } : {}),

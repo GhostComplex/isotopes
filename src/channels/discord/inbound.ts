@@ -9,9 +9,6 @@ const log = loggers.discord;
 
 interface InboundDeps {
   gateway: Gateway;
-  /** botUserId → agentId. Falls back to defaultAgentId when no binding matches. */
-  agentBindings?: Record<string, string>;
-  defaultAgentId?: string;
   dedupe: DedupeCache;
   guilds?: Record<string, GuildInboundConfig>;
   /** Default true. */
@@ -49,10 +46,6 @@ export function detectEngagement(msg: DiscordMessage, botId: string): Engagement
   return null;
 }
 
-export function stripMentions(text: string): string {
-  return text.replace(/<@!?\d+>/g, "").trim();
-}
-
 export function resolveAgentId(
   msg: DiscordMessage,
   agentBindings: Record<string, string> | undefined,
@@ -74,6 +67,7 @@ export function resolveSessionKey(msg: DiscordMessage, botId: string): string {
 
 export async function handleInbound(
   msg: DiscordMessage,
+  routing: { agentId: string; sessionKey: string },
   deps: InboundDeps,
   ctx: InboundContext,
 ): Promise<void> {
@@ -101,15 +95,13 @@ export async function handleInbound(
     return;
   }
 
-  const agentId = resolveAgentId(msg, deps.agentBindings, deps.defaultAgentId ?? "default");
-  const sessionKey = resolveSessionKey(msg, ctx.botId);
-  const cleanedText = stripMentions(msg.content);
+  const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
   const content = deps.transformContent
     ? deps.transformContent(cleanedText, msg, engagement!)
     : cleanedText;
   const message: Message = {
-    agentId,
-    sessionKey,
+    agentId: routing.agentId,
+    sessionKey: routing.sessionKey,
     content,
     source: "channel",
     sender: msg.author.username,
