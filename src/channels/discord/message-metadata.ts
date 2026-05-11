@@ -1,17 +1,7 @@
-// src/channels/message-metadata.ts — Structured message metadata for channels
-
 import type { Message as DiscordMessage } from "discord.js";
-
-// ---------------------------------------------------------------------------
-// Channel types
-// ---------------------------------------------------------------------------
 
 /** The kind of channel the message was sent in. */
 type ChannelType = "text" | "dm" | "thread" | "voice" | "news" | "unknown";
-
-// ---------------------------------------------------------------------------
-// MessageMetadata
-// ---------------------------------------------------------------------------
 
 /** Structured metadata extracted from an incoming channel message. */
 export interface MessageMetadata {
@@ -43,10 +33,6 @@ export interface MessageMetadata {
   /** Message ID this is replying to, if any */
   replyTo?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Discord extraction
-// ---------------------------------------------------------------------------
 
 /** Map discord.js channel types to our ChannelType enum. */
 function resolveDiscordChannelType(channelType: number): ChannelType {
@@ -91,11 +77,7 @@ export function extractDiscordMetadata(msg: DiscordMessage): MessageMetadata {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Inbound metadata formatting (untrusted context block)
-// ---------------------------------------------------------------------------
-
-/** Format metadata as an XML block for injection into message content. */
+/** Render metadata as an XML block for prompt injection. */
 export function formatInboundMeta(meta: MessageMetadata, chatType: "direct" | "group"): string {
   const lines: string[] = [
     `<inbound_meta type="untrusted">`,
