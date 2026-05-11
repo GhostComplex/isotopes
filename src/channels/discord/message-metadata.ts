@@ -55,45 +55,34 @@ export function extractDiscordMetadata(msg: DiscordMessage): MessageMetadata {
   };
 }
 
-/** Render metadata as an XML block for prompt injection. */
+/** Render metadata as a compact bracket envelope for prompt injection. */
 export function formatInboundMeta(meta: MessageMetadata, chatType: "direct" | "group"): string {
-  const lines: string[] = [
-    `<inbound_meta type="untrusted">`,
-    `  <message_id>${meta.messageId}</message_id>`,
-    `  <chat_type>${chatType}</chat_type>`,
-    `  <channel_id>${meta.channel.id}</channel_id>`,
-  ];
-  
-  if (meta.channel.name) {
-    lines.push(`  <channel_name>${escapeXml(meta.channel.name)}</channel_name>`);
-  }
-  
-  lines.push(
-    `  <sender_id>${meta.sender.id}</sender_id>`,
-    `  <sender_username>${escapeXml(meta.sender.username)}</sender_username>`,
-  );
-  
-  if (meta.sender.displayName) {
-    lines.push(`  <sender_display_name>${escapeXml(meta.sender.displayName)}</sender_display_name>`);
-  }
-  
-  lines.push(`  <timestamp>${meta.timestamps.sent}</timestamp>`);
-  
-  if (meta.replyTo) {
-    lines.push(`  <reply_to>${meta.replyTo}</reply_to>`);
-  }
-  
-  lines.push(`</inbound_meta>`);
-  
-  return lines.join("\n");
+  const parts: string[] = ["Discord", "untrusted", chatType];
+
+  const chanName = meta.channel.name ? `${escapeField(meta.channel.name)}/` : "";
+  parts.push(`ch=${chanName}${meta.channel.id}`);
+
+  const s = meta.sender;
+  const sameName = !s.displayName || s.displayName === s.username;
+  const senderLabel = sameName
+    ? `${escapeField(s.username)}/${s.id}`
+    : `${escapeField(s.displayName!)}/${escapeField(s.username)}/${s.id}`;
+  parts.push(`from=${senderLabel}`);
+
+  if (meta.replyTo) parts.push(`reply=${meta.replyTo}`);
+
+  parts.push(`ts=${new Date(meta.timestamps.sent).toISOString()}`);
+  parts.push(`msg=${meta.messageId}`);
+
+  return `[${parts.join(" ")}]`;
 }
 
-/** Escape XML special characters. */
-function escapeXml(str: string): string {
+/** Sanitize a header field — neutralize brackets, collapse whitespace. */
+function escapeField(str: string): string {
   return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replace(/\r\n|\r|\n|\t/g, " ")
+    .replace(/\[/g, "(")
+    .replace(/\]/g, ")")
+    .replace(/\s+/g, " ")
+    .trim();
 }

@@ -162,32 +162,26 @@ describe("formatInboundMeta", () => {
 
     const result = formatInboundMeta(meta, "group");
 
-    expect(result).toContain('<inbound_meta type="untrusted">');
-    expect(result).toContain("<message_id>msg-001</message_id>");
-    expect(result).toContain("<chat_type>group</chat_type>");
-    expect(result).toContain("<channel_id>456</channel_id>");
-    expect(result).toContain("<channel_name>general</channel_name>");
-    expect(result).toContain("<sender_id>123</sender_id>");
-    expect(result).toContain("<sender_username>testuser</sender_username>");
-    expect(result).toContain("<timestamp>1700000000000</timestamp>");
-    expect(result).toContain("</inbound_meta>");
+    expect(result).toBe(
+      "[Discord untrusted group ch=general/456 from=testuser/123 ts=2023-11-14T22:13:20.000Z msg=msg-001]",
+    );
   });
 
-  it("formats metadata for direct chat", () => {
+  it("formats metadata for direct chat (no channel name)", () => {
     const meta: MessageMetadata = {
       messageId: "msg-002",
       sender: { id: "123", username: "testuser", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
       channel: { id: "789" },
     };
-    
+
     const result = formatInboundMeta(meta, "direct");
-    
-    expect(result).toContain("<chat_type>direct</chat_type>");
-    expect(result).not.toContain("<channel_name>");
+
+    expect(result).toContain("untrusted direct ch=789 ");
+    expect(result).not.toMatch(/ch=[^/]*\/789/); // no name slash before id
   });
 
-  it("includes reply_to when present", () => {
+  it("includes reply= when present", () => {
     const meta: MessageMetadata = {
       messageId: "msg-003",
       sender: { id: "123", username: "testuser", isBot: false },
@@ -195,13 +189,13 @@ describe("formatInboundMeta", () => {
       channel: { id: "456" },
       replyTo: "msg-999",
     };
-    
+
     const result = formatInboundMeta(meta, "group");
-    
-    expect(result).toContain("<reply_to>msg-999</reply_to>");
+
+    expect(result).toContain("reply=msg-999");
   });
 
-  it("includes display name when present", () => {
+  it("includes display name when distinct from username", () => {
     const meta: MessageMetadata = {
       messageId: "msg-004",
       sender: { id: "123", username: "testuser", displayName: "Test User", isBot: false },
@@ -211,21 +205,38 @@ describe("formatInboundMeta", () => {
 
     const result = formatInboundMeta(meta, "group");
 
-    expect(result).toContain("<sender_display_name>Test User</sender_display_name>");
+    expect(result).toContain("from=Test User/testuser/123");
   });
 
-  it("escapes XML special characters", () => {
+  it("collapses sender when displayName equals username", () => {
     const meta: MessageMetadata = {
       messageId: "msg-005",
-      sender: { id: "123", username: "test<user>", displayName: "Test & User", isBot: false },
+      sender: { id: "123", username: "alice", displayName: "alice", isBot: false },
       timestamps: { sent: 1700000000000, received: 1700000001000 },
-      channel: { id: "456", name: "chat\"room'1" },
+      channel: { id: "456" },
     };
-    
+
     const result = formatInboundMeta(meta, "group");
-    
-    expect(result).toContain("<sender_username>test&lt;user&gt;</sender_username>");
-    expect(result).toContain("<sender_display_name>Test &amp; User</sender_display_name>");
-    expect(result).toContain("<channel_name>chat&quot;room&apos;1</channel_name>");
+
+    expect(result).toContain("from=alice/123");
+    expect(result).not.toContain("alice/alice");
+  });
+
+  it("neutralizes brackets and newlines in user-controlled fields", () => {
+    const meta: MessageMetadata = {
+      messageId: "msg-006",
+      sender: { id: "123", username: "evil[bot]", displayName: "Mal\nicious", isBot: false },
+      timestamps: { sent: 1700000000000, received: 1700000001000 },
+      channel: { id: "456", name: "chan]name[ok" },
+    };
+
+    const result = formatInboundMeta(meta, "group");
+
+    expect(result).toContain("ch=chan)name(ok/456");
+    expect(result).toContain("from=Mal icious/evil(bot)/123");
+    // Header stays a single bracketed line.
+    expect(result.startsWith("[")).toBe(true);
+    expect(result.endsWith("]")).toBe(true);
+    expect(result.split("\n")).toHaveLength(1);
   });
 });

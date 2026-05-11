@@ -375,9 +375,8 @@ describe("createDiscordChannel — message metadata enrichment", () => {
 
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
     const dispatched = gateway.dispatch.mock.calls[0][0];
-    expect(dispatched.content).toContain("<inbound_meta");
-    expect(dispatched.content).toContain("<sender_id>user-42</sender_id>");
-    expect(dispatched.content).toContain("<chat_type>group</chat_type>");
+    expect(dispatched.content).toContain("[Discord untrusted group");
+    expect(dispatched.content).toContain("from=alice/user-42");
     expect(dispatched.content).toContain("hello");
   });
 });
