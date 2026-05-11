@@ -62,10 +62,15 @@ ${lines}
 `;
     } else {
       const lines = groupAllowlist.map((id) => `            - "${id}"`).join("\n");
+      const guildEntries = groupAllowlist
+        .map((id) => `          "${id}":\n            requireMention: true`)
+        .join("\n");
       groupBlock = `        groupAccess:
           policy: allowlist
           guildAllowlist:
 ${lines}
+        guilds:
+${guildEntries}
 `;
     }
   } else {

@@ -66,6 +66,10 @@ describe("renderConfig", () => {
     expect(yaml).toContain('- "111222333"');
     expect(yaml).toContain('- "444555666"');
     expect(yaml).not.toContain("channelAllowlist:");
+    // Per-guild requireMention scaffold so the user can flip it later.
+    expect(yaml).toContain("guilds:");
+    expect(yaml).toMatch(/"111222333":\s+requireMention: true/);
+    expect(yaml).toMatch(/"444555666":\s+requireMention: true/);
   });
 
   it("emits group allowlist with channel-only entries (channelAllowlist only, drops guild prefix)", () => {
