@@ -18,9 +18,7 @@ export function parseReplyDirective(
   let useCurrent = false;
   let explicitReplyToId: string | undefined;
 
-  const re = new RegExp(REPLY_TAG_RE.source, REPLY_TAG_RE.flags);
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
+  for (const m of text.matchAll(REPLY_TAG_RE)) {
     if (m[1] === undefined) {
       useCurrent = true;
     } else {
