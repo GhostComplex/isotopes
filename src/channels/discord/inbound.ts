@@ -1,7 +1,7 @@
 import type { Message as DiscordMessage } from "discord.js";
 import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
 import { DedupeCache } from "./dedupe.js";
-import { REPLY_DIRECTIVE_PROMPT } from "../reply.js";
+import { REPLY_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { GuildInboundConfig } from "./types.js";
 
@@ -106,7 +106,7 @@ export async function handleInbound(
     source: "channel",
     sender: msg.author.username,
     timestamp: msg.createdTimestamp,
-    extraSystemPrompt: REPLY_DIRECTIVE_PROMPT,
+    extraSystemPrompt: REPLY_PROMPT,
   };
 
   const callbacks = ctx.buildCallbacks(msg);

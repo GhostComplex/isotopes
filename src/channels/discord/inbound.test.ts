@@ -160,7 +160,7 @@ describe("handleInbound", () => {
       source: "channel",
       sender: "alice",
     });
-    expect(message.extraSystemPrompt).toContain("Chat Output Directives");
+    expect(message.extraSystemPrompt).toContain("Chat Reply Tags");
     expect(callbacks).toBe(cbObj);
     expect(buildCallbacks).toHaveBeenCalledWith(msg);
   });

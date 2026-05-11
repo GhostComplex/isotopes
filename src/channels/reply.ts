@@ -11,7 +11,7 @@ interface ResolvedReply {
 }
 
 /** Stateless — call once per outbound chunk. */
-export function parseReplyDirective(
+export function parseReply(
   text: string,
   triggerMessageId?: string,
 ): ResolvedReply {
@@ -43,7 +43,7 @@ export function parseReplyDirective(
 // Pass via RunRequest.extraSystemPrompt from any chat channel so the agent
 // learns the tag vocabulary. Tags are honored only on channels that
 // translate replyToId into a native reply primitive.
-export const REPLY_DIRECTIVE_PROMPT = `# Chat Output Directives
+export const REPLY_PROMPT = `# Chat Reply Tags
 
 When you reply on a chat surface, you may include the following inline tags
 in your message to request delivery metadata. Tags are stripped from the

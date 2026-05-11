@@ -1,6 +1,6 @@
 import type { SendableChannels } from "discord.js";
 import type { DispatchCallbacks } from "../../gateway/index.js";
-import { parseReplyDirective } from "../reply.js";
+import { parseReply } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { ClientLike } from "./index.js";
 
@@ -111,7 +111,7 @@ export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks 
   };
 
   const flushSegment = async (text: string): Promise<void> => {
-    const { stripped, replyToId } = parseReplyDirective(text, triggerMessageId);
+    const { stripped, replyToId } = parseReply(text, triggerMessageId);
     if (!stripped) return;
     const chunks = chunkDiscordMessage(stripped);
     for (let i = 0; i < chunks.length; i++) {
