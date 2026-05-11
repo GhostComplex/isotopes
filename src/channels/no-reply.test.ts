@@ -1,4 +1,4 @@
-// src/silent-reply.test.ts — Tests for silent reply token detection.
+// src/channels/no-reply.test.ts — Tests for silent reply token detection.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -11,7 +11,7 @@ import {
   startsWithSilentToken,
   stripLeadingSilentToken,
   stripSilentToken,
-} from "./silent-reply.js";
+} from "./no-reply.js";
 
 describe("token constants", () => {
   it("uses bare tokens (no surrounding brackets)", () => {

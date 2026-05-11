@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseReplyDirective, REPLY_DIRECTIVE_PROMPT } from "./reply-directive.js";
+import { parseReplyDirective, REPLY_DIRECTIVE_PROMPT } from "./reply.js";
 
 describe("parseReplyDirective", () => {
   it("returns text unchanged when no directives present", () => {

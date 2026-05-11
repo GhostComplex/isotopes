@@ -1,6 +1,6 @@
 import type { SendableChannels } from "discord.js";
 import type { DispatchCallbacks } from "../../gateway/index.js";
-import { parseReplyDirective } from "./reply-directive.js";
+import { parseReplyDirective } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { ClientLike } from "./index.js";
 

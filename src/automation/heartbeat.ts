@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createLogger, type Logger } from "../logging/logger.js";
-import { isSilentReplyPayloadText } from "../silent-reply.js";
+import { isSilentReplyPayloadText } from "../channels/no-reply.js";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -1,7 +1,7 @@
 import type { Message as DiscordMessage } from "discord.js";
 import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
 import { DedupeCache } from "./dedupe.js";
-import { REPLY_DIRECTIVE_PROMPT } from "./reply-directive.js";
+import { REPLY_DIRECTIVE_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { GuildInboundConfig } from "./types.js";
 
