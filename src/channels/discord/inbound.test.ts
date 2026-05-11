@@ -6,9 +6,11 @@ import { DedupeCache } from "./dedupe.js";
 import {
   detectEngagement,
   handleInbound,
+  passesAllowlist,
 } from "./inbound.js";
 import { resolveAgentId, resolveSessionKey } from "./routing.js";
 import type { Gateway, DispatchCallbacks } from "../../gateway/index.js";
+import type { DiscordAccountConfig } from "./types.js";
 
 const BOT_ID = "111111";
 
@@ -247,5 +249,84 @@ describe("handleInbound", () => {
       ),
     ).rejects.toThrow("boom");
     expect(flushRemaining).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("passesAllowlist (allowlist policy)", () => {
+  const account = (groupAccess: DiscordAccountConfig["groupAccess"]): DiscordAccountConfig => ({
+    token: "t",
+    defaultAgentId: "main",
+    groupAccess,
+  });
+
+  it("denies when allowlist policy has no rules (fail-closed)", () => {
+    const acc = account({ policy: "allowlist" });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-1" }), acc)).toBe(false);
+  });
+
+  it("denies when both allowlists are empty arrays", () => {
+    const acc = account({ policy: "allowlist", guildAllowlist: [], channelAllowlist: [] });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-1" }), acc)).toBe(false);
+  });
+
+  it("guild-only: passes when guild matches", () => {
+    const acc = account({ policy: "allowlist", guildAllowlist: ["g-1"] });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-1" }), acc)).toBe(true);
+  });
+
+  it("guild-only: drops other guilds", () => {
+    const acc = account({ policy: "allowlist", guildAllowlist: ["g-1"] });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-2" }), acc)).toBe(false);
+  });
+
+  it("channel-only: passes when channel matches", () => {
+    const acc = account({ policy: "allowlist", channelAllowlist: ["channel-1"] });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-1" }), acc)).toBe(true);
+  });
+
+  it("channel-only: drops other channels", () => {
+    const acc = account({ policy: "allowlist", channelAllowlist: ["channel-1"] });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-2" }), acc)).toBe(false);
+  });
+
+  it("both set: passes only when guild AND channel match", () => {
+    const acc = account({
+      policy: "allowlist",
+      guildAllowlist: ["g-1"],
+      channelAllowlist: ["channel-1"],
+    });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-1" }), acc)).toBe(true);
+  });
+
+  it("both set: drops when guild matches but channel does not", () => {
+    const acc = account({
+      policy: "allowlist",
+      guildAllowlist: ["g-1"],
+      channelAllowlist: ["channel-1"],
+    });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-2" }), acc)).toBe(false);
+  });
+
+  it("both set: drops when channel matches but guild does not", () => {
+    const acc = account({
+      policy: "allowlist",
+      guildAllowlist: ["g-1"],
+      channelAllowlist: ["channel-1"],
+    });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-2", channelId: "channel-1" }), acc)).toBe(false);
+  });
+
+  it("empty guild list with channel set: drops everything", () => {
+    const acc = account({
+      policy: "allowlist",
+      guildAllowlist: [],
+      channelAllowlist: ["channel-1"],
+    });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-1" }), acc)).toBe(false);
+  });
+
+  it("policy=disabled drops all guild messages", () => {
+    const acc = account({ policy: "disabled" });
+    expect(passesAllowlist(fakeMsg({ guildId: "g-1" }), acc)).toBe(false);
   });
 });

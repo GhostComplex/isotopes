@@ -21,13 +21,17 @@ export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConf
     return false;
   }
   if (group.policy === "allowlist") {
-    const channelOk = group.channelAllowlist?.includes(msg.channelId) ?? false;
-    const guildOk = group.guildAllowlist?.includes(msg.guild.id) ?? false;
-    if (!channelOk && !guildOk) {
-      log.debug(
-        `discord: drop guild message ${msg.id} (not in groupAccess allowlist, ` +
-          `guild=${msg.guild.id} channel=${msg.channelId})`,
-      );
+    // Fail-closed: allowlist policy with no rules is a misconfiguration.
+    if (group.guildAllowlist === undefined && group.channelAllowlist === undefined) {
+      log.debug(`discord: drop guild message ${msg.id} (allowlist policy with no rules)`);
+      return false;
+    }
+    if (group.guildAllowlist !== undefined && !group.guildAllowlist.includes(msg.guild.id)) {
+      log.debug(`discord: drop ${msg.id} (guild ${msg.guild.id} not in guildAllowlist)`);
+      return false;
+    }
+    if (group.channelAllowlist !== undefined && !group.channelAllowlist.includes(msg.channelId)) {
+      log.debug(`discord: drop ${msg.id} (channel ${msg.channelId} not in channelAllowlist)`);
       return false;
     }
   }

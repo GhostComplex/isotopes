@@ -8,7 +8,7 @@ export interface ResolvedGroupPolicy {
 
 export function resolveGroupPolicy(account: DiscordAccountConfig): ResolvedGroupPolicy {
   const g = account.groupAccess;
-  if (g?.policy || g?.channelAllowlist?.length || g?.guildAllowlist?.length) {
+  if (g?.policy || g?.channelAllowlist !== undefined || g?.guildAllowlist !== undefined) {
     return {
       policy: g.policy ?? "allowlist",
       channelAllowlist: g.channelAllowlist,
