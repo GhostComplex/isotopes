@@ -209,6 +209,13 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
 
   if (!passesAllowlist(msg, account)) return;
 
+  // Dedupe: WS RESUME may replay messages. Drop duplicates before any side
+  // effects (history append, /stop intercept, dispatch).
+  if (dedupe.isDuplicate(msg.id)) {
+    log.debug(`discord receive: dedupe drop ${msg.id}`);
+    return;
+  }
+
   const agentId = resolveAgentId(msg, account.agentBindings, account.defaultAgentId ?? "default");
   const sessionKey = resolveSessionKey(msg, botId);
 
@@ -236,7 +243,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     { agentId, sessionKey },
     {
       gateway,
-      dedupe,
       ...(guildsForReceive ? { guilds: guildsForReceive } : {}),
       ...(account.allowBots ? { allowBots: account.allowBots } : {}),
       transformContent: (content, triggerMsg) => {

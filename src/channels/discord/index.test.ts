@@ -245,6 +245,27 @@ describe("createDiscordChannel — inbound wiring", () => {
     expect(message.sessionKey).toBe("discord:bot-A:channel:channel-1");
   });
 
+  it("dedupes a replayed message (WS RESUME) — same id only dispatches once", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway, logger: silentLogger() });
+
+    const msg = fakeMsg({ id: "dup-1", mentionedIds: ["bot-A"] });
+    client.emit("messageCreate", msg);
+    client.emit("messageCreate", msg);
+    await new Promise((r) => setImmediate(r));
+
+    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
+  });
+
   it("drops guild messages outside the allowlist", async () => {
     const client = makeFakeClient("bot-A");
     const gateway = makeGateway();

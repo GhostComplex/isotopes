@@ -1,6 +1,5 @@
 import type { Message as DiscordMessage, SendableChannels } from "discord.js";
 import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
-import { DedupeCache } from "./dedupe.js";
 import { REPLY_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { DiscordAccountConfig, GuildInboundConfig } from "./types.js";
@@ -119,7 +118,6 @@ export async function maybeHandleStop(
 
 interface InboundDeps {
   gateway: Gateway;
-  dedupe: DedupeCache;
   guilds?: Record<string, GuildInboundConfig>;
   /** Default false. */
   allowBots?: boolean;
@@ -152,11 +150,6 @@ export async function handleInbound(
   // Per-guild thread gate: drop thread messages when guild has respondInThreads=false.
   if (msg.guild && isThreadMessage(msg) && deps.guilds?.[msg.guild.id]?.respondInThreads === false) {
     log.debug(`discord receive: drop thread message ${msg.id} (respondInThreads=false)`);
-    return;
-  }
-
-  if (deps.dedupe.isDuplicate(msg.id)) {
-    log.debug(`discord receive: dedupe drop ${msg.id}`);
     return;
   }
 
