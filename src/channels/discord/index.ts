@@ -4,22 +4,18 @@ import {
   Partials,
   type Message as DiscordMessage,
   type SendableChannels,
-  type ThreadChannel,
 } from "discord.js";
-import path from "node:path";
 import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
-import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
 import { handleInbound, passesAllowlist, maybeHandleStop } from "./inbound.js";
 import { resolveAgentId, resolveSessionKey } from "./routing.js";
 import { createDiscordCallbacks } from "./outbound.js";
 import { reactToMessage } from "./react.js";
-import { resolveGroupPolicy, resolveToken, mapGuildsForReceive } from "./config.js";
+import { resolveToken, mapGuildsForReceive } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
-import { ThreadBindingManager } from "./thread-binding.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
 import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
 import type {
@@ -59,8 +55,6 @@ const defaultClientFactory: ClientFactory = () =>
 interface CreateDiscordChannelOptions {
   /** Test seam: override Discord.js Client construction. */
   clientFactory?: ClientFactory;
-  /** Test seam: override ThreadBindingManager. */
-  threadBindingManager?: ThreadBindingManager;
 }
 
 export function createDiscordChannel(
@@ -76,7 +70,6 @@ export function createDiscordChannel(
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
-  let threadBindings: ThreadBindingManager | null = options.threadBindingManager ?? null;
 
   return {
     async start(deps: ChannelDeps) {
@@ -87,17 +80,6 @@ export function createDiscordChannel(
         return;
       }
 
-      // Lazily initialize the thread-binding manager (shared across accounts).
-      if (!threadBindings) {
-        const persistPath = path.join(getIsotopesHome(), "thread-bindings.json");
-        threadBindings = new ThreadBindingManager({ persistPath });
-        await threadBindings.load({ clearStale: true });
-        if (threadBindings.size > 0) {
-          logger.info(`Loaded ${threadBindings.size} persisted thread binding(s)`);
-        }
-      }
-
-      const tb = threadBindings;
       await Promise.all(
         Object.entries(accounts).map(([accountId, account]) =>
           startAccount({
@@ -109,7 +91,6 @@ export function createDiscordChannel(
             clients,
             dedupes,
             a2aThreads,
-            threadBindings: tb,
           }),
         ),
       );
@@ -158,11 +139,10 @@ interface StartAccountArgs {
   clients: Map<string, ClientLike>;
   dedupes: Map<string, DedupeCache>;
   a2aThreads: Map<string, string>;
-  threadBindings: ThreadBindingManager;
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, a2aThreads, threadBindings } = args;
+  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, a2aThreads } = args;
 
   const token = resolveToken(account);
   if (!token) {
@@ -199,17 +179,6 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       logger.error(`discord: receive failed: ${err instanceof Error ? err.message : String(err)}`);
     });
   });
-
-  if (account.threadBindings?.enabled) {
-    client.on("threadCreate", (...rawArgs: unknown[]) => {
-      const thread = rawArgs[0] as ThreadChannel;
-      try {
-        autoBindThread(thread, account, threadBindings, logger);
-      } catch (err) {
-        logger.warn(`discord: threadCreate handler failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    });
-  }
 
   await client.login(token);
 }
@@ -262,31 +231,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   ));
 }
 
-
-function autoBindThread(
-  thread: ThreadChannel,
-  account: DiscordAccountConfig,
-  threadBindings: ThreadBindingManager,
-  logger: Logger,
-): void {
-  if (!thread.parentId) {
-    logger.debug(`discord: ignoring thread ${thread.id} — no parent channel`);
-    return;
-  }
-  const group = resolveGroupPolicy(account);
-  if (group.policy === "disabled") return;
-  if (group.policy === "allowlist") {
-    const channelOk = group.channelAllowlist?.includes(thread.parentId) ?? false;
-    const guildOk = group.guildAllowlist?.includes(thread.guildId) ?? false;
-    if (!channelOk && !guildOk) {
-      logger.debug(`discord: ignoring thread ${thread.id} — parent not in allowlist`);
-      return;
-    }
-  }
-  const agentId = account.defaultAgentId ?? "default";
-  logger.info(`discord: thread ${thread.id} created in ${thread.parentId}, binding to agent ${agentId}`);
-  threadBindings.bind(thread.id, { parentChannelId: thread.parentId, agentId });
-}
 
 /** Find every account whose defaultAgentId or agentBindings serves this agent. */
 function clientsForAgent(

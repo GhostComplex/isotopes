@@ -78,9 +78,7 @@ channels:
       main:
         token: ${token}
         defaultAgentId: main
-${dmBlock}${groupBlock}        threadBindings:
-          enabled: true
-`;
+${dmBlock}${groupBlock}`;
 }
 
 export function renderConfig(answers: InitAnswers): string {

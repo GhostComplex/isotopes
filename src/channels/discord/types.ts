@@ -2,22 +2,6 @@
 // Moved from src/core/types.ts to decouple Discord from core.
 
 // ---------------------------------------------------------------------------
-// Thread bindings
-// ---------------------------------------------------------------------------
-
-export interface ThreadBindingConfig {
-  enabled: boolean;
-}
-
-export interface ThreadBinding {
-  threadId: string;
-  parentChannelId: string;
-  sessionId?: string;
-  agentId: string;
-  createdAt: Date;
-}
-
-// ---------------------------------------------------------------------------
 // Channel config
 // ---------------------------------------------------------------------------
 
@@ -40,7 +24,6 @@ export interface DiscordAccountConfig {
     guildAllowlist?: string[];
   };
   guilds?: Record<string, GuildConfig>;
-  threadBindings?: ThreadBindingConfig;
   allowBots?: boolean;
 }
 
