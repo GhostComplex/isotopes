@@ -44,7 +44,7 @@ describe("HeartbeatManager", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    runAgentLoop = vi.fn<RunAgentLoop>().mockResolvedValue("[NO_REPLY]");
+    runAgentLoop = vi.fn<RunAgentLoop>().mockResolvedValue("done");
   });
 
   afterEach(() => {
@@ -149,7 +149,6 @@ describe("HeartbeatManager", () => {
       expect(sessionKey).toBe("heartbeat:test-agent");
       expect(prompt).toContain("[HEARTBEAT]");
       expect(prompt).toContain("Do periodic stuff");
-      expect(prompt).toContain("NO_REPLY");
     });
 
     it("includes a timestamp in the prompt", async () => {
@@ -197,7 +196,7 @@ describe("HeartbeatManager", () => {
       expect(runAgentLoop).toHaveBeenCalledTimes(1);
 
       // Resolve the first heartbeat
-      resolveFirst("[NO_REPLY]");
+      resolveFirst("done");
       await vi.advanceTimersByTimeAsync(0); // flush microtasks
 
       // Third tick should now work
@@ -237,7 +236,7 @@ describe("HeartbeatManager", () => {
       vi.mocked(fs.readFile).mockImplementation(fake.readFile);
 
       runAgentLoop.mockRejectedValueOnce(new Error("agent crashed"));
-      runAgentLoop.mockResolvedValueOnce("[NO_REPLY]");
+      runAgentLoop.mockResolvedValueOnce("done");
 
       const hb = makeManager({ intervalSeconds: 5 });
       hb.start();

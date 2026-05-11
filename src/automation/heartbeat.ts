@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createLogger, type Logger } from "../logging/logger.js";
-import { isSilentReplyPayloadText } from "../channels/no-reply.js";
 
 export interface HeartbeatConfig {
   enabled: boolean;
@@ -101,12 +100,7 @@ export class HeartbeatManager {
 
     try {
       const response = await this.runAgentLoop(this.agentId, prompt, sessionKey);
-
-      if (isSilentReplyPayloadText(response)) {
-        this.log.debug(`Heartbeat silent reply from "${this.agentId}"`);
-      } else {
-        this.log.info(`Heartbeat response from "${this.agentId}": ${response}`);
-      }
+      this.log.info(`Heartbeat response from "${this.agentId}": ${response}`);
     } catch (err) {
       this.log.error(`Heartbeat error for "${this.agentId}":`, err);
     } finally {
@@ -126,6 +120,5 @@ Your HEARTBEAT.md file says:
 ${heartbeatContent.trim()}
 ---
 
-Review your scheduled tasks and decide if any action is needed.
-If nothing to do, respond with only: NO_REPLY`;
+Review your scheduled tasks and decide if any action is needed.`;
 }
