@@ -306,7 +306,7 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
   let active = activeSessions.get(activeKey(agentId, sessionKey));
   if (!active) {
     // Session may exist in the store but was never registered via the HTTP create
-    // path (e.g. transport-driven sessions like Discord). Look it up and register
+    // path (e.g. channel-driven sessions like Discord). Look it up and register
     // on demand so HTTP clients can send into it.
     if (deps.sessionStoreManager) {
       const store = deps.sessionStoreManager.peek(agentId);

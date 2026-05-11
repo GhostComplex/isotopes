@@ -46,23 +46,31 @@ function renderChannels(answers: InitAnswers): string {
 
   let groupBlock: string;
   if (groupPolicy === "allowlist" && groupAllowlist?.length) {
-    const guildIds = new Set<string>();
-    const channelIds: string[] = [];
-    for (const entry of groupAllowlist) {
-      const [guildId, channelId] = entry.split("/");
-      guildIds.add(guildId);
-      if (channelId) channelIds.push(channelId);
-    }
-    const guildLines = [...guildIds].map((id) => `            - "${id}"`).join("\n");
-    const channelLines = channelIds.map((id) => `            - "${id}"`).join("\n");
-    groupBlock = `        groupAccess:
+    // Wizard guarantees entries are uniformly "guildId" OR uniformly "guildId/channelId" — never mixed.
+    // The two shapes map to mutually exclusive output lists; emitting both
+    // would over-restrict under the AND semantics of allowlist resolution.
+    const isChannelMode = groupAllowlist[0].includes("/");
+    if (isChannelMode) {
+      const channelIds = groupAllowlist
+        .map((entry) => entry.split("/")[1])
+        .filter((id): id is string => Boolean(id));
+      const lines = channelIds.map((id) => `            - "${id}"`).join("\n");
+      groupBlock = `        groupAccess:
+          policy: allowlist
+          channelAllowlist:
+${lines}
+`;
+    } else {
+      const lines = groupAllowlist.map((id) => `            - "${id}"`).join("\n");
+      const guildEntries = groupAllowlist
+        .map((id) => `          "${id}":\n            requireMention: true`)
+        .join("\n");
+      groupBlock = `        groupAccess:
           policy: allowlist
           guildAllowlist:
-${guildLines}
-`;
-    if (channelLines.length > 0) {
-      groupBlock += `          channelAllowlist:
-${channelLines}
+${lines}
+        guilds:
+${guildEntries}
 `;
     }
   } else {
@@ -78,9 +86,7 @@ channels:
       main:
         token: ${token}
         defaultAgentId: main
-${dmBlock}${groupBlock}        threadBindings:
-          enabled: true
-`;
+${dmBlock}${groupBlock}`;
 }
 
 export function renderConfig(answers: InitAnswers): string {

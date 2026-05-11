@@ -49,7 +49,7 @@ describe("renderConfig", () => {
     expect(yaml).toMatch(/dmAccess:\s+policy: allowlist/);
   });
 
-  it("emits group allowlist with guild and channel IDs", () => {
+  it("emits group allowlist with whole-guild entries (guildAllowlist only)", () => {
     const yaml = renderConfig({
       llm: "skip",
       channel: "discord",
@@ -57,16 +57,39 @@ describe("renderConfig", () => {
         token: "tok",
         dmPolicy: "disabled",
         groupPolicy: "allowlist",
-        groupAllowlist: ["111222333", "444555666/777888999"],
+        groupAllowlist: ["111222333", "444555666"],
       },
       codingAgent: "skip",
     });
     expect(yaml).toMatch(/groupAccess:\s+policy: allowlist/);
+    expect(yaml).toContain("guildAllowlist:");
     expect(yaml).toContain('- "111222333"');
     expect(yaml).toContain('- "444555666"');
-    expect(yaml).toContain('- "777888999"');
-    expect(yaml).toContain("guildAllowlist:");
+    expect(yaml).not.toContain("channelAllowlist:");
+    // Per-guild requireMention scaffold so the user can flip it later.
+    expect(yaml).toContain("guilds:");
+    expect(yaml).toMatch(/"111222333":\s+requireMention: true/);
+    expect(yaml).toMatch(/"444555666":\s+requireMention: true/);
+  });
+
+  it("emits group allowlist with channel-only entries (channelAllowlist only, drops guild prefix)", () => {
+    const yaml = renderConfig({
+      llm: "skip",
+      channel: "discord",
+      discord: {
+        token: "tok",
+        dmPolicy: "disabled",
+        groupPolicy: "allowlist",
+        groupAllowlist: ["111222333/777888999", "111222333/444555666"],
+      },
+      codingAgent: "skip",
+    });
+    expect(yaml).toMatch(/groupAccess:\s+policy: allowlist/);
     expect(yaml).toContain("channelAllowlist:");
+    expect(yaml).toContain('- "777888999"');
+    expect(yaml).toContain('- "444555666"');
+    expect(yaml).not.toContain("guildAllowlist:");
+    expect(yaml).not.toContain('- "111222333"');
   });
 
   it("emits group open without allowlist entries", () => {

@@ -25,7 +25,7 @@ export class PiRunner {
     if (req.sessionId) return req.sessionId;
     const store = this.opts.agent.sessionStore!;
     const policy = this.opts.agent.sessionPolicy ?? "parent-reuse";
-    const fromId = req.from?.agentId ?? "transport";
+    const fromId = req.from?.agentId ?? "channel";
     const suffix = policy === "parent-reuse" && req.parentSessionId
       ? req.parentSessionId
       : randomUUID();
@@ -54,7 +54,7 @@ export class PiRunner {
       ? `[Caller working directory: ${request.cwd}]\n\n${request.content}`
       : request.content;
     try {
-      yield* streamPiSession(session, content, abort);
+      yield* streamPiSession(session, content, abort, request.images);
     } finally {
       session.dispose();
     }
@@ -65,6 +65,7 @@ async function* streamPiSession(
   session: AgentSession,
   content: string,
   abort: AbortSignal,
+  images?: Array<{ type: "image"; data: string; mimeType: string }>,
 ): AsyncGenerator<AgentEvent> {
   const onAbort = () => session.abort();
   abort.addEventListener("abort", onAbort, { once: true });
@@ -79,7 +80,8 @@ async function* streamPiSession(
     if (resolve) { resolve(); resolve = null; }
   });
 
-  session.prompt(content).catch((err) => {
+  const promptOpts = images && images.length > 0 ? { images } : undefined;
+  session.prompt(content, promptOpts).catch((err) => {
     queue.push({ type: "__error__", error: err });
     if (resolve) { resolve(); resolve = null; }
   });

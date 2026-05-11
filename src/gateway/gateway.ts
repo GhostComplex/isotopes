@@ -16,7 +16,6 @@ export interface GatewayDeps {
   sessionStoreManager: SessionStoreManager;
 }
 
-// State for the dispatch driving this session's run.
 // `ready` resolves once the underlying runner has registered the run
 // (i.e. the first event has arrived) so steer can safely target it.
 // `done` resolves at agent_end; it never rejects — runner errors are
@@ -32,7 +31,6 @@ interface ActiveHandle {
 }
 
 export function createGateway(deps: GatewayDeps): Gateway {
-  // sessionId → handle for the dispatch currently driving that session's run
   const active = new Map<string, ActiveHandle>();
   // Dedupes concurrent resolveSessionId calls so two dispatches with the same
   // sessionKey share one create instead of racing into two distinct sessions.
@@ -66,6 +64,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
         to: msg.agentId,
         sessionId,
         content: msg.content,
+        ...(msg.images && msg.images.length > 0 ? { images: msg.images } : {}),
         ...(msg.cwd ? { cwd: msg.cwd } : {}),
         ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
       })) {
@@ -108,7 +107,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
    *   runner's native queue via `steer` and returns `state: "queued"` immediately.
    *   The steered content's output continues streaming through the **original**
    *   handle's callbacks (the first dispatcher's). The `callbacks` argument
-   *   passed on a queued call is **ignored** — there is one transport sink per
+   *   passed on a queued call is **ignored** — there is one channel sink per
    *   session, owned by whoever started the run.
    */
   async function dispatch(msg: Message, callbacks?: DispatchCallbacks): Promise<DispatchResult> {
@@ -167,5 +166,12 @@ export function createGateway(deps: GatewayDeps): Gateway {
     deps.agentRuntime.cancel(sessionId, reason ? { reason } : undefined);
   }
 
-  return { dispatch, abort };
+  async function abortByKey(agentId: string, sessionKey: string, reason?: string): Promise<boolean> {
+    const store = await deps.sessionStoreManager.getOrCreate(agentId);
+    const session = await store.findByKey(sessionKey);
+    if (!session) return false;
+    return deps.agentRuntime.cancel(session.id, reason ? { reason } : undefined);
+  }
+
+  return { dispatch, abort, abortByKey };
 }

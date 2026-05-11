@@ -301,8 +301,10 @@ function InitWizard({ onDone }: Props) {
 
       {step.kind === "discord-group-allowlist" && (
         <Box flexDirection="column">
-          <Text>Server/channel allowlist (format: serverId or serverId/channelId, comma-separated):</Text>
-          <Text dimColor>  e.g. 123456789012345678, 987654321098765432/111222333444555666</Text>
+          <Text>Server/channel allowlist (comma-separated):</Text>
+          <Text dimColor>  pick ONE mode — either all serverId, OR all serverId/channelId</Text>
+          <Text dimColor>  e.g. 123456789012345678, 234567890123456789</Text>
+          <Text dimColor>  or   987654321098765432/111222333444555666, 987654321098765432/777888999000111222</Text>
           <Box>
             <Text color="cyan">› </Text>
             <TextInput
@@ -310,15 +312,21 @@ function InitWizard({ onDone }: Props) {
               onChange={setGroupAllowlistInput}
               onSubmit={() => {
                 const entries = groupAllowlistInput.trim().split(",").map((s) => s.trim()).filter(Boolean);
-                const valid = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
-                if (entries.length > 0 && valid) goToClaude();
+                const formatOk = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
+                const allWhole = entries.every((e) => !e.includes("/"));
+                const allChannel = entries.every((e) => e.includes("/"));
+                if (entries.length > 0 && formatOk && (allWhole || allChannel)) goToClaude();
               }}
             />
           </Box>
           {groupAllowlistInput.trim().length > 0 && (() => {
             const entries = groupAllowlistInput.trim().split(",").map((s) => s.trim()).filter(Boolean);
-            const valid = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
-            return !valid ? <Text color="yellow">  each entry must be serverId or serverId/channelId (numeric)</Text> : null;
+            const formatOk = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
+            if (!formatOk) return <Text color="yellow">  each entry must be serverId or serverId/channelId (numeric)</Text>;
+            const allWhole = entries.every((e) => !e.includes("/"));
+            const allChannel = entries.every((e) => e.includes("/"));
+            if (!allWhole && !allChannel) return <Text color="yellow">  pick one mode: all serverId, OR all serverId/channelId — not mixed</Text>;
+            return null;
           })()}
         </Box>
       )}

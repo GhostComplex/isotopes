@@ -1,4 +1,4 @@
-// src/test-helpers.ts — Shared test mocks for transport tests
+// src/test-helpers.ts — Shared test mocks for channel tests
 
 import { vi } from "vitest";
 import type { SessionStore } from "./sessions/types.js";

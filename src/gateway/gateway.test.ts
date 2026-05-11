@@ -295,3 +295,40 @@ describe("gateway.abort", () => {
     expect(aborted).toBe(true);
   });
 });
+
+describe("gateway.abortByKey", () => {
+  it("resolves sessionKey to sessionId and cancels the run", async () => {
+    let aborted = false;
+    const runner: Runner = {
+      resolveSessionId: (req) => req.sessionId ?? "stub",
+      async *run({ abort }) {
+        yield textDelta("x");
+        await new Promise<void>((r) => abort.addEventListener("abort", () => { aborted = true; r(); }, { once: true }));
+        yield agentEnd();
+      },
+    };
+    const runtime = buildRuntime(runner);
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
+
+    const fut = gateway.dispatch({ ...baseMsg, sessionKey: "discord:bot:channel:c1" });
+    await new Promise((r) => setTimeout(r, 10));
+    const cancelled = await gateway.abortByKey("main", "discord:bot:channel:c1", "user");
+    expect(cancelled).toBe(true);
+
+    const result = await fut;
+    expect(result.state).toBe("started");
+    expect(aborted).toBe(true);
+  });
+
+  it("returns false when no session exists for the key", async () => {
+    const runner: Runner = {
+      resolveSessionId: (req) => req.sessionId ?? "stub",
+      async *run() { yield agentEnd(); },
+    };
+    const runtime = buildRuntime(runner);
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
+
+    const cancelled = await gateway.abortByKey("main", "discord:bot:channel:never-existed");
+    expect(cancelled).toBe(false);
+  });
+});

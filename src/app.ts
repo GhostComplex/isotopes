@@ -4,7 +4,7 @@ import {
 } from "./config.js";
 import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
-import { LazyTransportContext } from "./legacy/gateway/transport-context.js";
+import { LazyChannelContext } from "./channels/types.js";
 import {
   ensureDirectories,
   resolveAgentWorkspacePath,
@@ -13,13 +13,12 @@ import {
 import { ApiServer } from "./legacy/http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
-import { getIsotopesHome } from "./paths.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { runAgent } from "./agent/runtime-adapter.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
 import { discoverUIEntries } from "./extensions/ui/loader.js";
-import { createDiscordTransport } from "./legacy/discord/index.js";
-import type { Transport } from "./legacy/gateway/types.js";
+import { loadChannels } from "./extensions/channels/loader.js";
+import { createGateway } from "./gateway/index.js";
 
 const log = createLogger("runtime");
 
@@ -60,7 +59,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   });
 
   const agentWorkspaces = new Map<string, string>();
-  const transportContexts = new Map<string, LazyTransportContext>();
+  const channelContexts = new Map<string, LazyChannelContext>();
 
   const spawnableAgentIds = config.agents
     .filter((a) => a.spawnable === true && a.enabled !== false)
@@ -68,20 +67,20 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   for (const agentFile of config.agents) {
     if (agentFile.enabled === false) continue;
-    const transportCtx = new LazyTransportContext();
+    const channelCtx = new LazyChannelContext();
+    channelContexts.set(agentFile.id, channelCtx);
     const sessionStore = await sessionStoreManager.getOrCreate(agentFile.id);
     const result = await agentRuntime.register({
       agentFile,
       provider: config.provider,
       globalTools: config.tools,
       sandbox: config.sandbox,
-      transportContext: transportCtx,
+      channelContext: channelCtx,
       spawnableAgentIds,
       sessionStore,
     });
 
     if (result.workspacePath !== null) agentWorkspaces.set(result.agent.id, result.workspacePath);
-    transportContexts.set(result.agent.id, transportCtx);
   }
 
   const heartbeatManagers: HeartbeatManager[] = [];
@@ -184,21 +183,16 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron scheduler started with ${cronScheduler.listJobs().length} job(s)`);
   }
 
-  const transports: Transport[] = [];
-  if (config.channels?.discord) {
-    try {
-      const discord = await createDiscordTransport({
-        config,
-        sessionStoreManager,
-        agentRuntime,
-        transportContexts,
-        isotopesHome: getIsotopesHome(),
-      });
-      await discord.start();
-      transports.push(discord);
-    } catch (err) {
-      log.error(`Failed to start Discord transport: ${err instanceof Error ? err.message : String(err)}`);
-    }
+  const channelLoaders: { stopAll: () => Promise<void> }[] = [];
+  {
+    const gateway = createGateway({ agentRuntime, sessionStoreManager });
+    const channels = await loadChannels({
+      gateway,
+      config,
+      logger: log,
+      channelContexts,
+    });
+    channelLoaders.push(channels);
   }
 
   const uiEntries = discoverUIEntries();
@@ -220,8 +214,8 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info("Shutting down...");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
-    for (const t of transports) {
-      try { await t.stop(); } catch { /* ignore */ }
+    for (const t of channelLoaders) {
+      try { await t.stopAll(); } catch { /* ignore */ }
     }
     await apiServer.stop();
     sessionStoreManager.destroyAll();

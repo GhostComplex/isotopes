@@ -1,0 +1,43 @@
+const TTL_MS = 5 * 60 * 1000;
+const MAX_SIZE = 5000;
+
+/**
+ * Lazy eviction (no timers; cleanup on insertion). Drops Discord WS RESUME
+ * replays — when the gateway reconnects after a network blip, the same
+ * MESSAGE_CREATE event can be redelivered. Key is the message id (snowflake).
+ */
+export class DedupeCache {
+  private cache = new Map<string, number>();
+
+  /** Returns true if seen; otherwise records the key and returns false. */
+  isDuplicate(key: string): boolean {
+    const now = Date.now();
+    const existing = this.cache.get(key);
+    if (existing !== undefined && now - existing < TTL_MS) return true;
+
+    this.cache.delete(key); // re-insert for LRU ordering
+    this.cache.set(key, now);
+    this.prune(now);
+    return false;
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  private prune(now: number): void {
+    // Map is insertion-ordered — once we hit a non-expired entry, the rest are newer.
+    for (const [key, ts] of this.cache) {
+      if (now - ts < TTL_MS) break;
+      this.cache.delete(key);
+    }
+    while (this.cache.size > MAX_SIZE) {
+      const oldest = this.cache.keys().next().value as string;
+      this.cache.delete(oldest);
+    }
+  }
+}

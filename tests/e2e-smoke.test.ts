@@ -1,7 +1,7 @@
 // tests/e2e-smoke.test.ts — E2E smoke test for agent tools (#246)
 //
 // Verifies that core tools work when wired through createAgentTools,
-// mirroring agent-init setup. Also tests tool policy and NO_REPLY suppression.
+// mirroring agent-init setup. Also tests tool policy.
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -97,19 +97,6 @@ describe("web_fetch tool", () => {
     const tool = createWebFetchTool(new HostExecutor());
     const result = await callTool(tool, { url: "not-a-url" });
     expect(result).toContain("[error]");
-  });
-});
-
-describe("NO_REPLY suppression", () => {
-  it("detects NO_REPLY content for suppression", () => {
-    const noReplyPatterns = ["NO_REPLY", "HEARTBEAT_OK"];
-    const shouldSuppress = (text: string) => noReplyPatterns.some((p) => text.trim() === p);
-    expect(shouldSuppress("NO_REPLY")).toBe(true);
-    expect(shouldSuppress("HEARTBEAT_OK")).toBe(true);
-    expect(shouldSuppress("  NO_REPLY  ")).toBe(true);
-    expect(shouldSuppress("Hello world")).toBe(false);
-    expect(shouldSuppress("NO_REPLY but more text")).toBe(false);
-    expect(shouldSuppress("")).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { SandboxConfig } from "./middleware/sandbox-config.js";
 import type { AgentToolSettings } from "./tools/types.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
-import type { LazyTransportContext } from "../legacy/gateway/transport-context.js";
+import type { LazyChannelContext } from "../channels/types.js";
 
 export type ProviderType = "anthropic" | "openai" | "github-copilot";
 
@@ -41,13 +41,14 @@ export interface RegisteredAgent {
   /** Defaults to "parent-reuse". */
   readonly sessionPolicy?: AgentSessionPolicy;
   readonly spawnableAgentIds?: readonly string[];
-  readonly transportContext?: LazyTransportContext;
+  readonly channelContext?: LazyChannelContext;
 }
 
 export interface RunRequest {
   to: string;
   sessionId?: string;
   content: string;
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
   from?: { agentId: string; displayName?: string };
   parentSessionId?: string;
   cwd?: string;

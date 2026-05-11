@@ -21,12 +21,12 @@ describe("DedupeCache", () => {
 
   it("returns false after TTL expires", () => {
     vi.useFakeTimers();
-    const cache = new DedupeCache({ ttlMs: 1000 });
+    const cache = new DedupeCache();
 
     cache.isDuplicate("key1");
     expect(cache.isDuplicate("key1")).toBe(true);
 
-    vi.advanceTimersByTime(1001);
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1);
     expect(cache.isDuplicate("key1")).toBe(false);
   });
 
@@ -40,14 +40,11 @@ describe("DedupeCache", () => {
     expect(cache.isDuplicate("key3")).toBe(false);
   });
 
-  it("evicts oldest when maxSize is exceeded", () => {
-    const cache = new DedupeCache({ maxSize: 2 });
-    cache.isDuplicate("key1");
-    cache.isDuplicate("key2");
-    cache.isDuplicate("key3"); // should evict key1
-
-    expect(cache.size).toBe(2);
-    expect(cache.isDuplicate("key1")).toBe(false); // was evicted, treated as new
+  it("evicts oldest when over MAX_SIZE (5000)", () => {
+    const cache = new DedupeCache();
+    for (let i = 0; i < 5001; i++) cache.isDuplicate(`k${i}`);
+    expect(cache.size).toBe(5000);
+    expect(cache.isDuplicate("k0")).toBe(false); // was evicted, treated as new
   });
 
   it("reports size correctly", () => {
@@ -61,11 +58,11 @@ describe("DedupeCache", () => {
 
   it("prunes expired entries on insertion", () => {
     vi.useFakeTimers();
-    const cache = new DedupeCache({ ttlMs: 1000 });
+    const cache = new DedupeCache();
 
     cache.isDuplicate("old1");
     cache.isDuplicate("old2");
-    vi.advanceTimersByTime(1001);
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1);
     cache.isDuplicate("new1"); // triggers prune
 
     expect(cache.size).toBe(1);

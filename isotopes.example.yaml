@@ -80,9 +80,9 @@ agents:
 channels:
   discord:
     accounts:
-      main:                              # accountId — referenced by bindings, etc.
+      main:                              # accountId — internal label
         tokenEnv: DISCORD_TOKEN          # or `token: <literal>`
-        defaultAgentId: main
+        defaultAgentId: main             # required — agent that handles this account
         dmAccess:
           policy: disabled               # disabled (default) | allowlist
           # allowlist:                   # Discord user IDs (only when policy=allowlist)
@@ -90,34 +90,17 @@ channels:
         groupAccess:
           policy: allowlist              # allowlist (default) | disabled | open
           # channelAllowlist:            # channel IDs (only when policy=allowlist)
-          #   - "channel-id"
+          #   - "channel-id"             # threads under these channels are also allowed
           # guildAllowlist:              # guild/server IDs (only when policy=allowlist)
           #   - "guild-id"
-        # allowBots: false               # respond to messages from other bots
-        # agentBindings:                 # bot user id → agent id
-        #   "bot-user-id": main
-        # adminUsers:                    # discord user ids allowed to run /slash commands
-        #   - "user-id"
-
-        threadBindings:
-          enabled: true
-          # autoUnbindOnComplete: true
-          # sendFarewell: false
-          # farewellMessage: "Bye!"
-
-        # context:                       # all fields optional, defaults shown
-        #   channelHistory: true
-        #   channelHistoryLimit: 20
-        #   dedupe: true
-        #   debounce: false
-        #   debounceWindowMs: 1500
+        # allowBots: true                # set false to ignore messages from other bots (default true)
+        # perChannelAgent:               # channel id → agent id (override defaultAgentId)
+        #   "channel-id": helper
 
         # guilds:                        # per-guild runtime overrides
         #   "1480866703880487034":       # guild id
-        #     requireMention: false      # respond to all messages in this guild
-        #     context:                   # per-guild context overrides
-        #       channelHistory: true
-        #       channelHistoryLimit: 50
+        #     requireMention: false      # respond to all messages in this guild (default true)
+        #     respondInThreads: false    # ignore all thread messages under this guild (default true)
 
       # Add additional bots as siblings under accounts:
       # helper:

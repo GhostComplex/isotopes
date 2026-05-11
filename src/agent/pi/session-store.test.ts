@@ -39,18 +39,18 @@ describe("DefaultSessionStore", () => {
 
     it("stores metadata", async () => {
       const session = await store.create("agent-1", {
-        transport: "discord",
+        channel: "discord",
         channelId: "123456",
       });
 
-      expect(session.metadata?.transport).toBe("discord");
+      expect(session.metadata?.channel).toBe("discord");
       expect(session.metadata?.channelId).toBe("123456");
     });
 
     it("stores session key in metadata", async () => {
       const session = await store.create("agent-1", {
         key: "discord:bot1:channel:123:agent-1",
-        transport: "discord",
+        channel: "discord",
         channelId: "123",
       });
 
@@ -60,13 +60,13 @@ describe("DefaultSessionStore", () => {
     it("throws if key already exists", async () => {
       await store.create("agent-1", {
         key: "duplicate-key",
-        transport: "discord",
+        channel: "discord",
       });
 
       await expect(
         store.create("agent-2", {
           key: "duplicate-key",
-          transport: "discord",
+          channel: "discord",
         })
       ).rejects.toThrow("Session with key already exists: duplicate-key");
     });
@@ -116,7 +116,7 @@ describe("DefaultSessionStore", () => {
     it("finds session by key", async () => {
       const session = await store.create("agent-1", {
         key: "discord:bot1:channel:123:agent-1",
-        transport: "discord",
+        channel: "discord",
       });
 
       const found = await store.findByKey("discord:bot1:channel:123:agent-1");
@@ -132,7 +132,7 @@ describe("DefaultSessionStore", () => {
     it("restores key index after restart", async () => {
       const session = await store.create("agent-1", {
         key: "discord:bot1:channel:456:agent-1",
-        transport: "discord",
+        channel: "discord",
       });
 
       // Create a new store instance (simulates restart)
@@ -216,7 +216,7 @@ describe("DefaultSessionStore", () => {
     it("removes session from key index", async () => {
       const session = await store.create("agent-1", {
         key: "test-key",
-        transport: "discord",
+        channel: "discord",
       });
 
       await store.delete(session.id);
@@ -238,7 +238,7 @@ describe("DefaultSessionStore", () => {
     it("updates the persisted index after deleting a session", async () => {
       const session = await store.create("agent-1", {
         key: "delete-key",
-        transport: "discord",
+        channel: "discord",
       });
 
       await store.delete(session.id);
