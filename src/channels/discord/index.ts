@@ -10,6 +10,7 @@ import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
 import { DedupeCache } from "./dedupe.js";
+import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, maybeHandleStop } from "./inbound.js";
 import { resolveAgentId, resolveSessionKey } from "./routing.js";
 import { createDiscordCallbacks } from "./outbound.js";
@@ -67,6 +68,7 @@ export function createDiscordChannel(
 
   const clients = new Map<string, ClientLike>();
   const dedupes = new Map<string, DedupeCache>();
+  const histories = new Map<string, ChannelHistoryBuffer>();
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
@@ -90,6 +92,7 @@ export function createDiscordChannel(
             clientFactory,
             clients,
             dedupes,
+            histories,
             a2aThreads,
           }),
         ),
@@ -125,6 +128,8 @@ export function createDiscordChannel(
       clients.clear();
       for (const dedupe of dedupes.values()) dedupe.clear();
       dedupes.clear();
+      for (const h of histories.values()) h.clear();
+      histories.clear();
     },
   };
 }
@@ -138,11 +143,12 @@ interface StartAccountArgs {
   clientFactory: ClientFactory;
   clients: Map<string, ClientLike>;
   dedupes: Map<string, DedupeCache>;
+  histories: Map<string, ChannelHistoryBuffer>;
   a2aThreads: Map<string, string>;
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, a2aThreads } = args;
+  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, histories, a2aThreads } = args;
 
   const token = resolveToken(account);
   if (!token) {
@@ -155,6 +161,8 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
 
   const dedupe = new DedupeCache();
   dedupes.set(accountId, dedupe);
+  const history = new ChannelHistoryBuffer();
+  histories.set(accountId, history);
   const guildsForReceive = mapGuildsForReceive(account.guilds);
 
   client.on("clientReady", () => {
@@ -173,6 +181,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       client,
       gateway,
       dedupe,
+      history,
       guildsForReceive,
       a2aThreads,
     }).catch((err) => {
@@ -189,16 +198,29 @@ interface InboundArgs {
   client: ClientLike;
   gateway: Gateway;
   dedupe: DedupeCache;
+  history: ChannelHistoryBuffer;
   guildsForReceive: Record<string, GuildInboundConfig> | undefined;
   a2aThreads: Map<string, string>;
 }
 
 async function dispatchInbound(args: InboundArgs): Promise<void> {
-  const { msg, account, client, gateway, dedupe, guildsForReceive, a2aThreads } = args;
+  const { msg, account, client, gateway, dedupe, history, guildsForReceive, a2aThreads } = args;
   const botId = client.user?.id;
   if (!botId) return;
 
   if (!passesAllowlist(msg, account)) return;
+
+  // Observe every allowlisted guild msg into the channel history buffer
+  // (DMs are 1:1 — session memory is enough). Buffer is consumed (with
+  // trigger excluded) and cleared by transformContent on engaged dispatch.
+  if (msg.guild && msg.author.id !== botId) {
+    history.append(msg.channelId, {
+      messageId: msg.id,
+      sender: msg.author.username,
+      body: msg.content,
+      timestamp: msg.createdTimestamp,
+    });
+  }
 
   const agentId = resolveAgentId(msg, account.agentBindings, account.defaultAgentId ?? "default");
   const sessionKey = resolveSessionKey(msg, botId);
@@ -217,7 +239,11 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
       transformContent: (content, triggerMsg) => {
         const meta = extractDiscordMetadata(triggerMsg);
         const chatType = triggerMsg.guild ? "group" : "direct";
-        return `${formatInboundMeta(meta, chatType)}\n\n${content}`;
+        const historyBlock = triggerMsg.guild
+          ? formatHistory(history.consumeExcluding(triggerMsg.channelId, triggerMsg.id))
+          : "";
+        const prefix = historyBlock ? `${historyBlock}\n\n${formatInboundMeta(meta, chatType)}` : formatInboundMeta(meta, chatType);
+        return `${prefix}\n\n${content}`;
       },
     },
     {
