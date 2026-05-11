@@ -128,6 +128,7 @@ export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks 
   const flushSegment = async (text: string): Promise<void> => {
     const { stripped, replyToId } = parseReply(text, triggerMessageId);
     if (!stripped) return;
+    if (stripped.trim() === "NO_REPLY") return; // silent-reply sentinel — see #803
     const chunks = chunkDiscordMessage(stripped);
     for (let i = 0; i < chunks.length; i++) {
       await sendChunk(chunks[i], replyToId, i === 0);

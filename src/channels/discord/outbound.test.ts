@@ -210,4 +210,22 @@ describe("createDiscordCallbacks", () => {
       vi.useRealTimers();
     }
   });
+
+  it("NO_REPLY sentinel response is silently dropped (nothing sent)", async () => {
+    const { channel, triggerMessage, send, reply } = makeMocks();
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
+    cb.onTextDelta!("NO_REPLY");
+    await cb.flushRemaining();
+    expect(send).not.toHaveBeenCalled();
+    expect(reply).not.toHaveBeenCalled();
+  });
+
+  it("NO_REPLY with surrounding whitespace and reply directive still drops", async () => {
+    const { channel, triggerMessage, send, reply } = makeMocks();
+    const cb = createDiscordCallbacks({ channel, triggerMessageId: triggerMessage.id });
+    cb.onTextDelta!("[[reply_to_current]]\n  NO_REPLY  ");
+    await cb.flushRemaining();
+    expect(send).not.toHaveBeenCalled();
+    expect(reply).not.toHaveBeenCalled();
+  });
 });
