@@ -5,6 +5,7 @@ import type { Message as DiscordMessage } from "discord.js";
 import { DedupeCache } from "./dedupe.js";
 import {
   handleInbound,
+  maybeHandleStop,
   passesAllowlist,
 } from "./inbound.js";
 import type { Gateway, DispatchCallbacks } from "../../gateway/index.js";
@@ -345,5 +346,43 @@ describe("passesAllowlist (allowlist policy)", () => {
   it("policy=disabled drops all guild messages", () => {
     const acc = account({ policy: "disabled" });
     expect(passesAllowlist(fakeMsg({ guildId: "g-1" }), acc)).toBe(false);
+  });
+});
+
+describe("maybeHandleStop sub-run routing", () => {
+  it("aborts the registered child sessionId when /stop posted in an a2a thread", async () => {
+    const gateway = makeGateway();
+    const channel = { send: vi.fn().mockResolvedValue(undefined) };
+    const msg = {
+      id: "m",
+      channelId: "thr-1",
+      content: "/stop",
+      guild: { id: "g" },
+      mentions: { has: () => true },
+      channel,
+    } as unknown as DiscordMessage;
+    const a2aThreads = new Map([["thr-1", "sub-session-id"]]);
+    const consumed = await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:thread:thr-1", a2aThreads);
+    expect(consumed).toBe(true);
+    expect(gateway.abort).toHaveBeenCalledWith("sub-session-id", "user");
+    expect(gateway.abortByKey).not.toHaveBeenCalled();
+    expect(channel.send).toHaveBeenCalledWith("🛑 Stopped.");
+  });
+
+  it("falls through to abortByKey when channel not in a2aThreads", async () => {
+    const gateway = makeGateway();
+    const channel = { send: vi.fn().mockResolvedValue(undefined) };
+    const msg = {
+      id: "m",
+      channelId: "chan-other",
+      content: "/stop",
+      guild: { id: "g" },
+      mentions: { has: () => true },
+      channel,
+    } as unknown as DiscordMessage;
+    const a2aThreads = new Map([["thr-1", "sub-session-id"]]);
+    await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:channel:chan-other", a2aThreads);
+    expect(gateway.abort).not.toHaveBeenCalled();
+    expect(gateway.abortByKey).toHaveBeenCalledWith("main", "discord:bot:channel:chan-other", "user");
   });
 });

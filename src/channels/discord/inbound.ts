@@ -63,6 +63,9 @@ export async function maybeHandleStop(
   gateway: Gateway,
   agentId: string,
   sessionKey: string,
+  /** threadId → sub-run sessionId. /stop in a registered sub-run thread
+   * aborts that child session directly (bypasses sessionKey lookup). */
+  a2aThreads?: Map<string, string>,
 ): Promise<boolean> {
   // Accept "/stop" optionally preceded by a discord mention like "<@123>".
   let text = msg.content.trim().toLowerCase();
@@ -74,6 +77,27 @@ export async function maybeHandleStop(
   // In guild channels we still require the @mention so a shared /stop in a
   // multi-bot channel only aborts the addressed bot's session. DMs are 1:1.
   if (msg.guild && !msg.mentions?.has?.(botId)) return true; // not for us, but consume
+
+  // Sub-run path: /stop posted in a spawn_agent thread targets the child
+  // session (its sessionId was registered when the thread was created).
+  const subSessionId = a2aThreads?.get(msg.channelId);
+  if (subSessionId) {
+    let aborted = true;
+    try {
+      await gateway.abort(subSessionId, "user");
+      log.info(`discord: /stop sub-run aborted (sessionId=${subSessionId})`);
+    } catch (err) {
+      aborted = false;
+      log.warn(`discord: /stop sub-run abort failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if ("send" in msg.channel) {
+      try {
+        await (msg.channel as SendableChannels).send(aborted ? "🛑 Stopped." : "(nothing to stop)");
+      } catch { /* ignore */ }
+    }
+    return true;
+  }
+
   let stopped = false;
   try {
     stopped = await gateway.abortByKey(agentId, sessionKey, "user");

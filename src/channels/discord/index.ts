@@ -223,7 +223,7 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
 
   const agentId = resolveAgentId(msg, account.agentBindings, account.defaultAgentId ?? "default");
   const sessionKey = resolveSessionKey(msg, botId);
-  const stopped = await maybeHandleStop(msg, botId, gateway, agentId, sessionKey);
+  const stopped = await maybeHandleStop(msg, botId, gateway, agentId, sessionKey, a2aThreads);
   if (stopped) return;
 
   const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
