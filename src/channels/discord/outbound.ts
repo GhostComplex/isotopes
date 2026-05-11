@@ -9,9 +9,8 @@ const log = loggers.discord;
 const SENTENCE_BOUNDARIES = [". ", "! ", "? ", "\n\n"];
 const DEFAULT_MAX_BUFFER_SIZE = 500;
 
-// NEW messages (not edit) — edit-in-place would let other bots read truncated
-// mid-edit content. Tail-promise serializes append/flushRemaining so concurrent
-// deltas can't reorder Discord posts.
+// Send-new-message (not edit-in-place): edit would expose mid-stream truncated
+// content. Tail-promise serializes appends so concurrent deltas stay ordered.
 export class SegmentedStreamBuffer {
   private buffer = "";
   private readonly maxBufferSize: number;
@@ -53,7 +52,7 @@ export class SegmentedStreamBuffer {
     if (boundaryIndex === -1) return;
     const toFlush = this.buffer.slice(0, boundaryIndex);
     this.buffer = this.buffer.slice(boundaryIndex);
-    if (toFlush.length > 0) await this.onFlush(toFlush);
+    await this.onFlush(toFlush);
   }
 
   private findLastBoundary(): number {
@@ -82,6 +81,24 @@ interface OutboundContext {
   /** Trigger message id — used to resolve [[reply_to_current]]. */
   triggerMessageId: string;
   showToolCalls?: boolean;
+}
+
+const DISCORD_MAX_MESSAGE_LENGTH = 2000;
+
+/** Split into Discord-sendable chunks, preferring newline / space breaks. */
+export function chunkDiscordMessage(content: string, maxLength = DISCORD_MAX_MESSAGE_LENGTH): string[] {
+  if (content.length <= maxLength) return [content];
+  const out: string[] = [];
+  let remaining = content;
+  while (remaining.length > maxLength) {
+    let cut = remaining.lastIndexOf("\n", maxLength);
+    if (cut < maxLength * 0.5) cut = remaining.lastIndexOf(" ", maxLength);
+    if (cut < maxLength * 0.5) cut = maxLength;
+    out.push(remaining.slice(0, cut));
+    remaining = remaining.slice(cut).trimStart();
+  }
+  if (remaining.length > 0) out.push(remaining);
+  return out;
 }
 
 export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks {
@@ -147,24 +164,6 @@ export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks 
   }
 
   return callbacks;
-}
-
-const DISCORD_MAX_MESSAGE_LENGTH = 2000;
-
-/** Split into Discord-sendable chunks, preferring newline / space breaks. */
-export function chunkDiscordMessage(content: string, maxLength = DISCORD_MAX_MESSAGE_LENGTH): string[] {
-  if (content.length <= maxLength) return [content];
-  const out: string[] = [];
-  let remaining = content;
-  while (remaining.length > maxLength) {
-    let cut = remaining.lastIndexOf("\n", maxLength);
-    if (cut < maxLength * 0.5) cut = remaining.lastIndexOf(" ", maxLength);
-    if (cut < maxLength * 0.5) cut = maxLength;
-    out.push(remaining.slice(0, cut));
-    remaining = remaining.slice(cut).trimStart();
-  }
-  if (remaining.length > 0) out.push(remaining);
-  return out;
 }
 
 /**
