@@ -4,7 +4,7 @@ import { REPLY_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { DiscordAccountConfig, GuildConfig } from "./types.js";
 import { isDmAllowed, resolveGroupPolicy } from "./config.js";
-import { extractAttachmentImages, hasImageAttachments } from "./attachment.js";
+import { extractAttachmentImages } from "./attachment.js";
 
 const log = loggers.discord;
 
@@ -160,7 +160,7 @@ export async function handleInbound(
   }
 
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
-  const images = hasImageAttachments(msg) ? await extractAttachmentImages(msg) : [];
+  const images = await extractAttachmentImages(msg);
   if (!cleanedText && images.length === 0) return; // empty turn
   const content = deps.transformContent
     ? deps.transformContent(cleanedText, msg)

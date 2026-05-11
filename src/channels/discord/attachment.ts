@@ -7,15 +7,6 @@ const log = loggers.discord;
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const MAX_BYTES = 10 * 1024 * 1024;
 
-/** True if the message has at least one image attachment we'd accept. */
-export function hasImageAttachments(msg: DiscordMessage): boolean {
-  if (!msg.attachments) return false;
-  for (const [, a] of msg.attachments) {
-    if (a.contentType && IMAGE_TYPES.has(a.contentType)) return true;
-  }
-  return false;
-}
-
 /** Download every accepted image attachment and return as base64 InboundImage[]. */
 export async function extractAttachmentImages(msg: DiscordMessage): Promise<InboundImage[]> {
   const images: InboundImage[] = [];
