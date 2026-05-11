@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Message as DiscordMessage } from "discord.js";
 import {
   handleInbound,
-  maybeHandleStop,
+  handleStopCommand,
   passesAllowlist,
 } from "./inbound.js";
 import type { Gateway, DispatchCallbacks } from "../../gateway/index.js";
@@ -336,7 +336,7 @@ describe("passesAllowlist (allowlist policy)", () => {
   });
 });
 
-describe("maybeHandleStop sub-run routing", () => {
+describe("handleStopCommand sub-run routing", () => {
   it("aborts the registered child sessionId when /stop posted in an a2a thread", async () => {
     const gateway = makeGateway();
     const channel = { send: vi.fn().mockResolvedValue(undefined) };
@@ -349,7 +349,7 @@ describe("maybeHandleStop sub-run routing", () => {
       channel,
     } as unknown as DiscordMessage;
     const a2aThreads = new Map([["thr-1", "sub-session-id"]]);
-    const consumed = await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:thread:thr-1", a2aThreads);
+    const consumed = await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:thread:thr-1", a2aThreads);
     expect(consumed).toBe(true);
     expect(gateway.abort).toHaveBeenCalledWith("sub-session-id", "user");
     // Also aborts own session for the same channel (best-effort).
@@ -369,7 +369,7 @@ describe("maybeHandleStop sub-run routing", () => {
       channel,
     } as unknown as DiscordMessage;
     const a2aThreads = new Map([["thr-1", "sub-session-id"]]);
-    await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:channel:chan-other", a2aThreads);
+    await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:channel:chan-other", a2aThreads);
     expect(gateway.abort).not.toHaveBeenCalled();
     expect(gateway.abortByKey).toHaveBeenCalledWith("main", "discord:bot:channel:chan-other", "user");
   });
@@ -385,7 +385,7 @@ describe("maybeHandleStop sub-run routing", () => {
       mentions: { has: () => false },
       channel,
     } as unknown as DiscordMessage;
-    const consumed = await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
+    const consumed = await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
     expect(consumed).toBe(true);
     expect(gateway.abort).not.toHaveBeenCalled();
     expect(gateway.abortByKey).not.toHaveBeenCalled();
@@ -403,7 +403,7 @@ describe("maybeHandleStop sub-run routing", () => {
       mentions: { has: (id: string) => id === "other-bot" },
       channel,
     } as unknown as DiscordMessage;
-    const consumed = await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
+    const consumed = await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
     expect(consumed).toBe(true);
     expect(gateway.abort).not.toHaveBeenCalled();
     expect(gateway.abortByKey).not.toHaveBeenCalled();
@@ -421,7 +421,7 @@ describe("maybeHandleStop sub-run routing", () => {
       mentions: { has: () => true },
       channel,
     } as unknown as DiscordMessage;
-    const consumed = await maybeHandleStop(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
+    const consumed = await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
     expect(consumed).toBe(false);
   });
 });

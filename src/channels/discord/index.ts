@@ -11,7 +11,7 @@ import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
-import { handleInbound, passesAllowlist, maybeHandleStop } from "./inbound.js";
+import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
 import { createDiscordCallbacks } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
@@ -220,8 +220,8 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   // /stop runs before history.append so the command never leaks into channel
   // history (or any LLM session). Every bot consumes /stop; only the
   // addressed bot actually aborts.
-  const stopped = await maybeHandleStop(msg, botId, gateway, agentId, sessionKey, a2aThreads);
-  if (stopped) return;
+  const isStopCommand = await handleStopCommand(msg, botId, gateway, agentId, sessionKey, a2aThreads);
+  if (isStopCommand) return;
 
   // Observe every allowlisted guild msg into the channel history buffer
   // (DMs are 1:1 — session memory is enough). Buffer is consumed (with

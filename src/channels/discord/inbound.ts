@@ -55,7 +55,7 @@ export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConf
 }
 
 /** Returns true if the message was a /stop and this handler consumed it. */
-export async function maybeHandleStop(
+export async function handleStopCommand(
   msg: DiscordMessage,
   botId: string,
   gateway: Gateway,
