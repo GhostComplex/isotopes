@@ -27,7 +27,11 @@ export class ChannelHistoryBuffer {
     while (buf.length > this.limit) buf.shift();
     this.buffers.delete(channelId);
     this.buffers.set(channelId, buf);
-    this.evictLRU();
+    // LRU evict: drop oldest channels when over capacity.
+    while (this.buffers.size > MAX_KEYS) {
+      const oldest = this.buffers.keys().next().value as string;
+      this.buffers.delete(oldest);
+    }
   }
 
   /** Return entries excluding the trigger msg, then clear the key. */
@@ -39,13 +43,6 @@ export class ChannelHistoryBuffer {
 
   clear(): void {
     this.buffers.clear();
-  }
-
-  private evictLRU(): void {
-    while (this.buffers.size > MAX_KEYS) {
-      const oldest = this.buffers.keys().next().value as string;
-      this.buffers.delete(oldest);
-    }
   }
 }
 
