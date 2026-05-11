@@ -74,16 +74,16 @@ export async function maybeHandleStop(
   // In guild channels we still require the @mention so a shared /stop in a
   // multi-bot channel only aborts the addressed bot's session. DMs are 1:1.
   if (msg.guild && !msg.mentions?.has?.(botId)) return true; // not for us, but consume
-  let cancelled = false;
+  let stopped = false;
   try {
-    cancelled = await gateway.abortByKey(agentId, sessionKey, "user");
-    log.info(`discord: /stop ${cancelled ? "aborted" : "no active run"} for sessionKey=${sessionKey}`);
+    stopped = await gateway.abortByKey(agentId, sessionKey, "user");
+    log.info(`discord: /stop ${stopped ? "aborted" : "no active run"} for sessionKey=${sessionKey}`);
   } catch (err) {
     log.warn(`discord: /stop abort failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   if ("send" in msg.channel) {
     try {
-      await (msg.channel as SendableChannels).send(cancelled ? "🛑 Stopped." : "(nothing to stop)");
+      await (msg.channel as SendableChannels).send(stopped ? "🛑 Stopped." : "(nothing to stop)");
     } catch {
       /* ignore */
     }
