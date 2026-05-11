@@ -1,9 +1,9 @@
 import type { ClientLike } from "./index.js";
 
 /**
- * Add a reaction. Tries channelId fast-path then scans the given clients'
- * caches. Caller decides which clients are eligible — pass a single-element
- * array to scope to one bot (per-agent binding).
+ * Add an emoji reaction to a message. Caller passes the eligible client(s) —
+ * typically a single-bot subset for per-agent scoping (multi-bot accounts
+ * may pass multiple).
  */
 export async function reactToMessage(
   clients: ClientLike[],
