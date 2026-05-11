@@ -6,9 +6,8 @@ import { DedupeCache } from "./dedupe.js";
 import {
   detectEngagement,
   handleInbound,
-  resolveAgentId,
-  resolveSessionKey,
 } from "./inbound.js";
+import { resolveAgentId, resolveSessionKey } from "./routing.js";
 import type { Gateway, DispatchCallbacks } from "../../gateway/index.js";
 
 const BOT_ID = "111111";
@@ -62,32 +61,6 @@ function makeGateway(): Gateway & { dispatch: ReturnType<typeof vi.fn> } {
     abortByKey: vi.fn().mockResolvedValue(false),
   } as Gateway & { dispatch: ReturnType<typeof vi.fn> };
 }
-
-describe("resolveAgentId", () => {
-  it("uses agentBindings when a mention matches", () => {
-    const msg = fakeMsg({ mentionedIds: ["bot-A"] });
-    expect(resolveAgentId(msg, { "bot-A": "alpha", "bot-B": "beta" }, "default")).toBe("alpha");
-  });
-  it("falls back to default when no binding matches", () => {
-    const msg = fakeMsg({ mentionedIds: [] });
-    expect(resolveAgentId(msg, { "bot-A": "alpha" }, "fallback")).toBe("fallback");
-  });
-});
-
-describe("resolveSessionKey", () => {
-  it("derives a thread session key", () => {
-    const msg = fakeMsg({ threadId: "thr-9" });
-    expect(resolveSessionKey(msg, BOT_ID)).toBe(`discord:${BOT_ID}:thread:thr-9`);
-  });
-  it("derives a DM session key (per-user)", () => {
-    const msg = fakeMsg({ guildId: null, authorId: "user-7" });
-    expect(resolveSessionKey(msg, BOT_ID)).toBe(`discord:${BOT_ID}:dm:user-7`);
-  });
-  it("derives a channel session key (guild, no thread)", () => {
-    const msg = fakeMsg({ channelId: "chan-3" });
-    expect(resolveSessionKey(msg, BOT_ID)).toBe(`discord:${BOT_ID}:channel:chan-3`);
-  });
-});
 
 describe("detectEngagement", () => {
   it("returns precise on explicit mention", () => {

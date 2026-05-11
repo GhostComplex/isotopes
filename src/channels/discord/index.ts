@@ -13,8 +13,13 @@ import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
 import { getIsotopesHome } from "../../paths.js";
 import { DedupeCache } from "./dedupe.js";
-import { handleInbound, resolveAgentId, resolveSessionKey } from "./inbound.js";
-import { createDiscordCallbacks, reactToMessage } from "./outbound.js";
+import { handleInbound } from "./inbound.js";
+import { resolveAgentId, resolveSessionKey } from "./routing.js";
+import { createDiscordCallbacks } from "./outbound.js";
+import { reactToMessage } from "./react.js";
+import { passesAllowlist } from "./access-policy.js";
+import { maybeHandleStop } from "./stop-command.js";
+import { resolveGroupPolicy, resolveToken, mapGuildsForReceive } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { ThreadBindingManager } from "./thread-binding.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
@@ -22,7 +27,6 @@ import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
 import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
-  GuildConfig,
   GuildInboundConfig,
 } from "./types.js";
 
@@ -52,96 +56,6 @@ const defaultClientFactory: ClientFactory = () =>
     ],
     partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember],
   }) as unknown as ClientLike;
-
-
-interface ResolvedGroupPolicy {
-  policy: "disabled" | "allowlist" | "open";
-  channelAllowlist?: string[];
-  guildAllowlist?: string[];
-}
-
-function resolveGroupPolicy(account: DiscordAccountConfig): ResolvedGroupPolicy {
-  const g = account.groupAccess;
-  if (g?.policy || g?.channelAllowlist?.length || g?.guildAllowlist?.length) {
-    return {
-      policy: g.policy ?? "allowlist",
-      channelAllowlist: g.channelAllowlist,
-      guildAllowlist: g.guildAllowlist,
-    };
-  }
-  return { policy: "allowlist" };
-}
-
-function isDmAllowed(account: DiscordAccountConfig, userId: string): boolean {
-  const dm = account.dmAccess;
-  if (dm?.policy) {
-    switch (dm.policy) {
-      case "disabled":
-        return false;
-      case "allowlist":
-        return dm.allowlist?.includes(userId) ?? false;
-    }
-  }
-  return false;
-}
-
-/** Pre-receive policy gate. False = silently drop. */
-function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConfig): boolean {
-  if (!msg.guild) {
-    const ok = isDmAllowed(account, msg.author.id);
-    if (!ok) log.debug(`discord: drop dm from ${msg.author.id} (dmAccess policy)`);
-    return ok;
-  }
-  const group = resolveGroupPolicy(account);
-  if (group.policy === "disabled") {
-    log.debug(`discord: drop guild message ${msg.id} (groupAccess.policy=disabled)`);
-    return false;
-  }
-  if (group.policy === "allowlist") {
-    const channelOk = group.channelAllowlist?.includes(msg.channelId) ?? false;
-    const guildOk = group.guildAllowlist?.includes(msg.guild.id) ?? false;
-    if (!channelOk && !guildOk) {
-      log.debug(
-        `discord: drop guild message ${msg.id} (not in groupAccess allowlist, ` +
-          `guild=${msg.guild.id} channel=${msg.channelId})`,
-      );
-      return false;
-    }
-  }
-  return true;
-}
-
-
-const STOP_CMD_RE = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i;
-
-/** Returns true if the message was a /stop directed at this bot (consumed). */
-async function maybeHandleStop(
-  msg: DiscordMessage,
-  botId: string,
-  gateway: Gateway,
-  agentId: string,
-  sessionKey: string,
-): Promise<boolean> {
-  if (!STOP_CMD_RE.test(msg.content.trim())) return false;
-  // In guild channels we still require the @mention so a shared /stop in a
-  // multi-bot channel only aborts the addressed bot's session. DMs are 1:1.
-  if (msg.guild && !msg.mentions?.has?.(botId)) return true; // not for us, but consume
-  let cancelled = false;
-  try {
-    cancelled = await gateway.abortByKey(agentId, sessionKey, "user");
-    log.info(`discord: /stop ${cancelled ? "aborted" : "no active run"} for sessionKey=${sessionKey}`);
-  } catch (err) {
-    log.warn(`discord: /stop abort failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  if ("send" in msg.channel) {
-    try {
-      await (msg.channel as SendableChannels).send(cancelled ? "🛑 Stopped." : "(nothing to stop)");
-    } catch {
-      /* ignore */
-    }
-  }
-  return true;
-}
 
 
 interface CreateDiscordChannelOptions {
@@ -351,23 +265,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   ));
 }
 
-
-function resolveToken(account: DiscordAccountConfig): string | null {
-  if (account.token) return account.token;
-  if (account.tokenEnv) return process.env[account.tokenEnv] ?? null;
-  return null;
-}
-
-function mapGuildsForReceive(
-  guilds: Record<string, GuildConfig> | undefined,
-): Record<string, GuildInboundConfig> | undefined {
-  if (!guilds) return undefined;
-  const out: Record<string, GuildInboundConfig> = {};
-  for (const [id, g] of Object.entries(guilds)) {
-    if (g.requireMention !== undefined) out[id] = { requireMention: g.requireMention };
-  }
-  return Object.keys(out).length === 0 ? undefined : out;
-}
 
 function autoBindThread(
   thread: ThreadChannel,
