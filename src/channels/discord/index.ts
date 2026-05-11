@@ -12,7 +12,6 @@ import { loggers } from "../../logging/logger.js";
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, maybeHandleStop } from "./inbound.js";
-import { resolveAgentId, resolveSessionKey } from "./routing.js";
 import { createDiscordCallbacks } from "./outbound.js";
 import { reactToMessage } from "./react.js";
 import { resolveToken, mapGuildsForReceive } from "./config.js";
@@ -304,4 +303,23 @@ function buildSinkFactory(
     unregisterA2AThread: (threadId) => { a2aThreads.delete(threadId); },
   };
   return () => new DiscordA2ASink(deps);
+}
+
+function resolveAgentId(
+  msg: DiscordMessage,
+  agentBindings: Record<string, string> | undefined,
+  defaultAgentId: string,
+): string {
+  if (agentBindings) {
+    for (const [botUserId, agentId] of Object.entries(agentBindings)) {
+      if (msg.mentions?.has?.(botUserId)) return agentId;
+    }
+  }
+  return defaultAgentId;
+}
+
+function resolveSessionKey(msg: DiscordMessage, botId: string): string {
+  if (msg.thread) return `discord:${botId}:thread:${msg.thread.id}`;
+  if (!msg.guild) return `discord:${botId}:dm:${msg.author.id}`;
+  return `discord:${botId}:channel:${msg.channelId}`;
 }

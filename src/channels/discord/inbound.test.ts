@@ -8,7 +8,6 @@ import {
   handleInbound,
   passesAllowlist,
 } from "./inbound.js";
-import { resolveAgentId, resolveSessionKey } from "./routing.js";
 import type { Gateway, DispatchCallbacks } from "../../gateway/index.js";
 import type { DiscordAccountConfig } from "./types.js";
 
@@ -93,9 +92,17 @@ describe("handleInbound", () => {
   });
 
   const ctx = () => ({ botId: BOT_ID, buildCallbacks });
+  // Construct routing the way dispatchInbound (in index.ts) would, but inline
+  // — handleInbound's contract is "you give me agentId + sessionKey", not "you
+  // share my computation".
+  const sessionKeyFor = (msg: DiscordMessage, botId = BOT_ID): string => {
+    if (msg.thread) return `discord:${botId}:thread:${msg.thread.id}`;
+    if (!msg.guild) return `discord:${botId}:dm:${msg.author.id}`;
+    return `discord:${botId}:channel:${msg.channelId}`;
+  };
   const route = (msg: DiscordMessage, agentId = "main") => ({
     agentId,
-    sessionKey: resolveSessionKey(msg, BOT_ID),
+    sessionKey: sessionKeyFor(msg),
   });
 
   it("drops duplicate messages on second receive", async () => {
@@ -170,12 +177,11 @@ describe("handleInbound", () => {
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });
 
-  it("routes via agentBindings when a bound user is mentioned", async () => {
+  it("forwards routing.agentId to dispatch", async () => {
     const msg = fakeMsg({ mentionedIds: ["222222"], guildId: "g-1" });
-    const agentId = resolveAgentId(msg, { "222222": "alpha" }, "fallback");
     await handleInbound(
       msg,
-      { agentId, sessionKey: resolveSessionKey(msg, BOT_ID) },
+      { agentId: "alpha", sessionKey: sessionKeyFor(msg) },
       { gateway, dedupe, guilds: { "g-1": { requireMention: false } } },
       ctx(),
     );
@@ -210,7 +216,7 @@ describe("handleInbound", () => {
     const callbacks = { onTextDelta, flushRemaining };
     await handleInbound(
       msg,
-      { agentId: "main", sessionKey: resolveSessionKey(msg, "bot") },
+      { agentId: "main", sessionKey: sessionKeyFor(msg, "bot") },
       { gateway, dedupe },
       { botId: "bot", buildCallbacks: () => callbacks },
     );
@@ -226,7 +232,7 @@ describe("handleInbound", () => {
     await expect(
       handleInbound(
         msg,
-        { agentId: "main", sessionKey: resolveSessionKey(msg, "bot") },
+        { agentId: "main", sessionKey: sessionKeyFor(msg, "bot") },
         { gateway, dedupe },
         { botId: "bot", buildCallbacks: () => callbacks },
       ),
@@ -243,7 +249,7 @@ describe("handleInbound", () => {
     await expect(
       handleInbound(
         msg,
-        { agentId: "main", sessionKey: resolveSessionKey(msg, "bot") },
+        { agentId: "main", sessionKey: sessionKeyFor(msg, "bot") },
         { gateway, dedupe },
         { botId: "bot", buildCallbacks: () => callbacks },
       ),
