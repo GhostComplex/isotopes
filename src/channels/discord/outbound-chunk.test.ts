@@ -1,6 +1,6 @@
 // Tests for the Discord outbound streaming pipeline.
 import { describe, it, expect } from "vitest";
-import { chunkDiscordMessage } from "./message-chunk.js";
+import { chunkDiscordMessage } from "./outbound.js";
 
 describe("chunkDiscordMessage", () => {
   it("returns single chunk for short content", () => {

@@ -1,11 +1,69 @@
-import type { Message as DiscordMessage } from "discord.js";
+import type { Message as DiscordMessage, SendableChannels } from "discord.js";
 import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
 import { DedupeCache } from "./dedupe.js";
 import { REPLY_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
-import type { GuildInboundConfig } from "./types.js";
+import type { DiscordAccountConfig, GuildInboundConfig } from "./types.js";
+import { isDmAllowed, resolveGroupPolicy } from "./config.js";
 
 const log = loggers.discord;
+
+/** Pre-receive policy gate. False = silently drop. */
+export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConfig): boolean {
+  if (!msg.guild) {
+    const ok = isDmAllowed(account, msg.author.id);
+    if (!ok) log.debug(`discord: drop dm from ${msg.author.id} (dmAccess policy)`);
+    return ok;
+  }
+  const group = resolveGroupPolicy(account);
+  if (group.policy === "disabled") {
+    log.debug(`discord: drop guild message ${msg.id} (groupAccess.policy=disabled)`);
+    return false;
+  }
+  if (group.policy === "allowlist") {
+    const channelOk = group.channelAllowlist?.includes(msg.channelId) ?? false;
+    const guildOk = group.guildAllowlist?.includes(msg.guild.id) ?? false;
+    if (!channelOk && !guildOk) {
+      log.debug(
+        `discord: drop guild message ${msg.id} (not in groupAccess allowlist, ` +
+          `guild=${msg.guild.id} channel=${msg.channelId})`,
+      );
+      return false;
+    }
+  }
+  return true;
+}
+
+const STOP_CMD_RE = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i;
+
+/** Returns true if the message was a /stop directed at this bot (consumed). */
+export async function maybeHandleStop(
+  msg: DiscordMessage,
+  botId: string,
+  gateway: Gateway,
+  agentId: string,
+  sessionKey: string,
+): Promise<boolean> {
+  if (!STOP_CMD_RE.test(msg.content.trim())) return false;
+  // In guild channels we still require the @mention so a shared /stop in a
+  // multi-bot channel only aborts the addressed bot's session. DMs are 1:1.
+  if (msg.guild && !msg.mentions?.has?.(botId)) return true; // not for us, but consume
+  let cancelled = false;
+  try {
+    cancelled = await gateway.abortByKey(agentId, sessionKey, "user");
+    log.info(`discord: /stop ${cancelled ? "aborted" : "no active run"} for sessionKey=${sessionKey}`);
+  } catch (err) {
+    log.warn(`discord: /stop abort failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if ("send" in msg.channel) {
+    try {
+      await (msg.channel as SendableChannels).send(cancelled ? "🛑 Stopped." : "(nothing to stop)");
+    } catch {
+      /* ignore */
+    }
+  }
+  return true;
+}
 
 interface InboundDeps {
   gateway: Gateway;

@@ -6,7 +6,7 @@ import type {
   A2ASinkStartResult,
   A2ASinkSummary,
 } from "../../agent/a2a-sink.js";
-import { chunkDiscordMessage } from "./message-chunk.js";
+import { chunkDiscordMessage } from "./outbound.js";
 
 const log = createLogger("discord-a2a-sink");
 

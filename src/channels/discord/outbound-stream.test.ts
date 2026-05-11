@@ -1,6 +1,6 @@
 // Tests for the Discord outbound streaming pipeline.
 import { describe, it, expect, vi } from "vitest";
-import { SegmentedStreamBuffer } from "./stream-buffer.js";
+import { SegmentedStreamBuffer } from "./outbound.js";
 
 describe("SegmentedStreamBuffer", () => {
   it("does not flush below maxBufferSize threshold", async () => {
