@@ -16,7 +16,6 @@ export interface GatewayDeps {
   sessionStoreManager: SessionStoreManager;
 }
 
-// State for the dispatch driving this session's run.
 // `ready` resolves once the underlying runner has registered the run
 // (i.e. the first event has arrived) so steer can safely target it.
 // `done` resolves at agent_end; it never rejects — runner errors are
@@ -32,7 +31,6 @@ interface ActiveHandle {
 }
 
 export function createGateway(deps: GatewayDeps): Gateway {
-  // sessionId → handle for the dispatch currently driving that session's run
   const active = new Map<string, ActiveHandle>();
   // Dedupes concurrent resolveSessionId calls so two dispatches with the same
   // sessionKey share one create instead of racing into two distinct sessions.
