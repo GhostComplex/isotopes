@@ -5,6 +5,7 @@ import { REPLY_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { DiscordAccountConfig, GuildInboundConfig } from "./types.js";
 import { isDmAllowed, resolveGroupPolicy } from "./config.js";
+import { extractAttachmentImages, hasImageAttachments } from "./attachment.js";
 
 const log = loggers.discord;
 
@@ -38,8 +39,6 @@ export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConf
   return true;
 }
 
-const STOP_CMD_RE = /^(?:<@!?\S+>\s*)?\/(stop|cancel)\s*$/i;
-
 /** Returns true if the message was a /stop directed at this bot (consumed). */
 export async function maybeHandleStop(
   msg: DiscordMessage,
@@ -48,7 +47,13 @@ export async function maybeHandleStop(
   agentId: string,
   sessionKey: string,
 ): Promise<boolean> {
-  if (!STOP_CMD_RE.test(msg.content.trim())) return false;
+  // Accept "/stop" optionally preceded by a discord mention like "<@123>".
+  let text = msg.content.trim().toLowerCase();
+  if (text.startsWith("<@")) {
+    const close = text.indexOf(">");
+    if (close > 0) text = text.slice(close + 1).trim();
+  }
+  if (text !== "/stop") return false;
   // In guild channels we still require the @mention so a shared /stop in a
   // multi-bot channel only aborts the addressed bot's session. DMs are 1:1.
   if (msg.guild && !msg.mentions?.has?.(botId)) return true; // not for us, but consume
@@ -135,6 +140,9 @@ export async function handleInbound(
   }
 
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
+  const images = hasImageAttachments(msg) ? await extractAttachmentImages(msg) : [];
+  // Don't dispatch a wholly empty turn (no text + no images).
+  if (!cleanedText && images.length === 0) return;
   const content = deps.transformContent
     ? deps.transformContent(cleanedText, msg, engagement!)
     : cleanedText;
@@ -146,6 +154,7 @@ export async function handleInbound(
     sender: msg.author.username,
     timestamp: msg.createdTimestamp,
     extraSystemPrompt: REPLY_PROMPT,
+    ...(images.length > 0 ? { images } : {}),
   };
 
   const callbacks = ctx.buildCallbacks(msg);

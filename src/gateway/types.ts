@@ -1,5 +1,12 @@
 export type MessageSource = "channel" | "tui" | "ui" | "cron" | "heartbeat" | "spawn";
 
+/** Image attachment shape — base64 data with MIME type. Mirrors pi-ai ImageContent. */
+export interface InboundImage {
+  type: "image";
+  data: string;
+  mimeType: string;
+}
+
 export interface Message {
   agentId: string;
   sessionKey?: string;
@@ -9,6 +16,7 @@ export interface Message {
   timestamp?: number;
   cwd?: string;
   extraSystemPrompt?: string;
+  images?: InboundImage[];
 }
 
 export interface DispatchCallbacks {

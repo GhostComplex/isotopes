@@ -48,6 +48,7 @@ export interface RunRequest {
   to: string;
   sessionId?: string;
   content: string;
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
   from?: { agentId: string; displayName?: string };
   parentSessionId?: string;
   cwd?: string;

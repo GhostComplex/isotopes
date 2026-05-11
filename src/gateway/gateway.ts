@@ -64,6 +64,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
         to: msg.agentId,
         sessionId,
         content: msg.content,
+        ...(msg.images && msg.images.length > 0 ? { images: msg.images } : {}),
         ...(msg.cwd ? { cwd: msg.cwd } : {}),
         ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
       })) {

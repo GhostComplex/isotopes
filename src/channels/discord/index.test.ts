@@ -1,19 +1,9 @@
-// src/channels/discord/index.test.ts — ChannelAdapter lifecycle + wiring tests.
-//
-// We don't exercise discord.js at all — instead inject a fake Client via the
-// `clientFactory` test seam so we can assert on login/destroy and drive
-// messageCreate manually.
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Message as DiscordMessage } from "discord.js";
 import { createDiscordChannel, type ClientLike } from "./index.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
 import { LazyChannelContext } from "../../channels/types.js";
-
-// ---------------------------------------------------------------------------
-// Fakes
-// ---------------------------------------------------------------------------
 
 interface FakeClient extends ClientLike {
   handlers: Map<string, Array<(...args: unknown[]) => void>>;
@@ -110,10 +100,6 @@ function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
   } as unknown as DiscordMessage;
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe("createDiscordChannel — lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -181,7 +167,7 @@ describe("createDiscordChannel — lifecycle", () => {
     const msgB = fakeMsgWithReact("msg-1");
     const clientA = makeFakeClient("bot-A");
     const clientB = makeFakeClient("bot-B");
-    // Both clients have the message in cache; if react were broadcast it would fire on both.
+    // Both clients cache the message — broadcast react would fire on both.
     clientA.channels.cache.set("ch-1", { messages: { fetch: vi.fn().mockResolvedValue(msgA) } } as never);
     clientB.channels.cache.set("ch-1", { messages: { fetch: vi.fn().mockResolvedValue(msgB) } } as never);
     const factories = [clientA, clientB];
@@ -251,7 +237,6 @@ describe("createDiscordChannel — inbound wiring", () => {
 
     const msg = fakeMsg({ mentionedIds: ["bot-A"] });
     client.emit("messageCreate", msg);
-    // Allow microtask queue to flush async handler
     await new Promise((r) => setImmediate(r));
 
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
@@ -307,10 +292,6 @@ describe("createDiscordChannel — inbound wiring", () => {
   });
 
   it("invokes flushRemaining via the receive→outbound bridge", async () => {
-    // The OutboundCallbacks built by createDiscordCallbacks expose
-    // flushRemaining; receive.ts now calls it post-dispatch. We simulate a
-    // text_delta by having gateway.dispatch invoke onTextDelta on the
-    // callbacks it receives, then assert the channel was sent to.
     const client = makeFakeClient("bot-A");
     const gateway = makeGateway();
     gateway.dispatch.mockImplementation(async (_msg, cb) => {
@@ -329,11 +310,9 @@ describe("createDiscordChannel — inbound wiring", () => {
 
     const msg = fakeMsg({ mentionedIds: ["bot-A"] });
     client.emit("messageCreate", msg);
-    // Allow async chain (dispatchInbound → receive → dispatch → flushRemaining) to settle
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
 
-    // Without a reply directive the chunk is sent via channel.send (not reply()).
     const channelSend = (msg.channel as unknown as { send: ReturnType<typeof vi.fn> }).send;
     expect(channelSend).toHaveBeenCalled();
     expect(channelSend.mock.calls[0][0]).toContain("hello world.");
@@ -363,7 +342,7 @@ describe("createDiscordChannel — message metadata enrichment", () => {
       content: "<@bot-A> hello",
       authorId: "user-42",
     });
-    // The metadata extractor reads msg.channel.type / .name; provide minimal shape.
+    // extractDiscordMetadata reads channel.type / .name.
     (msg.channel as unknown as { type: number; name: string }).type = 0;
     (msg.channel as unknown as { type: number; name: string }).name = "general";
 
