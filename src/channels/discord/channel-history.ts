@@ -25,7 +25,7 @@ export class ChannelHistoryBuffer {
     const buf = this.buffers.get(channelId) ?? [];
     buf.push(entry);
     while (buf.length > this.limit) buf.shift();
-    if (this.buffers.has(channelId)) this.buffers.delete(channelId);
+    this.buffers.delete(channelId);
     this.buffers.set(channelId, buf);
     this.evictLRU();
   }
@@ -42,12 +42,9 @@ export class ChannelHistoryBuffer {
   }
 
   private evictLRU(): void {
-    if (this.buffers.size <= MAX_KEYS) return;
-    const toDelete = this.buffers.size - MAX_KEYS;
-    const it = this.buffers.keys();
-    for (let i = 0; i < toDelete; i++) {
-      const k = it.next().value;
-      if (k !== undefined) this.buffers.delete(k);
+    while (this.buffers.size > MAX_KEYS) {
+      const oldest = this.buffers.keys().next().value as string;
+      this.buffers.delete(oldest);
     }
   }
 }
