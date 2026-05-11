@@ -2,7 +2,7 @@ import type { Message as DiscordMessage, SendableChannels } from "discord.js";
 import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
 import { REPLY_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
-import type { DiscordAccountConfig, GuildInboundConfig } from "./types.js";
+import type { DiscordAccountConfig, GuildConfig } from "./types.js";
 import { isDmAllowed, resolveGroupPolicy } from "./config.js";
 import { extractAttachmentImages, hasImageAttachments } from "./attachment.js";
 
@@ -116,7 +116,7 @@ export async function maybeHandleStop(
 
 interface InboundDeps {
   gateway: Gateway;
-  guilds?: Record<string, GuildInboundConfig>;
+  guilds?: Record<string, GuildConfig>;
   /** Default false. */
   allowBots?: boolean;
   /** Hook to prepend inbound metadata (sender, channel) before dispatch. */

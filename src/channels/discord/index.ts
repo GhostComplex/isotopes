@@ -14,14 +14,13 @@ import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, maybeHandleStop } from "./inbound.js";
 import { createDiscordCallbacks } from "./outbound.js";
 import { reactToMessage } from "./react.js";
-import { resolveToken, mapGuildsForReceive } from "./config.js";
+import { resolveToken } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
 import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
 import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
-  GuildInboundConfig,
 } from "./types.js";
 
 const log = loggers.discord;
@@ -162,7 +161,6 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
   dedupes.set(accountId, dedupe);
   const history = new ChannelHistoryBuffer();
   histories.set(accountId, history);
-  const guildsForReceive = mapGuildsForReceive(account.guilds);
 
   client.on("clientReady", () => {
     logger.info(`discord: account "${accountId}" logged in as ${client.user?.tag ?? client.user?.id ?? "?"}`);
@@ -181,7 +179,6 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       gateway,
       dedupe,
       history,
-      guildsForReceive,
       a2aThreads,
     }).catch((err) => {
       logger.error(`discord: receive failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -198,12 +195,11 @@ interface InboundArgs {
   gateway: Gateway;
   dedupe: DedupeCache;
   history: ChannelHistoryBuffer;
-  guildsForReceive: Record<string, GuildInboundConfig> | undefined;
   a2aThreads: Map<string, string>;
 }
 
 async function dispatchInbound(args: InboundArgs): Promise<void> {
-  const { msg, account, client, gateway, dedupe, history, guildsForReceive, a2aThreads } = args;
+  const { msg, account, client, gateway, dedupe, history, a2aThreads } = args;
   const botId = client.user?.id;
   if (!botId) return;
 
@@ -243,7 +239,7 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     { agentId, sessionKey },
     {
       gateway,
-      ...(guildsForReceive ? { guilds: guildsForReceive } : {}),
+      ...(account.guilds ? { guilds: account.guilds } : {}),
       ...(account.allowBots ? { allowBots: account.allowBots } : {}),
       transformContent: (content, triggerMsg) => {
         const meta = extractDiscordMetadata(triggerMsg);

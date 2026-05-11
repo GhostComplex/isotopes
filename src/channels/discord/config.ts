@@ -1,4 +1,4 @@
-import type { DiscordAccountConfig, GuildConfig, GuildInboundConfig } from "./types.js";
+import type { DiscordAccountConfig } from "./types.js";
 
 export interface ResolvedGroupPolicy {
   policy: "disabled" | "allowlist" | "open";
@@ -35,18 +35,4 @@ export function resolveToken(account: DiscordAccountConfig): string | null {
   if (account.token) return account.token;
   if (account.tokenEnv) return process.env[account.tokenEnv] ?? null;
   return null;
-}
-
-export function mapGuildsForReceive(
-  guilds: Record<string, GuildConfig> | undefined,
-): Record<string, GuildInboundConfig> | undefined {
-  if (!guilds) return undefined;
-  const out: Record<string, GuildInboundConfig> = {};
-  for (const [id, g] of Object.entries(guilds)) {
-    const entry: GuildInboundConfig = {};
-    if (g.requireMention !== undefined) entry.requireMention = g.requireMention;
-    if (g.respondInThreads !== undefined) entry.respondInThreads = g.respondInThreads;
-    if (Object.keys(entry).length > 0) out[id] = entry;
-  }
-  return Object.keys(out).length === 0 ? undefined : out;
 }
