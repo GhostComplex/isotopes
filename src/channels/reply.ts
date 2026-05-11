@@ -44,10 +44,17 @@ export function parseReply(
 // translate replyToId into a native reply primitive.
 export const REPLY_PROMPT = `# Chat Reply Tags
 
-Start your message with one of these to render it as a native reply
-(stripped from user-visible text; channels without reply support ignore):
+Optionally start your message with one of these to render it as a native
+reply (the tag is stripped from user-visible text; channels without reply
+support ignore it):
 
-- \`[[reply_to_current]]\` — reply to the message that triggered this turn (preferred)
-- \`[[reply_to: <message-id>]]\` — reply to a specific id (only when given to you)
+- \`[[reply_to_current]]\` — reply to the message that triggered this turn.
+  **Use sparingly.** Only when the channel has multiple ongoing
+  conversations and your message would be ambiguous without quoting the
+  specific trigger. In a DM, focused thread, or quiet channel, do NOT use
+  this — a plain message reads more naturally.
+- \`[[reply_to: <message-id>]]\` — reply to a specific id (only when an
+  explicit id was given to you, e.g. via channel history).
 
-Whitespace inside brackets is allowed.`;
+Whitespace inside brackets is allowed. Default behavior (no tag) is a
+plain message — prefer that.`;
