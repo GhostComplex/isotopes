@@ -13,7 +13,6 @@ function isThreadMessage(msg: DiscordMessage): boolean {
   return (msg.channel as { isThread?: () => boolean })?.isThread?.() === true;
 }
 
-/** Parent channel id when msg is in a thread, else undefined. */
 function threadParentId(msg: DiscordMessage): string | undefined {
   const ch = msg.channel as { isThread?: () => boolean; parentId?: string };
   return ch?.isThread?.() ? ch.parentId : undefined;
@@ -94,7 +93,6 @@ export async function maybeHandleStop(
     }
   }
 
-  // Own-session path: abort the bot's session for this channel/thread/dm.
   try {
     if (await gateway.abortByKey(agentId, sessionKey, "user")) {
       didStop = true;
@@ -147,14 +145,12 @@ export async function handleInbound(
     return;
   }
 
-  // Per-guild thread gate: drop thread messages when guild has respondInThreads=false.
   if (msg.guild && isThreadMessage(msg) && deps.guilds?.[msg.guild.id]?.respondInThreads === false) {
     log.debug(`discord receive: drop thread message ${msg.id} (respondInThreads=false)`);
     return;
   }
 
-  // Guild gate: drop if requireMention=true (default) and bot wasn't @-mentioned.
-  // DMs always pass.
+  // DMs always pass; guild messages need @-mention unless requireMention=false.
   if (msg.guild) {
     const requireMention = deps.guilds?.[msg.guild.id]?.requireMention ?? true;
     if (requireMention && !msg.mentions?.has?.(ctx.botId)) {
@@ -165,8 +161,7 @@ export async function handleInbound(
 
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
   const images = hasImageAttachments(msg) ? await extractAttachmentImages(msg) : [];
-  // Don't dispatch a wholly empty turn (no text + no images).
-  if (!cleanedText && images.length === 0) return;
+  if (!cleanedText && images.length === 0) return; // empty turn
   const content = deps.transformContent
     ? deps.transformContent(cleanedText, msg)
     : cleanedText;
