@@ -119,7 +119,7 @@ channels:
       main:
         tokenEnv: DISCORD_TOKEN
         defaultAgentId: assistant
-        agentBindings:
+        perChannelAgent:
           "123456": assistant
         dmAccess:
           policy: open
@@ -133,7 +133,7 @@ channels:
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const discord = config.channels?.discord as any;
       expect(discord?.accounts?.main?.defaultAgentId).toBe("assistant");
-      expect(discord?.accounts?.main?.agentBindings?.["123456"]).toBe("assistant");
+      expect(discord?.accounts?.main?.perChannelAgent?.["123456"]).toBe("assistant");
     });
 
     it("loads global and agent tool settings from the same config file", async () => {

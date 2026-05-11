@@ -162,14 +162,17 @@ describe("createDiscordChannel — lifecycle", () => {
   });
 
   it("per-agent react binding: agent A's react uses bot A only, not bot B", async () => {
-    const fakeMsgWithReact = (id: string) => ({ id, react: vi.fn().mockResolvedValue(undefined) });
-    const msgA = fakeMsgWithReact("msg-1");
-    const msgB = fakeMsgWithReact("msg-1");
+    const msgA = { id: "msg-1", react: vi.fn().mockResolvedValue(undefined) };
+    const msgB = { id: "msg-1", react: vi.fn().mockResolvedValue(undefined) };
     const clientA = makeFakeClient("bot-A");
     const clientB = makeFakeClient("bot-B");
-    // Both clients cache the message — broadcast react would fire on both.
-    clientA.channels.cache.set("ch-1", { messages: { fetch: vi.fn().mockResolvedValue(msgA) } } as never);
-    clientB.channels.cache.set("ch-1", { messages: { fetch: vi.fn().mockResolvedValue(msgB) } } as never);
+    // Both bots could fetch the channel; routing must pick A.
+    clientA.channels.fetch = vi.fn().mockResolvedValue({
+      messages: { fetch: vi.fn().mockResolvedValue(msgA) },
+    });
+    clientB.channels.fetch = vi.fn().mockResolvedValue({
+      messages: { fetch: vi.fn().mockResolvedValue(msgB) },
+    });
     const factories = [clientA, clientB];
     const adapter = createDiscordChannel(
       {
@@ -187,7 +190,7 @@ describe("createDiscordChannel — lifecycle", () => {
       logger: silentLogger(),
       channelContexts: new Map([["agentA", ctxA], ["agentB", ctxB]]),
     });
-    await ctxA.getChannelActions()!.react!("msg-1", "👀");
+    await ctxA.getChannelActions()!.react!("msg-1", "👀", "ch-1");
     expect(msgA.react).toHaveBeenCalledWith("👀");
     expect(msgB.react).not.toHaveBeenCalled();
   });

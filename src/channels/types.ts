@@ -15,7 +15,7 @@ export interface ChannelDeps {
 
 /** Actions an agent tool can perform on the channel (via LazyChannelContext). */
 export interface ChannelActions {
-  react?(messageId: string, emoji: string, channelId?: string): Promise<void>;
+  react?(messageId: string, emoji: string, channelId: string): Promise<void>;
 }
 
 export type ChannelsConfig = Record<string, unknown>;

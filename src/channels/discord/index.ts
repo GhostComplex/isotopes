@@ -13,8 +13,9 @@ import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, maybeHandleStop } from "./inbound.js";
 import { createDiscordCallbacks } from "./outbound.js";
-import { reactToMessage } from "./react.js";
+import { react } from "./react.js";
 import { resolveToken } from "./config.js";
+import { resolveAgentId } from "./routing.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
 import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
@@ -96,15 +97,17 @@ export function createDiscordChannel(
         ),
       );
 
-      // Per-agent: bind each context to ONLY the bots that serve that agent
-      // (defaultAgentId or agentBindings match). Honors agent↔bot identity for
-      // tools like message_react that must act as the agent's bot.
+      // Per-agent: bind a Channel actions object that resolves (agent, channel)
+      // → bot at call time. Errors clearly when no bot serves the agent in the
+      // requested channel.
       if (deps.channelContexts && clients.size > 0) {
         for (const [agentId, ctx] of deps.channelContexts.entries()) {
-          const agentClients = clientsForAgent(agentId, accounts, clients);
-          if (agentClients.length === 0) continue;
           const actions: ChannelActions = {
-            react: (id, emoji, channelId) => reactToMessage(agentClients, id, emoji, channelId),
+            react: (messageId, emoji, channelId) => {
+              const client = clientForAgentInChannel(agentId, channelId, accounts, clients);
+              if (!client) throw new Error(`No bot serves agent "${agentId}" in channel ${channelId}`);
+              return react(client, messageId, emoji, channelId);
+            },
           };
           ctx.setChannelActions(actions);
         }
@@ -212,7 +215,7 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     return;
   }
 
-  const agentId = resolveAgentId(msg, account.agentBindings, account.defaultAgentId ?? "default");
+  const agentId = resolveAgentId(msg, account);
   const sessionKey = resolveSessionKey(msg, botId);
 
   // /stop runs before history.append so the command never leaks into channel
@@ -263,22 +266,18 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
 }
 
 
-/** Find every account whose defaultAgentId or agentBindings serves this agent. */
-function clientsForAgent(
+/** Find the unique account whose effective agent for this channel matches. */
+function clientForAgentInChannel(
   agentId: string,
+  channelId: string,
   accounts: Record<string, DiscordAccountConfig>,
   clients: Map<string, ClientLike>,
-): ClientLike[] {
-  const matched: ClientLike[] = [];
+): ClientLike | undefined {
   for (const [accountId, account] of Object.entries(accounts)) {
-    const bindingMatch = account.agentBindings
-      && Object.values(account.agentBindings).includes(agentId);
-    if (account.defaultAgentId === agentId || bindingMatch) {
-      const client = clients.get(accountId);
-      if (client) matched.push(client);
-    }
+    const effectiveAgent = account.perChannelAgent?.[channelId] ?? account.defaultAgentId;
+    if (effectiveAgent === agentId) return clients.get(accountId);
   }
-  return matched;
+  return undefined;
 }
 
 function buildSinkFactory(
@@ -309,19 +308,6 @@ function buildSinkFactory(
     unregisterA2AThread: (threadId) => { a2aThreads.delete(threadId); },
   };
   return () => new DiscordA2ASink(deps);
-}
-
-function resolveAgentId(
-  msg: DiscordMessage,
-  agentBindings: Record<string, string> | undefined,
-  defaultAgentId: string,
-): string {
-  if (agentBindings) {
-    for (const [botUserId, agentId] of Object.entries(agentBindings)) {
-      if (msg.mentions?.has?.(botUserId)) return agentId;
-    }
-  }
-  return defaultAgentId;
 }
 
 function resolveSessionKey(msg: DiscordMessage, botId: string): string {

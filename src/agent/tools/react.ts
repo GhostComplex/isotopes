@@ -11,11 +11,7 @@ function jsonResult(value: unknown): AgentToolResult<undefined> {
 
 const messageReactSchema = Type.Object({
   message_id: Type.String({ description: "ID of the message to react to" }),
-  channel_id: Type.Optional(Type.String({
-    description:
-      "ID of the channel containing the message. " +
-      "Optional but recommended — avoids O(n) channel scan.",
-  })),
+  channel_id: Type.String({ description: "ID of the channel containing the message" }),
   emoji: Type.String({ description: "Emoji to react with (Unicode emoji or custom emoji identifier)" }),
 });
 
@@ -26,10 +22,11 @@ export function createMessageReactTool(ctx: ChannelContext): AgentTool<typeof me
     description:
       "Add an emoji reaction to a specific message by its ID. " +
       "Use standard Unicode emoji (e.g. \"\u{1F44D}\") or platform-specific emoji identifiers. " +
-      "Pass channel_id when known to avoid an expensive channel scan.",
+      "channel_id is required — pass the ID of the channel containing the message.",
     parameters: messageReactSchema,
     execute: async (_id, { message_id, channel_id, emoji }) => {
       if (!message_id || !message_id.trim()) return jsonResult({ error: "message_id must not be empty" });
+      if (!channel_id || !channel_id.trim()) return jsonResult({ error: "channel_id must not be empty" });
       if (!emoji || !emoji.trim()) return jsonResult({ error: "emoji must not be empty" });
       const actions = ctx.getChannelActions();
       if (!actions) return jsonResult({ error: "Channel not available" });

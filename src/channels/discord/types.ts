@@ -7,8 +7,8 @@ export interface GuildConfig {
 export interface DiscordAccountConfig {
   token?: string;
   tokenEnv?: string;
-  defaultAgentId?: string;
-  agentBindings?: Record<string, string>;
+  defaultAgentId: string;
+  perChannelAgent?: Record<string, string>;
   dmAccess?: {
     policy?: "disabled" | "allowlist";
     allowlist?: string[];
