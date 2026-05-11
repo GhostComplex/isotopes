@@ -9,7 +9,7 @@ import type { Message as DiscordMessage } from "discord.js";
 import { createDiscordChannel, type ClientLike } from "./index.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
-import { LazyChannelContext } from "../../channels/channel-context.js";
+import { LazyChannelContext } from "../../channels/types.js";
 
 // ---------------------------------------------------------------------------
 // Fakes

@@ -1,7 +1,7 @@
 import type { SandboxConfig } from "./middleware/sandbox-config.js";
 import type { AgentToolSettings } from "./tools/types.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
-import type { LazyChannelContext } from "../channels/channel-context.js";
+import type { LazyChannelContext } from "../channels/types.js";
 
 export type ProviderType = "anthropic" | "openai" | "github-copilot";
 

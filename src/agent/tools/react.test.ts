@@ -3,8 +3,7 @@ import {
   createMessageReactTool,
   createReactTools,
 } from "./react.js";
-import { LazyChannelContext, type ChannelContext } from "../../channels/channel-context.js";
-import type { ChannelActions } from "../../channels/types.js";
+import { LazyChannelContext, type ChannelActions, type ChannelContext } from "../../channels/types.js";
 
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 
