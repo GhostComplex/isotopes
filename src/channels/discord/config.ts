@@ -43,7 +43,10 @@ export function mapGuildsForReceive(
   if (!guilds) return undefined;
   const out: Record<string, GuildInboundConfig> = {};
   for (const [id, g] of Object.entries(guilds)) {
-    if (g.requireMention !== undefined) out[id] = { requireMention: g.requireMention };
+    const entry: GuildInboundConfig = {};
+    if (g.requireMention !== undefined) entry.requireMention = g.requireMention;
+    if (g.respondInThreads !== undefined) entry.respondInThreads = g.respondInThreads;
+    if (Object.keys(entry).length > 0) out[id] = entry;
   }
   return Object.keys(out).length === 0 ? undefined : out;
 }

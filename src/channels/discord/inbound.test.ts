@@ -21,6 +21,7 @@ interface FakeMsgOpts {
   authorUsername?: string;
   guildId?: string | null;
   threadId?: string | null;
+  parentChannelId?: string;
   content?: string;
   mentionedIds?: string[];
   referencedAuthorId?: string;
@@ -33,9 +34,16 @@ function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
     ? { author: { id: opts.referencedAuthorId } }
     : undefined;
   const guild = opts.guildId === null ? null : { id: opts.guildId ?? "guild-1" };
+  // In real Discord, a thread message has channelId = thread id and
+  // channel.isThread() === true. parentId is the parent channel.
+  const isThread = Boolean(opts.threadId);
+  const channelId = isThread ? opts.threadId! : opts.channelId ?? "channel-1";
+  const channel = isThread
+    ? { isThread: () => true, parentId: opts.parentChannelId ?? "channel-parent-1" }
+    : { isThread: () => false };
   return {
     id: opts.id ?? "msg-1",
-    channelId: opts.channelId ?? "channel-1",
+    channelId,
     content: opts.content ?? "hello",
     createdTimestamp: opts.timestamp ?? 1700000000000,
     author: {
@@ -44,7 +52,7 @@ function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
       bot: opts.authorBot ?? false,
     },
     guild,
-    thread: opts.threadId ? { id: opts.threadId } : null,
+    channel,
     mentions: { has: (id: string) => mentionedIds.has(id) },
     referencedMessage,
   } as unknown as DiscordMessage;
@@ -96,7 +104,8 @@ describe("handleInbound", () => {
   // — handleInbound's contract is "you give me agentId + sessionKey", not "you
   // share my computation".
   const sessionKeyFor = (msg: DiscordMessage, botId = BOT_ID): string => {
-    if (msg.thread) return `discord:${botId}:thread:${msg.thread.id}`;
+    const ch = msg.channel as { isThread?: () => boolean };
+    if (ch?.isThread?.()) return `discord:${botId}:thread:${msg.channelId}`;
     if (!msg.guild) return `discord:${botId}:dm:${msg.author.id}`;
     return `discord:${botId}:channel:${msg.channelId}`;
   };
@@ -192,6 +201,23 @@ describe("handleInbound", () => {
     const msg = fakeMsg({ threadId: "thr-42", mentionedIds: [BOT_ID] });
     await handleInbound(msg, route(msg), { gateway, dedupe }, ctx());
     expect(gateway.dispatch.mock.calls[0][0].sessionKey).toBe(`discord:${BOT_ID}:thread:thr-42`);
+  });
+
+  it("drops thread messages when respondInThreads=false for the guild", async () => {
+    const msg = fakeMsg({ threadId: "thr-x", guildId: "g-1", mentionedIds: [BOT_ID] });
+    await handleInbound(
+      msg,
+      route(msg),
+      { gateway, dedupe, guilds: { "g-1": { respondInThreads: false } } },
+      ctx(),
+    );
+    expect(gateway.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches thread messages when respondInThreads=true (default)", async () => {
+    const msg = fakeMsg({ threadId: "thr-y", guildId: "g-1", mentionedIds: [BOT_ID] });
+    await handleInbound(msg, route(msg), { gateway, dedupe }, ctx());
+    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });
 
   it("applies transformContent hook to dispatched content", async () => {
@@ -329,6 +355,18 @@ describe("passesAllowlist (allowlist policy)", () => {
       channelAllowlist: ["channel-1"],
     });
     expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-1" }), acc)).toBe(false);
+  });
+
+  it("thread message passes when its parent channel is in channelAllowlist", () => {
+    const acc = account({ policy: "allowlist", channelAllowlist: ["channel-parent-1"] });
+    const msg = fakeMsg({ guildId: "g-1", threadId: "thr-1", parentChannelId: "channel-parent-1" });
+    expect(passesAllowlist(msg, acc)).toBe(true);
+  });
+
+  it("thread message dropped when parent not in channelAllowlist", () => {
+    const acc = account({ policy: "allowlist", channelAllowlist: ["channel-other"] });
+    const msg = fakeMsg({ guildId: "g-1", threadId: "thr-1", parentChannelId: "channel-parent-1" });
+    expect(passesAllowlist(msg, acc)).toBe(false);
   });
 
   it("policy=disabled drops all guild messages", () => {

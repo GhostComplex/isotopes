@@ -7,6 +7,8 @@
 
 export interface GuildConfig {
   requireMention?: boolean;
+  /** Default true. Set false to ignore all messages in threads under this guild. */
+  respondInThreads?: boolean;
 }
 
 export interface DiscordAccountConfig {
@@ -34,4 +36,5 @@ export interface DiscordChannelsConfig {
 /** Per-guild config consumed by the inbound pipeline. */
 export interface GuildInboundConfig {
   requireMention?: boolean;
+  respondInThreads?: boolean;
 }

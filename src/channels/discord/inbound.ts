@@ -9,6 +9,17 @@ import { extractAttachmentImages, hasImageAttachments } from "./attachment.js";
 
 const log = loggers.discord;
 
+/** True if msg is in a Discord thread (uses channel.isThread, not msg.thread). */
+function isThreadMessage(msg: DiscordMessage): boolean {
+  return (msg.channel as { isThread?: () => boolean })?.isThread?.() === true;
+}
+
+/** Parent channel id when msg is in a thread, else undefined. */
+function threadParentId(msg: DiscordMessage): string | undefined {
+  const ch = msg.channel as { isThread?: () => boolean; parentId?: string };
+  return ch?.isThread?.() ? ch.parentId : undefined;
+}
+
 /** Pre-receive policy gate. False = silently drop. */
 export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConfig): boolean {
   if (!msg.guild) {
@@ -31,9 +42,15 @@ export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConf
       log.debug(`discord: drop ${msg.id} (guild ${msg.guild.id} not in guildAllowlist)`);
       return false;
     }
-    if (group.channelAllowlist !== undefined && !group.channelAllowlist.includes(msg.channelId)) {
-      log.debug(`discord: drop ${msg.id} (channel ${msg.channelId} not in channelAllowlist)`);
-      return false;
+    if (group.channelAllowlist !== undefined) {
+      // For thread messages, also accept the thread's parent channel.
+      const parentId = threadParentId(msg);
+      const channelOk = group.channelAllowlist.includes(msg.channelId)
+        || (parentId !== undefined && group.channelAllowlist.includes(parentId));
+      if (!channelOk) {
+        log.debug(`discord: drop ${msg.id} (channel ${msg.channelId} not in channelAllowlist)`);
+        return false;
+      }
     }
   }
   return true;
@@ -120,6 +137,12 @@ export async function handleInbound(
   if (msg.author.id === ctx.botId) return;
   if (msg.author.bot && !deps.allowBots) {
     log.debug(`discord receive: drop bot message from ${msg.author.username}`);
+    return;
+  }
+
+  // Per-guild thread gate: drop thread messages when guild has respondInThreads=false.
+  if (msg.guild && isThreadMessage(msg) && deps.guilds?.[msg.guild.id]?.respondInThreads === false) {
+    log.debug(`discord receive: drop thread message ${msg.id} (respondInThreads=false)`);
     return;
   }
 

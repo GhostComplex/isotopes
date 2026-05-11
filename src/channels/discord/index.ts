@@ -319,7 +319,10 @@ function resolveAgentId(
 }
 
 function resolveSessionKey(msg: DiscordMessage, botId: string): string {
-  if (msg.thread) return `discord:${botId}:thread:${msg.thread.id}`;
+  // msg.channel.isThread() is the correct check — msg.thread means "this msg
+  // *spawned* a thread", not "this msg *is in* one".
+  const ch = msg.channel as { isThread?: () => boolean };
+  if (ch?.isThread?.()) return `discord:${botId}:thread:${msg.channelId}`;
   if (!msg.guild) return `discord:${botId}:dm:${msg.author.id}`;
   return `discord:${botId}:channel:${msg.channelId}`;
 }
