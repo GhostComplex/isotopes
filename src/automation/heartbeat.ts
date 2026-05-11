@@ -3,11 +3,6 @@ import path from "node:path";
 import { createLogger, type Logger } from "../logging/logger.js";
 import { isSilentReplyPayloadText } from "../channels/no-reply.js";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Configuration for an agent's heartbeat. */
 export interface HeartbeatConfig {
   enabled: boolean;
   /** Interval in seconds between heartbeat triggers. Default: 300 (5 min) */
@@ -25,27 +20,12 @@ export interface HeartbeatManagerOptions {
   logger?: Logger;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const DEFAULT_INTERVAL_SECONDS = 300;
 const HEARTBEAT_FILE = "HEARTBEAT.md";
 
-// ---------------------------------------------------------------------------
-// HeartbeatManager
-// ---------------------------------------------------------------------------
-
 /**
- * HeartbeatManager — triggers periodic agent wake-ups.
- *
- * On each interval tick the manager reads `HEARTBEAT.md` from the agent's
- * workspace, builds a prompt with the file contents and current timestamp,
- * and calls the supplied `runAgentLoop` callback. If the agent responds with
- * a silent-reply token the output is suppressed; otherwise it is logged.
- *
- * A concurrency guard ensures that if a heartbeat is still running when the
- * next interval fires, the tick is skipped rather than stacking prompts.
+ * Periodically wakes an agent by reading its HEARTBEAT.md and dispatching it
+ * as a prompt. Overlapping ticks are skipped, not stacked.
  */
 export class HeartbeatManager {
   private readonly agentId: string;
@@ -65,15 +45,14 @@ export class HeartbeatManager {
     this.log = options.logger ?? createLogger(`heartbeat:${options.agentId}`);
   }
 
-  /** Start the heartbeat interval timer. */
   start(): void {
-    if (this.timer) return; // already started
+    if (this.timer) return;
 
     this.timer = setInterval(() => {
       void this.tick();
     }, this.intervalMs);
 
-    // Don't keep the process alive solely for heartbeats
+    // Don't keep the process alive solely for heartbeats.
     if (this.timer.unref) this.timer.unref();
 
     this.log.info(
@@ -81,7 +60,6 @@ export class HeartbeatManager {
     );
   }
 
-  /** Stop the heartbeat interval timer. */
   stop(): void {
     if (!this.timer) return;
 
@@ -96,18 +74,12 @@ export class HeartbeatManager {
     await this.tick();
   }
 
-  // -------------------------------------------------------------------------
-  // Internal
-  // -------------------------------------------------------------------------
-
   private async tick(): Promise<void> {
-    // Concurrency guard — skip if previous heartbeat is still running
     if (this.isRunning) {
       this.log.debug(`Heartbeat skipped for "${this.agentId}" (previous still running)`);
       return;
     }
 
-    // Read HEARTBEAT.md — no-op with debug log if missing
     const heartbeatPath = path.join(this.workspacePath, HEARTBEAT_FILE);
     let content: string;
     try {
@@ -142,10 +114,6 @@ export class HeartbeatManager {
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Prompt builder
-// ---------------------------------------------------------------------------
 
 function buildHeartbeatPrompt(heartbeatContent: string): string {
   const timestamp = new Date().toISOString();
