@@ -7,7 +7,7 @@ function escapeForRegex(input: string): string {
   return input.replace(ESCAPE_REGEX_PATTERN, "\\$&");
 }
 
-export const SILENT_REPLY_TOKEN = "NO_REPLY";
+const SILENT_REPLY_TOKEN = "NO_REPLY";
 
 const exactRegexCache = new Map<string, RegExp>();
 
@@ -19,22 +19,14 @@ function getExactRegex(token: string): RegExp {
   return regex;
 }
 
-/** Strict: trimmed text equals `token` (case-insensitive). */
-export function isSilentReplyText(
-  text: string | undefined,
-  token: string = SILENT_REPLY_TOKEN,
-): boolean {
+function isExactToken(text: string | undefined, token: string): boolean {
   if (!text) return false;
   return getExactRegex(token).test(text);
 }
 
 type SilentReplyEnvelope = { action?: unknown };
 
-/** Match `{"action": "<token>"}` JSON-wrapped form. Single-key envelope only. */
-export function isSilentReplyEnvelopeText(
-  text: string | undefined,
-  token: string = SILENT_REPLY_TOKEN,
-): boolean {
+function isEnvelope(text: string | undefined, token: string): boolean {
   if (!text) return false;
   const trimmed = text.trim();
   if (!trimmed.startsWith("{") || !trimmed.endsWith("}") || !trimmed.includes(token)) {
@@ -56,10 +48,14 @@ export function isSilentReplyEnvelopeText(
   );
 }
 
-/** Default suppression check: exact text or JSON envelope. */
+/**
+ * True when the text is the agent's way of saying "no reply" — either the
+ * bare token (case-insensitive, possibly with whitespace) or a single-key
+ * `{"action": "NO_REPLY"}` JSON envelope.
+ */
 export function isSilentReplyPayloadText(
   text: string | undefined,
   token: string = SILENT_REPLY_TOKEN,
 ): boolean {
-  return isSilentReplyText(text, token) || isSilentReplyEnvelopeText(text, token);
+  return isExactToken(text, token) || isEnvelope(text, token);
 }
