@@ -6,7 +6,6 @@ const REPLY_TAG_RE = /\[\[\s*(?:reply_to_current|reply_to\s*:\s*([^\]\n]+))\s*\]
 
 interface ResolvedReply {
   stripped: string;
-  /** Undefined when the agent didn't request a reply for this chunk. */
   replyToId?: string;
 }
 
@@ -45,18 +44,10 @@ export function parseReply(
 // translate replyToId into a native reply primitive.
 export const REPLY_PROMPT = `# Chat Reply Tags
 
-When you reply on a chat surface, you may include the following inline tags
-in your message to request delivery metadata. Tags are stripped from the
-user-visible text and are only honored on channels that support the
-underlying feature; channels without support silently ignore them.
+Start your message with one of these to render it as a native reply
+(stripped from user-visible text; channels without reply support ignore):
 
-- \`[[reply_to_current]]\` — render this message as a native reply to the
-  message that triggered the current turn. Prefer this form.
-- \`[[reply_to: <message-id>]]\` — render this message as a native reply to
-  a specific message id. Use only when the id was explicitly given to you
-  (by the user or by a tool result).
+- \`[[reply_to_current]]\` — reply to the message that triggered this turn (preferred)
+- \`[[reply_to: <message-id>]]\` — reply to a specific id (only when given to you)
 
-Place the tag at the start of your response, before any other text.
-Whitespace inside the brackets is allowed. Tags are channel-agnostic — the
-channel (currently Discord) renders them in the platform's native reply
-primitive.`;
+Whitespace inside brackets is allowed.`;
