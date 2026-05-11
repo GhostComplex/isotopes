@@ -186,14 +186,6 @@ describe("handleInbound", () => {
     expect(gateway.dispatch.mock.calls[0][0].sessionKey).toBe(`discord:${BOT_ID}:thread:thr-42`);
   });
 
-  it("can disable dedupe via dedupeEnabled=false", async () => {
-    const msg = fakeMsg({ mentionedIds: [BOT_ID] });
-    const opts = { gateway, dedupe, dedupeEnabled: false };
-    await handleInbound(msg, route(msg), opts, ctx());
-    await handleInbound(msg, route(msg), opts, ctx());
-    expect(gateway.dispatch).toHaveBeenCalledTimes(2);
-  });
-
   it("applies transformContent hook to dispatched content", async () => {
     const msg = fakeMsg({ mentionedIds: [BOT_ID], content: `<@${BOT_ID}> hi there` });
     const transform = vi.fn((content: string) => `<meta/>\n${content}`);

@@ -69,8 +69,6 @@ interface InboundDeps {
   gateway: Gateway;
   dedupe: DedupeCache;
   guilds?: Record<string, GuildInboundConfig>;
-  /** Default true. */
-  dedupeEnabled?: boolean;
   /** Default false. */
   allowBots?: boolean;
   /** Hook to prepend inbound metadata (sender, channel) before dispatch. */
@@ -116,12 +114,10 @@ export async function handleInbound(
     return;
   }
 
-  if (deps.dedupeEnabled !== false) {
-    const dedupeKey = `${ctx.botId}:${msg.channelId}:${msg.id}`;
-    if (deps.dedupe.isDuplicate(dedupeKey)) {
-      log.debug(`discord receive: dedupe drop ${msg.id}`);
-      return;
-    }
+  const dedupeKey = `${ctx.botId}:${msg.channelId}:${msg.id}`;
+  if (deps.dedupe.isDuplicate(dedupeKey)) {
+    log.debug(`discord receive: dedupe drop ${msg.id}`);
+    return;
   }
 
   const engagement = detectEngagement(msg, ctx.botId);

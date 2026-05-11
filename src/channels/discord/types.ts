@@ -7,9 +7,6 @@
 
 export interface ThreadBindingConfig {
   enabled: boolean;
-  autoUnbindOnComplete?: boolean;
-  sendFarewell?: boolean;
-  farewellMessage?: string;
 }
 
 export interface ThreadBinding {
@@ -26,16 +23,6 @@ export interface ThreadBinding {
 
 export interface GuildConfig {
   requireMention?: boolean;
-  context?: {
-    channelHistory?: boolean;
-    channelHistoryLimit?: number;
-  };
-}
-
-export interface DiscordAccountContextConfig {
-  channelHistory?: boolean;
-  channelHistoryLimit?: number;
-  dedupe?: boolean;
 }
 
 export interface DiscordAccountConfig {
@@ -55,12 +42,9 @@ export interface DiscordAccountConfig {
   guilds?: Record<string, GuildConfig>;
   threadBindings?: ThreadBindingConfig;
   allowBots?: boolean;
-  context?: DiscordAccountContextConfig;
-  adminUsers?: string[];
 }
 
 export interface DiscordChannelsConfig {
-  enabled?: boolean;
   accounts?: Record<string, DiscordAccountConfig>;
 }
 

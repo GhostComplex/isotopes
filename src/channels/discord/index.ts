@@ -244,7 +244,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
       gateway,
       dedupe,
       ...(guildsForReceive ? { guilds: guildsForReceive } : {}),
-      ...(account.context?.dedupe === false ? { dedupeEnabled: false } : {}),
       ...(account.allowBots ? { allowBots: account.allowBots } : {}),
       transformContent: (content, triggerMsg) => {
         const meta = extractDiscordMetadata(triggerMsg);
