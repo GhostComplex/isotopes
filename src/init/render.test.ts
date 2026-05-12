@@ -102,6 +102,17 @@ describe("renderConfig", () => {
     expect(yaml).not.toContain('- "111222333"');
   });
 
+  it("emits group allowlist with no entries (deferred — runtime fail-closes)", () => {
+    const yaml = renderConfig({
+      provider: { type: "skip" },
+      channel: { type: "discord", token: "tok", dmPolicy: "disabled", groupPolicy: "allowlist" },
+      codingAgent: "skip",
+    });
+    expect(yaml).toMatch(/groupAccess:\s+policy: allowlist/);
+    expect(yaml).not.toContain("guildAllowlist:");
+    expect(yaml).not.toContain("channelAllowlist:");
+  });
+
   it("emits group open without allowlist entries", () => {
     const yaml = renderConfig({
       provider: { type: "skip" },

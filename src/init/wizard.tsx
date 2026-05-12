@@ -278,6 +278,7 @@ function InitWizard({ onDone }: Props) {
           <Text dimColor>  pick ONE mode — either all serverId, OR all serverId/channelId</Text>
           <Text dimColor>  e.g. 123456789012345678, 234567890123456789</Text>
           <Text dimColor>  or   987654321098765432/111222333444555666, 987654321098765432/777888999000111222</Text>
+          <Text dimColor>  leave empty to defer (all guild messages rejected until you edit the yaml)</Text>
           <Box>
             <Text color="cyan">› </Text>
             <TextInput
@@ -287,6 +288,8 @@ function InitWizard({ onDone }: Props) {
                 const result = parseGroupAllowlist(groupAllowlistInput);
                 if (result.ok) {
                   setDiscordField({ groupAllowlist: result.entries });
+                  goToClaude();
+                } else if (result.reason === "empty") {
                   goToClaude();
                 }
               }}
