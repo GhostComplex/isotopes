@@ -1,15 +1,11 @@
-// src/http/server.test.ts — Unit tests for the ApiServer
+// src/http/server.test.ts — Unit tests for createApi + Hono app behavior.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
-import { ApiServer } from "./server.js";
+import { serve, type ServerType } from "@hono/node-server";
+import { createApi } from "./server.js";
 import { CronScheduler } from "../automation/cron-job.js";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Simple HTTP fetch helper that works on raw http module */
 function request(
   port: number,
   method: string,
@@ -34,11 +30,7 @@ function request(
         res.on("end", () => {
           const raw = Buffer.concat(chunks).toString("utf-8");
           let data: unknown;
-          try {
-            data = JSON.parse(raw);
-          } catch {
-            data = raw;
-          }
+          try { data = JSON.parse(raw); } catch { data = raw; }
           resolve({ status: res.statusCode ?? 0, data });
         });
       },
@@ -49,97 +41,42 @@ function request(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe("ApiServer", () => {
-  let server: ApiServer;
-  let cronScheduler: CronScheduler;
+describe("createApi", () => {
+  let server: ServerType;
+  let port: number;
 
   beforeEach(async () => {
-    cronScheduler = new CronScheduler(async () => {});
-    // Use port 0 so the OS assigns a free port
-    server = new ApiServer({ port: 0 }, { cronScheduler });
-    await server.start();
+    const cronScheduler = new CronScheduler(async () => {});
+    const app = createApi({ cronScheduler });
+    server = await new Promise<ServerType>((resolve) => {
+      const s = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" }, () => resolve(s));
+    });
+    const addr = server.address();
+    if (!addr || typeof addr === "string") throw new Error("no port");
+    port = addr.port;
   });
 
   afterEach(async () => {
-    await server.stop();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  function getPort(): number {
-    const addr = server.address();
-    if (!addr) throw new Error("Server not listening");
-    return addr.port;
-  }
-
-  // -----------------------------------------------------------------------
-  // Lifecycle
-  // -----------------------------------------------------------------------
-
-  describe("lifecycle", () => {
-    it("starts and is listening", () => {
-      expect(server.isListening()).toBe(true);
-    });
-
-    it("reports address after start", () => {
-      const addr = server.address();
-      expect(addr).not.toBeNull();
-      expect(addr!.port).toBeGreaterThan(0);
-    });
-
-    it("throws if started twice", async () => {
-      await expect(server.start()).rejects.toThrow(/already running/);
-    });
-
-    it("stops cleanly", async () => {
-      await server.stop();
-      expect(server.isListening()).toBe(false);
-      expect(server.address()).toBeNull();
-    });
-
-    it("stop is idempotent", async () => {
-      await server.stop();
-      await server.stop(); // should not throw
-    });
+  it("GET /api/status returns daemon status", async () => {
+    const { status, data } = await request(port, "GET", "/api/status");
+    expect(status).toBe(200);
+    const body = data as { version: string; uptime: number; cronJobs: number };
+    expect(body.version).toBeDefined();
+    expect(body.uptime).toBeGreaterThanOrEqual(0);
+    expect(body.cronJobs).toBe(0);
   });
 
-  // -----------------------------------------------------------------------
-  // GET /api/status
-  // -----------------------------------------------------------------------
-
-  describe("GET /api/status", () => {
-    it("returns daemon status", async () => {
-      const { status, data } = await request(getPort(), "GET", "/api/status");
-      expect(status).toBe(200);
-      const body = data as { version: string; uptime: number; cronJobs: number };
-      expect(body.version).toBeDefined();
-      expect(body.uptime).toBeGreaterThanOrEqual(0);
-      expect(body.cronJobs).toBe(0);
-    });
+  it("returns 404 for unknown path", async () => {
+    const { status, data } = await request(port, "GET", "/api/nonexistent");
+    expect(status).toBe(404);
+    expect((data as { error: string }).error).toContain("No route");
   });
 
-  // -----------------------------------------------------------------------
-  // 404 for unknown routes
-  // -----------------------------------------------------------------------
-
-  describe("unknown routes", () => {
-    it("returns 404 for unknown path", async () => {
-      const { status, data } = await request(getPort(), "GET", "/api/nonexistent");
-      expect(status).toBe(404);
-      expect((data as { error: string }).error).toContain("No route");
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // CORS
-  // -----------------------------------------------------------------------
-
-  describe("CORS", () => {
-    it("handles OPTIONS preflight", async () => {
-      const { status } = await request(getPort(), "OPTIONS", "/api/status");
-      expect(status).toBe(204);
-    });
+  it("handles CORS preflight", async () => {
+    const { status } = await request(port, "OPTIONS", "/api/status");
+    expect(status).toBe(204);
   });
 });

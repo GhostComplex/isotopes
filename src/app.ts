@@ -10,7 +10,8 @@ import {
   resolveAgentWorkspacePath,
 } from "./paths.js";
 
-import { ApiServer } from "./http/server.js";
+import { serve, type ServerType } from "@hono/node-server";
+import { createApi } from "./http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
 import { AgentRuntime } from "./agent/runtime.js";
@@ -30,7 +31,7 @@ export interface Runtime {
   agentRuntime: AgentRuntime;
   agentWorkspaces: Map<string, string>;
   cronScheduler: CronScheduler;
-  apiServer: ApiServer;
+  apiServer: ServerType;
   shutdown: () => Promise<void>;
 }
 
@@ -193,17 +194,20 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   const uiEntries = discoverUIEntries();
 
-  const apiServer = new ApiServer(
-    { port: apiPort ?? 2712 },
-    {
-      cronScheduler,
-      uiEntries,
-      sessionStoreManager,
-      agentRuntime,
-      gateway,
-    },
-  );
-  await apiServer.start();
+  const port = apiPort ?? 2712;
+  const api = createApi({
+    cronScheduler,
+    uiEntries,
+    sessionStoreManager,
+    agentRuntime,
+    gateway,
+  });
+  const apiServer = await new Promise<ServerType>((resolve) => {
+    const s = serve({ fetch: api.fetch, port, hostname: "127.0.0.1" }, () => {
+      log.info(`API server listening on http://127.0.0.1:${port}`);
+      resolve(s);
+    });
+  });
 
   log.info("Runtime started");
 
@@ -214,7 +218,9 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     for (const t of channelLoaders) {
       try { await t.stopAll(); } catch { /* ignore */ }
     }
-    await apiServer.stop();
+    await new Promise<void>((resolve, reject) => {
+      apiServer.close((err) => (err ? reject(err) : resolve()));
+    });
     sessionStoreManager.destroyAll();
 
     try {

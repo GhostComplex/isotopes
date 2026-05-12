@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
-import { ApiServer } from "./server.js";
+import { serve, type ServerType } from "@hono/node-server";
+import { createApi } from "./server.js";
 import { CronScheduler } from "../automation/cron-job.js";
 import { SessionStoreManager } from "../agent/pi/session-store.js";
 import { AgentRuntime } from "../agent/runtime.js";
@@ -71,26 +72,31 @@ function request(
 }
 
 describe("POST /api/sessions/:agentId — sessionKey", () => {
-  let server: ApiServer;
+  let server: ServerType;
+  let port: number;
   let sessionStoreManager: SessionStoreManager;
 
   beforeEach(async () => {
     sessionStoreManager = new SessionStoreManager();
-    server = new ApiServer(
-      { port: 0 },
-      { cronScheduler: new CronScheduler(async () => {}), agentRuntime: makeRuntime(), sessionStoreManager },
-    );
-    await server.start();
+    const app = createApi({
+      cronScheduler: new CronScheduler(async () => {}),
+      agentRuntime: makeRuntime(),
+      sessionStoreManager,
+    });
+    server = await new Promise<ServerType>((resolve) => {
+      const s = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" }, () => resolve(s));
+    });
+    const addr = server.address();
+    if (!addr || typeof addr === "string") throw new Error("no port");
+    port = addr.port;
   });
 
   afterEach(async () => {
-    await server.stop();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
   function getPort(): number {
-    const addr = server.address();
-    if (!addr) throw new Error("Server not listening");
-    return addr.port;
+    return port;
   }
 
   function agentId(): string {

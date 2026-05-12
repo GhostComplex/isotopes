@@ -1,7 +1,10 @@
-// src/http/server.ts — HTTP server for the Isotopes REST API (Hono-based).
+// src/http/server.ts — Build the Isotopes REST API as a Hono app.
+//
+// Caller hosts it (e.g. via @hono/node-server.serve). This split lets tests
+// call `app.fetch(req)` directly without spinning a real server, and lets
+// app.ts manage the server lifecycle without a class wrapper.
 
 import { Hono } from "hono";
-import { serve, type ServerType } from "@hono/node-server";
 import { cors } from "hono/cors";
 import { serveStatic } from "@hono/node-server/serve-static";
 import path from "node:path";
@@ -17,21 +20,17 @@ import { matchUIEntry, type UIEntry } from "../extensions/ui/loader.js";
 
 const log = createLogger("api:server");
 
-export interface ApiServerConfig {
-  port: number;
-  host?: string;
-  corsOrigins?: string[];
-}
-
-export interface ApiServerDeps {
+export interface ApiDeps {
   cronScheduler: CronScheduler;
   uiEntries?: UIEntry[];
   sessionStoreManager?: SessionStoreManager;
   agentRuntime?: AgentRuntime;
   gateway?: Gateway;
+  /** Defaults to `["*"]`. */
+  corsOrigins?: string[];
 }
 
-/** Shared shape passed to per-file route registrars. */
+/** Shape passed to per-file route registrars. */
 export interface RouteDeps {
   cronScheduler: CronScheduler;
   sessionStoreManager?: SessionStoreManager;
@@ -39,139 +38,80 @@ export interface RouteDeps {
   gateway?: Gateway;
 }
 
-export class ApiServer {
-  private server: ServerType | null = null;
-  private app: Hono;
+export function createApi(deps: ApiDeps): Hono {
+  const app = new Hono();
 
-  constructor(
-    private config: ApiServerConfig,
-    deps: ApiServerDeps,
-  ) {
-    const routeDeps: RouteDeps = {
-      cronScheduler: deps.cronScheduler,
-      sessionStoreManager: deps.sessionStoreManager,
-      agentRuntime: deps.agentRuntime,
-      gateway: deps.gateway,
-    };
-    const uiEntries = deps.uiEntries ?? [];
+  app.use(
+    "*",
+    cors({
+      origin: deps.corsOrigins ?? ["*"],
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization"],
+      maxAge: 86400,
+    }),
+  );
 
-    this.app = new Hono();
+  app.use("*", async (c, next) => {
+    const start = Date.now();
+    await next();
+    log.info(`${c.req.method} ${c.req.path} ${c.res.status} ${Date.now() - start}ms`);
+  });
 
-    // CORS — preflight handled automatically.
-    this.app.use(
-      "*",
-      cors({
-        origin: this.config.corsOrigins ?? ["*"],
-        allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allowHeaders: ["Content-Type", "Authorization"],
-        maxAge: 86400,
+  mountUI(app, deps.uiEntries ?? []);
+
+  const routeDeps: RouteDeps = {
+    cronScheduler: deps.cronScheduler,
+    sessionStoreManager: deps.sessionStoreManager,
+    agentRuntime: deps.agentRuntime,
+    gateway: deps.gateway,
+  };
+  registerCronRoutes(app, routeDeps);
+  registerStatusRoutes(app, routeDeps);
+  registerSessionRoutes(app, routeDeps);
+
+  app.notFound((c) =>
+    c.json({ error: `No route for ${c.req.method} ${c.req.path}`, status: 404 }, 404),
+  );
+
+  app.onError((err, c) => {
+    log.error("Route error:", err);
+    return c.json(
+      { error: err instanceof Error ? err.message : "Internal server error", status: 500 },
+      500,
+    );
+  });
+
+  return app;
+}
+
+function mountUI(app: Hono, entries: UIEntry[]): void {
+  if (entries.length === 0) return;
+
+  app.get("/ui", (c) => c.html(uiIndexHtml(entries)));
+  app.get("/ui/", (c) => c.html(uiIndexHtml(entries)));
+
+  for (const entry of entries) {
+    app.use(
+      `${entry.mountPath}/*`,
+      serveStatic({
+        root: path.relative(process.cwd(), entry.staticDir) || ".",
+        rewriteRequestPath: (p) => p.slice(entry.mountPath.length) || "/",
       }),
     );
 
-    // Request logging.
-    this.app.use("*", async (c, next) => {
-      const start = Date.now();
-      await next();
-      const ms = Date.now() - start;
-      log.info(`${c.req.method} ${c.req.path} ${c.res.status} ${ms}ms`);
-    });
-
-    // Mount UI extensions and a small landing page at /ui.
-    if (uiEntries.length > 0) {
-      this.app.get("/ui", (c) => c.html(uiIndexHtml(uiEntries)));
-      this.app.get("/ui/", (c) => c.html(uiIndexHtml(uiEntries)));
-      for (const entry of uiEntries) {
-        // Serve every file under the entry's static dir, with optional SPA fallback.
-        this.app.use(
-          `${entry.mountPath}/*`,
-          serveStatic({
-            root: path.relative(process.cwd(), entry.staticDir) || ".",
-            rewriteRequestPath: (p) => p.slice(entry.mountPath.length) || "/",
-            ...(entry.spaFallback ? { onNotFound: (_p, c) => { void c; } } : {}),
-          }),
-        );
-      }
-      // SPA fallback: any unhandled UI path → entry's index.html
-      for (const entry of uiEntries) {
-        if (!entry.spaFallback) continue;
-        this.app.get(`${entry.mountPath}/*`, async (c) => {
-          const matched = matchUIEntry(uiEntries, c.req.path);
-          if (!matched) return c.notFound();
-          // serveStatic above already handled real files; this catches unmatched paths.
-          const indexPath = path.join(matched.staticDir, "index.html");
-          try {
-            const fs = await import("node:fs/promises");
-            const data = await fs.readFile(indexPath);
-            return c.body(data, 200, { "Content-Type": "text/html; charset=utf-8" });
-          } catch {
-            return c.notFound();
-          }
-        });
-      }
-    }
-
-    // Register API routes.
-    registerCronRoutes(this.app, routeDeps);
-    registerStatusRoutes(this.app, routeDeps);
-    registerSessionRoutes(this.app, routeDeps);
-
-    // 404 fallback.
-    this.app.notFound((c) => c.json({ error: `No route for ${c.req.method} ${c.req.path}`, status: 404 }, 404));
-
-    // Catch-all error handler.
-    this.app.onError((err, c) => {
-      const message = err instanceof Error ? err.message : "Internal server error";
-      log.error("Route error:", err);
-      return c.json({ error: message, status: 500 }, 500);
-    });
-  }
-
-  async start(): Promise<void> {
-    if (this.server) {
-      throw new Error("API server is already running");
-    }
-    const host = this.config.host ?? "127.0.0.1";
-    const port = this.config.port;
-
-    return new Promise<void>((resolve, reject) => {
-      try {
-        this.server = serve(
-          { fetch: this.app.fetch, port, hostname: host },
-          () => {
-            log.info(`API server listening on http://${host}:${port}`);
-            resolve();
-          },
-        );
-      } catch (err) {
-        reject(err);
-      }
-    });
-  }
-
-  async stop(): Promise<void> {
-    if (!this.server) return;
-    return new Promise<void>((resolve, reject) => {
-      this.server!.close((err) => {
-        this.server = null;
-        if (err) {
-          reject(err);
-        } else {
-          log.info("API server stopped");
-          resolve();
+    if (entry.spaFallback) {
+      app.get(`${entry.mountPath}/*`, async (c) => {
+        const matched = matchUIEntry(entries, c.req.path);
+        if (!matched) return c.notFound();
+        try {
+          const fs = await import("node:fs/promises");
+          const data = await fs.readFile(path.join(matched.staticDir, "index.html"));
+          return c.body(data, 200, { "Content-Type": "text/html; charset=utf-8" });
+        } catch {
+          return c.notFound();
         }
       });
-    });
-  }
-
-  isListening(): boolean {
-    return this.server !== null;
-  }
-
-  address(): { host: string; port: number } | null {
-    if (!this.server) return null;
-    const addr = this.server.address();
-    if (!addr || typeof addr === "string") return null;
-    return { host: addr.address, port: addr.port };
+    }
   }
 }
 
