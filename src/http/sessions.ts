@@ -1,4 +1,4 @@
-// src/plugins/http/sessions.ts — Unified session endpoints (read, create, stream, abort, delete)
+// src/http/sessions.ts — Unified session endpoints (read, create, stream, abort, delete)
 //
 // /api/sessions                        — list all sessions
 // /api/sessions/:agentId               — list sessions for one agent
@@ -9,11 +9,11 @@
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
-import { createLogger } from "../../logging/logger.js";
+import { createLogger } from "../logging/logger.js";
 import { randomUUID } from "node:crypto";
-import { resolveAgentWorkspacePath } from "../../paths.js";
-import type { DefaultSessionStore } from "../../agent/pi/session-store.js";
-import type { Session } from "../../sessions/types.js";
+import { resolveAgentWorkspacePath } from "../paths.js";
+import type { DefaultSessionStore } from "../agent/pi/session-store.js";
+import type { Session } from "../sessions/types.js";
 
 const log = createLogger("api:sessions");
 

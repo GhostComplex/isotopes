@@ -1,13 +1,13 @@
-// src/plugins/http/chat.test.ts — Unit tests for chat session creation with sessionKey
+// src/http/chat.test.ts — Unit tests for chat session creation with sessionKey
 import { randomUUID } from "node:crypto";
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "node:http";
 import { ApiServer } from "./server.js";
-import { CronScheduler } from "../../automation/cron-job.js";
-import { SessionStoreManager } from "../../agent/pi/session-store.js";
-import { AgentRuntime } from "../../agent/runtime.js";
-import { createMockSessionStore } from "../../test-helpers.js";
+import { CronScheduler } from "../automation/cron-job.js";
+import { SessionStoreManager } from "../agent/pi/session-store.js";
+import { AgentRuntime } from "../agent/runtime.js";
+import { createMockSessionStore } from "../test-helpers.js";
 
 const MOCK_AGENT_ID = "mock";
 

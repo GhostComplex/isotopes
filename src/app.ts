@@ -10,7 +10,7 @@ import {
   resolveAgentWorkspacePath,
 } from "./paths.js";
 
-import { ApiServer } from "./legacy/http/server.js";
+import { ApiServer } from "./http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
 import { AgentRuntime } from "./agent/runtime.js";

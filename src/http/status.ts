@@ -1,8 +1,8 @@
-// src/plugins/http/status.ts — GET /api/status
+// src/http/status.ts — GET /api/status
 
 import { addRoute } from "./routes.js";
 import { sendJson } from "./middleware.js";
-import { VERSION } from "../version.js";
+import { VERSION } from "../legacy/version.js";
 
 addRoute("GET", "/api/status", (_req, res, deps) => {
   const cronJobCount = deps.cronScheduler.listJobs().length;

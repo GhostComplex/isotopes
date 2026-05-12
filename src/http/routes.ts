@@ -1,11 +1,11 @@
-// src/plugins/http/routes.ts — Route registry (addRoute / matchRoute)
+// src/http/routes.ts — Route registry (addRoute / matchRoute)
 
 import type { ServerResponse } from "node:http";
 
-import type { CronScheduler } from "../../automation/cron-job.js";
-import type { SessionStoreManager } from "../../agent/pi/session-store.js";
-import type { AgentRuntime } from "../../agent/runtime.js";
-import type { Gateway } from "../../gateway/index.js";
+import type { CronScheduler } from "../automation/cron-job.js";
+import type { SessionStoreManager } from "../agent/pi/session-store.js";
+import type { AgentRuntime } from "../agent/runtime.js";
+import type { Gateway } from "../gateway/index.js";
 import type { ApiRequest } from "./middleware.js";
 
 /** Dependencies injected into route handlers. */

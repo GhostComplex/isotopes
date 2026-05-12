@@ -1,11 +1,11 @@
-// src/plugins/http/logs.ts — Log tailing route
+// src/http/logs.ts — Log tailing route
 
 import { execFile } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import path from "node:path";
 import { addRoute } from "./routes.js";
 import { sendJson, handleRouteError } from "./middleware.js";
-import { getIsotopesHome, getLogsDir } from "../../paths.js";
+import { getIsotopesHome, getLogsDir } from "../paths.js";
 
 const LOG_CANDIDATES = [
   () => path.join(getLogsDir(), "isotopes.log"),

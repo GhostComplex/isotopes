@@ -1,8 +1,8 @@
-// src/plugins/http/cron.ts — Cron job management routes
+// src/http/cron.ts — Cron job management routes
 
 import { addRoute } from "./routes.js";
 import { sendJson, sendError, handleRouteError } from "./middleware.js";
-import type { CronJobInput } from "../../automation/cron-job.js";
+import type { CronJobInput } from "../automation/cron-job.js";
 
 // ---------------------------------------------------------------------------
 // GET /api/cron — list cron jobs

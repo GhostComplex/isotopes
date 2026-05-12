@@ -1,4 +1,4 @@
-// src/plugins/http/index.ts — Barrel exports for the API module
+// src/http/index.ts — Barrel exports for the API module
 
 export { ApiServer } from "./server.js";
 export type { ApiServerConfig } from "./server.js";
