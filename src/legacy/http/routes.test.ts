@@ -121,7 +121,7 @@ describe("API routes", () => {
 
       expect(status).toBe(201);
       const body = data as { id: string; name: string; enabled: boolean };
-      expect(body.id).toMatch(/^cron_/);
+      expect(body.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
       expect(body.name).toBe("daily-report");
       expect(body.enabled).toBe(true);
 

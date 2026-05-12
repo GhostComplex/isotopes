@@ -38,7 +38,7 @@ describe("CronScheduler", () => {
       const job = scheduler.register(makeJobInput());
 
       expect(job.id).toBeDefined();
-      expect(job.id).toMatch(/^cron_/);
+      expect(job.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
     it("parses the cron expression into a schedule", () => {

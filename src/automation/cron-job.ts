@@ -1,4 +1,5 @@
 import { Cron } from "croner";
+import { randomUUID } from "node:crypto";
 import { createLogger } from "../logging/logger.js";
 import type { CronAction } from "./types.js";
 
@@ -25,12 +26,6 @@ export type CronJobCallback = (job: CronJob) => void | Promise<void>;
 /** Input for registering a new cron job — auto-generated fields are omitted. */
 export type CronJobInput = Omit<CronJob, "id" | "schedule" | "nextRun" | "createdAt">;
 
-let idCounter = 0;
-
-function generateId(): string {
-  return `cron_${Date.now()}_${++idCounter}`;
-}
-
 /**
  * Manages cron-based scheduled tasks. Each registered job's expression is
  * parsed by croner; the scheduler maintains a setTimeout per enabled job and
@@ -49,7 +44,7 @@ export class CronScheduler {
 
     const job: CronJob = {
       ...input,
-      id: generateId(),
+      id: randomUUID(),
       schedule,
       nextRun,
       createdAt: now,
