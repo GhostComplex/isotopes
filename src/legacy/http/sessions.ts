@@ -32,7 +32,6 @@ interface ActiveSession {
 const activeSessions = new Map<string, ActiveSession>();
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_SESSIONS = 100;
-const MAX_STEER_MESSAGE_LEN = 10_000;
 
 /** sessionKey alone is per-agent unique; two agents can legally hold the same key. */
 const activeKey = (agentId: string, sessionKey: string) => `${agentId}\x00${sessionKey}`;
@@ -293,17 +292,26 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/sessions/:agentId/:key/message — send message, stream via SSE
+// POST /api/sessions/:agentId/:key/dispatch — single entry point
+//
+// Always opens SSE and calls gateway.dispatch. Two outcomes:
+//   - state === "started": this dispatch owns a fresh run; SSE streams its
+//     events (text_delta / tool_call / tool_result / turn_end) and closes
+//     with agent_end.
+//   - state === "queued": there's an active run; gateway steered into it.
+//     SSE writes a single "queued" event and closes immediately. The
+//     steered output flows through the **original** dispatch's SSE
+//     (still open in the client).
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) => {
+addRoute("POST", "/api/sessions/:agentId/:key/dispatch", async (req, res, deps) => {
   const { agentId, key: sessionKey } = req.params;
 
   let active = activeSessions.get(activeKey(agentId, sessionKey));
   if (!active) {
-    // Session may exist in the store but was never registered via the HTTP create
-    // path (e.g. channel-driven sessions like Discord). Look it up and register
-    // on demand so HTTP clients can send into it.
+    // Session may exist in the store but was never registered via the HTTP
+    // create path (e.g. channel-driven sessions like Discord). Look it up
+    // and register on demand so HTTP clients can send into it.
     if (deps.sessionStoreManager) {
       const store = deps.sessionStoreManager.peek(agentId);
       if (store) {
@@ -336,24 +344,16 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
     sendError(res, 503, "Agent runtime not available");
     return;
   }
-
-  const cache = deps.agentRuntime.getAgent(agentId)?.config;
-  if (!cache) {
-    sendError(res, 404, `Agent "${agentId}" not found`);
-    return;
-  }
-
   if (!deps.sessionStoreManager) {
     sendError(res, 503, "Session store not available");
     return;
   }
-
-  if (!deps.agentRuntime) {
-    sendError(res, 503, "Agent runtime not available");
-    return;
-  }
   if (!deps.gateway) {
     sendError(res, 503, "Gateway not available");
+    return;
+  }
+  if (!deps.agentRuntime.getAgent(agentId)?.config) {
+    sendError(res, 404, `Agent "${agentId}" not found`);
     return;
   }
 
@@ -386,10 +386,14 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
       },
     );
 
-    if (result.errorMessage) {
-      writeEvent("error", { message: result.errorMessage });
+    if (result.state === "queued") {
+      writeEvent("queued", { sessionId: result.sessionId });
+    } else {
+      if (result.errorMessage) {
+        writeEvent("error", { message: result.errorMessage });
+      }
+      writeEvent("agent_end", { stopReason: result.errorMessage ? "error" : "end" });
     }
-    writeEvent("agent_end", { stopReason: result.errorMessage ? "error" : "end" });
   } catch (err) {
     writeEvent("error", { message: err instanceof Error ? err.message : String(err) });
   } finally {
@@ -398,51 +402,10 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/sessions/:agentId/:key/steer — inject a message mid-run
-// ---------------------------------------------------------------------------
-
-addRoute("POST", "/api/sessions/:agentId/:key/steer", async (req, res, deps) => {
-  const { agentId, key: sessionKey } = req.params;
-  const active = activeSessions.get(activeKey(agentId, sessionKey));
-  if (!active) {
-    sendError(res, 404, `Active session not found`);
-    return;
-  }
-  if (!deps.gateway) {
-    sendError(res, 503, "Gateway not available");
-    return;
-  }
-
-  const body = req.body as { message?: string } | undefined;
-  if (!body?.message) {
-    sendError(res, 400, "Request body must include 'message'");
-    return;
-  }
-  if (body.message.length > MAX_STEER_MESSAGE_LEN) {
-    sendError(res, 400, `Message exceeds max length of ${MAX_STEER_MESSAGE_LEN}`);
-    return;
-  }
-
-  // Fire-and-forget Gateway dispatch with the same sessionKey — Gateway's
-  // built-in steer path queues the content into the active run.
-  void deps.gateway.dispatch({
-    agentId,
-    sessionKey: active.sessionKey,
-    content: body.message,
-    source: "tui",
-  }).catch((err) => {
-    log.warn(`Steer dispatch failed for session ${sessionKey}: ${err instanceof Error ? err.message : String(err)}`);
-  });
-  active.lastActivity = Date.now();
-  log.debug(`Steer message queued for session ${sessionKey}`);
-  sendJson(res, 200, { ok: true });
-});
-
-// ---------------------------------------------------------------------------
 // POST /api/sessions/:agentId/:key/abort — abort current response
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res, deps) => {
+addRoute("POST", "/api/sessions/:agentId/:key/abort", async (req, res, deps) => {
   const { agentId, key: sessionKey } = req.params;
   const session = activeSessions.get(activeKey(agentId, sessionKey));
   if (!session) {
@@ -450,8 +413,8 @@ addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res, deps) => {
     return;
   }
 
-  if (deps.agentRuntime) {
-    deps.agentRuntime.cancel(session.sessionId);
+  if (deps.gateway) {
+    await deps.gateway.abort(session.sessionId, "user");
   }
   sendJson(res, 200, { ok: true });
 });

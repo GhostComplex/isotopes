@@ -186,7 +186,7 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
       const abort = new AbortController();
       abortRef.current = abort;
       try {
-        await api.sendMessage(agentId, sessionKeyRef.current, text, () => {}, abort.signal);
+        await api.dispatch(agentId, sessionKeyRef.current, text, () => {}, abort.signal);
       } catch (err) {
         if (!abort.signal.aborted) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -257,7 +257,7 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
     };
 
     try {
-      await api.sendMessage(agentId, sessionKey, text, handleEvent, abort.signal);
+      await api.dispatch(agentId, sessionKey, text, handleEvent, abort.signal);
     } catch (err) {
       if (!abort.signal.aborted) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -281,7 +281,10 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
     if (isStreaming) {
       const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
       pendingSteerRef.current.push(userMsg);
-      void api.steerMessage(agentId, sessionKeyRef.current!, text).catch((err) => {
+      // Always dispatch — Gateway steers into the active run if one exists.
+      // Server emits `queued` event then closes; the steered output flows
+      // through the original /dispatch's still-open SSE.
+      void api.dispatch(agentId, sessionKeyRef.current!, text, () => {}).catch((err) => {
         setMessages((prev) => [...prev, { role: "system", content: `Steer failed: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }]);
       });
       return;

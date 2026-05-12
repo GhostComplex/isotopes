@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchStatus, fetchSessions, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, steerMessage, parseSSELine } from "./api.js";
+import { fetchStatus, fetchSessions, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, parseSSELine } from "./api.js";
 
 const mockFetch = vi.fn();
 
@@ -92,20 +92,6 @@ describe("deleteSession", () => {
     expect(mockFetch).toHaveBeenCalledWith(
       "http://127.0.0.1:2712/api/sessions/bot/s1",
       expect.objectContaining({ method: "DELETE" }),
-    );
-  });
-});
-
-describe("steerMessage", () => {
-  it("posts steer message", async () => {
-    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, queued: 1 }) });
-    await steerMessage("bot", "s1", "hello");
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:2712/api/sessions/bot/s1/steer",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ message: "hello" }),
-      }),
     );
   });
 });

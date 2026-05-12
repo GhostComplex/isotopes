@@ -72,10 +72,6 @@ export async function abortMessage(agentId: string, sessionKey: string): Promise
   await postJson(`${sessionPath(agentId, sessionKey)}/abort`);
 }
 
-export async function steerMessage(agentId: string, sessionKey: string, message: string): Promise<void> {
-  await postJson(`${sessionPath(agentId, sessionKey)}/steer`, { message });
-}
-
 export async function deleteSession(agentId: string, sessionKey: string): Promise<void> {
   await deleteJson(sessionPath(agentId, sessionKey));
 }
@@ -95,6 +91,8 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
         return { type: "tool_result", toolCallId: parsed.toolCallId, toolName: parsed.toolName, result: parsed.result, isError: parsed.isError };
       case "turn_end":
         return { type: "turn_end" };
+      case "queued":
+        return { type: "queued", sessionId: parsed.sessionId };
       case "error":
         return { type: "error", message: parsed.message };
       default:
@@ -105,14 +103,25 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
   }
 }
 
-export async function sendMessage(
+/**
+ * Send a message via the unified `/dispatch` endpoint. Always opens SSE.
+ *
+ * Two outcomes:
+ *   - state === "started" → SSE streams the run's events; closes with agent_end.
+ *   - state === "queued"  → SSE writes a single `queued` event then closes.
+ *     The steered output flows through whichever earlier dispatch's SSE is
+ *     still open (caller's other reader handles it).
+ *
+ * Caller's `onEvent` sees all event types including `queued`.
+ */
+export async function dispatch(
   agentId: string,
   sessionKey: string,
   message: string,
   onEvent: (event: SSEEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/message`, {
+  const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/dispatch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
@@ -120,7 +129,7 @@ export async function sendMessage(
   });
 
   if (!res.ok) {
-    throw new Error(`API chat message: ${res.status} ${res.statusText}`);
+    throw new Error(`API dispatch: ${res.status} ${res.statusText}`);
   }
 
   const reader = res.body?.getReader();
