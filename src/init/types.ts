@@ -4,6 +4,7 @@
 
 export type Provider =
   | { type: "ghc-proxy"; baseUrl: string; apiKey: string; model: string }
+  | { type: "minimax-cn"; apiKey: string; model: string }
   | { type: "skip" };
 
 export type DmPolicyChoice = "disabled" | "allowlist";

@@ -12,14 +12,23 @@ const PROVIDER_SKIP = `# provider:
 `;
 
 function renderProvider(answers: InitAnswers): string {
-  if (answers.provider.type !== "ghc-proxy") return PROVIDER_SKIP;
-  const { baseUrl, apiKey, model } = answers.provider;
-  return `provider:
+  const { provider } = answers;
+  if (provider.type === "ghc-proxy") {
+    return `provider:
   type: github-copilot
-  baseUrl: ${baseUrl}
-  apiKey: ${apiKey}
-  defaultModel: ${model}
+  baseUrl: ${provider.baseUrl}
+  apiKey: ${provider.apiKey}
+  defaultModel: ${provider.model}
 `;
+  }
+  if (provider.type === "minimax-cn") {
+    return `provider:
+  type: minimax-cn
+  apiKey: ${provider.apiKey}
+  defaultModel: ${provider.model}
+`;
+  }
+  return PROVIDER_SKIP;
 }
 
 function renderAgents(answers: InitAnswers): string {

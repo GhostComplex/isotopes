@@ -21,6 +21,9 @@ import { isValidDiscordUserId, parseGroupAllowlist } from "./validators.js";
 // ---------------------------------------------------------------------------
 
 const DEFAULT_GHC_MODEL = "claude-opus-4.7";
+const DEFAULT_MINIMAX_MODEL = "MiniMax-M2.7";
+
+type LlmChoice = "ghc-proxy" | "minimax-cn" | "skip";
 
 // ---------------------------------------------------------------------------
 // Wizard
@@ -28,9 +31,9 @@ const DEFAULT_GHC_MODEL = "claude-opus-4.7";
 
 type Step =
   | { kind: "llm" }
-  | { kind: "ghc-baseUrl" }
-  | { kind: "ghc-apiKey" }
-  | { kind: "ghc-model" }
+  | { kind: "provider-baseUrl" }
+  | { kind: "provider-apiKey" }
+  | { kind: "provider-model" }
   | { kind: "channel" }
   | { kind: "discord-token" }
   | { kind: "discord-dm-policy" }
@@ -44,17 +47,26 @@ interface Props {
 }
 
 type DiscordChannel = Extract<Channel, { type: "discord" }>;
+type ConfiguredProvider = Exclude<Provider, { type: "skip" }>;
+const isConfigured = (p: Provider): p is ConfiguredProvider => p.type !== "skip";
 
 function InitWizard({ onDone }: Props) {
   const { exit } = useApp();
   const [step, setStep] = useState<Step>({ kind: "llm" });
 
   const [provider, setProvider] = useState<Provider>({ type: "skip" });
-  const ghcBaseUrl = provider.type === "ghc-proxy" ? provider.baseUrl : "";
-  const ghcApiKey = provider.type === "ghc-proxy" ? provider.apiKey : "";
-  const ghcModel = provider.type === "ghc-proxy" ? provider.model : DEFAULT_GHC_MODEL;
-  const setGhcField = (patch: Partial<Extract<Provider, { type: "ghc-proxy" }>>) =>
-    setProvider((p) => (p.type === "ghc-proxy" ? { ...p, ...patch } : p));
+  const providerBaseUrl = provider.type === "ghc-proxy" ? provider.baseUrl : "";
+  const providerApiKey = isConfigured(provider) ? provider.apiKey : "";
+  const providerModel = isConfigured(provider) ? provider.model : "";
+  const providerLabel =
+    provider.type === "ghc-proxy" ? "ghc-proxy" :
+    provider.type === "minimax-cn" ? "MiniMax" : "";
+  const setBaseUrl = (v: string) =>
+    setProvider((p) => (p.type === "ghc-proxy" ? { ...p, baseUrl: v } : p));
+  const setApiKey = (v: string) =>
+    setProvider((p) => (isConfigured(p) ? { ...p, apiKey: v } : p));
+  const setModel = (v: string) =>
+    setProvider((p) => (isConfigured(p) ? { ...p, model: v } : p));
 
   const [channel, setChannel] = useState<Channel>({ type: "skip" });
   const discordToken = channel.type === "discord" ? channel.token : "";
@@ -81,10 +93,13 @@ function InitWizard({ onDone }: Props) {
   const goToChannel = () => setStep({ kind: "channel" });
   const goToClaude = () => setStep({ kind: "claude" });
 
-  const handleLlmSelect = (item: { value: "ghc-proxy" | "skip" }) => {
+  const handleLlmSelect = (item: { value: LlmChoice }) => {
     if (item.value === "ghc-proxy") {
       setProvider({ type: "ghc-proxy", baseUrl: "", apiKey: "", model: DEFAULT_GHC_MODEL });
-      setStep({ kind: "ghc-baseUrl" });
+      setStep({ kind: "provider-baseUrl" });
+    } else if (item.value === "minimax-cn") {
+      setProvider({ type: "minimax-cn", apiKey: "", model: DEFAULT_MINIMAX_MODEL });
+      setStep({ kind: "provider-apiKey" });
     } else {
       setProvider({ type: "skip" });
       goToChannel();
@@ -118,6 +133,7 @@ function InitWizard({ onDone }: Props) {
           <SelectInput
             items={[
               { label: "ghc-proxy (Anthropic via GHC Coder proxy)", value: "ghc-proxy" as const },
+              { label: "minimax-cn (MiniMax — China endpoint)", value: "minimax-cn" as const },
               { label: "skip (configure later)", value: "skip" as const },
             ]}
             onSelect={handleLlmSelect}
@@ -125,59 +141,59 @@ function InitWizard({ onDone }: Props) {
         </Box>
       )}
 
-      {step.kind === "ghc-baseUrl" && (
+      {step.kind === "provider-baseUrl" && (
         <Box flexDirection="column">
-          <Text>ghc-proxy baseUrl:</Text>
+          <Text>{providerLabel} baseUrl:</Text>
           <Box>
             <Text color="cyan">› </Text>
             <TextInput
-              value={ghcBaseUrl}
-              onChange={(v) => setGhcField({ baseUrl: v })}
+              value={providerBaseUrl}
+              onChange={setBaseUrl}
               onSubmit={() => {
-                if (ghcBaseUrl.trim().length > 0) setStep({ kind: "ghc-apiKey" });
+                if (providerBaseUrl.trim().length > 0) setStep({ kind: "provider-apiKey" });
               }}
             />
           </Box>
-          {ghcBaseUrl.trim().length === 0 && (
+          {providerBaseUrl.trim().length === 0 && (
             <Text color="yellow">  baseUrl is required</Text>
           )}
         </Box>
       )}
 
-      {step.kind === "ghc-apiKey" && (
+      {step.kind === "provider-apiKey" && (
         <Box flexDirection="column">
-          <Text>ghc-proxy apiKey (literal value, stored in yaml):</Text>
+          <Text>{providerLabel} apiKey (literal value, stored in yaml):</Text>
           <Box>
             <Text color="cyan">› </Text>
             <TextInput
-              value={ghcApiKey}
+              value={providerApiKey}
               mask="•"
-              onChange={(v) => setGhcField({ apiKey: v })}
+              onChange={setApiKey}
               onSubmit={() => {
-                if (ghcApiKey.trim().length > 0) setStep({ kind: "ghc-model" });
+                if (providerApiKey.trim().length > 0) setStep({ kind: "provider-model" });
               }}
             />
           </Box>
-          {ghcApiKey.trim().length === 0 && (
+          {providerApiKey.trim().length === 0 && (
             <Text color="yellow">  apiKey is required</Text>
           )}
         </Box>
       )}
 
-      {step.kind === "ghc-model" && (
+      {step.kind === "provider-model" && (
         <Box flexDirection="column">
-          <Text>ghc-proxy model:</Text>
+          <Text>{providerLabel} model:</Text>
           <Box>
             <Text color="cyan">› </Text>
             <TextInput
-              value={ghcModel}
-              onChange={(v) => setGhcField({ model: v })}
+              value={providerModel}
+              onChange={setModel}
               onSubmit={() => {
-                if (ghcModel.trim().length > 0) goToChannel();
+                if (providerModel.trim().length > 0) goToChannel();
               }}
             />
           </Box>
-          {ghcModel.trim().length === 0 && (
+          {providerModel.trim().length === 0 && (
             <Text color="yellow">  model is required</Text>
           )}
         </Box>

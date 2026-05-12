@@ -23,6 +23,19 @@ describe("renderConfig", () => {
     expect(yaml).not.toContain("anthropic-proxy");
   });
 
+  it("emits a minimax-cn provider without baseUrl (pi-ai ships it built-in)", () => {
+    const yaml = renderConfig({
+      provider: { type: "minimax-cn", apiKey: "mm-test", model: "MiniMax-M2.7" },
+      channel: { type: "skip" },
+      codingAgent: "skip",
+    });
+    expect(yaml).toContain("type: minimax-cn");
+    expect(yaml).toContain("apiKey: mm-test");
+    expect(yaml).toContain("defaultModel: MiniMax-M2.7");
+    expect(yaml).not.toContain("baseUrl:");
+    expect(yaml).not.toContain("github-copilot");
+  });
+
   it("emits discord with dm disabled and group allowlist by default", () => {
     const yaml = renderConfig({
       provider: { type: "skip" },
