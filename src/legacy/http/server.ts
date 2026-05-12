@@ -53,6 +53,7 @@ export class ApiServer {
       cronScheduler: deps.cronScheduler,
       sessionStoreManager: deps.sessionStoreManager,
       agentRuntime: deps.agentRuntime,
+      gateway: deps.gateway,
     };
   }
 
