@@ -10,13 +10,12 @@ import type { Gateway } from "../gateway/index.js";
 import { registerCronRoutes } from "./cron.js";
 import { registerStatusRoutes } from "./status.js";
 import { registerSessionRoutes } from "./sessions.js";
-import { matchUIEntry, type UIEntry } from "../extensions/ui/loader.js";
+import { matchUIEntry, discoverUIEntries, type UIEntry } from "../extensions/ui/loader.js";
 
 const log = createLogger("api:server");
 
 export interface ApiDeps {
   cronScheduler: CronScheduler;
-  uiEntries?: UIEntry[];
   sessionStoreManager?: SessionStoreManager;
   agentRuntime?: AgentRuntime;
   gateway?: Gateway;
@@ -41,7 +40,7 @@ export function createApi(deps: ApiDeps): Hono {
     log.info(`${c.req.method} ${c.req.path} ${c.res.status} ${Date.now() - start}ms`);
   });
 
-  mountUI(app, deps.uiEntries ?? []);
+  mountUI(app, discoverUIEntries());
 
   registerCronRoutes(app, deps);
   registerStatusRoutes(app, deps);

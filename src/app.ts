@@ -16,7 +16,6 @@ import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
-import { discoverUIEntries } from "./extensions/ui/loader.js";
 import { loadChannels } from "./extensions/channels/loader.js";
 import { createGateway } from "./gateway/index.js";
 
@@ -192,12 +191,9 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     channelLoaders.push(channels);
   }
 
-  const uiEntries = discoverUIEntries();
-
   const port = apiPort ?? 2712;
   const api = createApi({
     cronScheduler,
-    uiEntries,
     sessionStoreManager,
     agentRuntime,
     gateway,
