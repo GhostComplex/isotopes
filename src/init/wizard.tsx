@@ -14,6 +14,7 @@ import type {
   InitAnswers,
   Provider,
 } from "./types.js";
+import { isValidDiscordUserId, parseGroupAllowlist } from "./validators.js";
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -65,8 +66,6 @@ function InitWizard({ onDone }: Props) {
   // only when the user successfully submits the step.
   const [groupAllowlistInput, setGroupAllowlistInput] = useState("");
 
-  const [codingAgent, setCodingAgent] = useState<CodingAgentChoice>("claude");
-
   useInput((_input, key) => {
     if (key.ctrl && _input === "c") {
       exit();
@@ -74,14 +73,8 @@ function InitWizard({ onDone }: Props) {
     }
   });
 
-  const finish = (overrides: Partial<InitAnswers> = {}) => {
-    const answers: InitAnswers = {
-      provider,
-      channel,
-      codingAgent,
-      ...overrides,
-    };
-    onDone(answers);
+  const finish = (codingAgent: CodingAgentChoice) => {
+    onDone({ provider, channel, codingAgent });
     exit();
   };
 
@@ -158,6 +151,7 @@ function InitWizard({ onDone }: Props) {
             <Text color="cyan">› </Text>
             <TextInput
               value={ghcApiKey}
+              mask="•"
               onChange={(v) => setGhcField({ apiKey: v })}
               onSubmit={() => {
                 if (ghcApiKey.trim().length > 0) setStep({ kind: "ghc-model" });
@@ -209,6 +203,7 @@ function InitWizard({ onDone }: Props) {
             <Text color="cyan">› </Text>
             <TextInput
               value={discordToken}
+              mask="•"
               onChange={(v) => setDiscordField({ token: v })}
               onSubmit={() => {
                 if (discordToken.trim().length > 0) setStep({ kind: "discord-dm-policy" });
@@ -247,11 +242,11 @@ function InitWizard({ onDone }: Props) {
               value={discordDmUserId}
               onChange={(v) => setDiscordField({ dmUserId: v })}
               onSubmit={() => {
-                if (/^\d+$/.test(discordDmUserId.trim())) setStep({ kind: "discord-group-policy" });
+                if (isValidDiscordUserId(discordDmUserId)) setStep({ kind: "discord-group-policy" });
               }}
             />
           </Box>
-          {discordDmUserId.trim().length > 0 && !/^\d+$/.test(discordDmUserId.trim()) && (
+          {discordDmUserId.trim().length > 0 && !isValidDiscordUserId(discordDmUserId) && (
             <Text color="yellow">  must be a numeric Discord user ID</Text>
           )}
         </Box>
@@ -287,24 +282,23 @@ function InitWizard({ onDone }: Props) {
               value={groupAllowlistInput}
               onChange={setGroupAllowlistInput}
               onSubmit={() => {
-                const entries = groupAllowlistInput.trim().split(",").map((s) => s.trim()).filter(Boolean);
-                const formatOk = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
-                const allWhole = entries.every((e) => !e.includes("/"));
-                const allChannel = entries.every((e) => e.includes("/"));
-                if (entries.length > 0 && formatOk && (allWhole || allChannel)) {
-                  setDiscordField({ groupAllowlist: entries });
+                const result = parseGroupAllowlist(groupAllowlistInput);
+                if (result.ok) {
+                  setDiscordField({ groupAllowlist: result.entries });
                   goToClaude();
                 }
               }}
             />
           </Box>
           {groupAllowlistInput.trim().length > 0 && (() => {
-            const entries = groupAllowlistInput.trim().split(",").map((s) => s.trim()).filter(Boolean);
-            const formatOk = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
-            if (!formatOk) return <Text color="yellow">  each entry must be serverId or serverId/channelId (numeric)</Text>;
-            const allWhole = entries.every((e) => !e.includes("/"));
-            const allChannel = entries.every((e) => e.includes("/"));
-            if (!allWhole && !allChannel) return <Text color="yellow">  pick one mode: all serverId, OR all serverId/channelId — not mixed</Text>;
+            const result = parseGroupAllowlist(groupAllowlistInput);
+            if (result.ok) return null;
+            if (result.reason === "format") {
+              return <Text color="yellow">  each entry must be serverId or serverId/channelId (numeric)</Text>;
+            }
+            if (result.reason === "mixed") {
+              return <Text color="yellow">  pick one mode: all serverId, OR all serverId/channelId — not mixed</Text>;
+            }
             return null;
           })()}
         </Box>
@@ -319,8 +313,7 @@ function InitWizard({ onDone }: Props) {
               { label: "skip", value: "skip" as const },
             ]}
             onSelect={(item: { value: CodingAgentChoice }) => {
-              setCodingAgent(item.value);
-              finish({ codingAgent: item.value });
+              finish(item.value);
             }}
           />
         </Box>
