@@ -23,8 +23,6 @@ export interface DispatchCallbacks {
   onTextDelta?: (delta: string) => void;
   onToolStart?: (call: { id: string; name: string; args: unknown }) => void;
   onToolEnd?: (result: { id: string; name: string; result: unknown; isError: boolean }) => void;
-  /** Fires on each turn boundary inside the run. SSE bridges use this to
-   * emit a `turn_end` event so clients can rotate streaming buffers. */
   onTurnEnd?: () => void;
 }
 
