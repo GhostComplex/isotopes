@@ -120,6 +120,27 @@ describe("gateway.dispatch (started)", () => {
     expect(onToolEnd).toHaveBeenCalledWith({ id: "t1", name: "echo", result: "done", isError: false });
   });
 
+  it("invokes onTurnEnd on each turn_end event", async () => {
+    const turnEnd: AgentEvent = { type: "turn_end" } as never;
+    const runner: Runner = {
+      resolveSessionId: (req) => req.sessionId ?? "stub",
+      async *run() {
+        yield textDelta("a");
+        yield turnEnd;
+        yield textDelta("b");
+        yield turnEnd;
+        yield agentEnd("ab");
+      },
+    };
+    const runtime = buildRuntime(runner);
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
+
+    const onTurnEnd = vi.fn();
+    await gateway.dispatch(baseMsg, { onTurnEnd });
+
+    expect(onTurnEnd).toHaveBeenCalledTimes(2);
+  });
+
   it("captures errorMessage from agent_end", async () => {
     const runtime = buildRuntime(fastRunner(["x"], "error", "boom"));
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
