@@ -52,8 +52,10 @@ export class CronScheduler {
     job.schedule = new Cron(
       input.expression,
       // protect: true → if a fire arrives while previous handler still running,
-      // skip it. Equivalent to the heartbeat-style "skip not stack" semantics.
-      { paused: startPaused, protect: true },
+      //   skip it. Equivalent to the heartbeat-style "skip not stack" semantics.
+      // unref: true → don't let croner's internal timer block process exit
+      //   (matches the old `timer.unref()` we used to call directly).
+      { paused: startPaused, protect: true, unref: true },
       async () => {
         log.info(`Triggering cron job "${job.name}" (${job.id})`);
         job.lastRun = new Date();
