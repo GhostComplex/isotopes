@@ -82,6 +82,8 @@ export function createGateway(deps: GatewayDeps): Gateway {
           handle.callbacks?.onToolStart?.({ id: event.toolCallId, name: event.toolName, args: event.args });
         } else if (event.type === "tool_execution_end") {
           handle.callbacks?.onToolEnd?.({ id: event.toolCallId, name: event.toolName, result: event.result, isError: event.isError });
+        } else if (event.type === "turn_end") {
+          handle.callbacks?.onTurnEnd?.();
         } else if (event.type === "agent_end") {
           const meta = getAgentEndMeta(event.messages);
           if (meta.stopReason === "error") handle.errorMessage = meta.errorMessage ?? "Unknown agent error";

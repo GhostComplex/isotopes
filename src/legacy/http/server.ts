@@ -36,6 +36,7 @@ export interface ApiServerDeps {
   uiEntries?: UIEntry[];
   sessionStoreManager?: SessionStoreManager;
   agentRuntime?: import("../../agent/runtime.js").AgentRuntime;
+  gateway?: import("../../gateway/index.js").Gateway;
 }
 
 export class ApiServer {
