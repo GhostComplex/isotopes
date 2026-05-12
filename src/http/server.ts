@@ -19,7 +19,6 @@ import { serveStaticFile } from "./static.js";
 import { matchUIEntry, type UIEntry } from "../extensions/ui/loader.js";
 
 import "./cron.js";
-import "./logs.js";
 import "./status.js";
 import "./sessions.js";
 

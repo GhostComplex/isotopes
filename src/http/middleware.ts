@@ -20,12 +20,6 @@ export interface ApiRequest extends IncomingMessage {
   pathname: string;
 }
 
-/** Standard JSON error response */
-export interface ApiError {
-  error: string;
-  status: number;
-}
-
 // ---------------------------------------------------------------------------
 // CORS middleware
 // ---------------------------------------------------------------------------
@@ -155,9 +149,7 @@ export function handleRouteError(res: ServerResponse, err: unknown): void {
  * Endpoints that should not be logged to avoid log pollution.
  * These are typically high-frequency polling endpoints.
  */
-const SILENT_ENDPOINTS = [
-  "/api/logs",  // Dashboard polls every 2s
-];
+const SILENT_ENDPOINTS: string[] = [];
 
 /**
  * Check if a URL should be silently handled (not logged).
