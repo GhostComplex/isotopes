@@ -1,5 +1,3 @@
-// src/http/server.test.ts — Factory-level concerns for createApi (404, CORS, error envelope)
-
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createApi } from "./server.js";
 import { CronScheduler } from "../automation/cron-job.js";

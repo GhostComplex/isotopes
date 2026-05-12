@@ -1,9 +1,3 @@
-// src/http/server.ts — Build the Isotopes REST API as a Hono app.
-//
-// Caller hosts it (e.g. via @hono/node-server.serve). This split lets tests
-// call `app.fetch(req)` directly without spinning a real server, and lets
-// app.ts manage the server lifecycle without a class wrapper.
-
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -30,7 +24,6 @@ export interface ApiDeps {
   corsOrigins?: string[];
 }
 
-/** Shape passed to per-file route registrars. */
 export interface RouteDeps {
   cronScheduler: CronScheduler;
   sessionStoreManager?: SessionStoreManager;

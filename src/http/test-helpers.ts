@@ -1,5 +1,3 @@
-// src/http/test-helpers.ts — Shared helpers for http/*.test.ts
-
 import http from "node:http";
 import { serve, type ServerType } from "@hono/node-server";
 import type { Hono } from "hono";

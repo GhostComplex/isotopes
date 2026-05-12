@@ -1,5 +1,3 @@
-// src/http/sessions.test.ts — Session lifecycle endpoints
-
 import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createApi } from "./server.js";

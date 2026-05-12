@@ -1,7 +1,4 @@
-// src/http/sessions.ts — Unified session endpoints (read, create, dispatch, abort, delete)
-//
-// All endpoints use sessionKey as the external identifier. sessionId (UUID) is
-// an internal implementation detail of the session store.
+// src/http/sessions.ts — sessionKey is the external id; sessionId (UUID) is internal to the store.
 
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -13,10 +10,6 @@ import type { Session } from "../sessions/types.js";
 import type { RouteDeps } from "./server.js";
 
 const log = createLogger("api:sessions");
-
-// ---------------------------------------------------------------------------
-// In-memory active session tracking (TTL + abort support for SSE clients)
-// ---------------------------------------------------------------------------
 
 interface ActiveSession {
   sessionKey: string;
@@ -63,9 +56,6 @@ async function resolveSessionKey(
 }
 
 export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
-  // -------------------------------------------------------------------------
-  // GET /api/sessions — list all sessions across all agents
-  // -------------------------------------------------------------------------
   app.get("/api/sessions", async (c) => {
     if (!deps.sessionStoreManager) return c.json({ items: [] });
     const items: Array<{
@@ -91,9 +81,6 @@ export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
     return c.json({ items });
   });
 
-  // -------------------------------------------------------------------------
-  // GET /api/sessions/:agentId — list sessions for one agent
-  // -------------------------------------------------------------------------
   app.get("/api/sessions/:agentId", async (c) => {
     if (!deps.sessionStoreManager) return c.json({ items: [] });
     const store = deps.sessionStoreManager.peek(c.req.param("agentId"));
@@ -111,9 +98,6 @@ export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
     return c.json({ items });
   });
 
-  // -------------------------------------------------------------------------
-  // GET /api/sessions/:agentId/:key — single session detail
-  // -------------------------------------------------------------------------
   app.get("/api/sessions/:agentId/:key", async (c) => {
     if (!deps.sessionStoreManager) return c.json({ error: "Session store not available", status: 503 }, 503);
     const store = deps.sessionStoreManager.peek(c.req.param("agentId"));
@@ -130,9 +114,6 @@ export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
     });
   });
 
-  // -------------------------------------------------------------------------
-  // GET /api/sessions/:agentId/:key/messages — full message history
-  // -------------------------------------------------------------------------
   app.get("/api/sessions/:agentId/:key/messages", async (c) => {
     if (!deps.sessionStoreManager) return c.json({ error: "Session store not available", status: 503 }, 503);
     const store = deps.sessionStoreManager.peek(c.req.param("agentId"));
@@ -143,9 +124,6 @@ export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
     return c.json({ items: messages });
   });
 
-  // -------------------------------------------------------------------------
-  // GET /api/sessions/:agentId/:key/stream — observer SSE for transcript appends
-  // -------------------------------------------------------------------------
   app.get("/api/sessions/:agentId/:key/stream", async (c) => {
     if (!deps.sessionStoreManager) return c.json({ error: "Session store not available", status: 503 }, 503);
     const store = deps.sessionStoreManager.peek(c.req.param("agentId"));
@@ -180,9 +158,6 @@ export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
     });
   });
 
-  // -------------------------------------------------------------------------
-  // POST /api/sessions/:agentId — create or resume a session
-  // -------------------------------------------------------------------------
   app.post("/api/sessions/:agentId", async (c) => {
     const agentId = c.req.param("agentId");
     if (!deps.agentRuntime) return c.json({ error: "Agent runtime not available", status: 503 }, 503);
@@ -224,16 +199,9 @@ export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
     return c.json({ key: sessionKey, agentId, resumed }, resumed ? 200 : 201);
   });
 
-  // -------------------------------------------------------------------------
-  // POST /api/sessions/:agentId/:key/dispatch — single entry point
-  //
-  // Always opens SSE and calls gateway.dispatch. Two outcomes:
-  //   - state === "started": owns a fresh run; SSE streams its events
-  //     (text_delta / tool_call / tool_result / turn_end), closes with agent_end.
-  //   - state === "queued": gateway steered into an active run. SSE writes a
-  //     single `queued` event and closes; steered output flows through the
-  //     original dispatch's still-open SSE.
-  // -------------------------------------------------------------------------
+  // Single dispatch entrypoint. Gateway returns "started" (this request owns the
+  // run; SSE streams its events) or "queued" (steered into an active run; events
+  // flow through the original dispatch's still-open SSE).
   app.post("/api/sessions/:agentId/:key/dispatch", async (c) => {
     const agentId = c.req.param("agentId");
     const sessionKey = c.req.param("key");
@@ -314,9 +282,6 @@ export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
     });
   });
 
-  // -------------------------------------------------------------------------
-  // POST /api/sessions/:agentId/:key/abort — abort current response
-  // -------------------------------------------------------------------------
   app.post("/api/sessions/:agentId/:key/abort", async (c) => {
     const session = activeSessions.get(activeKey(c.req.param("agentId"), c.req.param("key")));
     if (!session) return c.json({ error: "Active session not found", status: 404 }, 404);
@@ -326,9 +291,6 @@ export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
     return c.json({ ok: true });
   });
 
-  // -------------------------------------------------------------------------
-  // DELETE /api/sessions/:agentId/:key — delete session
-  // -------------------------------------------------------------------------
   app.delete("/api/sessions/:agentId/:key", async (c) => {
     const agentId = c.req.param("agentId");
     const sessionKey = c.req.param("key");

@@ -1,5 +1,3 @@
-// src/http/cron.test.ts — GET/POST/DELETE /api/cron
-
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createApi } from "./server.js";
 import { CronScheduler } from "../automation/cron-job.js";

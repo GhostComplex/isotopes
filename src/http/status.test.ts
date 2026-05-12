@@ -1,5 +1,3 @@
-// src/http/status.test.ts — GET /api/status
-
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createApi } from "./server.js";
 import { CronScheduler } from "../automation/cron-job.js";

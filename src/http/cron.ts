@@ -1,5 +1,3 @@
-// src/http/cron.ts — Cron job management routes
-
 import type { Hono } from "hono";
 import type { CronJobInput } from "../automation/cron-job.js";
 import type { RouteDeps } from "./server.js";
