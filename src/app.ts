@@ -14,7 +14,6 @@ import { ApiServer } from "./legacy/http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
 import { AgentRuntime } from "./agent/runtime.js";
-import { runAgent } from "./agent/runtime-adapter.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
 import { discoverUIEntries } from "./extensions/ui/loader.js";
 import { loadChannels } from "./extensions/channels/loader.js";
@@ -83,6 +82,13 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     if (result.workspacePath !== null) agentWorkspaces.set(result.agent.id, result.workspacePath);
   }
 
+  const gateway = createGateway({ agentRuntime, sessionStoreManager });
+
+  function resolveCwd(agentId: string): string | undefined {
+    const cfg = agentRuntime.getAgent(agentId)?.config;
+    return cfg ? resolveAgentWorkspacePath(cfg) : undefined;
+  }
+
   const heartbeatManagers: HeartbeatManager[] = [];
   for (const agentFile of config.agents) {
     if (!agentFile.heartbeat?.enabled) continue;
@@ -94,15 +100,13 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       workspacePath,
       config: { ...agentFile.heartbeat, enabled: true },
       runAgentLoop: async (agentId, prompt, _sessionKey) => {
-        const store = await sessionStoreManager.getOrCreate(agentId);
-        const sessionKey = `heartbeat:${agentId}`;
-        const session = (await store.findByKey(sessionKey)) ?? (await store.create(agentId, { key: sessionKey }));
-        const result = await runAgent(agentRuntime, {
-          to: agentId,
-          sessionId: session.id,
+        const cwd = resolveCwd(agentId);
+        const result = await gateway.dispatch({
+          agentId,
+          sessionKey: `heartbeat:${agentId}`,
           content: prompt,
-          ...((c) => c ? { cwd: resolveAgentWorkspacePath(c) } : {})(agentRuntime.getAgent(agentId)?.config),
-          log,
+          source: "heartbeat",
+          ...(cwd ? { cwd } : {}),
         });
         return result.responseText;
       },
@@ -163,14 +167,13 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
 
     try {
-      const store = await sessionStoreManager.getOrCreate(job.agentId);
-      const session = (await store.findByKey(sessionKey)) ?? (await store.create(job.agentId, { key: sessionKey }));
-      const result = await runAgent(agentRuntime, {
-        to: job.agentId,
-        sessionId: session.id,
+      const cwd = resolveCwd(job.agentId);
+      const result = await gateway.dispatch({
+        agentId: job.agentId,
+        sessionKey,
         content: prompt,
-        ...((c) => c ? { cwd: resolveAgentWorkspacePath(c) } : {})(agentRuntime.getAgent(job.agentId)?.config),
-        log,
+        source: "cron",
+        ...(cwd ? { cwd } : {}),
       });
       log.info(`Cron "${job.name}" completed (${result.responseText.length} chars)`);
     } catch (err) {
@@ -185,7 +188,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   const channelLoaders: { stopAll: () => Promise<void> }[] = [];
   {
-    const gateway = createGateway({ agentRuntime, sessionStoreManager });
     const channels = await loadChannels({
       gateway,
       config,
