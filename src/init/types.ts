@@ -1,7 +1,3 @@
-// Shared answer types for the init wizard.
-// Kept separate from wizard.tsx (UI) and render.ts (pure rendering) so both
-// sides depend on a neutral home rather than each other.
-
 export type Provider =
   | { type: "ghc-proxy"; baseUrl: string; apiKey: string; model: string }
   | { type: "minimax-cn"; apiKey: string; model: string }

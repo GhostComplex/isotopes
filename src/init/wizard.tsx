@@ -1,8 +1,3 @@
-// src/init/wizard.tsx — Interactive ink wizard for `isotopes init`
-// Two prompts (LLM, channel) each followed by a small input form when the
-// user picks something other than "skip". Returns the collected answers; the
-// caller is responsible for rendering them into the yaml config.
-
 import React, { useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import SelectInput from "ink-select-input";
@@ -16,18 +11,10 @@ import type {
 } from "./types.js";
 import { isValidDiscordUserId, parseGroupAllowlist } from "./validators.js";
 
-// ---------------------------------------------------------------------------
-// Defaults
-// ---------------------------------------------------------------------------
-
 const DEFAULT_GHC_MODEL = "claude-opus-4.7";
 const DEFAULT_MINIMAX_MODEL = "MiniMax-M2.7";
 
 type LlmChoice = "ghc-proxy" | "minimax-cn" | "skip";
-
-// ---------------------------------------------------------------------------
-// Wizard
-// ---------------------------------------------------------------------------
 
 type Step =
   | { kind: "llm" }
@@ -74,8 +61,7 @@ function InitWizard({ onDone }: Props) {
   const setDiscordField = (patch: Partial<DiscordChannel>) =>
     setChannel((c) => (c.type === "discord" ? { ...c, ...patch } : c));
 
-  // groupAllowlist is comma-separated raw input; parsed into Channel.groupAllowlist
-  // only when the user successfully submits the step.
+  // Comma-separated raw input; parsed into Channel.groupAllowlist on submit.
   const [groupAllowlistInput, setGroupAllowlistInput] = useState("");
 
   useInput((_input, key) => {
@@ -351,7 +337,6 @@ export async function runInitWizard(): Promise<InitAnswers> {
     );
     void waitUntilExit().then(() => {
       if (!collected) {
-        // User Ctrl+C'd before answering — exit non-zero from caller.
         process.exit(130);
       }
       resolve(collected);
