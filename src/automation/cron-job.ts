@@ -6,10 +6,6 @@ export type { CronAction };
 
 const log = createLogger("cron");
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 /** A registered cron job with its parsed schedule and execution state. */
 export interface CronJob {
   id: string;
@@ -24,18 +20,10 @@ export interface CronJob {
   createdAt: Date;
 }
 
-/** Callback invoked when a cron job triggers. */
 export type CronJobCallback = (job: CronJob) => void | Promise<void>;
 
-/**
- * Input for registering a new cron job.
- * Fields that are auto-generated (id, schedule, nextRun, createdAt) are omitted.
- */
+/** Input for registering a new cron job — auto-generated fields are omitted. */
 export type CronJobInput = Omit<CronJob, "id" | "schedule" | "nextRun" | "createdAt">;
-
-// ---------------------------------------------------------------------------
-// ID generation
-// ---------------------------------------------------------------------------
 
 let idCounter = 0;
 
@@ -43,18 +31,10 @@ function generateId(): string {
   return `cron_${Date.now()}_${++idCounter}`;
 }
 
-// ---------------------------------------------------------------------------
-// CronScheduler
-// ---------------------------------------------------------------------------
-
 /**
- * CronScheduler — manages cron-based scheduled tasks.
- *
- * Jobs are registered with a cron expression that is parsed into a
- * {@link Cron}. When the scheduler is started, it sets timers
- * for each enabled job and re-schedules them after every trigger.
- * Callbacks registered via {@link onTrigger} are invoked each time a
- * job fires.
+ * Manages cron-based scheduled tasks. Each registered job's expression is
+ * parsed by croner; the scheduler maintains a setTimeout per enabled job and
+ * re-schedules after each trigger. Subscribe via `onTrigger`.
  */
 export class CronScheduler {
   private jobs: Map<string, CronJob> = new Map();
@@ -62,10 +42,6 @@ export class CronScheduler {
   private handlers: CronJobCallback[] = [];
   private running = false;
 
-  /**
-   * Register a new cron job.
-   * Parses the cron expression and schedules the next run if the scheduler is started.
-   */
   register(input: CronJobInput): CronJob {
     const schedule = new Cron(input.expression, { paused: true });
     const now = new Date();
@@ -89,10 +65,7 @@ export class CronScheduler {
     return job;
   }
 
-  /**
-   * Unregister a cron job by ID. Clears its timer if running.
-   * Returns true if the job existed and was removed.
-   */
+  /** Returns true if the job existed and was removed. */
   unregister(jobId: string): boolean {
     const existed = this.jobs.has(jobId);
     if (existed) {
@@ -103,17 +76,11 @@ export class CronScheduler {
     return existed;
   }
 
-  /**
-   * List all registered jobs.
-   */
   listJobs(): CronJob[] {
     return [...this.jobs.values()];
   }
 
-  /**
-   * Register a callback to be invoked when any cron job triggers.
-   * Returns an unsubscribe function.
-   */
+  /** Subscribe to all cron triggers. Returns an unsubscribe function. */
   onTrigger(callback: CronJobCallback): () => void {
     this.handlers.push(callback);
     return () => {
@@ -122,9 +89,7 @@ export class CronScheduler {
     };
   }
 
-  /**
-   * Start the scheduler. Schedules timers for all enabled jobs.
-   */
+  /** Schedules timers for all enabled jobs. Idempotent. */
   start(): void {
     if (this.running) return;
     this.running = true;
@@ -139,9 +104,7 @@ export class CronScheduler {
     log.info(`Cron scheduler started with ${this.jobs.size} job(s)`);
   }
 
-  /**
-   * Stop the scheduler. Clears all timers but preserves job registrations.
-   */
+  /** Clears all timers but preserves job registrations. Idempotent. */
   stop(): void {
     if (!this.running) return;
     this.running = false;
@@ -152,10 +115,6 @@ export class CronScheduler {
 
     log.info("Cron scheduler stopped");
   }
-
-  // -----------------------------------------------------------------------
-  // Internal scheduling
-  // -----------------------------------------------------------------------
 
   private scheduleTimer(job: CronJob): void {
     this.clearTimer(job.id);
@@ -168,7 +127,7 @@ export class CronScheduler {
       void this.triggerJob(job);
     }, delay);
 
-    // Prevent the timer from keeping the process alive
+    // Prevent the timer from keeping the process alive.
     if (timer.unref) timer.unref();
 
     this.timers.set(job.id, timer);
@@ -187,7 +146,6 @@ export class CronScheduler {
 
     job.lastRun = new Date();
 
-    // Notify all handlers
     for (const handler of this.handlers) {
       try {
         await handler(job);
@@ -196,7 +154,6 @@ export class CronScheduler {
       }
     }
 
-    // Schedule next run
     if (this.running && job.enabled) {
       job.nextRun = job.schedule.nextRun(job.lastRun) ?? undefined;
       this.scheduleTimer(job);
