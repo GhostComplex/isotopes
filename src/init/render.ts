@@ -12,8 +12,8 @@ const PROVIDER_SKIP = `# provider:
 `;
 
 function renderProvider(answers: InitAnswers): string {
-  if (answers.llm !== "ghc-proxy" || !answers.ghcProxy) return PROVIDER_SKIP;
-  const { baseUrl, apiKey, model } = answers.ghcProxy;
+  if (answers.provider.type !== "ghc-proxy") return PROVIDER_SKIP;
+  const { baseUrl, apiKey, model } = answers.provider;
   return `provider:
   type: github-copilot
   baseUrl: ${baseUrl}

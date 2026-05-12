@@ -14,7 +14,7 @@ import type {
   DmPolicyChoice,
   GroupPolicyChoice,
   InitAnswers,
-  LlmChoice,
+  Provider,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -48,10 +48,12 @@ function InitWizard({ onDone }: Props) {
   const { exit } = useApp();
   const [step, setStep] = useState<Step>({ kind: "llm" });
 
-  const [llm, setLlm] = useState<LlmChoice>("skip");
-  const [ghcBaseUrl, setGhcBaseUrl] = useState("");
-  const [ghcApiKey, setGhcApiKey] = useState("");
-  const [ghcModel, setGhcModel] = useState(DEFAULT_GHC_MODEL);
+  const [provider, setProvider] = useState<Provider>({ type: "skip" });
+  const ghcBaseUrl = provider.type === "ghc-proxy" ? provider.baseUrl : "";
+  const ghcApiKey = provider.type === "ghc-proxy" ? provider.apiKey : "";
+  const ghcModel = provider.type === "ghc-proxy" ? provider.model : DEFAULT_GHC_MODEL;
+  const setGhcField = (patch: Partial<Extract<Provider, { type: "ghc-proxy" }>>) =>
+    setProvider((p) => (p.type === "ghc-proxy" ? { ...p, ...patch } : p));
 
   const [channel, setChannel] = useState<ChannelChoice>("skip");
   const [discordToken, setDiscordToken] = useState("");
@@ -71,12 +73,9 @@ function InitWizard({ onDone }: Props) {
 
   const finish = (overrides: Partial<InitAnswers> = {}) => {
     const answers: InitAnswers = {
-      llm,
+      provider,
       channel,
       codingAgent,
-      ...(llm === "ghc-proxy"
-        ? { ghcProxy: { baseUrl: ghcBaseUrl, apiKey: ghcApiKey, model: ghcModel } }
-        : {}),
       ...(channel === "discord"
         ? {
             discord: {
@@ -101,10 +100,14 @@ function InitWizard({ onDone }: Props) {
   const goToChannel = () => setStep({ kind: "channel" });
   const goToClaude = () => setStep({ kind: "claude" });
 
-  const handleLlmSelect = (item: { value: LlmChoice }) => {
-    setLlm(item.value);
-    if (item.value === "ghc-proxy") setStep({ kind: "ghc-baseUrl" });
-    else goToChannel();
+  const handleLlmSelect = (item: { value: "ghc-proxy" | "skip" }) => {
+    if (item.value === "ghc-proxy") {
+      setProvider({ type: "ghc-proxy", baseUrl: "", apiKey: "", model: DEFAULT_GHC_MODEL });
+      setStep({ kind: "ghc-baseUrl" });
+    } else {
+      setProvider({ type: "skip" });
+      goToChannel();
+    }
   };
 
   const handleChannelSelect = (item: { value: ChannelChoice }) => {
@@ -139,7 +142,7 @@ function InitWizard({ onDone }: Props) {
             <Text color="cyan">› </Text>
             <TextInput
               value={ghcBaseUrl}
-              onChange={setGhcBaseUrl}
+              onChange={(v) => setGhcField({ baseUrl: v })}
               onSubmit={() => {
                 if (ghcBaseUrl.trim().length > 0) setStep({ kind: "ghc-apiKey" });
               }}
@@ -158,7 +161,7 @@ function InitWizard({ onDone }: Props) {
             <Text color="cyan">› </Text>
             <TextInput
               value={ghcApiKey}
-              onChange={setGhcApiKey}
+              onChange={(v) => setGhcField({ apiKey: v })}
               onSubmit={() => {
                 if (ghcApiKey.trim().length > 0) setStep({ kind: "ghc-model" });
               }}
@@ -177,7 +180,7 @@ function InitWizard({ onDone }: Props) {
             <Text color="cyan">› </Text>
             <TextInput
               value={ghcModel}
-              onChange={setGhcModel}
+              onChange={(v) => setGhcField({ model: v })}
               onSubmit={() => {
                 if (ghcModel.trim().length > 0) goToChannel();
               }}

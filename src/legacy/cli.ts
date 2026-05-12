@@ -471,7 +471,7 @@ async function handleInitCommand(): Promise<void> {
   console.log(`Wrote config to ${configPath}`);
   console.log(``);
   console.log(`Next:`);
-  if (answers.llm === "skip") {
+  if (answers.provider.type === "skip") {
     console.log(`  • Edit ${configPath} and configure a provider`);
   }
   console.log(`  • isotopes        # run in foreground`);
