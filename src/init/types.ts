@@ -6,23 +6,24 @@ export type Provider =
   | { type: "ghc-proxy"; baseUrl: string; apiKey: string; model: string }
   | { type: "skip" };
 
-export type ChannelChoice = "discord" | "skip";
-export type CodingAgentChoice = "claude" | "skip";
-
 export type DmPolicyChoice = "disabled" | "allowlist";
 export type GroupPolicyChoice = "disabled" | "allowlist" | "open";
 
-export interface DiscordAnswers {
-  token: string;
-  dmPolicy: DmPolicyChoice;
-  dmUserId?: string;
-  groupPolicy: GroupPolicyChoice;
-  groupAllowlist?: string[];
-}
+export type Channel =
+  | {
+      type: "discord";
+      token: string;
+      dmPolicy: DmPolicyChoice;
+      dmUserId?: string;
+      groupPolicy: GroupPolicyChoice;
+      groupAllowlist?: string[];
+    }
+  | { type: "skip" };
+
+export type CodingAgentChoice = "claude" | "skip";
 
 export interface InitAnswers {
   provider: Provider;
-  channel: ChannelChoice;
-  discord?: DiscordAnswers;
+  channel: Channel;
   codingAgent: CodingAgentChoice;
 }

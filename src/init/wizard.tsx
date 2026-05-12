@@ -9,10 +9,8 @@ import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 
 import type {
-  ChannelChoice,
+  Channel,
   CodingAgentChoice,
-  DmPolicyChoice,
-  GroupPolicyChoice,
   InitAnswers,
   Provider,
 } from "./types.js";
@@ -44,6 +42,8 @@ interface Props {
   onDone: (answers: InitAnswers) => void;
 }
 
+type DiscordChannel = Extract<Channel, { type: "discord" }>;
+
 function InitWizard({ onDone }: Props) {
   const { exit } = useApp();
   const [step, setStep] = useState<Step>({ kind: "llm" });
@@ -55,11 +55,14 @@ function InitWizard({ onDone }: Props) {
   const setGhcField = (patch: Partial<Extract<Provider, { type: "ghc-proxy" }>>) =>
     setProvider((p) => (p.type === "ghc-proxy" ? { ...p, ...patch } : p));
 
-  const [channel, setChannel] = useState<ChannelChoice>("skip");
-  const [discordToken, setDiscordToken] = useState("");
-  const [dmPolicy, setDmPolicy] = useState<DmPolicyChoice>("disabled");
-  const [discordDmUserId, setDiscordDmUserId] = useState("");
-  const [groupPolicy, setGroupPolicy] = useState<GroupPolicyChoice>("allowlist");
+  const [channel, setChannel] = useState<Channel>({ type: "skip" });
+  const discordToken = channel.type === "discord" ? channel.token : "";
+  const discordDmUserId = channel.type === "discord" ? (channel.dmUserId ?? "") : "";
+  const setDiscordField = (patch: Partial<DiscordChannel>) =>
+    setChannel((c) => (c.type === "discord" ? { ...c, ...patch } : c));
+
+  // groupAllowlist is comma-separated raw input; parsed into Channel.groupAllowlist
+  // only when the user successfully submits the step.
   const [groupAllowlistInput, setGroupAllowlistInput] = useState("");
 
   const [codingAgent, setCodingAgent] = useState<CodingAgentChoice>("claude");
@@ -76,21 +79,6 @@ function InitWizard({ onDone }: Props) {
       provider,
       channel,
       codingAgent,
-      ...(channel === "discord"
-        ? {
-            discord: {
-              token: discordToken,
-              dmPolicy,
-              ...(dmPolicy === "allowlist" && discordDmUserId.trim().length > 0
-                ? { dmUserId: discordDmUserId.trim() }
-                : {}),
-              groupPolicy,
-              ...(groupPolicy === "allowlist" && groupAllowlistInput.trim().length > 0
-                ? { groupAllowlist: groupAllowlistInput.trim().split(",").map((s) => s.trim()) }
-                : {}),
-            },
-          }
-        : {}),
       ...overrides,
     };
     onDone(answers);
@@ -110,10 +98,19 @@ function InitWizard({ onDone }: Props) {
     }
   };
 
-  const handleChannelSelect = (item: { value: ChannelChoice }) => {
-    setChannel(item.value);
-    if (item.value === "discord") setStep({ kind: "discord-token" });
-    else goToClaude();
+  const handleChannelSelect = (item: { value: "discord" | "skip" }) => {
+    if (item.value === "discord") {
+      setChannel({
+        type: "discord",
+        token: "",
+        dmPolicy: "disabled",
+        groupPolicy: "allowlist",
+      });
+      setStep({ kind: "discord-token" });
+    } else {
+      setChannel({ type: "skip" });
+      goToClaude();
+    }
   };
 
   return (
@@ -212,7 +209,7 @@ function InitWizard({ onDone }: Props) {
             <Text color="cyan">› </Text>
             <TextInput
               value={discordToken}
-              onChange={setDiscordToken}
+              onChange={(v) => setDiscordField({ token: v })}
               onSubmit={() => {
                 if (discordToken.trim().length > 0) setStep({ kind: "discord-dm-policy" });
               }}
@@ -233,7 +230,7 @@ function InitWizard({ onDone }: Props) {
               { label: "allowlist (enter your Discord user ID)", value: "allowlist" as const },
             ]}
             onSelect={(item) => {
-              setDmPolicy(item.value);
+              setDiscordField({ dmPolicy: item.value });
               if (item.value === "allowlist") setStep({ kind: "discord-dm-userId" });
               else setStep({ kind: "discord-group-policy" });
             }}
@@ -248,7 +245,7 @@ function InitWizard({ onDone }: Props) {
             <Text color="cyan">› </Text>
             <TextInput
               value={discordDmUserId}
-              onChange={setDiscordDmUserId}
+              onChange={(v) => setDiscordField({ dmUserId: v })}
               onSubmit={() => {
                 if (/^\d+$/.test(discordDmUserId.trim())) setStep({ kind: "discord-group-policy" });
               }}
@@ -270,7 +267,7 @@ function InitWizard({ onDone }: Props) {
               { label: "disabled (ignore all guild messages)", value: "disabled" as const },
             ]}
             onSelect={(item) => {
-              setGroupPolicy(item.value);
+              setDiscordField({ groupPolicy: item.value });
               if (item.value === "allowlist") setStep({ kind: "discord-group-allowlist" });
               else goToClaude();
             }}
@@ -294,7 +291,10 @@ function InitWizard({ onDone }: Props) {
                 const formatOk = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
                 const allWhole = entries.every((e) => !e.includes("/"));
                 const allChannel = entries.every((e) => e.includes("/"));
-                if (entries.length > 0 && formatOk && (allWhole || allChannel)) goToClaude();
+                if (entries.length > 0 && formatOk && (allWhole || allChannel)) {
+                  setDiscordField({ groupAllowlist: entries });
+                  goToClaude();
+                }
               }}
             />
           </Box>

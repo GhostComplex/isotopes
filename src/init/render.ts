@@ -31,8 +31,8 @@ function renderAgents(answers: InitAnswers): string {
 }
 
 function renderChannels(answers: InitAnswers): string {
-  if (answers.channel !== "discord" || !answers.discord) return "";
-  const { token, dmPolicy, dmUserId, groupPolicy, groupAllowlist } = answers.discord;
+  if (answers.channel.type !== "discord") return "";
+  const { token, dmPolicy, dmUserId, groupPolicy, groupAllowlist } = answers.channel;
 
   const dmBlock = dmPolicy === "allowlist" && dmUserId
     ? `        dmAccess:
