@@ -169,7 +169,7 @@ describe("API routes", () => {
       expect(status).toBe(200);
       expect((data as { ok: boolean }).ok).toBe(true);
 
-      expect(cronScheduler.getJob(job.id)).toBeUndefined();
+      expect(cronScheduler.listJobs()).toHaveLength(0);
     });
 
     it("returns 404 for unknown job", async () => {

@@ -1,17 +1,14 @@
 import { Cron } from "croner";
 import { createLogger } from "../logging/logger.js";
+import type { CronAction } from "./types.js";
+
+export type { CronAction };
 
 const log = createLogger("cron");
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-/** Action to execute when a cron job triggers. */
-export type CronAction =
-  | { type: "message"; content: string }
-  | { type: "prompt"; prompt: string }
-  | { type: "callback"; handler: string };
 
 /** A registered cron job with its parsed schedule and execution state. */
 export interface CronJob {
@@ -20,7 +17,6 @@ export interface CronJob {
   expression: string;
   schedule: Cron;
   agentId: string;
-  channelId?: string;
   action: CronAction;
   enabled: boolean;
   lastRun?: Date;
@@ -108,61 +104,10 @@ export class CronScheduler {
   }
 
   /**
-   * Enable a cron job. If the scheduler is running, schedules its next timer.
-   * Returns true if the job exists and was enabled.
+   * List all registered jobs.
    */
-  enable(jobId: string): boolean {
-    const job = this.jobs.get(jobId);
-    if (!job) return false;
-
-    job.enabled = true;
-    job.nextRun = job.schedule.nextRun() ?? undefined;
-
-    if (this.running) {
-      this.scheduleTimer(job);
-    }
-
-    log.info(`Enabled cron job "${job.name}" (${jobId})`);
-    return true;
-  }
-
-  /**
-   * Disable a cron job. Clears its timer.
-   * Returns true if the job exists and was disabled.
-   */
-  disable(jobId: string): boolean {
-    const job = this.jobs.get(jobId);
-    if (!job) return false;
-
-    job.enabled = false;
-    job.nextRun = undefined;
-    this.clearTimer(jobId);
-
-    log.info(`Disabled cron job "${job.name}" (${jobId})`);
-    return true;
-  }
-
-  /**
-   * Get a job by ID.
-   */
-  getJob(jobId: string): CronJob | undefined {
-    return this.jobs.get(jobId);
-  }
-
-  /**
-   * List jobs with optional filtering.
-   */
-  listJobs(filter?: { agentId?: string; enabled?: boolean }): CronJob[] {
-    let jobs = [...this.jobs.values()];
-
-    if (filter?.agentId !== undefined) {
-      jobs = jobs.filter((j) => j.agentId === filter.agentId);
-    }
-    if (filter?.enabled !== undefined) {
-      jobs = jobs.filter((j) => j.enabled === filter.enabled);
-    }
-
-    return jobs;
+  listJobs(): CronJob[] {
+    return [...this.jobs.values()];
   }
 
   /**

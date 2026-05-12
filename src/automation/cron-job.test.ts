@@ -71,14 +71,12 @@ describe("CronScheduler", () => {
       const input = makeJobInput({
         name: "standup",
         agentId: "agent-2",
-        channelId: "channel-1",
         action: { type: "prompt", prompt: "Run standup" },
       });
       const job = scheduler.register(input);
 
       expect(job.name).toBe("standup");
       expect(job.agentId).toBe("agent-2");
-      expect(job.channelId).toBe("channel-1");
       expect(job.action).toEqual({ type: "prompt", prompt: "Run standup" });
     });
 
@@ -100,7 +98,7 @@ describe("CronScheduler", () => {
       const removed = scheduler.unregister(job.id);
 
       expect(removed).toBe(true);
-      expect(scheduler.getJob(job.id)).toBeUndefined();
+      expect(scheduler.listJobs()).toHaveLength(0);
     });
 
     it("returns false for non-existent job", () => {
@@ -118,58 +116,6 @@ describe("CronScheduler", () => {
   });
 
   // -----------------------------------------------------------------------
-  // enable / disable
-  // -----------------------------------------------------------------------
-
-  describe("enable", () => {
-    it("enables a disabled job", () => {
-      const job = scheduler.register(makeJobInput({ enabled: false }));
-
-      const result = scheduler.enable(job.id);
-
-      expect(result).toBe(true);
-      expect(scheduler.getJob(job.id)!.enabled).toBe(true);
-      expect(scheduler.getJob(job.id)!.nextRun).toBeInstanceOf(Date);
-    });
-
-    it("returns false for non-existent job", () => {
-      expect(scheduler.enable("nonexistent")).toBe(false);
-    });
-  });
-
-  describe("disable", () => {
-    it("disables an enabled job", () => {
-      const job = scheduler.register(makeJobInput({ enabled: true }));
-
-      const result = scheduler.disable(job.id);
-
-      expect(result).toBe(true);
-      expect(scheduler.getJob(job.id)!.enabled).toBe(false);
-      expect(scheduler.getJob(job.id)!.nextRun).toBeUndefined();
-    });
-
-    it("returns false for non-existent job", () => {
-      expect(scheduler.disable("nonexistent")).toBe(false);
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // getJob
-  // -----------------------------------------------------------------------
-
-  describe("getJob", () => {
-    it("returns the job if it exists", () => {
-      const job = scheduler.register(makeJobInput());
-
-      expect(scheduler.getJob(job.id)).toBe(job);
-    });
-
-    it("returns undefined for unknown ID", () => {
-      expect(scheduler.getJob("unknown")).toBeUndefined();
-    });
-  });
-
-  // -----------------------------------------------------------------------
   // listJobs
   // -----------------------------------------------------------------------
 
@@ -181,39 +127,8 @@ describe("CronScheduler", () => {
       expect(scheduler.listJobs()).toHaveLength(2);
     });
 
-    it("filters by agentId", () => {
-      scheduler.register(makeJobInput({ name: "a1", agentId: "agent-1" }));
-      scheduler.register(makeJobInput({ name: "a2", agentId: "agent-2" }));
-      scheduler.register(makeJobInput({ name: "a3", agentId: "agent-1" }));
-
-      const filtered = scheduler.listJobs({ agentId: "agent-1" });
-
-      expect(filtered).toHaveLength(2);
-      expect(filtered.every((j) => j.agentId === "agent-1")).toBe(true);
-    });
-
-    it("filters by enabled state", () => {
-      scheduler.register(makeJobInput({ name: "enabled", enabled: true }));
-      scheduler.register(makeJobInput({ name: "disabled", enabled: false }));
-
-      expect(scheduler.listJobs({ enabled: true })).toHaveLength(1);
-      expect(scheduler.listJobs({ enabled: false })).toHaveLength(1);
-    });
-
-    it("filters by both agentId and enabled", () => {
-      scheduler.register(makeJobInput({ agentId: "a1", enabled: true }));
-      scheduler.register(makeJobInput({ agentId: "a1", enabled: false }));
-      scheduler.register(makeJobInput({ agentId: "a2", enabled: true }));
-
-      const filtered = scheduler.listJobs({ agentId: "a1", enabled: true });
-
-      expect(filtered).toHaveLength(1);
-    });
-
-    it("returns empty array when no jobs match", () => {
-      scheduler.register(makeJobInput({ agentId: "agent-1" }));
-
-      expect(scheduler.listJobs({ agentId: "nonexistent" })).toHaveLength(0);
+    it("returns empty array when no jobs registered", () => {
+      expect(scheduler.listJobs()).toHaveLength(0);
     });
   });
 
@@ -339,7 +254,7 @@ describe("CronScheduler", () => {
 
       await vi.advanceTimersByTimeAsync(60_000 + 1);
 
-      const updated = scheduler.getJob(job.id)!;
+      const updated = scheduler.listJobs().find((j) => j.id === job.id)!;
       expect(updated.lastRun).toBeInstanceOf(Date);
     });
 
@@ -354,7 +269,7 @@ describe("CronScheduler", () => {
 
       await vi.advanceTimersByTimeAsync(60_000 + 1);
 
-      const updated = scheduler.getJob(job.id)!;
+      const updated = scheduler.listJobs().find((j) => j.id === job.id)!;
       expect(updated.nextRun).toBeInstanceOf(Date);
       expect(updated.nextRun!.getTime()).toBeGreaterThan(firstNextRun);
     });
@@ -377,13 +292,6 @@ describe("CronScheduler", () => {
         makeJobInput({ action: { type: "prompt", prompt: "Run report" } }),
       );
       expect(job.action).toEqual({ type: "prompt", prompt: "Run report" });
-    });
-
-    it("registers callback action", () => {
-      const job = scheduler.register(
-        makeJobInput({ action: { type: "callback", handler: "generateReport" } }),
-      );
-      expect(job.action).toEqual({ type: "callback", handler: "generateReport" });
     });
   });
 });
@@ -409,7 +317,6 @@ describe("cron config integration (#193)", () => {
   interface CronTaskConfig {
     name: string;
     schedule: string;
-    channel: string;
     prompt: string;
     enabled?: boolean;
   }
@@ -427,7 +334,6 @@ describe("cron config integration (#193)", () => {
           name: task.name,
           expression: task.schedule,
           agentId: agent.id,
-          channelId: task.channel,
           action: { type: "prompt", prompt: task.prompt },
           enabled: task.enabled ?? true,
         });
@@ -442,8 +348,8 @@ describe("cron config integration (#193)", () => {
           id: "bot-1",
           cron: {
             tasks: [
-              { name: "standup", schedule: "0 9 * * 1-5", channel: "general", prompt: "Run standup" },
-              { name: "report", schedule: "0 17 * * 5", channel: "reports", prompt: "Weekly report" },
+              { name: "standup", schedule: "0 9 * * 1-5", prompt: "Run standup" },
+              { name: "report", schedule: "0 17 * * 5", prompt: "Weekly report" },
             ],
           },
         },
@@ -453,7 +359,6 @@ describe("cron config integration (#193)", () => {
       expect(jobs).toHaveLength(2);
       expect(jobs[0].agentId).toBe("bot-1");
       expect(jobs[0].name).toBe("standup");
-      expect(jobs[0].channelId).toBe("general");
       expect(jobs[1].name).toBe("report");
     });
 
@@ -464,7 +369,7 @@ describe("cron config integration (#193)", () => {
         {
           id: "bot-3",
           cron: {
-            tasks: [{ name: "ping", schedule: "*/5 * * * *", channel: "ops", prompt: "Ping" }],
+            tasks: [{ name: "ping", schedule: "*/5 * * * *", prompt: "Ping" }],
           },
         },
       ]);
@@ -480,7 +385,7 @@ describe("cron config integration (#193)", () => {
           id: "bot-1",
           cron: {
             tasks: [
-              { name: "enabled-task", schedule: "0 * * * *", channel: "ch", prompt: "go" },
+              { name: "enabled-task", schedule: "0 * * * *", prompt: "go" },
             ],
           },
         },
@@ -495,7 +400,7 @@ describe("cron config integration (#193)", () => {
           id: "bot-1",
           cron: {
             tasks: [
-              { name: "disabled-task", schedule: "0 * * * *", channel: "ch", prompt: "go", enabled: false },
+              { name: "disabled-task", schedule: "0 * * * *", prompt: "go", enabled: false },
             ],
           },
         },
@@ -509,11 +414,11 @@ describe("cron config integration (#193)", () => {
       registerFromConfig([
         {
           id: "agent-a",
-          cron: { tasks: [{ name: "task-a", schedule: "0 8 * * *", channel: "ch-a", prompt: "A" }] },
+          cron: { tasks: [{ name: "task-a", schedule: "0 8 * * *", prompt: "A" }] },
         },
         {
           id: "agent-b",
-          cron: { tasks: [{ name: "task-b", schedule: "0 9 * * *", channel: "ch-b", prompt: "B" }] },
+          cron: { tasks: [{ name: "task-b", schedule: "0 9 * * *", prompt: "B" }] },
         },
       ]);
 
@@ -531,7 +436,7 @@ describe("cron config integration (#193)", () => {
         {
           id: "bot-1",
           cron: {
-            tasks: [{ name: "morning", schedule: "0 9 * * 1-5", channel: "general", prompt: "Good morning!" }],
+            tasks: [{ name: "morning", schedule: "0 9 * * 1-5", prompt: "Good morning!" }],
           },
         },
       ]);
@@ -545,7 +450,6 @@ describe("cron config integration (#193)", () => {
       expect(triggered).toHaveLength(1);
       expect(triggered[0].name).toBe("morning");
       expect(triggered[0].agentId).toBe("bot-1");
-      expect(triggered[0].channelId).toBe("general");
       expect(triggered[0].action).toEqual({ type: "prompt", prompt: "Good morning!" });
     });
 
@@ -556,7 +460,7 @@ describe("cron config integration (#193)", () => {
         {
           id: "bot-1",
           cron: {
-            tasks: [{ name: "disabled", schedule: "0 9 * * 1-5", channel: "ch", prompt: "Nope", enabled: false }],
+            tasks: [{ name: "disabled", schedule: "0 9 * * 1-5", prompt: "Nope", enabled: false }],
           },
         },
       ]);
@@ -577,13 +481,13 @@ describe("cron config integration (#193)", () => {
         {
           id: "bot-1",
           cron: {
-            tasks: [{ name: "task-1", schedule: "0 9 * * 1-5", channel: "ch-1", prompt: "Hi from 1" }],
+            tasks: [{ name: "task-1", schedule: "0 9 * * 1-5", prompt: "Hi from 1" }],
           },
         },
         {
           id: "bot-2",
           cron: {
-            tasks: [{ name: "task-2", schedule: "0 9 * * 1-5", channel: "ch-2", prompt: "Hi from 2" }],
+            tasks: [{ name: "task-2", schedule: "0 9 * * 1-5", prompt: "Hi from 2" }],
           },
         },
       ]);
@@ -606,7 +510,7 @@ describe("cron config integration (#193)", () => {
         {
           id: "bot-1",
           cron: {
-            tasks: [{ name: "task", schedule: "0 9 * * 1-5", channel: "ch", prompt: "go" }],
+            tasks: [{ name: "task", schedule: "0 9 * * 1-5", prompt: "go" }],
           },
         },
       ]);
@@ -621,29 +525,12 @@ describe("cron config integration (#193)", () => {
       expect(triggered).toHaveLength(0);
     });
 
-    it("filters jobs by agentId after registration", () => {
-      registerFromConfig([
-        {
-          id: "agent-a",
-          cron: { tasks: [{ name: "a1", schedule: "0 * * * *", channel: "ch", prompt: "A" }] },
-        },
-        {
-          id: "agent-b",
-          cron: { tasks: [{ name: "b1", schedule: "0 * * * *", channel: "ch", prompt: "B" }] },
-        },
-      ]);
-
-      const agentAJobs = scheduler.listJobs({ agentId: "agent-a" });
-      expect(agentAJobs).toHaveLength(1);
-      expect(agentAJobs[0].name).toBe("a1");
-    });
-
     it("unregisters a config-defined job by ID", () => {
       registerFromConfig([
         {
           id: "bot-1",
           cron: {
-            tasks: [{ name: "removable", schedule: "0 * * * *", channel: "ch", prompt: "go" }],
+            tasks: [{ name: "removable", schedule: "0 * * * *", prompt: "go" }],
           },
         },
       ]);

@@ -99,10 +99,8 @@ export class HeartbeatManager {
     this.log.info(`Heartbeat triggered for "${this.agentId}"`);
 
     try {
-      // Cap the wait at 2× interval so a hung underlying run doesn't pin
-      // isRunning forever (which would silently skip every future tick).
-      // The underlying run is NOT canceled on timeout — gateway's steer will
-      // merge the next tick's content into it if it eventually completes.
+      // Cap at 2× interval so a hung run doesn't pin isRunning forever.
+      // The run itself isn't canceled — gateway's steer absorbs the next tick.
       const timeoutMs = this.intervalMs * 2;
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
       try {

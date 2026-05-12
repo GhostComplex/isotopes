@@ -4,7 +4,7 @@ import YAML from "yaml";
 import type { ProviderType, AgentConfig } from "./agent/types.js";
 import type { AgentToolSettings } from "./agent/tools/types.js";
 import type { ChannelsConfig } from "./channels/types.js";
-import type { CronActionConfig } from "./automation/types.js";
+import type { CronAction } from "./automation/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "./agent/middleware/sandbox-config.js";
 
 export interface ProviderConfigFile {
@@ -25,7 +25,6 @@ export interface CronTaskConfigFile {
   name: string;
   /** Cron expression, e.g. "0 * * * *" */
   schedule: string;
-  channel: string;
   prompt: string;
   /** Default: true */
   enabled?: boolean;
@@ -84,7 +83,7 @@ export interface CronJobConfigFile {
   name: string;
   expression: string;
   agentId: string;
-  action: CronActionConfig;
+  action: CronAction;
   enabled?: boolean;
 }
 

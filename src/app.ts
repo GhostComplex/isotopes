@@ -126,7 +126,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
         name: task.name,
         expression: task.schedule,
         agentId: agentFile.id,
-        channelId: task.channel,
         action: { type: "prompt", prompt: task.prompt },
         enabled: task.enabled ?? true,
       });
@@ -156,11 +155,8 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     let prompt: string;
     if (job.action.type === "prompt") {
       prompt = job.action.prompt;
-    } else if (job.action.type === "message") {
-      prompt = job.action.content;
     } else {
-      log.warn(`Cron job "${job.name}" has unsupported action type "${job.action.type}" — skipping`);
-      return;
+      prompt = job.action.content;
     }
 
     const sessionKey = `cron:${job.agentId}:${job.name}`;
