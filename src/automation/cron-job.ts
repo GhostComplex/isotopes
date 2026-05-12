@@ -32,7 +32,9 @@ export type CronJobInput = Omit<CronJob, "id" | "schedule" | "nextRun" | "create
  * re-schedules after each trigger. Subscribe via `onTrigger`.
  */
 export class CronScheduler {
+  /** jobId (UUID) → registered job. */
   private jobs: Map<string, CronJob> = new Map();
+  /** jobId (UUID) → its currently scheduled setTimeout handle. */
   private timers: Map<string, NodeJS.Timeout> = new Map();
   private handlers: CronJobCallback[] = [];
   private running = false;
