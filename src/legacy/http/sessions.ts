@@ -352,6 +352,10 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
     sendError(res, 503, "Agent runtime not available");
     return;
   }
+  if (!deps.gateway) {
+    sendError(res, 503, "Gateway not available");
+    return;
+  }
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -364,10 +368,6 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
   };
 
   try {
-    if (!deps.gateway) {
-      sendError(res, 503, "Gateway not available");
-      return;
-    }
     const cwd = ((c) => c ? resolveAgentWorkspacePath(c) : undefined)(deps.agentRuntime?.getAgent(agentId)?.config);
 
     const result = await deps.gateway.dispatch(
