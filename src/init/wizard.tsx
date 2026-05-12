@@ -14,10 +14,10 @@ import { SelectStep, TextStep } from "./steps.js";
 const DEFAULT_GHC_MODEL = "claude-opus-4.7";
 const DEFAULT_MINIMAX_MODEL = "MiniMax-M2.7";
 
-type LlmChoice = "ghc-proxy" | "minimax-cn" | "skip";
+type ProviderChoice = "ghc-proxy" | "minimax-cn" | "skip";
 
 type Step =
-  | { kind: "llm" }
+  | { kind: "provider" }
   | { kind: "provider-baseUrl" }
   | { kind: "provider-apiKey" }
   | { kind: "provider-model" }
@@ -39,7 +39,7 @@ const isConfigured = (p: Provider): p is ConfiguredProvider => p.type !== "skip"
 
 function InitWizard({ onDone }: Props) {
   const { exit } = useApp();
-  const [step, setStep] = useState<Step>({ kind: "llm" });
+  const [step, setStep] = useState<Step>({ kind: "provider" });
 
   const [provider, setProvider] = useState<Provider>({ type: "skip" });
   const providerBaseUrl = provider.type === "ghc-proxy" ? provider.baseUrl : "";
@@ -77,7 +77,7 @@ function InitWizard({ onDone }: Props) {
   const goToChannel = () => setStep({ kind: "channel" });
   const goToClaude = () => setStep({ kind: "claude" });
 
-  const handleLlmSelect = (item: { value: LlmChoice }) => {
+  const handleProviderSelect = (item: { value: ProviderChoice }) => {
     if (item.value === "ghc-proxy") {
       setProvider({ type: "ghc-proxy", baseUrl: "", apiKey: "", model: DEFAULT_GHC_MODEL });
       setStep({ kind: "provider-baseUrl" });
@@ -111,7 +111,7 @@ function InitWizard({ onDone }: Props) {
         <Text bold>Isotopes setup</Text>
       </Box>
 
-      {step.kind === "llm" && (
+      {step.kind === "provider" && (
         <SelectStep
           label="1) LLM provider:"
           items={[
@@ -119,7 +119,7 @@ function InitWizard({ onDone }: Props) {
             { label: "minimax-cn (MiniMax — China endpoint)", value: "minimax-cn" },
             { label: "skip (configure later)", value: "skip" },
           ]}
-          onSelect={handleLlmSelect}
+          onSelect={handleProviderSelect}
         />
       )}
 
