@@ -1,61 +1,26 @@
-// src/init/wizard.tsx — Interactive ink wizard for `isotopes init`
-// Two prompts (LLM, channel) each followed by a small input form when the
-// user picks something other than "skip". Returns the collected answers; the
-// caller is responsible for rendering them into the yaml config.
-
 import React, { useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
-import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export type LlmChoice = "ghc-proxy" | "skip";
-export type ChannelChoice = "discord" | "skip";
-export type CodingAgentChoice = "claude" | "skip";
-
-export interface GhcProxyAnswers {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-}
-
-export type DmPolicyChoice = "disabled" | "allowlist";
-export type GroupPolicyChoice = "disabled" | "allowlist" | "open";
-
-export interface DiscordAnswers {
-  token: string;
-  dmPolicy: DmPolicyChoice;
-  dmUserId?: string;
-  groupPolicy: GroupPolicyChoice;
-  groupAllowlist?: string[];
-}
-
-export interface InitAnswers {
-  llm: LlmChoice;
-  ghcProxy?: GhcProxyAnswers;
-  channel: ChannelChoice;
-  discord?: DiscordAnswers;
-  codingAgent: CodingAgentChoice;
-}
-
-// ---------------------------------------------------------------------------
-// Defaults
-// ---------------------------------------------------------------------------
+import type {
+  Channel,
+  CodingAgent,
+  InitAnswers,
+  Provider,
+} from "./types.js";
+import { isValidDiscordUserId, parseGroupAllowlist } from "./validators.js";
+import { SelectStep, TextStep } from "./steps.js";
 
 const DEFAULT_GHC_MODEL = "claude-opus-4.7";
+const DEFAULT_MINIMAX_MODEL = "MiniMax-M2.7";
 
-// ---------------------------------------------------------------------------
-// Wizard
-// ---------------------------------------------------------------------------
+type ProviderChoice = "ghc-proxy" | "minimax-cn" | "skip";
 
 type Step =
-  | { kind: "llm" }
-  | { kind: "ghc-baseUrl" }
-  | { kind: "ghc-apiKey" }
-  | { kind: "ghc-model" }
+  | { kind: "provider" }
+  | { kind: "provider-baseUrl" }
+  | { kind: "provider-apiKey" }
+  | { kind: "provider-model" }
   | { kind: "channel" }
   | { kind: "discord-token" }
   | { kind: "discord-dm-policy" }
@@ -68,23 +33,34 @@ interface Props {
   onDone: (answers: InitAnswers) => void;
 }
 
+type DiscordChannel = Extract<Channel, { type: "discord" }>;
+type ConfiguredProvider = Exclude<Provider, { type: "skip" }>;
+const isConfigured = (p: Provider): p is ConfiguredProvider => p.type !== "skip";
+
 function InitWizard({ onDone }: Props) {
   const { exit } = useApp();
-  const [step, setStep] = useState<Step>({ kind: "llm" });
+  const [step, setStep] = useState<Step>({ kind: "provider" });
 
-  const [llm, setLlm] = useState<LlmChoice>("skip");
-  const [ghcBaseUrl, setGhcBaseUrl] = useState("");
-  const [ghcApiKey, setGhcApiKey] = useState("");
-  const [ghcModel, setGhcModel] = useState(DEFAULT_GHC_MODEL);
+  const [provider, setProvider] = useState<Provider>({ type: "skip" });
+  const providerBaseUrl = provider.type === "ghc-proxy" ? provider.baseUrl : "";
+  const providerApiKey = isConfigured(provider) ? provider.apiKey : "";
+  const providerModel = isConfigured(provider) ? provider.model : "";
+  const providerLabel = isConfigured(provider) ? provider.type : "";
+  const setBaseUrl = (v: string) =>
+    setProvider((p) => (p.type === "ghc-proxy" ? { ...p, baseUrl: v } : p));
+  const setApiKey = (v: string) =>
+    setProvider((p) => (isConfigured(p) ? { ...p, apiKey: v } : p));
+  const setModel = (v: string) =>
+    setProvider((p) => (isConfigured(p) ? { ...p, model: v } : p));
 
-  const [channel, setChannel] = useState<ChannelChoice>("skip");
-  const [discordToken, setDiscordToken] = useState("");
-  const [dmPolicy, setDmPolicy] = useState<DmPolicyChoice>("disabled");
-  const [discordDmUserId, setDiscordDmUserId] = useState("");
-  const [groupPolicy, setGroupPolicy] = useState<GroupPolicyChoice>("allowlist");
+  const [channel, setChannel] = useState<Channel>({ type: "skip" });
+  const discordToken = channel.type === "discord" ? channel.token : "";
+  const discordDmUserId = channel.type === "discord" ? (channel.dmUserId ?? "") : "";
+  const setDiscordField = (patch: Partial<DiscordChannel>) =>
+    setChannel((c) => (c.type === "discord" ? { ...c, ...patch } : c));
+
+  // Comma-separated raw input; parsed into Channel.groupAllowlist on submit.
   const [groupAllowlistInput, setGroupAllowlistInput] = useState("");
-
-  const [codingAgent, setCodingAgent] = useState<CodingAgentChoice>("claude");
 
   useInput((_input, key) => {
     if (key.ctrl && _input === "c") {
@@ -93,48 +69,37 @@ function InitWizard({ onDone }: Props) {
     }
   });
 
-  const finish = (overrides: Partial<InitAnswers> = {}) => {
-    const answers: InitAnswers = {
-      llm,
-      channel,
-      codingAgent,
-      ...(llm === "ghc-proxy"
-        ? { ghcProxy: { baseUrl: ghcBaseUrl, apiKey: ghcApiKey, model: ghcModel } }
-        : {}),
-      ...(channel === "discord"
-        ? {
-            discord: {
-              token: discordToken,
-              dmPolicy,
-              ...(dmPolicy === "allowlist" && discordDmUserId.trim().length > 0
-                ? { dmUserId: discordDmUserId.trim() }
-                : {}),
-              groupPolicy,
-              ...(groupPolicy === "allowlist" && groupAllowlistInput.trim().length > 0
-                ? { groupAllowlist: groupAllowlistInput.trim().split(",").map((s) => s.trim()) }
-                : {}),
-            },
-          }
-        : {}),
-      ...overrides,
-    };
-    onDone(answers);
+  const finish = (codingAgent: CodingAgent) => {
+    onDone({ provider, channel, codingAgent });
     exit();
   };
 
-  const goToChannel = () => setStep({ kind: "channel" });
-  const goToClaude = () => setStep({ kind: "claude" });
-
-  const handleLlmSelect = (item: { value: LlmChoice }) => {
-    setLlm(item.value);
-    if (item.value === "ghc-proxy") setStep({ kind: "ghc-baseUrl" });
-    else goToChannel();
+  const handleProviderSelect = (item: { value: ProviderChoice }) => {
+    if (item.value === "ghc-proxy") {
+      setProvider({ type: "ghc-proxy", baseUrl: "", apiKey: "", model: DEFAULT_GHC_MODEL });
+      setStep({ kind: "provider-baseUrl" });
+    } else if (item.value === "minimax-cn") {
+      setProvider({ type: "minimax-cn", apiKey: "", model: DEFAULT_MINIMAX_MODEL });
+      setStep({ kind: "provider-apiKey" });
+    } else {
+      setProvider({ type: "skip" });
+      setStep({ kind: "channel" });
+    }
   };
 
-  const handleChannelSelect = (item: { value: ChannelChoice }) => {
-    setChannel(item.value);
-    if (item.value === "discord") setStep({ kind: "discord-token" });
-    else goToClaude();
+  const handleChannelSelect = (item: { value: "discord" | "skip" }) => {
+    if (item.value === "discord") {
+      setChannel({
+        type: "discord",
+        token: "",
+        dmPolicy: "disabled",
+        groupPolicy: "allowlist",
+      });
+      setStep({ kind: "discord-token" });
+    } else {
+      setChannel({ type: "skip" });
+      setStep({ kind: "claude" });
+    }
   };
 
   return (
@@ -143,160 +108,124 @@ function InitWizard({ onDone }: Props) {
         <Text bold>Isotopes setup</Text>
       </Box>
 
-      {step.kind === "llm" && (
-        <Box flexDirection="column">
-          <Text>1) LLM provider:</Text>
-          <SelectInput
-            items={[
-              { label: "ghc-proxy (Anthropic via GHC Coder proxy)", value: "ghc-proxy" as const },
-              { label: "skip (configure later)", value: "skip" as const },
-            ]}
-            onSelect={handleLlmSelect}
-          />
-        </Box>
+      {step.kind === "provider" && (
+        <SelectStep
+          label="1) LLM provider:"
+          items={[
+            { label: "ghc-proxy (Anthropic via GHC Coder proxy)", value: "ghc-proxy" },
+            { label: "minimax-cn (MiniMax — China endpoint)", value: "minimax-cn" },
+            { label: "skip (configure later)", value: "skip" },
+          ]}
+          onSelect={handleProviderSelect}
+        />
       )}
 
-      {step.kind === "ghc-baseUrl" && (
-        <Box flexDirection="column">
-          <Text>ghc-proxy baseUrl:</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={ghcBaseUrl}
-              onChange={setGhcBaseUrl}
-              onSubmit={() => {
-                if (ghcBaseUrl.trim().length > 0) setStep({ kind: "ghc-apiKey" });
-              }}
-            />
-          </Box>
-          {ghcBaseUrl.trim().length === 0 && (
-            <Text color="yellow">  baseUrl is required</Text>
-          )}
-        </Box>
+      {step.kind === "provider-baseUrl" && (
+        <TextStep
+          label={`${providerLabel} baseUrl:`}
+          value={providerBaseUrl}
+          onChange={setBaseUrl}
+          onSubmit={() => {
+            if (providerBaseUrl.trim().length > 0) setStep({ kind: "provider-apiKey" });
+          }}
+          error={providerBaseUrl.trim().length === 0 ? "baseUrl is required" : undefined}
+        />
       )}
 
-      {step.kind === "ghc-apiKey" && (
-        <Box flexDirection="column">
-          <Text>ghc-proxy apiKey (literal value, stored in yaml):</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={ghcApiKey}
-              onChange={setGhcApiKey}
-              onSubmit={() => {
-                if (ghcApiKey.trim().length > 0) setStep({ kind: "ghc-model" });
-              }}
-            />
-          </Box>
-          {ghcApiKey.trim().length === 0 && (
-            <Text color="yellow">  apiKey is required</Text>
-          )}
-        </Box>
+      {step.kind === "provider-apiKey" && (
+        <TextStep
+          label={`${providerLabel} apiKey (literal value, stored in yaml):`}
+          value={providerApiKey}
+          mask
+          onChange={setApiKey}
+          onSubmit={() => {
+            if (providerApiKey.trim().length > 0) setStep({ kind: "provider-model" });
+          }}
+          error={providerApiKey.trim().length === 0 ? "apiKey is required" : undefined}
+        />
       )}
 
-      {step.kind === "ghc-model" && (
-        <Box flexDirection="column">
-          <Text>ghc-proxy model:</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={ghcModel}
-              onChange={setGhcModel}
-              onSubmit={() => {
-                if (ghcModel.trim().length > 0) goToChannel();
-              }}
-            />
-          </Box>
-          {ghcModel.trim().length === 0 && (
-            <Text color="yellow">  model is required</Text>
-          )}
-        </Box>
+      {step.kind === "provider-model" && (
+        <TextStep
+          label={`${providerLabel} model:`}
+          value={providerModel}
+          onChange={setModel}
+          onSubmit={() => {
+            if (providerModel.trim().length > 0) setStep({ kind: "channel" });
+          }}
+          error={providerModel.trim().length === 0 ? "model is required" : undefined}
+        />
       )}
 
       {step.kind === "channel" && (
-        <Box flexDirection="column">
-          <Text>2) Channel:</Text>
-          <SelectInput
-            items={[
-              { label: "discord", value: "discord" as const },
-              { label: "skip (configure later)", value: "skip" as const },
-            ]}
-            onSelect={handleChannelSelect}
-          />
-        </Box>
+        <SelectStep
+          label="2) Channel:"
+          items={[
+            { label: "discord", value: "discord" },
+            { label: "skip (configure later)", value: "skip" },
+          ]}
+          onSelect={handleChannelSelect}
+        />
       )}
 
       {step.kind === "discord-token" && (
-        <Box flexDirection="column">
-          <Text>Discord bot token (literal value, stored in yaml):</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={discordToken}
-              onChange={setDiscordToken}
-              onSubmit={() => {
-                if (discordToken.trim().length > 0) setStep({ kind: "discord-dm-policy" });
-              }}
-            />
-          </Box>
-          {discordToken.trim().length === 0 && (
-            <Text color="yellow">  token is required</Text>
-          )}
-        </Box>
+        <TextStep
+          label="Discord bot token (literal value, stored in yaml):"
+          value={discordToken}
+          mask
+          onChange={(v) => setDiscordField({ token: v })}
+          onSubmit={() => {
+            if (discordToken.trim().length > 0) setStep({ kind: "discord-dm-policy" });
+          }}
+          error={discordToken.trim().length === 0 ? "token is required" : undefined}
+        />
       )}
 
       {step.kind === "discord-dm-policy" && (
-        <Box flexDirection="column">
-          <Text>DM (direct message) policy:</Text>
-          <SelectInput
-            items={[
-              { label: "disabled (default)", value: "disabled" as const },
-              { label: "allowlist (enter your Discord user ID)", value: "allowlist" as const },
-            ]}
-            onSelect={(item) => {
-              setDmPolicy(item.value);
-              if (item.value === "allowlist") setStep({ kind: "discord-dm-userId" });
-              else setStep({ kind: "discord-group-policy" });
-            }}
-          />
-        </Box>
+        <SelectStep
+          label="DM (direct message) policy:"
+          items={[
+            { label: "disabled (default)", value: "disabled" },
+            { label: "allowlist (enter your Discord user ID)", value: "allowlist" },
+          ]}
+          onSelect={(item) => {
+            setDiscordField({ dmPolicy: item.value });
+            if (item.value === "allowlist") setStep({ kind: "discord-dm-userId" });
+            else setStep({ kind: "discord-group-policy" });
+          }}
+        />
       )}
 
       {step.kind === "discord-dm-userId" && (
-        <Box flexDirection="column">
-          <Text>Your Discord user ID (numeric, e.g. 123456789012345678):</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={discordDmUserId}
-              onChange={setDiscordDmUserId}
-              onSubmit={() => {
-                if (/^\d+$/.test(discordDmUserId.trim())) setStep({ kind: "discord-group-policy" });
-              }}
-            />
-          </Box>
-          {discordDmUserId.trim().length > 0 && !/^\d+$/.test(discordDmUserId.trim()) && (
-            <Text color="yellow">  must be a numeric Discord user ID</Text>
-          )}
-        </Box>
+        <TextStep
+          label="Your Discord user ID (numeric, e.g. 123456789012345678):"
+          value={discordDmUserId}
+          onChange={(v) => setDiscordField({ dmUserId: v })}
+          onSubmit={() => {
+            if (isValidDiscordUserId(discordDmUserId)) setStep({ kind: "discord-group-policy" });
+          }}
+          error={
+            discordDmUserId.trim().length > 0 && !isValidDiscordUserId(discordDmUserId)
+              ? "must be a numeric Discord user ID"
+              : undefined
+          }
+        />
       )}
 
       {step.kind === "discord-group-policy" && (
-        <Box flexDirection="column">
-          <Text>Group (server/guild) policy:</Text>
-          <SelectInput
-            items={[
-              { label: "allowlist (default — enter server/channel IDs)", value: "allowlist" as const },
-              { label: "open (accept all servers)", value: "open" as const },
-              { label: "disabled (ignore all guild messages)", value: "disabled" as const },
-            ]}
-            onSelect={(item) => {
-              setGroupPolicy(item.value);
-              if (item.value === "allowlist") setStep({ kind: "discord-group-allowlist" });
-              else goToClaude();
-            }}
-          />
-        </Box>
+        <SelectStep
+          label="Group (server/guild) policy:"
+          items={[
+            { label: "allowlist (default — enter server/channel IDs)", value: "allowlist" },
+            { label: "open (accept all servers)", value: "open" },
+            { label: "disabled (ignore all guild messages)", value: "disabled" },
+          ]}
+          onSelect={(item) => {
+            setDiscordField({ groupPolicy: item.value });
+            if (item.value === "allowlist") setStep({ kind: "discord-group-allowlist" });
+            else setStep({ kind: "claude" });
+          }}
+        />
       )}
 
       {step.kind === "discord-group-allowlist" && (
@@ -305,46 +234,40 @@ function InitWizard({ onDone }: Props) {
           <Text dimColor>  pick ONE mode — either all serverId, OR all serverId/channelId</Text>
           <Text dimColor>  e.g. 123456789012345678, 234567890123456789</Text>
           <Text dimColor>  or   987654321098765432/111222333444555666, 987654321098765432/777888999000111222</Text>
+          <Text dimColor>  leave empty to defer (all guild messages rejected until you edit the yaml)</Text>
           <Box>
             <Text color="cyan">› </Text>
             <TextInput
               value={groupAllowlistInput}
               onChange={setGroupAllowlistInput}
               onSubmit={() => {
-                const entries = groupAllowlistInput.trim().split(",").map((s) => s.trim()).filter(Boolean);
-                const formatOk = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
-                const allWhole = entries.every((e) => !e.includes("/"));
-                const allChannel = entries.every((e) => e.includes("/"));
-                if (entries.length > 0 && formatOk && (allWhole || allChannel)) goToClaude();
+                const entries = parseGroupAllowlist(groupAllowlistInput);
+                if (entries !== null) {
+                  if (entries.length > 0) {
+                    setDiscordField({ groupAllowlist: entries });
+                  }
+                  setStep({ kind: "claude" });
+                }
               }}
             />
           </Box>
-          {groupAllowlistInput.trim().length > 0 && (() => {
-            const entries = groupAllowlistInput.trim().split(",").map((s) => s.trim()).filter(Boolean);
-            const formatOk = entries.every((e) => /^\d+(\/\d+)?$/.test(e));
-            if (!formatOk) return <Text color="yellow">  each entry must be serverId or serverId/channelId (numeric)</Text>;
-            const allWhole = entries.every((e) => !e.includes("/"));
-            const allChannel = entries.every((e) => e.includes("/"));
-            if (!allWhole && !allChannel) return <Text color="yellow">  pick one mode: all serverId, OR all serverId/channelId — not mixed</Text>;
-            return null;
-          })()}
+          {groupAllowlistInput.trim().length > 0 && parseGroupAllowlist(groupAllowlistInput) === null && (
+            <Text color="yellow">  invalid value</Text>
+          )}
         </Box>
       )}
 
       {step.kind === "claude" && (
-        <Box flexDirection="column">
-          <Text>3) Enable A2A coding:</Text>
-          <SelectInput
-            items={[
-              { label: "claude (default)", value: "claude" as const },
-              { label: "skip", value: "skip" as const },
-            ]}
-            onSelect={(item: { value: CodingAgentChoice }) => {
-              setCodingAgent(item.value);
-              finish({ codingAgent: item.value });
-            }}
-          />
-        </Box>
+        <SelectStep
+          label="3) Enable A2A coding:"
+          items={[
+            { label: "claude (default)", value: "claude" },
+            { label: "skip", value: "skip" },
+          ]}
+          onSelect={(item) => {
+            finish(item.value);
+          }}
+        />
       )}
     </Box>
   );
@@ -363,7 +286,6 @@ export async function runInitWizard(): Promise<InitAnswers> {
     );
     void waitUntilExit().then(() => {
       if (!collected) {
-        // User Ctrl+C'd before answering — exit non-zero from caller.
         process.exit(130);
       }
       resolve(collected);
