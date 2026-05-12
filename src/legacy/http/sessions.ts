@@ -11,8 +11,6 @@ import { addRoute } from "./routes.js";
 import { sendJson, sendError } from "./middleware.js";
 import { createLogger } from "../../logging/logger.js";
 import { randomUUID } from "node:crypto";
-import { runAgent } from "../../agent/runtime-adapter.js";
-import { userMessage } from "../../agent/pi/messages.js";
 import { resolveAgentWorkspacePath } from "../../paths.js";
 import type { DefaultSessionStore } from "../../agent/pi/session-store.js";
 import type { Session } from "../../sessions/types.js";
@@ -29,13 +27,11 @@ interface ActiveSession {
   agentId: string;
   lastActivity: number;
   abortController?: AbortController;
-  pendingMessages: Array<{ content: string; timestamp: number }>;
 }
 
 const activeSessions = new Map<string, ActiveSession>();
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_SESSIONS = 100;
-const MAX_PENDING_MESSAGES = 50;
 const MAX_STEER_MESSAGE_LEN = 10_000;
 
 /** sessionKey alone is per-agent unique; two agents can legally hold the same key. */
@@ -290,7 +286,7 @@ addRoute("POST", "/api/sessions/:agentId", async (req, res, deps) => {
   }
 
   evictStaleSessions();
-  activeSessions.set(activeKey(agentId, sessionKey), { sessionKey, sessionId, agentId, lastActivity: Date.now(), pendingMessages: [] });
+  activeSessions.set(activeKey(agentId, sessionKey), { sessionKey, sessionId, agentId, lastActivity: Date.now() });
 
   log.info(`Session ${resumed ? "resumed" : "created"}: ${sessionKey} (agent: ${agentId})`);
   sendJson(res, resumed ? 200 : 201, { key: sessionKey, agentId, resumed });
@@ -318,7 +314,6 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
             sessionId: resolved.sessionId,
             agentId,
             lastActivity: Date.now(),
-            pendingMessages: [],
           };
           activeSessions.set(activeKey(agentId, resolved.sessionKey), active);
         }
@@ -357,9 +352,10 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
     sendError(res, 503, "Agent runtime not available");
     return;
   }
-
-  const store = await deps.sessionStoreManager.getOrCreate(agentId);
-  const sessionId = active.sessionId;
+  if (!deps.gateway) {
+    sendError(res, 503, "Gateway not available");
+    return;
+  }
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -374,37 +370,21 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
   try {
     const cwd = ((c) => c ? resolveAgentWorkspacePath(c) : undefined)(deps.agentRuntime?.getAgent(agentId)?.config);
 
-    const result = await runAgent(deps.agentRuntime, {
-      to: agentId,
-      sessionId,
-      content: body.message,
-      ...(cwd ? { cwd } : {}),
-      log,
-      onEvent: (e) => {
-        if (e.type === "message_update") {
-          const ame = e.assistantMessageEvent;
-          if (ame.type === "text_delta") {
-            writeEvent("text_delta", { text: ame.delta });
-          }
-        } else if (e.type === "tool_execution_start") {
-          writeEvent("tool_call", { toolCallId: e.toolCallId, toolName: e.toolName, args: e.args });
-        } else if (e.type === "tool_execution_end") {
-          writeEvent("tool_result", { toolCallId: e.toolCallId, toolName: e.toolName, result: e.result, isError: e.isError });
-        } else if (e.type === "turn_end") {
-          writeEvent("turn_end", {});
-        }
+    const result = await deps.gateway.dispatch(
+      {
+        agentId,
+        sessionKey: active.sessionKey,
+        content: body.message,
+        source: "tui",
+        ...(cwd ? { cwd } : {}),
       },
-      onTurnEnd: async () => {
-        const pending = active.pendingMessages;
-        if (pending.length === 0) return null;
-        const drained = pending.splice(0);
-        for (const m of drained) {
-          await store.addMessage(sessionId, userMessage(m.content, m.timestamp));
-        }
-        const formatted = drained.map((m) => m.content).join("\n");
-        return `[Messages arrived while you were working]\n${formatted}`;
+      {
+        onTextDelta: (delta) => writeEvent("text_delta", { text: delta }),
+        onToolStart: (call) => writeEvent("tool_call", { toolCallId: call.id, toolName: call.name, args: call.args }),
+        onToolEnd: (r) => writeEvent("tool_result", { toolCallId: r.id, toolName: r.name, result: r.result, isError: r.isError }),
+        onTurnEnd: () => writeEvent("turn_end", {}),
       },
-    });
+    );
 
     if (result.errorMessage) {
       writeEvent("error", { message: result.errorMessage });
@@ -421,11 +401,15 @@ addRoute("POST", "/api/sessions/:agentId/:key/message", async (req, res, deps) =
 // POST /api/sessions/:agentId/:key/steer — inject a message mid-run
 // ---------------------------------------------------------------------------
 
-addRoute("POST", "/api/sessions/:agentId/:key/steer", async (req, res, _deps) => {
+addRoute("POST", "/api/sessions/:agentId/:key/steer", async (req, res, deps) => {
   const { agentId, key: sessionKey } = req.params;
   const active = activeSessions.get(activeKey(agentId, sessionKey));
   if (!active) {
     sendError(res, 404, `Active session not found`);
+    return;
+  }
+  if (!deps.gateway) {
+    sendError(res, 503, "Gateway not available");
     return;
   }
 
@@ -438,15 +422,20 @@ addRoute("POST", "/api/sessions/:agentId/:key/steer", async (req, res, _deps) =>
     sendError(res, 400, `Message exceeds max length of ${MAX_STEER_MESSAGE_LEN}`);
     return;
   }
-  if (active.pendingMessages.length >= MAX_PENDING_MESSAGES) {
-    sendError(res, 429, `Steer queue full (max ${MAX_PENDING_MESSAGES})`);
-    return;
-  }
 
-  active.pendingMessages.push({ content: body.message, timestamp: Date.now() });
+  // Fire-and-forget Gateway dispatch with the same sessionKey — Gateway's
+  // built-in steer path queues the content into the active run.
+  void deps.gateway.dispatch({
+    agentId,
+    sessionKey: active.sessionKey,
+    content: body.message,
+    source: "tui",
+  }).catch((err) => {
+    log.warn(`Steer dispatch failed for session ${sessionKey}: ${err instanceof Error ? err.message : String(err)}`);
+  });
   active.lastActivity = Date.now();
   log.debug(`Steer message queued for session ${sessionKey}`);
-  sendJson(res, 200, { ok: true, queued: active.pendingMessages.length });
+  sendJson(res, 200, { ok: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -464,7 +453,6 @@ addRoute("POST", "/api/sessions/:agentId/:key/abort", (req, res, deps) => {
   if (deps.agentRuntime) {
     deps.agentRuntime.cancel(session.sessionId);
   }
-  session.pendingMessages.length = 0;
   sendJson(res, 200, { ok: true });
 });
 

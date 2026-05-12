@@ -23,6 +23,7 @@ export interface DispatchCallbacks {
   onTextDelta?: (delta: string) => void;
   onToolStart?: (call: { id: string; name: string; args: unknown }) => void;
   onToolEnd?: (result: { id: string; name: string; result: unknown; isError: boolean }) => void;
+  onTurnEnd?: () => void;
 }
 
 export interface DispatchResult {

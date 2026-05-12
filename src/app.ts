@@ -200,6 +200,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       uiEntries,
       sessionStoreManager,
       agentRuntime,
+      gateway,
     },
   );
   await apiServer.start();
