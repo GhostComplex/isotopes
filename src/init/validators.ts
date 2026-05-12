@@ -1,20 +1,13 @@
-export type GroupAllowlistResult =
-  | { ok: true; entries: string[] }
-  | { ok: false; reason: "format" | "mixed" };
-
+// Returns the parsed entries (possibly empty), or null if the input is invalid.
 // Mixed mode is rejected — see render.ts for the AND-allowlist contract.
-// An empty input is a valid `{ ok: true, entries: [] }` — the caller decides
-// whether to accept that as 'defer' or to require at least one entry.
-export function parseGroupAllowlist(raw: string): GroupAllowlistResult {
+export function parseGroupAllowlist(raw: string): string[] | null {
   const entries = raw.trim().split(",").map((s) => s.trim()).filter(Boolean);
-  if (entries.length === 0) return { ok: true, entries: [] };
-  if (!entries.every((e) => /^\d+(\/\d+)?$/.test(e))) {
-    return { ok: false, reason: "format" };
-  }
+  if (entries.length === 0) return [];
+  if (!entries.every((e) => /^\d+(\/\d+)?$/.test(e))) return null;
   const allWhole = entries.every((e) => !e.includes("/"));
   const allChannel = entries.every((e) => e.includes("/"));
-  if (!allWhole && !allChannel) return { ok: false, reason: "mixed" };
-  return { ok: true, entries };
+  if (!allWhole && !allChannel) return null;
+  return entries;
 }
 
 export function isValidDiscordUserId(raw: string): boolean {

@@ -285,27 +285,19 @@ function InitWizard({ onDone }: Props) {
               value={groupAllowlistInput}
               onChange={setGroupAllowlistInput}
               onSubmit={() => {
-                const result = parseGroupAllowlist(groupAllowlistInput);
-                if (result.ok) {
-                  if (result.entries.length > 0) {
-                    setDiscordField({ groupAllowlist: result.entries });
+                const entries = parseGroupAllowlist(groupAllowlistInput);
+                if (entries !== null) {
+                  if (entries.length > 0) {
+                    setDiscordField({ groupAllowlist: entries });
                   }
                   goToClaude();
                 }
               }}
             />
           </Box>
-          {groupAllowlistInput.trim().length > 0 && (() => {
-            const result = parseGroupAllowlist(groupAllowlistInput);
-            if (result.ok) return null;
-            if (result.reason === "format") {
-              return <Text color="yellow">  each entry must be serverId or serverId/channelId (numeric)</Text>;
-            }
-            if (result.reason === "mixed") {
-              return <Text color="yellow">  pick one mode: all serverId, OR all serverId/channelId — not mixed</Text>;
-            }
-            return null;
-          })()}
+          {groupAllowlistInput.trim().length > 0 && parseGroupAllowlist(groupAllowlistInput) === null && (
+            <Text color="yellow">  invalid value</Text>
+          )}
         </Box>
       )}
 
