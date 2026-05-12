@@ -301,3 +301,52 @@ describe("HeartbeatManager", () => {
     });
   });
 });
+
+describe("HeartbeatManager — timeout", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("does not pin isRunning when runAgentLoop never resolves", async () => {
+    const fake = createFakeFs({ "HEARTBEAT.md": "tasks" });
+    vi.mocked(fs.readFile).mockImplementation(fake.readFile);
+
+    // runAgentLoop returns a forever-pending promise to simulate a hung run.
+    const runAgentLoop = vi.fn<RunAgentLoop>().mockImplementation(
+      () => new Promise<string>(() => { /* never resolves */ }),
+    );
+
+    const intervalSeconds = 5;
+    const hb = new HeartbeatManager({
+      agentId: "stuck-agent",
+      workspacePath: "/workspace",
+      config: { enabled: true, intervalSeconds },
+      runAgentLoop,
+    });
+
+    // First trigger — runAgentLoop hangs forever.
+    const firstTick = hb.trigger();
+    await vi.advanceTimersByTimeAsync(0); // let tick reach the await
+    expect(runAgentLoop).toHaveBeenCalledTimes(1);
+
+    // While the first tick is hung, a concurrent trigger is skipped.
+    await hb.trigger();
+    expect(runAgentLoop).toHaveBeenCalledTimes(1);
+
+    // Advance past the 2 × interval timeout.
+    await vi.advanceTimersByTimeAsync(2 * intervalSeconds * 1000 + 100);
+
+    // First tick should have completed (timeout caught, finally resets isRunning).
+    await firstTick;
+
+    // Now isRunning is false — a fresh trigger fires runAgentLoop again.
+    void hb.trigger();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runAgentLoop).toHaveBeenCalledTimes(2);
+  });
+});

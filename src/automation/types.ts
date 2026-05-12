@@ -1,7 +1,6 @@
 // src/automation/types.ts — Cron + heartbeat config types
 
-/** Action to perform when a config-level cron job triggers. */
-export type CronActionConfig =
+/** Action to perform when a cron job triggers. */
+export type CronAction =
   | { type: "message"; content: string }
-  | { type: "prompt"; prompt: string }
-  | { type: "callback"; handler: string };
+  | { type: "prompt"; prompt: string };

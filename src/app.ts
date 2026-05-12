@@ -99,11 +99,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       agentId: agentFile.id,
       workspacePath,
       config: { ...agentFile.heartbeat, enabled: true },
-      runAgentLoop: async (agentId, prompt, _sessionKey) => {
+      runAgentLoop: async (agentId, prompt, sessionKey) => {
         const cwd = resolveCwd(agentId);
         const result = await gateway.dispatch({
           agentId,
-          sessionKey: `heartbeat:${agentId}`,
+          sessionKey,
           content: prompt,
           source: "heartbeat",
           ...(cwd ? { cwd } : {}),
@@ -117,37 +117,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Heartbeat enabled for "${agentFile.id}" (every ${agentFile.heartbeat.intervalSeconds ?? 300}s)`);
   }
 
-  const cronScheduler = new CronScheduler();
-
-  for (const agentFile of config.agents) {
-    if (!agentFile.cron?.tasks?.length) continue;
-    for (const task of agentFile.cron.tasks) {
-      cronScheduler.register({
-        name: task.name,
-        expression: task.schedule,
-        agentId: agentFile.id,
-        channelId: task.channel,
-        action: { type: "prompt", prompt: task.prompt },
-        enabled: task.enabled ?? true,
-      });
-    }
-    log.info(`Registered ${agentFile.cron.tasks.length} cron task(s) for "${agentFile.id}"`);
-  }
-
-  if (config.cron?.length) {
-    for (const task of config.cron) {
-      cronScheduler.register({
-        name: task.name,
-        expression: task.expression,
-        agentId: task.agentId,
-        action: task.action,
-        enabled: task.enabled ?? true,
-      });
-    }
-    log.info(`Registered ${config.cron.length} top-level cron task(s)`);
-  }
-
-  cronScheduler.onTrigger(async (job) => {
+  const cronScheduler = new CronScheduler(async (job) => {
     if (!agentRuntime.getAgent(job.agentId)) {
       log.error(`Cron job "${job.name}" references unknown agent "${job.agentId}"`);
       return;
@@ -156,11 +126,8 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     let prompt: string;
     if (job.action.type === "prompt") {
       prompt = job.action.prompt;
-    } else if (job.action.type === "message") {
-      prompt = job.action.content;
     } else {
-      log.warn(`Cron job "${job.name}" has unsupported action type "${job.action.type}" — skipping`);
-      return;
+      prompt = job.action.content;
     }
 
     const sessionKey = `cron:${job.agentId}:${job.name}`;
@@ -180,6 +147,33 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       log.error(`Cron "${job.name}" failed:`, err);
     }
   });
+
+  for (const agentFile of config.agents) {
+    if (!agentFile.cron?.tasks?.length) continue;
+    for (const task of agentFile.cron.tasks) {
+      cronScheduler.register({
+        name: task.name,
+        expression: task.schedule,
+        agentId: agentFile.id,
+        action: { type: "prompt", prompt: task.prompt },
+        enabled: task.enabled ?? true,
+      });
+    }
+    log.info(`Registered ${agentFile.cron.tasks.length} cron task(s) for "${agentFile.id}"`);
+  }
+
+  if (config.cron?.length) {
+    for (const task of config.cron) {
+      cronScheduler.register({
+        name: task.name,
+        expression: task.expression,
+        agentId: task.agentId,
+        action: task.action,
+        enabled: task.enabled ?? true,
+      });
+    }
+    log.info(`Registered ${config.cron.length} top-level cron task(s)`);
+  }
 
   cronScheduler.start();
   if (cronScheduler.listJobs().length > 0) {

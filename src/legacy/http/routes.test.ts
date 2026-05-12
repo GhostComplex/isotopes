@@ -54,7 +54,7 @@ describe("API routes", () => {
   let cronScheduler: CronScheduler;
 
   beforeEach(async () => {
-    cronScheduler = new CronScheduler();
+    cronScheduler = new CronScheduler(async () => {});
     server = new ApiServer({ port: 0 }, { cronScheduler });
     await server.start();
   });
@@ -121,7 +121,7 @@ describe("API routes", () => {
 
       expect(status).toBe(201);
       const body = data as { id: string; name: string; enabled: boolean };
-      expect(body.id).toMatch(/^cron_/);
+      expect(body.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
       expect(body.name).toBe("daily-report");
       expect(body.enabled).toBe(true);
 
@@ -169,7 +169,7 @@ describe("API routes", () => {
       expect(status).toBe(200);
       expect((data as { ok: boolean }).ok).toBe(true);
 
-      expect(cronScheduler.getJob(job.id)).toBeUndefined();
+      expect(cronScheduler.listJobs()).toHaveLength(0);
     });
 
     it("returns 404 for unknown job", async () => {

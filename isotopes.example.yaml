@@ -42,7 +42,6 @@ agents:
     #   tasks:
     #     - name: morning-standup
     #       schedule: "0 9 * * 1-5"         # cron expression
-    #       channel: discord:channel-id     # delivery target (currently informational — see #730)
     #       prompt: "Post the daily standup."
     #       enabled: true                   # default true
 

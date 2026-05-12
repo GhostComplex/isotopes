@@ -78,7 +78,7 @@ describe("POST /api/sessions/:agentId — sessionKey", () => {
     sessionStoreManager = new SessionStoreManager();
     server = new ApiServer(
       { port: 0 },
-      { cronScheduler: new CronScheduler(), agentRuntime: makeRuntime(), sessionStoreManager },
+      { cronScheduler: new CronScheduler(async () => {}), agentRuntime: makeRuntime(), sessionStoreManager },
     );
     await server.start();
   });

@@ -20,7 +20,6 @@ addRoute("GET", "/api/cron", (_req, res, deps) => {
         name: j.name,
         expression: j.expression,
         agentId: j.agentId,
-        channelId: j.channelId,
         action: j.action,
         enabled: j.enabled,
         lastRun: j.lastRun?.toISOString() ?? null,
@@ -52,7 +51,6 @@ addRoute("POST", "/api/cron", (req, res, deps) => {
       name: body.name,
       expression: body.expression,
       agentId: body.agentId,
-      channelId: body.channelId,
       action: body.action as CronJobInput["action"],
       enabled: body.enabled ?? true,
     });
