@@ -4,20 +4,15 @@ import { createApi } from "./server.js";
 import { CronScheduler } from "../automation/cron-job.js";
 import { SessionStoreManager } from "../agent/pi/session-store.js";
 import { AgentRuntime } from "../agent/runtime.js";
-import { createMockSessionStore } from "../test-helpers.js";
-import { startTestServer, request, type TestServer } from "./test-helpers.js";
+import { createGateway } from "../gateway/index.js";
+import { startTestServer, request, createStubGateway, type TestServer } from "./test-helpers.js";
 
 const MOCK_AGENT_ID = "mock";
 
 function makeRuntime(): AgentRuntime {
   const rt = new AgentRuntime({ globalProvider: { type: "anthropic", defaultModel: "claude-opus-4-5" } });
-  const agent = {
-    id: MOCK_AGENT_ID,
-    config: { id: MOCK_AGENT_ID },
-    sessionStore: createMockSessionStore() as never,
-  };
   rt.registerRunner(MOCK_AGENT_ID, {
-    agent: () => agent,
+    agent: () => ({ id: MOCK_AGENT_ID, config: { id: MOCK_AGENT_ID } } as never),
     resolveSessionId: (req) => req.sessionId ?? `mock:${randomUUID()}`,
     async *run() {},
   });
@@ -25,11 +20,13 @@ function makeRuntime(): AgentRuntime {
 }
 
 describe("/api/sessions", () => {
-  describe("without sessionStoreManager", () => {
+  describe("with stub gateway (no sessions registered)", () => {
     let ts: TestServer;
 
     beforeEach(async () => {
-      ts = await startTestServer(createApi({ cronScheduler: new CronScheduler(async () => {}) }));
+      ts = await startTestServer(
+        createApi({ cronScheduler: new CronScheduler(async () => {}), gateway: createStubGateway() }),
+      );
     });
 
     afterEach(() => ts.close());
@@ -40,10 +37,10 @@ describe("/api/sessions", () => {
       expect(data).toEqual({ items: [] });
     });
 
-    it("GET /api/sessions/:agentId/:key returns 503", async () => {
+    it("GET /api/sessions/:agentId/:key returns 404", async () => {
       const { status, data } = await request(ts.port, "GET", "/api/sessions/test-agent/nonexistent");
-      expect(status).toBe(503);
-      expect((data as { error: string }).error).toContain("not available");
+      expect(status).toBe(404);
+      expect((data as { error: string }).error).toContain("not found");
     });
   });
 
@@ -51,12 +48,11 @@ describe("/api/sessions", () => {
     let ts: TestServer;
 
     beforeEach(async () => {
-      const app = createApi({
-        cronScheduler: new CronScheduler(async () => {}),
-        agentRuntime: makeRuntime(),
-        sessionStoreManager: new SessionStoreManager(),
-      });
-      ts = await startTestServer(app);
+      const sessionStoreManager = new SessionStoreManager();
+      const gateway = createGateway({ agentRuntime: makeRuntime(), sessionStoreManager });
+      ts = await startTestServer(
+        createApi({ cronScheduler: new CronScheduler(async () => {}), gateway }),
+      );
     });
 
     afterEach(() => ts.close());

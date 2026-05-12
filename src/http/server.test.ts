@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createApi } from "./server.js";
 import { CronScheduler } from "../automation/cron-job.js";
-import { startTestServer, request, type TestServer } from "./test-helpers.js";
+import { startTestServer, request, createStubGateway, type TestServer } from "./test-helpers.js";
 
 describe("createApi", () => {
   let ts: TestServer;
 
   beforeEach(async () => {
-    const app = createApi({ cronScheduler: new CronScheduler(async () => {}) });
+    const app = createApi({ cronScheduler: new CronScheduler(async () => {}), gateway: createStubGateway() });
     ts = await startTestServer(app);
   });
 

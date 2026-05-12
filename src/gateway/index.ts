@@ -5,4 +5,8 @@ export type {
   MessageSource,
   DispatchCallbacks,
   DispatchResult,
+  CreateSessionResult,
+  Session,
+  SessionMetadata,
+  TranscriptListener,
 } from "./types.js";

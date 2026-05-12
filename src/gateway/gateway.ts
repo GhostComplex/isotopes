@@ -1,13 +1,19 @@
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AgentRuntime } from "../agent/runtime.js";
 import type { SessionStoreManager } from "../agent/pi/session-store.js";
 import type {
+  CreateSessionResult,
   DispatchCallbacks,
   DispatchResult,
   Gateway,
   Message,
+  Session,
+  TranscriptListener,
 } from "./types.js";
 import { createLogger } from "../logging/logger.js";
 import { getAgentEndMeta } from "../agent/pi/messages.js";
+import { resolveAgentWorkspacePath } from "../paths.js";
+import { randomUUID } from "node:crypto";
 
 const log = createLogger("gateway");
 
@@ -59,13 +65,15 @@ export function createGateway(deps: GatewayDeps): Gateway {
 
   async function triggerRun(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
     let readyResolved = false;
+    const cfg = deps.agentRuntime.getAgent(msg.agentId)?.config;
+    const cwd = cfg ? resolveAgentWorkspacePath(cfg) : undefined;
     try {
       for await (const event of deps.agentRuntime.run({
         to: msg.agentId,
         sessionId,
         content: msg.content,
         ...(msg.images && msg.images.length > 0 ? { images: msg.images } : {}),
-        ...(msg.cwd ? { cwd: msg.cwd } : {}),
+        ...(cwd ? { cwd } : {}),
         ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
       })) {
         if (!readyResolved) {
@@ -175,5 +183,83 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return deps.agentRuntime.cancel(session.id, reason ? { reason } : undefined);
   }
 
-  return { dispatch, abort, abortByKey };
+  function agentExists(agentId: string): boolean {
+    return deps.agentRuntime.getAgent(agentId)?.config !== undefined;
+  }
+
+  async function listSessions(): Promise<Session[]> {
+    const out: Session[] = [];
+    for (const [, store] of deps.sessionStoreManager.all()) {
+      const sessions = await store.list();
+      for (const s of sessions) if (s.metadata?.key) out.push(s);
+    }
+    return out;
+  }
+
+  async function listSessionsForAgent(agentId: string): Promise<Session[]> {
+    const store = deps.sessionStoreManager.peek(agentId);
+    if (!store) return [];
+    return (await store.list()).filter((s) => s.metadata?.key);
+  }
+
+  async function getSession(agentId: string, sessionKey: string): Promise<Session | undefined> {
+    const store = deps.sessionStoreManager.peek(agentId);
+    return store ? store.findByKey(sessionKey) : undefined;
+  }
+
+  async function getMessages(agentId: string, sessionKey: string): Promise<AgentMessage[] | undefined> {
+    const store = deps.sessionStoreManager.peek(agentId);
+    if (!store) return undefined;
+    const session = await store.findByKey(sessionKey);
+    return session ? store.getMessages(session.id) : undefined;
+  }
+
+  async function subscribeMessages(
+    agentId: string,
+    sessionKey: string,
+    listener: TranscriptListener,
+  ): Promise<(() => void) | undefined> {
+    const store = deps.sessionStoreManager.peek(agentId);
+    if (!store) return undefined;
+    const session = await store.findByKey(sessionKey);
+    if (!session) return undefined;
+    return store.subscribe(session.id, listener);
+  }
+
+  async function createOrResumeSession(
+    agentId: string,
+    sessionKey?: string,
+  ): Promise<CreateSessionResult> {
+    const store = await deps.sessionStoreManager.getOrCreate(agentId);
+    const key = sessionKey ?? randomUUID();
+    if (sessionKey) {
+      const existing = await store.findByKey(sessionKey);
+      if (existing) return { sessionId: existing.id, sessionKey: existing.metadata?.key ?? sessionKey, resumed: true };
+    }
+    const created = await store.create(agentId, { key });
+    return { sessionId: created.id, sessionKey: key, resumed: false };
+  }
+
+  async function deleteSession(agentId: string, sessionKey: string): Promise<boolean> {
+    const store = deps.sessionStoreManager.peek(agentId);
+    if (!store) return false;
+    const session = await store.findByKey(sessionKey);
+    if (!session) return false;
+    await store.delete(session.id);
+    return true;
+  }
+
+  return {
+    dispatch,
+    abort,
+    abortByKey,
+    agentExists,
+    listSessions,
+    listSessionsForAgent,
+    getSession,
+    getMessages,
+    subscribeMessages,
+    createOrResumeSession,
+    deleteSession,
+  };
 }

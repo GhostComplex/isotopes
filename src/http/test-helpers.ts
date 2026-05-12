@@ -1,6 +1,27 @@
 import http from "node:http";
 import { serve, type ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
+import type { Gateway } from "../gateway/index.js";
+
+export function createStubGateway(overrides: Partial<Gateway> = {}): Gateway {
+  const notImpl = (name: string) => () => {
+    throw new Error(`stub gateway: ${name} not implemented`);
+  };
+  return {
+    dispatch: notImpl("dispatch") as Gateway["dispatch"],
+    abort: async () => {},
+    abortByKey: async () => false,
+    agentExists: () => false,
+    listSessions: async () => [],
+    listSessionsForAgent: async () => [],
+    getSession: async () => undefined,
+    getMessages: async () => undefined,
+    subscribeMessages: async () => undefined,
+    createOrResumeSession: notImpl("createOrResumeSession") as Gateway["createOrResumeSession"],
+    deleteSession: async () => false,
+    ...overrides,
+  };
+}
 
 export interface TestServer {
   server: ServerType;

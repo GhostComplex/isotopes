@@ -5,10 +5,7 @@ import {
 import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyChannelContext } from "./channels/types.js";
-import {
-  ensureDirectories,
-  resolveAgentWorkspacePath,
-} from "./paths.js";
+import { ensureDirectories } from "./paths.js";
 
 import { serve, type ServerType } from "@hono/node-server";
 import { createApi } from "./http/server.js";
@@ -84,11 +81,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
 
-  function resolveCwd(agentId: string): string | undefined {
-    const cfg = agentRuntime.getAgent(agentId)?.config;
-    return cfg ? resolveAgentWorkspacePath(cfg) : undefined;
-  }
-
   const heartbeatManagers: HeartbeatManager[] = [];
   for (const agentFile of config.agents) {
     if (!agentFile.heartbeat?.enabled) continue;
@@ -100,13 +92,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       workspacePath,
       config: { ...agentFile.heartbeat, enabled: true },
       runAgentLoop: async (agentId, prompt, sessionKey) => {
-        const cwd = resolveCwd(agentId);
         const result = await gateway.dispatch({
           agentId,
           sessionKey,
           content: prompt,
           source: "heartbeat",
-          ...(cwd ? { cwd } : {}),
         });
         return result.responseText;
       },
@@ -134,13 +124,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
 
     try {
-      const cwd = resolveCwd(job.agentId);
       const result = await gateway.dispatch({
         agentId: job.agentId,
         sessionKey,
         content: prompt,
         source: "cron",
-        ...(cwd ? { cwd } : {}),
       });
       log.info(`Cron "${job.name}" completed (${result.responseText.length} chars)`);
     } catch (err) {
@@ -192,12 +180,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   const port = apiPort ?? 2712;
-  const api = createApi({
-    cronScheduler,
-    sessionStoreManager,
-    agentRuntime,
-    gateway,
-  });
+  const api = createApi({ cronScheduler, gateway });
   const apiServer = await new Promise<ServerType>((resolve) => {
     const s = serve({ fetch: api.fetch, port, hostname: "127.0.0.1" }, () => {
       log.info(`API server listening on http://127.0.0.1:${port}`);

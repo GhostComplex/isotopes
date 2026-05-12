@@ -62,7 +62,15 @@ function makeGateway(): Gateway & { dispatch: ReturnType<typeof vi.fn> } {
     }),
     abort: vi.fn().mockResolvedValue(undefined),
     abortByKey: vi.fn().mockResolvedValue(false),
-  } as Gateway & { dispatch: ReturnType<typeof vi.fn> };
+    agentExists: vi.fn().mockReturnValue(true),
+    listSessions: vi.fn().mockResolvedValue([]),
+    listSessionsForAgent: vi.fn().mockResolvedValue([]),
+    getSession: vi.fn().mockResolvedValue(undefined),
+    getMessages: vi.fn().mockResolvedValue(undefined),
+    subscribeMessages: vi.fn().mockResolvedValue(undefined),
+    createOrResumeSession: vi.fn(),
+    deleteSession: vi.fn().mockResolvedValue(false),
+  } as unknown as Gateway & { dispatch: ReturnType<typeof vi.fn> };
 }
 
 describe("handleInbound", () => {

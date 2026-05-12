@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createApi } from "./server.js";
 import { CronScheduler } from "../automation/cron-job.js";
-import { startTestServer, request, type TestServer } from "./test-helpers.js";
+import { startTestServer, request, createStubGateway, type TestServer } from "./test-helpers.js";
 
 describe("GET /api/status", () => {
   let ts: TestServer;
@@ -9,7 +9,7 @@ describe("GET /api/status", () => {
 
   beforeEach(async () => {
     cronScheduler = new CronScheduler(async () => {});
-    ts = await startTestServer(createApi({ cronScheduler }));
+    ts = await startTestServer(createApi({ cronScheduler, gateway: createStubGateway() }));
   });
 
   afterEach(() => ts.close());

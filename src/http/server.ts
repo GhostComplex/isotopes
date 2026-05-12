@@ -4,8 +4,6 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import path from "node:path";
 import { createLogger } from "../logging/logger.js";
 import type { CronScheduler } from "../automation/cron-job.js";
-import type { SessionStoreManager } from "../agent/pi/session-store.js";
-import type { AgentRuntime } from "../agent/runtime.js";
 import type { Gateway } from "../gateway/index.js";
 import { registerCronRoutes } from "./cron.js";
 import { registerStatusRoutes } from "./status.js";
@@ -16,9 +14,7 @@ const log = createLogger("api:server");
 
 export interface ApiDeps {
   cronScheduler: CronScheduler;
-  sessionStoreManager?: SessionStoreManager;
-  agentRuntime?: AgentRuntime;
-  gateway?: Gateway;
+  gateway: Gateway;
 }
 
 export function createApi(deps: ApiDeps): Hono {
