@@ -5,7 +5,7 @@ import TextInput from "ink-text-input";
 
 import type {
   Channel,
-  CodingAgentChoice,
+  CodingAgent,
   InitAnswers,
   Provider,
 } from "./types.js";
@@ -71,7 +71,7 @@ function InitWizard({ onDone }: Props) {
     }
   });
 
-  const finish = (codingAgent: CodingAgentChoice) => {
+  const finish = (codingAgent: CodingAgent) => {
     onDone({ provider, channel, codingAgent });
     exit();
   };
@@ -314,7 +314,7 @@ function InitWizard({ onDone }: Props) {
               { label: "claude (default)", value: "claude" as const },
               { label: "skip", value: "skip" as const },
             ]}
-            onSelect={(item: { value: CodingAgentChoice }) => {
+            onSelect={(item: { value: CodingAgent }) => {
               finish(item.value);
             }}
           />
