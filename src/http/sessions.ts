@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { resolveAgentWorkspacePath } from "../paths.js";
 import type { DefaultSessionStore } from "../agent/pi/session-store.js";
 import type { Session } from "../sessions/types.js";
-import type { RouteDeps } from "./server.js";
+import type { ApiDeps } from "./server.js";
 
 const log = createLogger("api:sessions");
 
@@ -55,7 +55,7 @@ async function resolveSessionKey(
   return { sessionKey, sessionId: session.id, session };
 }
 
-export function registerSessionRoutes(app: Hono, deps: RouteDeps): void {
+export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
   app.get("/api/sessions", async (c) => {
     if (!deps.sessionStoreManager) return c.json({ items: [] });
     const items: Array<{

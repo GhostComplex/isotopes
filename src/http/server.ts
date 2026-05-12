@@ -24,13 +24,6 @@ export interface ApiDeps {
   corsOrigins?: string[];
 }
 
-export interface RouteDeps {
-  cronScheduler: CronScheduler;
-  sessionStoreManager?: SessionStoreManager;
-  agentRuntime?: AgentRuntime;
-  gateway?: Gateway;
-}
-
 export function createApi(deps: ApiDeps): Hono {
   const app = new Hono();
 
@@ -52,15 +45,9 @@ export function createApi(deps: ApiDeps): Hono {
 
   mountUI(app, deps.uiEntries ?? []);
 
-  const routeDeps: RouteDeps = {
-    cronScheduler: deps.cronScheduler,
-    sessionStoreManager: deps.sessionStoreManager,
-    agentRuntime: deps.agentRuntime,
-    gateway: deps.gateway,
-  };
-  registerCronRoutes(app, routeDeps);
-  registerStatusRoutes(app, routeDeps);
-  registerSessionRoutes(app, routeDeps);
+  registerCronRoutes(app, deps);
+  registerStatusRoutes(app, deps);
+  registerSessionRoutes(app, deps);
 
   app.notFound((c) =>
     c.json({ error: `No route for ${c.req.method} ${c.req.path}`, status: 404 }, 404),

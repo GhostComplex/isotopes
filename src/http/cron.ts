@@ -1,8 +1,8 @@
 import type { Hono } from "hono";
 import type { CronJobInput } from "../automation/cron-job.js";
-import type { RouteDeps } from "./server.js";
+import type { ApiDeps } from "./server.js";
 
-export function registerCronRoutes(app: Hono, deps: RouteDeps): void {
+export function registerCronRoutes(app: Hono, deps: ApiDeps): void {
   app.get("/api/cron", (c) => {
     const jobs = deps.cronScheduler.listJobs();
     return c.json({
