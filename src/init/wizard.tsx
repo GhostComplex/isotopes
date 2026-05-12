@@ -287,9 +287,9 @@ function InitWizard({ onDone }: Props) {
               onSubmit={() => {
                 const result = parseGroupAllowlist(groupAllowlistInput);
                 if (result.ok) {
-                  setDiscordField({ groupAllowlist: result.entries });
-                  goToClaude();
-                } else if (result.reason === "empty") {
+                  if (result.entries.length > 0) {
+                    setDiscordField({ groupAllowlist: result.entries });
+                  }
                   goToClaude();
                 }
               }}

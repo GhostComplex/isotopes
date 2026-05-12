@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { parseGroupAllowlist, isValidDiscordUserId } from "./validators.js";
 
 describe("parseGroupAllowlist", () => {
-  it("rejects empty input", () => {
-    expect(parseGroupAllowlist("")).toEqual({ ok: false, reason: "empty" });
-    expect(parseGroupAllowlist("   ")).toEqual({ ok: false, reason: "empty" });
-    expect(parseGroupAllowlist(" , ,")).toEqual({ ok: false, reason: "empty" });
+  it("treats empty input as ok with no entries (caller decides whether to accept)", () => {
+    expect(parseGroupAllowlist("")).toEqual({ ok: true, entries: [] });
+    expect(parseGroupAllowlist("   ")).toEqual({ ok: true, entries: [] });
+    expect(parseGroupAllowlist(" , ,")).toEqual({ ok: true, entries: [] });
   });
 
   it("accepts whole-guild entries", () => {

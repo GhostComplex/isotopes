@@ -1,11 +1,13 @@
 export type GroupAllowlistResult =
   | { ok: true; entries: string[] }
-  | { ok: false; reason: "empty" | "format" | "mixed" };
+  | { ok: false; reason: "format" | "mixed" };
 
 // Mixed mode is rejected — see render.ts for the AND-allowlist contract.
+// An empty input is a valid `{ ok: true, entries: [] }` — the caller decides
+// whether to accept that as 'defer' or to require at least one entry.
 export function parseGroupAllowlist(raw: string): GroupAllowlistResult {
   const entries = raw.trim().split(",").map((s) => s.trim()).filter(Boolean);
-  if (entries.length === 0) return { ok: false, reason: "empty" };
+  if (entries.length === 0) return { ok: true, entries: [] };
   if (!entries.every((e) => /^\d+(\/\d+)?$/.test(e))) {
     return { ok: false, reason: "format" };
   }
