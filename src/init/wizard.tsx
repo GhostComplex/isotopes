@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
-import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 
 import type {
@@ -10,6 +9,7 @@ import type {
   Provider,
 } from "./types.js";
 import { isValidDiscordUserId, parseGroupAllowlist } from "./validators.js";
+import { SelectStep, TextStep } from "./steps.js";
 
 const DEFAULT_GHC_MODEL = "claude-opus-4.7";
 const DEFAULT_MINIMAX_MODEL = "MiniMax-M2.7";
@@ -114,162 +114,123 @@ function InitWizard({ onDone }: Props) {
       </Box>
 
       {step.kind === "llm" && (
-        <Box flexDirection="column">
-          <Text>1) LLM provider:</Text>
-          <SelectInput
-            items={[
-              { label: "ghc-proxy (Anthropic via GHC Coder proxy)", value: "ghc-proxy" as const },
-              { label: "minimax-cn (MiniMax — China endpoint)", value: "minimax-cn" as const },
-              { label: "skip (configure later)", value: "skip" as const },
-            ]}
-            onSelect={handleLlmSelect}
-          />
-        </Box>
+        <SelectStep
+          label="1) LLM provider:"
+          items={[
+            { label: "ghc-proxy (Anthropic via GHC Coder proxy)", value: "ghc-proxy" },
+            { label: "minimax-cn (MiniMax — China endpoint)", value: "minimax-cn" },
+            { label: "skip (configure later)", value: "skip" },
+          ]}
+          onSelect={handleLlmSelect}
+        />
       )}
 
       {step.kind === "provider-baseUrl" && (
-        <Box flexDirection="column">
-          <Text>{providerLabel} baseUrl:</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={providerBaseUrl}
-              onChange={setBaseUrl}
-              onSubmit={() => {
-                if (providerBaseUrl.trim().length > 0) setStep({ kind: "provider-apiKey" });
-              }}
-            />
-          </Box>
-          {providerBaseUrl.trim().length === 0 && (
-            <Text color="yellow">  baseUrl is required</Text>
-          )}
-        </Box>
+        <TextStep
+          label={`${providerLabel} baseUrl:`}
+          value={providerBaseUrl}
+          onChange={setBaseUrl}
+          onSubmit={() => {
+            if (providerBaseUrl.trim().length > 0) setStep({ kind: "provider-apiKey" });
+          }}
+          error={providerBaseUrl.trim().length === 0 ? "baseUrl is required" : undefined}
+        />
       )}
 
       {step.kind === "provider-apiKey" && (
-        <Box flexDirection="column">
-          <Text>{providerLabel} apiKey (literal value, stored in yaml):</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={providerApiKey}
-              mask="•"
-              onChange={setApiKey}
-              onSubmit={() => {
-                if (providerApiKey.trim().length > 0) setStep({ kind: "provider-model" });
-              }}
-            />
-          </Box>
-          {providerApiKey.trim().length === 0 && (
-            <Text color="yellow">  apiKey is required</Text>
-          )}
-        </Box>
+        <TextStep
+          label={`${providerLabel} apiKey (literal value, stored in yaml):`}
+          value={providerApiKey}
+          mask
+          onChange={setApiKey}
+          onSubmit={() => {
+            if (providerApiKey.trim().length > 0) setStep({ kind: "provider-model" });
+          }}
+          error={providerApiKey.trim().length === 0 ? "apiKey is required" : undefined}
+        />
       )}
 
       {step.kind === "provider-model" && (
-        <Box flexDirection="column">
-          <Text>{providerLabel} model:</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={providerModel}
-              onChange={setModel}
-              onSubmit={() => {
-                if (providerModel.trim().length > 0) goToChannel();
-              }}
-            />
-          </Box>
-          {providerModel.trim().length === 0 && (
-            <Text color="yellow">  model is required</Text>
-          )}
-        </Box>
+        <TextStep
+          label={`${providerLabel} model:`}
+          value={providerModel}
+          onChange={setModel}
+          onSubmit={() => {
+            if (providerModel.trim().length > 0) goToChannel();
+          }}
+          error={providerModel.trim().length === 0 ? "model is required" : undefined}
+        />
       )}
 
       {step.kind === "channel" && (
-        <Box flexDirection="column">
-          <Text>2) Channel:</Text>
-          <SelectInput
-            items={[
-              { label: "discord", value: "discord" as const },
-              { label: "skip (configure later)", value: "skip" as const },
-            ]}
-            onSelect={handleChannelSelect}
-          />
-        </Box>
+        <SelectStep
+          label="2) Channel:"
+          items={[
+            { label: "discord", value: "discord" },
+            { label: "skip (configure later)", value: "skip" },
+          ]}
+          onSelect={handleChannelSelect}
+        />
       )}
 
       {step.kind === "discord-token" && (
-        <Box flexDirection="column">
-          <Text>Discord bot token (literal value, stored in yaml):</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={discordToken}
-              mask="•"
-              onChange={(v) => setDiscordField({ token: v })}
-              onSubmit={() => {
-                if (discordToken.trim().length > 0) setStep({ kind: "discord-dm-policy" });
-              }}
-            />
-          </Box>
-          {discordToken.trim().length === 0 && (
-            <Text color="yellow">  token is required</Text>
-          )}
-        </Box>
+        <TextStep
+          label="Discord bot token (literal value, stored in yaml):"
+          value={discordToken}
+          mask
+          onChange={(v) => setDiscordField({ token: v })}
+          onSubmit={() => {
+            if (discordToken.trim().length > 0) setStep({ kind: "discord-dm-policy" });
+          }}
+          error={discordToken.trim().length === 0 ? "token is required" : undefined}
+        />
       )}
 
       {step.kind === "discord-dm-policy" && (
-        <Box flexDirection="column">
-          <Text>DM (direct message) policy:</Text>
-          <SelectInput
-            items={[
-              { label: "disabled (default)", value: "disabled" as const },
-              { label: "allowlist (enter your Discord user ID)", value: "allowlist" as const },
-            ]}
-            onSelect={(item) => {
-              setDiscordField({ dmPolicy: item.value });
-              if (item.value === "allowlist") setStep({ kind: "discord-dm-userId" });
-              else setStep({ kind: "discord-group-policy" });
-            }}
-          />
-        </Box>
+        <SelectStep
+          label="DM (direct message) policy:"
+          items={[
+            { label: "disabled (default)", value: "disabled" },
+            { label: "allowlist (enter your Discord user ID)", value: "allowlist" },
+          ]}
+          onSelect={(item) => {
+            setDiscordField({ dmPolicy: item.value });
+            if (item.value === "allowlist") setStep({ kind: "discord-dm-userId" });
+            else setStep({ kind: "discord-group-policy" });
+          }}
+        />
       )}
 
       {step.kind === "discord-dm-userId" && (
-        <Box flexDirection="column">
-          <Text>Your Discord user ID (numeric, e.g. 123456789012345678):</Text>
-          <Box>
-            <Text color="cyan">› </Text>
-            <TextInput
-              value={discordDmUserId}
-              onChange={(v) => setDiscordField({ dmUserId: v })}
-              onSubmit={() => {
-                if (isValidDiscordUserId(discordDmUserId)) setStep({ kind: "discord-group-policy" });
-              }}
-            />
-          </Box>
-          {discordDmUserId.trim().length > 0 && !isValidDiscordUserId(discordDmUserId) && (
-            <Text color="yellow">  must be a numeric Discord user ID</Text>
-          )}
-        </Box>
+        <TextStep
+          label="Your Discord user ID (numeric, e.g. 123456789012345678):"
+          value={discordDmUserId}
+          onChange={(v) => setDiscordField({ dmUserId: v })}
+          onSubmit={() => {
+            if (isValidDiscordUserId(discordDmUserId)) setStep({ kind: "discord-group-policy" });
+          }}
+          error={
+            discordDmUserId.trim().length > 0 && !isValidDiscordUserId(discordDmUserId)
+              ? "must be a numeric Discord user ID"
+              : undefined
+          }
+        />
       )}
 
       {step.kind === "discord-group-policy" && (
-        <Box flexDirection="column">
-          <Text>Group (server/guild) policy:</Text>
-          <SelectInput
-            items={[
-              { label: "allowlist (default — enter server/channel IDs)", value: "allowlist" as const },
-              { label: "open (accept all servers)", value: "open" as const },
-              { label: "disabled (ignore all guild messages)", value: "disabled" as const },
-            ]}
-            onSelect={(item) => {
-              setDiscordField({ groupPolicy: item.value });
-              if (item.value === "allowlist") setStep({ kind: "discord-group-allowlist" });
-              else goToClaude();
-            }}
-          />
-        </Box>
+        <SelectStep
+          label="Group (server/guild) policy:"
+          items={[
+            { label: "allowlist (default — enter server/channel IDs)", value: "allowlist" },
+            { label: "open (accept all servers)", value: "open" },
+            { label: "disabled (ignore all guild messages)", value: "disabled" },
+          ]}
+          onSelect={(item) => {
+            setDiscordField({ groupPolicy: item.value });
+            if (item.value === "allowlist") setStep({ kind: "discord-group-allowlist" });
+            else goToClaude();
+          }}
+        />
       )}
 
       {step.kind === "discord-group-allowlist" && (
@@ -302,18 +263,16 @@ function InitWizard({ onDone }: Props) {
       )}
 
       {step.kind === "claude" && (
-        <Box flexDirection="column">
-          <Text>3) Enable A2A coding:</Text>
-          <SelectInput
-            items={[
-              { label: "claude (default)", value: "claude" as const },
-              { label: "skip", value: "skip" as const },
-            ]}
-            onSelect={(item: { value: CodingAgent }) => {
-              finish(item.value);
-            }}
-          />
-        </Box>
+        <SelectStep
+          label="3) Enable A2A coding:"
+          items={[
+            { label: "claude (default)", value: "claude" },
+            { label: "skip", value: "skip" },
+          ]}
+          onSelect={(item) => {
+            finish(item.value);
+          }}
+        />
       )}
     </Box>
   );
