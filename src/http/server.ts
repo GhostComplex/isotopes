@@ -20,8 +20,6 @@ export interface ApiDeps {
   sessionStoreManager?: SessionStoreManager;
   agentRuntime?: AgentRuntime;
   gateway?: Gateway;
-  /** Defaults to `["*"]`. */
-  corsOrigins?: string[];
 }
 
 export function createApi(deps: ApiDeps): Hono {
@@ -30,7 +28,7 @@ export function createApi(deps: ApiDeps): Hono {
   app.use(
     "*",
     cors({
-      origin: deps.corsOrigins ?? ["*"],
+      origin: ["*"],
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization"],
       maxAge: 86400,
