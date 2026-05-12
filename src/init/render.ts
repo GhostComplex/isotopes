@@ -6,9 +6,9 @@ const HEADER = `# ~/.isotopes/isotopes.yaml
 `;
 
 const PROVIDER_SKIP = `# provider:
-#   type: github-copilot
-#   defaultModel: claude-opus-4.7
-#   apiKey: \${GITHUB_TOKEN}
+#   type: minimax-cn          # or "minimax" for the international endpoint
+#   defaultModel: MiniMax-M2.7
+#   apiKey: \${MINIMAX_API_KEY}
 `;
 
 function renderProvider(answers: InitAnswers): string {
