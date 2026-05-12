@@ -1,15 +1,15 @@
 // src/http/status.ts — GET /api/status
 
-import { addRoute } from "./routes.js";
-import { sendJson } from "./middleware.js";
+import type { Hono } from "hono";
 import { VERSION } from "../legacy/version.js";
+import type { RouteDeps } from "./server.js";
 
-addRoute("GET", "/api/status", (_req, res, deps) => {
-  const cronJobCount = deps.cronScheduler.listJobs().length;
-
-  sendJson(res, 200, {
-    version: VERSION,
-    uptime: process.uptime(),
-    cronJobs: cronJobCount,
+export function registerStatusRoutes(app: Hono, deps: RouteDeps): void {
+  app.get("/api/status", (c) => {
+    return c.json({
+      version: VERSION,
+      uptime: process.uptime(),
+      cronJobs: deps.cronScheduler.listJobs().length,
+    });
   });
-});
+}

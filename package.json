@@ -72,11 +72,13 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.9",
+    "@hono/node-server": "^2.0.2",
     "@mariozechner/pi-agent-core": "^0.70.6",
     "@mariozechner/pi-ai": "^0.70.6",
     "@mariozechner/pi-coding-agent": "^0.70.6",
     "croner": "^10.0.1",
     "discord.js": "^14.18.0",
+    "hono": "^4.12.18",
     "ink": "^5.2.1",
     "ink-select-input": "^6.2.0",
     "ink-text-input": "^6.0.0",

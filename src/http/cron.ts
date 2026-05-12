@@ -1,20 +1,13 @@
 // src/http/cron.ts — Cron job management routes
 
-import { addRoute } from "./routes.js";
-import { sendJson, sendError, handleRouteError } from "./middleware.js";
+import type { Hono } from "hono";
 import type { CronJobInput } from "../automation/cron-job.js";
+import type { RouteDeps } from "./server.js";
 
-// ---------------------------------------------------------------------------
-// GET /api/cron — list cron jobs
-// ---------------------------------------------------------------------------
-
-addRoute("GET", "/api/cron", (_req, res, deps) => {
-  const jobs = deps.cronScheduler.listJobs();
-
-  sendJson(
-    res,
-    200,
-    {
+export function registerCronRoutes(app: Hono, deps: RouteDeps): void {
+  app.get("/api/cron", (c) => {
+    const jobs = deps.cronScheduler.listJobs();
+    return c.json({
       items: jobs.map((j) => ({
         id: j.id,
         name: j.name,
@@ -26,27 +19,17 @@ addRoute("GET", "/api/cron", (_req, res, deps) => {
         nextRun: j.nextRun?.toISOString() ?? null,
         createdAt: j.createdAt.toISOString(),
       })),
-    },
-  );
-});
+    });
+  });
 
-// ---------------------------------------------------------------------------
-// POST /api/cron — create cron job
-// ---------------------------------------------------------------------------
-
-addRoute("POST", "/api/cron", (req, res, deps) => {
-  const body = req.body as Partial<CronJobInput> | undefined;
-  if (!body || typeof body.name !== "string" || typeof body.expression !== "string" || typeof body.agentId !== "string") {
-    sendError(res, 400, "Request body must include 'name', 'expression', and 'agentId'");
-    return;
-  }
-
-  if (!body.action || typeof body.action.type !== "string") {
-    sendError(res, 400, "Request body must include 'action' with a 'type' field");
-    return;
-  }
-
-  try {
+  app.post("/api/cron", async (c) => {
+    const body = (await c.req.json().catch(() => undefined)) as Partial<CronJobInput> | undefined;
+    if (!body || typeof body.name !== "string" || typeof body.expression !== "string" || typeof body.agentId !== "string") {
+      return c.json({ error: "Request body must include 'name', 'expression', and 'agentId'", status: 400 }, 400);
+    }
+    if (!body.action || typeof body.action.type !== "string") {
+      return c.json({ error: "Request body must include 'action' with a 'type' field", status: 400 }, 400);
+    }
     const job = deps.cronScheduler.register({
       name: body.name,
       expression: body.expression,
@@ -54,31 +37,25 @@ addRoute("POST", "/api/cron", (req, res, deps) => {
       action: body.action as CronJobInput["action"],
       enabled: body.enabled ?? true,
     });
+    return c.json(
+      {
+        id: job.id,
+        name: job.name,
+        expression: job.expression,
+        agentId: job.agentId,
+        enabled: job.enabled,
+        nextRun: job.nextRun?.toISOString() ?? null,
+        createdAt: job.createdAt.toISOString(),
+      },
+      201,
+    );
+  });
 
-    sendJson(res, 201, {
-      id: job.id,
-      name: job.name,
-      expression: job.expression,
-      agentId: job.agentId,
-      enabled: job.enabled,
-      nextRun: job.nextRun?.toISOString() ?? null,
-      createdAt: job.createdAt.toISOString(),
-    });
-  } catch (err) {
-    handleRouteError(res, err);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// DELETE /api/cron/:id — delete cron job
-// ---------------------------------------------------------------------------
-
-addRoute("DELETE", "/api/cron/:id", (req, res, deps) => {
-  const removed = deps.cronScheduler.unregister(req.params.id);
-  if (!removed) {
-    sendError(res, 404, `Cron job "${req.params.id}" not found`);
-    return;
-  }
-
-  sendJson(res, 200, { ok: true });
-});
+  app.delete("/api/cron/:id", (c) => {
+    const removed = deps.cronScheduler.unregister(c.req.param("id"));
+    if (!removed) {
+      return c.json({ error: `Cron job "${c.req.param("id")}" not found`, status: 404 }, 404);
+    }
+    return c.json({ ok: true });
+  });
+}
