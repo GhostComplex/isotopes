@@ -99,13 +99,42 @@ export class HeartbeatManager {
     this.log.info(`Heartbeat triggered for "${this.agentId}"`);
 
     try {
-      const response = await this.runAgentLoop(this.agentId, prompt, sessionKey);
-      this.log.info(`Heartbeat response from "${this.agentId}": ${response}`);
+      // Cap the wait at 2× interval so a hung underlying run doesn't pin
+      // isRunning forever (which would silently skip every future tick).
+      // The underlying run is NOT canceled on timeout — gateway's steer will
+      // merge the next tick's content into it if it eventually completes.
+      const timeoutMs = this.intervalMs * 2;
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const response = await Promise.race([
+          this.runAgentLoop(this.agentId, prompt, sessionKey),
+          new Promise<never>((_, reject) => {
+            timeoutHandle = setTimeout(
+              () => reject(new HeartbeatTimeoutError(timeoutMs)),
+              timeoutMs,
+            );
+          }),
+        ]);
+        this.log.info(`Heartbeat response from "${this.agentId}": ${response}`);
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      }
     } catch (err) {
-      this.log.error(`Heartbeat error for "${this.agentId}":`, err);
+      if (err instanceof HeartbeatTimeoutError) {
+        this.log.warn(`Heartbeat timed out for "${this.agentId}" after ${err.timeoutMs}ms — underlying run may still be in flight`);
+      } else {
+        this.log.error(`Heartbeat error for "${this.agentId}":`, err);
+      }
     } finally {
       this.isRunning = false;
     }
+  }
+}
+
+class HeartbeatTimeoutError extends Error {
+  constructor(public readonly timeoutMs: number) {
+    super(`heartbeat timed out after ${timeoutMs}ms`);
+    this.name = "HeartbeatTimeoutError";
   }
 }
 
