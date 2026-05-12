@@ -45,9 +45,7 @@ function InitWizard({ onDone }: Props) {
   const providerBaseUrl = provider.type === "ghc-proxy" ? provider.baseUrl : "";
   const providerApiKey = isConfigured(provider) ? provider.apiKey : "";
   const providerModel = isConfigured(provider) ? provider.model : "";
-  const providerLabel =
-    provider.type === "ghc-proxy" ? "ghc-proxy" :
-    provider.type === "minimax-cn" ? "MiniMax" : "";
+  const providerLabel = isConfigured(provider) ? provider.type : "";
   const setBaseUrl = (v: string) =>
     setProvider((p) => (p.type === "ghc-proxy" ? { ...p, baseUrl: v } : p));
   const setApiKey = (v: string) =>
