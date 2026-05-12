@@ -99,11 +99,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       agentId: agentFile.id,
       workspacePath,
       config: { ...agentFile.heartbeat, enabled: true },
-      runAgentLoop: async (agentId, prompt, _sessionKey) => {
+      runAgentLoop: async (agentId, prompt, sessionKey) => {
         const cwd = resolveCwd(agentId);
         const result = await gateway.dispatch({
           agentId,
-          sessionKey: `heartbeat:${agentId}`,
+          sessionKey,
           content: prompt,
           source: "heartbeat",
           ...(cwd ? { cwd } : {}),
