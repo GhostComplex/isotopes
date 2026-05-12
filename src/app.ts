@@ -117,36 +117,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Heartbeat enabled for "${agentFile.id}" (every ${agentFile.heartbeat.intervalSeconds ?? 300}s)`);
   }
 
-  const cronScheduler = new CronScheduler();
-
-  for (const agentFile of config.agents) {
-    if (!agentFile.cron?.tasks?.length) continue;
-    for (const task of agentFile.cron.tasks) {
-      cronScheduler.register({
-        name: task.name,
-        expression: task.schedule,
-        agentId: agentFile.id,
-        action: { type: "prompt", prompt: task.prompt },
-        enabled: task.enabled ?? true,
-      });
-    }
-    log.info(`Registered ${agentFile.cron.tasks.length} cron task(s) for "${agentFile.id}"`);
-  }
-
-  if (config.cron?.length) {
-    for (const task of config.cron) {
-      cronScheduler.register({
-        name: task.name,
-        expression: task.expression,
-        agentId: task.agentId,
-        action: task.action,
-        enabled: task.enabled ?? true,
-      });
-    }
-    log.info(`Registered ${config.cron.length} top-level cron task(s)`);
-  }
-
-  cronScheduler.onTrigger(async (job) => {
+  const cronScheduler = new CronScheduler(async (job) => {
     if (!agentRuntime.getAgent(job.agentId)) {
       log.error(`Cron job "${job.name}" references unknown agent "${job.agentId}"`);
       return;
@@ -176,6 +147,33 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       log.error(`Cron "${job.name}" failed:`, err);
     }
   });
+
+  for (const agentFile of config.agents) {
+    if (!agentFile.cron?.tasks?.length) continue;
+    for (const task of agentFile.cron.tasks) {
+      cronScheduler.register({
+        name: task.name,
+        expression: task.schedule,
+        agentId: agentFile.id,
+        action: { type: "prompt", prompt: task.prompt },
+        enabled: task.enabled ?? true,
+      });
+    }
+    log.info(`Registered ${agentFile.cron.tasks.length} cron task(s) for "${agentFile.id}"`);
+  }
+
+  if (config.cron?.length) {
+    for (const task of config.cron) {
+      cronScheduler.register({
+        name: task.name,
+        expression: task.expression,
+        agentId: task.agentId,
+        action: task.action,
+        enabled: task.enabled ?? true,
+      });
+    }
+    log.info(`Registered ${config.cron.length} top-level cron task(s)`);
+  }
 
   cronScheduler.start();
   if (cronScheduler.listJobs().length > 0) {

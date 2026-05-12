@@ -58,7 +58,7 @@ describe("ApiServer", () => {
   let cronScheduler: CronScheduler;
 
   beforeEach(async () => {
-    cronScheduler = new CronScheduler();
+    cronScheduler = new CronScheduler(async () => {});
     // Use port 0 so the OS assigns a free port
     server = new ApiServer({ port: 0 }, { cronScheduler });
     await server.start();

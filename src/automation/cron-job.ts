@@ -21,21 +21,23 @@ export interface CronJob {
   createdAt: Date;
 }
 
-export type CronJobCallback = (job: CronJob) => void | Promise<void>;
+/** What the scheduler does when a job fires — typically a gateway.dispatch. */
+export type CronJobDispatcher = (job: CronJob) => Promise<void>;
 
 /** Input for registering a new cron job — auto-generated fields are omitted. */
 export type CronJobInput = Omit<CronJob, "id" | "schedule" | "nextRun" | "createdAt">;
 
 /**
  * Manages cron-based scheduled tasks. croner owns the per-job timer + schedule
- * computation; this scheduler holds the registry and a list of trigger handlers
- * to fan-out invocations to. Subscribe via `onTrigger`.
+ * computation; this scheduler holds the registry and invokes the supplied
+ * dispatcher on each fire.
  */
 export class CronScheduler {
   /** jobId (UUID) → registered job. */
   private jobs: Map<string, CronJob> = new Map();
-  private handlers: CronJobCallback[] = [];
   private running = false;
+
+  constructor(private readonly dispatchJob: CronJobDispatcher) {}
 
   register(input: CronJobInput): CronJob {
     const job: CronJob = {
@@ -56,12 +58,10 @@ export class CronScheduler {
         log.info(`Triggering cron job "${job.name}" (${job.id})`);
         job.lastRun = new Date();
         job.nextRun = job.schedule.nextRun() ?? undefined;
-        for (const handler of this.handlers) {
-          try {
-            await handler(job);
-          } catch (err) {
-            log.error(`Error in cron handler for job "${job.name}":`, err);
-          }
+        try {
+          await this.dispatchJob(job);
+        } catch (err) {
+          log.error(`Cron dispatch failed for "${job.name}":`, err);
         }
       },
     );
@@ -90,15 +90,6 @@ export class CronScheduler {
 
   listJobs(): CronJob[] {
     return [...this.jobs.values()];
-  }
-
-  /** Subscribe to all cron triggers. Returns an unsubscribe function. */
-  onTrigger(callback: CronJobCallback): () => void {
-    this.handlers.push(callback);
-    return () => {
-      const idx = this.handlers.indexOf(callback);
-      if (idx !== -1) this.handlers.splice(idx, 1);
-    };
   }
 
   /** Resumes all enabled jobs. Idempotent. */

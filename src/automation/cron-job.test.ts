@@ -3,10 +3,12 @@ import { CronScheduler, type CronJob, type CronJobInput } from "./cron-job.js";
 
 describe("CronScheduler", () => {
   let scheduler: CronScheduler;
+  let dispatcher: ReturnType<typeof vi.fn<(job: CronJob) => Promise<void>>>;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    scheduler = new CronScheduler();
+    dispatcher = vi.fn<(job: CronJob) => Promise<void>>().mockResolvedValue(undefined);
+    scheduler = new CronScheduler((job) => dispatcher(job));
   });
 
   afterEach(() => {
@@ -133,32 +135,23 @@ describe("CronScheduler", () => {
   });
 
   // -----------------------------------------------------------------------
-  // onTrigger / callback execution
+  // dispatcher invocation
   // -----------------------------------------------------------------------
 
-  describe("onTrigger", () => {
-    it("calls registered callbacks when a job fires", async () => {
-      const callback = vi.fn();
-      scheduler.onTrigger(callback);
+  describe("dispatcher", () => {
+    it("invokes the dispatcher when a job fires", async () => {
+      vi.setSystemTime(new Date(2025, 3, 7, 8, 59, 0));
 
-      // Set time to just before the next trigger
-      vi.setSystemTime(new Date(2025, 3, 7, 8, 59, 0)); // Monday 8:59 AM
-
-      // Register a job that fires at 9:00 AM weekdays
       const job = scheduler.register(makeJobInput({ expression: "0 9 * * 1-5" }));
       scheduler.start();
 
-      // Advance time past the trigger
       await vi.advanceTimersByTimeAsync(60_000 + 1);
 
-      expect(callback).toHaveBeenCalledWith(expect.objectContaining({ id: job.id }));
+      expect(dispatcher).toHaveBeenCalledWith(expect.objectContaining({ id: job.id }));
     });
 
-    it("calls multiple callbacks", async () => {
-      const cb1 = vi.fn();
-      const cb2 = vi.fn();
-      scheduler.onTrigger(cb1);
-      scheduler.onTrigger(cb2);
+    it("logs and continues when the dispatcher rejects", async () => {
+      dispatcher.mockRejectedValueOnce(new Error("dispatch failed"));
 
       vi.setSystemTime(new Date(2025, 3, 7, 8, 59, 0));
 
@@ -167,41 +160,10 @@ describe("CronScheduler", () => {
 
       await vi.advanceTimersByTimeAsync(60_000 + 1);
 
-      expect(cb1).toHaveBeenCalledTimes(1);
-      expect(cb2).toHaveBeenCalledTimes(1);
-    });
-
-    it("unsubscribe removes the callback", async () => {
-      const callback = vi.fn();
-      const unsub = scheduler.onTrigger(callback);
-      unsub();
-
-      vi.setSystemTime(new Date(2025, 3, 7, 8, 59, 0));
-
-      scheduler.register(makeJobInput({ expression: "0 9 * * 1-5" }));
-      scheduler.start();
-
-      await vi.advanceTimersByTimeAsync(60_000 + 1);
-
-      expect(callback).not.toHaveBeenCalled();
-    });
-
-    it("handles errors in callbacks without stopping other callbacks", async () => {
-      const badCallback = vi.fn().mockRejectedValue(new Error("handler error"));
-      const goodCallback = vi.fn();
-
-      scheduler.onTrigger(badCallback);
-      scheduler.onTrigger(goodCallback);
-
-      vi.setSystemTime(new Date(2025, 3, 7, 8, 59, 0));
-
-      scheduler.register(makeJobInput({ expression: "0 9 * * 1-5" }));
-      scheduler.start();
-
-      await vi.advanceTimersByTimeAsync(60_000 + 1);
-
-      expect(badCallback).toHaveBeenCalledTimes(1);
-      expect(goodCallback).toHaveBeenCalledTimes(1);
+      expect(dispatcher).toHaveBeenCalledTimes(1);
+      // Scheduler still alive — second tick still fires.
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+      expect(dispatcher.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -223,9 +185,6 @@ describe("CronScheduler", () => {
     });
 
     it("does not fire jobs after stop", async () => {
-      const callback = vi.fn();
-      scheduler.onTrigger(callback);
-
       vi.setSystemTime(new Date(2025, 3, 7, 8, 59, 0));
 
       scheduler.register(makeJobInput({ expression: "0 9 * * 1-5" }));
@@ -234,7 +193,7 @@ describe("CronScheduler", () => {
 
       await vi.advanceTimersByTimeAsync(120_000);
 
-      expect(callback).not.toHaveBeenCalled();
+      expect(dispatcher).not.toHaveBeenCalled();
     });
   });
 
@@ -249,7 +208,6 @@ describe("CronScheduler", () => {
       const job = scheduler.register(makeJobInput({ expression: "0 9 * * 1-5" }));
       expect(job.lastRun).toBeUndefined();
 
-      scheduler.onTrigger(() => {}); // no-op handler
       scheduler.start();
 
       await vi.advanceTimersByTimeAsync(60_000 + 1);
@@ -264,7 +222,6 @@ describe("CronScheduler", () => {
       const job = scheduler.register(makeJobInput({ expression: "0 9 * * 1-5" }));
       const firstNextRun = job.nextRun!.getTime();
 
-      scheduler.onTrigger(() => {});
       scheduler.start();
 
       await vi.advanceTimersByTimeAsync(60_000 + 1);
@@ -302,10 +259,12 @@ describe("CronScheduler", () => {
 
 describe("cron config integration (#193)", () => {
   let scheduler: CronScheduler;
+  let dispatcher: ReturnType<typeof vi.fn<(job: CronJob) => Promise<void>>>;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    scheduler = new CronScheduler();
+    dispatcher = vi.fn<(job: CronJob) => Promise<void>>().mockResolvedValue(undefined);
+    scheduler = new CronScheduler((job) => dispatcher(job));
   });
 
   afterEach(() => {
@@ -442,7 +401,7 @@ describe("cron config integration (#193)", () => {
       ]);
 
       const triggered: CronJob[] = [];
-      scheduler.onTrigger((job) => { triggered.push(job); });
+      dispatcher.mockImplementation(async (job) => { triggered.push(job); });
       scheduler.start();
 
       await vi.advanceTimersByTimeAsync(60_000 + 1);
@@ -466,7 +425,7 @@ describe("cron config integration (#193)", () => {
       ]);
 
       const triggered: CronJob[] = [];
-      scheduler.onTrigger((job) => { triggered.push(job); });
+      dispatcher.mockImplementation(async (job) => { triggered.push(job); });
       scheduler.start();
 
       await vi.advanceTimersByTimeAsync(120_000);
@@ -493,7 +452,7 @@ describe("cron config integration (#193)", () => {
       ]);
 
       const triggered: string[] = [];
-      scheduler.onTrigger((job) => { triggered.push(job.name); });
+      dispatcher.mockImplementation(async (job) => { triggered.push(job.name); });
       scheduler.start();
 
       await vi.advanceTimersByTimeAsync(60_000 + 1);
@@ -516,7 +475,7 @@ describe("cron config integration (#193)", () => {
       ]);
 
       const triggered: CronJob[] = [];
-      scheduler.onTrigger((job) => { triggered.push(job); });
+      dispatcher.mockImplementation(async (job) => { triggered.push(job); });
       scheduler.start();
       scheduler.stop();
 

@@ -54,7 +54,7 @@ describe("API routes", () => {
   let cronScheduler: CronScheduler;
 
   beforeEach(async () => {
-    cronScheduler = new CronScheduler();
+    cronScheduler = new CronScheduler(async () => {});
     server = new ApiServer({ port: 0 }, { cronScheduler });
     await server.start();
   });
