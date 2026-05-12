@@ -74,9 +74,6 @@ function InitWizard({ onDone }: Props) {
     exit();
   };
 
-  const goToChannel = () => setStep({ kind: "channel" });
-  const goToClaude = () => setStep({ kind: "claude" });
-
   const handleProviderSelect = (item: { value: ProviderChoice }) => {
     if (item.value === "ghc-proxy") {
       setProvider({ type: "ghc-proxy", baseUrl: "", apiKey: "", model: DEFAULT_GHC_MODEL });
@@ -86,7 +83,7 @@ function InitWizard({ onDone }: Props) {
       setStep({ kind: "provider-apiKey" });
     } else {
       setProvider({ type: "skip" });
-      goToChannel();
+      setStep({ kind: "channel" });
     }
   };
 
@@ -101,7 +98,7 @@ function InitWizard({ onDone }: Props) {
       setStep({ kind: "discord-token" });
     } else {
       setChannel({ type: "skip" });
-      goToClaude();
+      setStep({ kind: "claude" });
     }
   };
 
@@ -154,7 +151,7 @@ function InitWizard({ onDone }: Props) {
           value={providerModel}
           onChange={setModel}
           onSubmit={() => {
-            if (providerModel.trim().length > 0) goToChannel();
+            if (providerModel.trim().length > 0) setStep({ kind: "channel" });
           }}
           error={providerModel.trim().length === 0 ? "model is required" : undefined}
         />
@@ -226,7 +223,7 @@ function InitWizard({ onDone }: Props) {
           onSelect={(item) => {
             setDiscordField({ groupPolicy: item.value });
             if (item.value === "allowlist") setStep({ kind: "discord-group-allowlist" });
-            else goToClaude();
+            else setStep({ kind: "claude" });
           }}
         />
       )}
@@ -249,7 +246,7 @@ function InitWizard({ onDone }: Props) {
                   if (entries.length > 0) {
                     setDiscordField({ groupAllowlist: entries });
                   }
-                  goToClaude();
+                  setStep({ kind: "claude" });
                 }
               }}
             />
