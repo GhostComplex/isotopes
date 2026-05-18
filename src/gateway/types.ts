@@ -44,17 +44,15 @@ export interface CreateSessionResult {
 }
 
 export interface Gateway {
-  // Dispatch
   dispatch(msg: Message, callbacks?: DispatchCallbacks): Promise<DispatchResult>;
   abort(sessionId: string, reason?: string): Promise<void>;
   /** Resolves sessionKey via store; returns false if no such session. */
   abortByKey(agentId: string, sessionKey: string, reason?: string): Promise<boolean>;
 
-  // Agent introspection
   agentExists(agentId: string): boolean;
 
-  // Session reads — sessionKey is the external id; sessionId is internal.
-  // All read methods return undefined for unknown (agentId, sessionKey) pairs.
+  // sessionKey is the external id; sessionId is internal.
+  // Reads return undefined for unknown (agentId, sessionKey) pairs.
   listSessions(): Promise<Session[]>;
   listSessionsForAgent(agentId: string): Promise<Session[]>;
   getSession(agentId: string, sessionKey: string): Promise<Session | undefined>;
@@ -65,7 +63,6 @@ export interface Gateway {
     listener: TranscriptListener,
   ): Promise<(() => void) | undefined>;
 
-  // Session lifecycle
   createOrResumeSession(agentId: string, sessionKey?: string): Promise<CreateSessionResult>;
   deleteSession(agentId: string, sessionKey: string): Promise<boolean>;
 }
