@@ -52,7 +52,6 @@ export interface Gateway {
   agentExists(agentId: string): boolean;
 
   // sessionKey is the external id; sessionId is internal.
-  // Reads return undefined for unknown (agentId, sessionKey) pairs.
   listSessions(): Promise<Session[]>;
   listSessionsForAgent(agentId: string): Promise<Session[]>;
   getSession(agentId: string, sessionKey: string): Promise<Session | undefined>;
