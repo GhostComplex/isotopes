@@ -34,15 +34,7 @@ export interface CreateSessionResult {
   resumed: boolean;
 }
 
-/**
- * One unified event stream per session. Subscribe to receive everything the
- * agent produces for this session, regardless of who dispatched.
- *
- * Token-level events (text_delta) and message-level events (user_message,
- * assistant_message) intentionally overlap — clients use text_delta for live
- * typing effects and the corresponding assistant_message to finalize/canonize
- * the buffer.
- */
+/** text_delta (streaming) and assistant_message (finalized) intentionally overlap. */
 export type SessionEvent =
   | { type: "user_message"; message: AgentMessage; messageId: string }
   | { type: "text_delta"; delta: string }
