@@ -170,10 +170,8 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.errorMessage}`, timestamp: new Date() }]);
       }
     }
-    // user_message / assistant_message events from store.subscribe currently
-    // overlap with text_delta-built render — ignore to avoid double-render.
-    // (Could later be used to canonicalize the buffered text against the
-    // stored final.)
+    // user_message / assistant_message events overlap with text_delta render
+    // — ignore here; text_delta is the live source of truth.
   }, [isStreaming, renderAssistantFromBlocks]);
 
   const initAgent = useCallback(async () => {
@@ -186,7 +184,6 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
         return;
       }
 
-      // Ensure session exists (create or resume), then attach to its event stream.
       let effectiveAgentId = propAgentId;
       let effectiveSessionKey = sessionKey;
       if (mode === "owned") {
@@ -213,7 +210,7 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
       sessionKeyRef.current = effectiveSessionKey;
 
       // Single attachStream covers everything: token events, tool events,
-      // turn_end, agent_end. dispatch is pure command, never reads events.
+      // turn_end, agent_end. dispatch is pure command.
       const attachAbort = new AbortController();
       attachAbortRef.current = attachAbort;
       void (async () => {
@@ -243,8 +240,8 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
   const sendMessage = async (text: string) => {
     if (!sessionKeyRef.current) return;
 
-    // Optimistic user-message render — server will also fire user_message via
-    // the stream, but rendering immediately keeps the UI snappy.
+    // Optimistic user-message render — keeps the UI snappy ahead of the
+    // user_message event arriving via the stream.
     const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
 

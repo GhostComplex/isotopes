@@ -1,6 +1,3 @@
-// src/http/sessions.ts — sessions API. /dispatch is fire-and-forget; /stream
-// is the single canonical event source (all SessionEvent types flow through it).
-
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { createLogger } from "../logging/logger.js";
@@ -89,9 +86,7 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
     return c.json({ items: messages });
   });
 
-  // The single canonical event stream. Carries every SessionEvent the gateway
-  // produces for this session: user_message, text_delta, tool_call, tool_result,
-  // assistant_message, turn_end, agent_end. Clients render entirely off this.
+  // The canonical event stream — all SessionEvent types flow through here.
   app.get("/api/sessions/:agentId/:key/stream", async (c) => {
     const agentId = c.req.param("agentId");
     const key = c.req.param("key");
@@ -149,8 +144,6 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
     return c.json({ key: result.sessionKey, agentId, resumed: result.resumed }, result.resumed ? 200 : 201);
   });
 
-  // Fire-and-forget. Returns immediately with { sessionId, state }. All
-  // resulting events flow through GET /stream for this session.
   app.post("/api/sessions/:agentId/:key/dispatch", async (c) => {
     const agentId = c.req.param("agentId");
     const sessionKey = c.req.param("key");

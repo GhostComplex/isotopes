@@ -36,8 +36,6 @@ function sessionPath(agentId: string, sessionKey?: string): string {
   return sessionKey ? `${base}/${encodeURIComponent(sessionKey)}` : base;
 }
 
-// -- Status / monitoring --
-
 export async function fetchStatus(): Promise<DaemonStatus> {
   return fetchJson<DaemonStatus>("/api/status");
 }
@@ -55,8 +53,6 @@ export async function isDaemonRunning(): Promise<boolean> {
     return false;
   }
 }
-
-// -- Session management --
 
 export async function createSession(agentId: string, sessionKey?: string): Promise<ChatSessionInfo> {
   const body: Record<string, string> = {};
@@ -76,8 +72,6 @@ export async function deleteSession(agentId: string, sessionKey: string): Promis
   await deleteJson(sessionPath(agentId, sessionKey));
 }
 
-// -- Dispatch (fire-and-forget) --
-
 /** POST a message into a session. Returns ack only. All resulting events
  *  arrive on the open /stream subscription — do NOT consume any response body. */
 export async function dispatch(
@@ -87,8 +81,6 @@ export async function dispatch(
 ): Promise<DispatchAck> {
   return postJson<DispatchAck>(`${sessionPath(agentId, sessionKey)}/dispatch`, { message });
 }
-
-// -- Event subscription (SSE) --
 
 /** Long-lived SSE attached to /stream. Receives every SessionEvent the gateway
  *  emits for this session, regardless of who dispatched. Terminates only when

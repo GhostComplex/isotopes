@@ -178,9 +178,8 @@ export async function handleInbound(
     ...(images.length > 0 ? { images } : {}),
   };
 
-  // Ensure session exists so we can subscribe before dispatching — otherwise
-  // we'd miss the first text_delta in the race window between dispatch
-  // creating the session and us trying to subscribe.
+  // Ensure session exists before subscribing — otherwise we'd miss the first
+  // text_delta in the race between dispatch creating the session and our subscribe.
   await deps.gateway.createOrResumeSession(routing.agentId, routing.sessionKey);
 
   const subscriber = ctx.buildSubscriber(msg);

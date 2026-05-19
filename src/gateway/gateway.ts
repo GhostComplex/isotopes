@@ -35,12 +35,8 @@ export function createGateway(deps: GatewayDeps): Gateway {
   // Dedupes concurrent resolveSessionId calls so two dispatches with the same
   // sessionKey share one create instead of racing into two distinct sessions.
   const resolving = new Map<string, Promise<string>>();
-  // Per-session event bus. Listeners receive all SessionEvents regardless of
-  // who dispatched.
   const listeners = new Map<string, Set<SessionEventListener>>();
-  // Store-level subscriptions we've opened, one per session, so we can mirror
-  // appendMessage notifications into our own bus as user_message /
-  // assistant_message events.
+  // One store subscription per session, mirrored into our bus as user/assistant_message.
   const storeUnsubscribes = new Map<string, () => void>();
 
   function emit(sessionId: string, event: SessionEvent): void {
@@ -64,8 +60,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
       } else if (role === "assistant") {
         emit(sessionId, { type: "assistant_message", message: update.message, messageId: update.messageId });
       }
-      // tool messages currently arrive as part of assistant turn — skip until
-      // there's a real need for a separate event type.
+      // tool role messages: skip — currently delivered via assistant turn.
     });
     storeUnsubscribes.set(sessionId, unsubscribe);
   }
@@ -169,8 +164,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
       const handle: ActiveHandle = { ready, resolveReady };
       active.set(sessionId, handle);
       void triggerRun(sessionId, msg, handle);
-      // Wait until the runner has registered the run so a follow-up dispatch
-      // sees it and steers instead of starting a competing run.
+      // Wait for handle.ready so a follow-up dispatch sees the active run and steers.
       await handle.ready;
       return { sessionId, state: "new_run" };
     }
@@ -180,9 +174,8 @@ export function createGateway(deps: GatewayDeps): Gateway {
     let responseText = "";
     let errorMessage: string | null = null;
 
-    // Pin the sessionKey up-front so subscribe and dispatch see the same
-    // session — without this, two anonymous-session dispatches resolve to
-    // distinct sessionIds and the subscriber never sees agent_end.
+    // Pin the sessionKey so subscribe and dispatch resolve to the same session
+    // — anonymous-session dispatches otherwise resolve to distinct sessionIds.
     const pinnedMsg: Message = msg.sessionKey ? msg : { ...msg, sessionKey: randomUUID() };
     const sessionId = await resolveSessionId(pinnedMsg);
     await ensureStoreSubscription(pinnedMsg.agentId, sessionId);
