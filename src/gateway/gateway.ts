@@ -2,13 +2,14 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AgentRuntime } from "../agent/runtime.js";
 import type { SessionStoreManager } from "../agent/pi/session-store.js";
 import type {
+  AwaitResult,
   CreateSessionResult,
-  DispatchCallbacks,
   DispatchResult,
   Gateway,
   Message,
   Session,
-  TranscriptListener,
+  SessionEvent,
+  SessionEventListener,
 } from "./types.js";
 import { createLogger } from "../logging/logger.js";
 import { getAgentEndMeta } from "../agent/pi/messages.js";
@@ -24,16 +25,9 @@ export interface GatewayDeps {
 
 // `ready` resolves once the underlying runner has registered the run
 // (i.e. the first event has arrived) so steer can safely target it.
-// `done` resolves at agent_end; it never rejects — runner errors are
-// captured into `errorMessage` and surfaced via DispatchResult.
 interface ActiveHandle {
-  callbacks?: DispatchCallbacks;
-  responseText: string;
-  errorMessage: string | null;
   ready: Promise<void>;
   resolveReady: () => void;
-  done: Promise<void>;
-  resolveDone: () => void;
 }
 
 export function createGateway(deps: GatewayDeps): Gateway {
@@ -41,6 +35,40 @@ export function createGateway(deps: GatewayDeps): Gateway {
   // Dedupes concurrent resolveSessionId calls so two dispatches with the same
   // sessionKey share one create instead of racing into two distinct sessions.
   const resolving = new Map<string, Promise<string>>();
+  // Per-session event bus. Listeners receive all SessionEvents regardless of
+  // who dispatched.
+  const listeners = new Map<string, Set<SessionEventListener>>();
+  // Store-level subscriptions we've opened, one per session, so we can mirror
+  // appendMessage notifications into our own bus as user_message /
+  // assistant_message events.
+  const storeUnsubscribes = new Map<string, () => void>();
+
+  function emit(sessionId: string, event: SessionEvent): void {
+    const set = listeners.get(sessionId);
+    if (!set) return;
+    for (const fn of set) {
+      try { fn(event); } catch (err) {
+        log.warn(`subscriber threw: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  async function ensureStoreSubscription(agentId: string, sessionId: string): Promise<void> {
+    if (storeUnsubscribes.has(sessionId)) return;
+    const store = deps.sessionStoreManager.peek(agentId);
+    if (!store) return;
+    const unsubscribe = store.subscribe(sessionId, (update) => {
+      const role = (update.message as { role?: string } | undefined)?.role;
+      if (role === "user") {
+        emit(sessionId, { type: "user_message", message: update.message, messageId: update.messageId });
+      } else if (role === "assistant") {
+        emit(sessionId, { type: "assistant_message", message: update.message, messageId: update.messageId });
+      }
+      // tool messages currently arrive as part of assistant turn — skip until
+      // there's a real need for a separate event type.
+    });
+    storeUnsubscribes.set(sessionId, unsubscribe);
+  }
 
   async function doResolveSessionId(msg: Message): Promise<string> {
     const store = await deps.sessionStoreManager.getOrCreate(msg.agentId);
@@ -65,6 +93,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
 
   async function triggerRun(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
     let readyResolved = false;
+    let errorMessage: string | null = null;
     const cfg = deps.agentRuntime.getAgent(msg.agentId)?.config;
     const cwd = cfg ? resolveAgentWorkspacePath(cfg) : undefined;
     try {
@@ -83,48 +112,41 @@ export function createGateway(deps: GatewayDeps): Gateway {
         if (event.type === "message_update") {
           const ame = event.assistantMessageEvent;
           if (ame.type === "text_delta") {
-            handle.responseText += ame.delta;
-            handle.callbacks?.onTextDelta?.(ame.delta);
+            emit(sessionId, { type: "text_delta", delta: ame.delta });
           }
         } else if (event.type === "tool_execution_start") {
-          handle.callbacks?.onToolStart?.({ id: event.toolCallId, name: event.toolName, args: event.args });
+          emit(sessionId, { type: "tool_call", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
         } else if (event.type === "tool_execution_end") {
-          handle.callbacks?.onToolEnd?.({ id: event.toolCallId, name: event.toolName, result: event.result, isError: event.isError });
+          emit(sessionId, {
+            type: "tool_result",
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            result: event.result,
+            isError: event.isError,
+          });
         } else if (event.type === "turn_end") {
-          handle.callbacks?.onTurnEnd?.();
+          emit(sessionId, { type: "turn_end" });
         } else if (event.type === "agent_end") {
           const meta = getAgentEndMeta(event.messages);
-          if (meta.stopReason === "error") handle.errorMessage = meta.errorMessage ?? "Unknown agent error";
+          if (meta.stopReason === "error") errorMessage = meta.errorMessage ?? "Unknown agent error";
         }
       }
     } catch (err) {
-      handle.errorMessage = err instanceof Error ? err.message : String(err);
-      log.error(`triggerRun error for ${sessionId}: ${handle.errorMessage}`);
+      errorMessage = err instanceof Error ? err.message : String(err);
+      log.error(`triggerRun error for ${sessionId}: ${errorMessage}`);
     } finally {
       active.delete(sessionId);
       if (!readyResolved) handle.resolveReady();
-      handle.resolveDone();
+      emit(sessionId, errorMessage
+        ? { type: "agent_end", stopReason: "error", errorMessage }
+        : { type: "agent_end", stopReason: "end" });
     }
   }
 
-  /**
-   * Dispatch a message to an agent.
-   *
-   * - If the session has no active run, starts one and streams events through
-   *   `callbacks` until agent_end. Returns `state: "new_run"` with the final
-   *   responseText.
-   * - If the session already has an active run, forwards `msg.content` to the
-   *   runner's native queue via `steer` and returns `state: "steered"` immediately.
-   *   The steered content's output continues streaming through the **original**
-   *   handle's callbacks (the first dispatcher's). The `callbacks` argument
-   *   passed on a steered call is **ignored** — there is one channel sink per
-   *   session, owned by whoever started the run.
-   */
-  async function dispatch(msg: Message, callbacks?: DispatchCallbacks): Promise<DispatchResult> {
+  async function dispatch(msg: Message): Promise<DispatchResult> {
     const sessionId = await resolveSessionId(msg);
+    await ensureStoreSubscription(msg.agentId, sessionId);
 
-    // Loop to handle the case where the active run ends between when we
-    // observe it and when we try to steer — fall through to start a fresh run.
     while (true) {
       const existing = active.get(sessionId);
       if (existing) {
@@ -134,42 +156,80 @@ export function createGateway(deps: GatewayDeps): Gateway {
         if (active.get(sessionId) !== existing) continue;
         try {
           await deps.agentRuntime.steer(sessionId, msg.content);
-          return { sessionId, state: "steered", responseText: "", errorMessage: null };
+          return { sessionId, state: "steered" };
         } catch (err) {
-          // Steer can still race with the run ending between recheck and the
-          // steer call. If the run is gone, retry as fresh; otherwise the
-          // failure is something else — log and return steered with no effect.
           if (!active.has(sessionId)) continue;
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          log.warn(`steer failed for ${sessionId}: ${errorMessage}`);
-          return { sessionId, state: "steered", responseText: "", errorMessage };
+          log.warn(`steer failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+          return { sessionId, state: "steered" };
         }
       }
 
       let resolveReady!: () => void;
       const ready = new Promise<void>((r) => { resolveReady = r; });
-      let resolveDone!: () => void;
-      const done = new Promise<void>((r) => { resolveDone = r; });
-      const handle: ActiveHandle = {
-        callbacks,
-        responseText: "",
-        errorMessage: null,
-        ready,
-        resolveReady,
-        done,
-        resolveDone,
-      };
+      const handle: ActiveHandle = { ready, resolveReady };
       active.set(sessionId, handle);
       void triggerRun(sessionId, msg, handle);
-
-      await handle.done;
-      return {
-        sessionId,
-        state: "new_run",
-        responseText: handle.responseText,
-        errorMessage: handle.errorMessage,
-      };
+      // Wait until the runner has registered the run so a follow-up dispatch
+      // sees it and steers instead of starting a competing run.
+      await handle.ready;
+      return { sessionId, state: "new_run" };
     }
+  }
+
+  async function dispatchAndWait(msg: Message): Promise<AwaitResult> {
+    let responseText = "";
+    let errorMessage: string | null = null;
+
+    // Pin the sessionKey up-front so subscribe and dispatch see the same
+    // session — without this, two anonymous-session dispatches resolve to
+    // distinct sessionIds and the subscriber never sees agent_end.
+    const pinnedMsg: Message = msg.sessionKey ? msg : { ...msg, sessionKey: randomUUID() };
+    const sessionId = await resolveSessionId(pinnedMsg);
+    await ensureStoreSubscription(pinnedMsg.agentId, sessionId);
+
+    const done = new Promise<void>((resolve) => {
+      const unsubscribe = subscribeInternal(sessionId, (event) => {
+        if (event.type === "text_delta") responseText += event.delta;
+        else if (event.type === "agent_end") {
+          if (event.stopReason === "error") errorMessage = event.errorMessage ?? "Unknown agent error";
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    await dispatch(pinnedMsg);
+    await done;
+    return { responseText, errorMessage };
+  }
+
+  /** Internal: subscribe by sessionId (already resolved). */
+  function subscribeInternal(sessionId: string, listener: SessionEventListener): () => void {
+    let set = listeners.get(sessionId);
+    if (!set) {
+      set = new Set();
+      listeners.set(sessionId, set);
+    }
+    set.add(listener);
+    return () => {
+      const s = listeners.get(sessionId);
+      if (!s) return;
+      s.delete(listener);
+      if (s.size === 0) listeners.delete(sessionId);
+    };
+  }
+
+  async function subscribe(
+    agentId: string,
+    sessionKey: string,
+    listener: SessionEventListener,
+  ): Promise<(() => void) | undefined> {
+    const store = deps.sessionStoreManager.peek(agentId);
+    if (!store) return undefined;
+    const session = await store.findByKey(sessionKey);
+    if (!session) return undefined;
+    await ensureStoreSubscription(agentId, session.id);
+    return subscribeInternal(session.id, listener);
   }
 
   async function abort(sessionId: string, reason?: string): Promise<void> {
@@ -214,18 +274,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return session ? store.getMessages(session.id) : undefined;
   }
 
-  async function subscribeMessages(
-    agentId: string,
-    sessionKey: string,
-    listener: TranscriptListener,
-  ): Promise<(() => void) | undefined> {
-    const store = deps.sessionStoreManager.peek(agentId);
-    if (!store) return undefined;
-    const session = await store.findByKey(sessionKey);
-    if (!session) return undefined;
-    return store.subscribe(session.id, listener);
-  }
-
   async function createOrResumeSession(
     agentId: string,
     sessionKey?: string,
@@ -245,12 +293,16 @@ export function createGateway(deps: GatewayDeps): Gateway {
     if (!store) return false;
     const session = await store.findByKey(sessionKey);
     if (!session) return false;
+    const unsub = storeUnsubscribes.get(session.id);
+    if (unsub) { unsub(); storeUnsubscribes.delete(session.id); }
+    listeners.delete(session.id);
     await store.delete(session.id);
     return true;
   }
 
   return {
     dispatch,
+    dispatchAndWait,
     abort,
     abortByKey,
     agentExists,
@@ -258,7 +310,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     listSessionsForAgent,
     getSession,
     getMessages,
-    subscribeMessages,
+    subscribe,
     createOrResumeSession,
     deleteSession,
   };

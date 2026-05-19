@@ -1,4 +1,5 @@
-// src/http/sessions.ts — sessionKey is the external id; sessionId (UUID) is internal to the store.
+// src/http/sessions.ts — sessions API. /dispatch is fire-and-forget; /stream
+// is the single canonical event source (all SessionEvent types flow through it).
 
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -12,7 +13,6 @@ interface ActiveSession {
   sessionId: string;
   agentId: string;
   lastActivity: number;
-  abortController?: AbortController;
 }
 
 const activeSessions = new Map<string, ActiveSession>();
@@ -26,7 +26,6 @@ function evictStaleSessions(): void {
   const now = Date.now();
   for (const [key, session] of activeSessions) {
     if (now - session.lastActivity > SESSION_TTL_MS) {
-      session.abortController?.abort();
       activeSessions.delete(key);
       log.debug(`Evicted stale session: ${key}`);
     }
@@ -34,8 +33,7 @@ function evictStaleSessions(): void {
   if (activeSessions.size > MAX_SESSIONS) {
     const sorted = [...activeSessions.entries()].sort((a, b) => a[1].lastActivity - b[1].lastActivity);
     const toRemove = sorted.slice(0, activeSessions.size - MAX_SESSIONS);
-    for (const [key, session] of toRemove) {
-      session.abortController?.abort();
+    for (const [key] of toRemove) {
       activeSessions.delete(key);
       log.debug(`Evicted session (capacity): ${key}`);
     }
@@ -91,6 +89,9 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
     return c.json({ items: messages });
   });
 
+  // The single canonical event stream. Carries every SessionEvent the gateway
+  // produces for this session: user_message, text_delta, tool_call, tool_result,
+  // assistant_message, turn_end, agent_end. Clients render entirely off this.
   app.get("/api/sessions/:agentId/:key/stream", async (c) => {
     const agentId = c.req.param("agentId");
     const key = c.req.param("key");
@@ -100,12 +101,9 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
       await stream.writeSSE({ data: "", event: "connected" });
 
       let closed = false;
-      const unsubscribe = await deps.gateway.subscribeMessages(agentId, key, (update) => {
+      const unsubscribe = await deps.gateway.subscribe(agentId, key, (event) => {
         if (closed) return;
-        void stream.writeSSE({
-          event: "message",
-          data: JSON.stringify({ message: update.message, messageId: update.messageId }),
-        });
+        void stream.writeSSE({ event: event.type, data: JSON.stringify(event) });
       });
       if (!unsubscribe) {
         await stream.writeSSE({ event: "error", data: JSON.stringify({ message: "Session not found" }) });
@@ -151,9 +149,8 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
     return c.json({ key: result.sessionKey, agentId, resumed: result.resumed }, result.resumed ? 200 : 201);
   });
 
-  // Single dispatch entrypoint. Gateway returns "new_run" (this request owns the
-  // run; SSE streams its events) or "steered" (forwarded into an active run;
-  // events flow through the original dispatch's still-open SSE).
+  // Fire-and-forget. Returns immediately with { sessionId, state }. All
+  // resulting events flow through GET /stream for this session.
   app.post("/api/sessions/:agentId/:key/dispatch", async (c) => {
     const agentId = c.req.param("agentId");
     const sessionKey = c.req.param("key");
@@ -162,7 +159,7 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
     if (!active) {
       // Session may exist in the store but was never registered via the HTTP
       // create path (e.g. channel-driven sessions like Discord). Look it up
-      // and register on demand so HTTP clients can send into it.
+      // and register on demand.
       const session = await deps.gateway.getSession(agentId, sessionKey);
       if (session) {
         active = { sessionKey, sessionId: session.id, agentId, lastActivity: Date.now() };
@@ -180,36 +177,13 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
       return c.json({ error: `Agent "${agentId}" not found`, status: 404 }, 404);
     }
 
-    return streamSSE(c, async (stream) => {
-      const writeEvent = (event: string, data: unknown) =>
-        void stream.writeSSE({ event, data: JSON.stringify(data) });
-
-      try {
-        const result = await deps.gateway.dispatch(
-          { agentId, sessionKey: active!.sessionKey, content: body.message!, source: "tui" },
-          {
-            onTextDelta: (delta) => writeEvent("text_delta", { text: delta }),
-            onToolStart: (call) => writeEvent("tool_call", { toolCallId: call.id, toolName: call.name, args: call.args }),
-            onToolEnd: (r) => writeEvent("tool_result", { toolCallId: r.id, toolName: r.name, result: r.result, isError: r.isError }),
-            onTurnEnd: () => writeEvent("turn_end", {}),
-          },
-        );
-
-        if (result.state === "steered") {
-          await stream.writeSSE({ event: "steered", data: JSON.stringify({ sessionId: result.sessionId }) });
-        } else {
-          if (result.errorMessage) {
-            await stream.writeSSE({ event: "error", data: JSON.stringify({ message: result.errorMessage }) });
-          }
-          await stream.writeSSE({ event: "agent_end", data: JSON.stringify({ stopReason: result.errorMessage ? "error" : "end" }) });
-        }
-      } catch (err) {
-        await stream.writeSSE({
-          event: "error",
-          data: JSON.stringify({ message: err instanceof Error ? err.message : String(err) }),
-        });
-      }
+    const result = await deps.gateway.dispatch({
+      agentId,
+      sessionKey: active.sessionKey,
+      content: body.message,
+      source: "tui",
     });
+    return c.json({ sessionId: result.sessionId, state: result.state });
   });
 
   app.post("/api/sessions/:agentId/:key/abort", async (c) => {
@@ -223,14 +197,9 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
     const agentId = c.req.param("agentId");
     const sessionKey = c.req.param("key");
 
-    const active = activeSessions.get(activeKey(agentId, sessionKey));
-    if (active) {
-      active.abortController?.abort();
-      activeSessions.delete(activeKey(agentId, sessionKey));
-    }
-
+    const had = activeSessions.delete(activeKey(agentId, sessionKey));
     const deleted = await deps.gateway.deleteSession(agentId, sessionKey);
-    if (deleted || active) return c.json({ ok: true });
+    if (deleted || had) return c.json({ ok: true });
     return c.json({ error: "Session not found", status: 404 }, 404);
   });
 }

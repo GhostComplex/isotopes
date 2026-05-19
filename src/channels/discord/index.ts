@@ -12,7 +12,7 @@ import { loggers } from "../../logging/logger.js";
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
-import { createDiscordCallbacks } from "./outbound.js";
+import { createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -297,8 +297,8 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     },
     {
       botId,
-      buildCallbacks: (triggerMsg) =>
-        createDiscordCallbacks({
+      buildSubscriber: (triggerMsg) =>
+        createDiscordSubscriber({
           channel: triggerMsg.channel as SendableChannels,
           triggerMessageId: triggerMsg.id,
         }),

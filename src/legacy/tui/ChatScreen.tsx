@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, Static, useInput, useApp } from "ink";
 import { randomUUID } from "node:crypto";
 import { parseSlashCommand, dispatch, HELP_TEXT } from "./commands.js";
-import type { ChatMessage, ContentBlock, Screen, SSEEvent } from "./types.js";
+import type { ChatMessage, ContentBlock, Screen, StreamEvent } from "./types.js";
 import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
@@ -110,9 +110,71 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
   const sessionKeyRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const attachAbortRef = useRef<AbortController | null>(null);
-  const pendingSteerRef = useRef<ChatMessage[]>([]);
   const settledRef = useRef<ChatMessage[]>([]);
   const isAttached = mode === "attach";
+
+  // All token-level events route through a single long-lived attachStream;
+  // dispatch is fire-and-forget. Mutated by the stream handler.
+  const blocksRef = useRef<ContentBlock[]>([]);
+  const streamMsgIdRef = useRef<string>(randomUUID());
+
+  const renderAssistantFromBlocks = useCallback(() => {
+    const blocks = blocksRef.current;
+    const fullText = blocks.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
+    const msgId = streamMsgIdRef.current;
+    const assistantMsg: ChatMessage = { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date(), id: msgId };
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === msgId);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = assistantMsg;
+        return updated;
+      }
+      return [...prev, assistantMsg];
+    });
+  }, []);
+
+  const handleStreamEvent = useCallback((e: StreamEvent) => {
+    if (e.type === "text_delta") {
+      if (!isStreaming) setIsStreaming(true);
+      const blocks = blocksRef.current;
+      const lastBlock = blocks[blocks.length - 1];
+      if (lastBlock?.type === "text") {
+        (lastBlock as { text: string }).text += e.delta;
+      } else {
+        blocks.push({ type: "text", text: e.delta });
+      }
+      renderAssistantFromBlocks();
+    } else if (e.type === "tool_call") {
+      blocksRef.current.push({
+        type: "tool",
+        id: e.toolCallId,
+        name: e.toolName,
+        args: typeof e.args === "string" ? e.args : JSON.stringify(e.args),
+      });
+      renderAssistantFromBlocks();
+    } else if (e.type === "tool_result") {
+      const tc = blocksRef.current.find((b): b is ContentBlock & { type: "tool" } => b.type === "tool" && b.id === e.toolCallId);
+      if (tc) {
+        tc.result = extractResultText(e.result);
+        tc.isError = e.isError;
+      }
+      renderAssistantFromBlocks();
+    } else if (e.type === "turn_end") {
+      blocksRef.current = [];
+      streamMsgIdRef.current = randomUUID();
+    } else if (e.type === "agent_end") {
+      blocksRef.current = [];
+      setIsStreaming(false);
+      if (e.stopReason === "error" && e.errorMessage) {
+        setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.errorMessage}`, timestamp: new Date() }]);
+      }
+    }
+    // user_message / assistant_message events from store.subscribe currently
+    // overlap with text_delta-built render — ignore to avoid double-render.
+    // (Could later be used to canonicalize the buffered text against the
+    // stored final.)
+  }, [isStreaming, renderAssistantFromBlocks]);
 
   const initAgent = useCallback(async () => {
     setAgentReady(false);
@@ -124,51 +186,51 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
         return;
       }
 
-      if (mode === "attach") {
-        sessionKeyRef.current = sessionKey;
+      // Ensure session exists (create or resume), then attach to its event stream.
+      let effectiveAgentId = propAgentId;
+      let effectiveSessionKey = sessionKey;
+      if (mode === "owned") {
+        const session = await api.createSession(propAgentId, sessionKey);
+        effectiveAgentId = session.agentId;
+        effectiveSessionKey = session.key;
+        setAgentId(session.agentId);
+        if (session.resumed) {
+          const { items: history } = await api.getHistory(session.agentId, session.key);
+          const chatMessages = historyToChatMessages(history).slice(-MAX_HISTORY_MESSAGES);
+          if (chatMessages.length > 0) {
+            const skipped = history.length - chatMessages.length;
+            const prefix: ChatMessage[] = skipped > 0
+              ? [{ role: "system", content: `… ${skipped} earlier messages`, timestamp: chatMessages[0].timestamp }]
+              : [];
+            setMessages([...prefix, ...chatMessages]);
+          }
+        }
+      } else {
+        // Attach mode: load history for context, then attach.
         const { items: history } = await api.getHistory(propAgentId, sessionKey);
         setMessages(historyToChatMessages(history));
-        const attachAbort = new AbortController();
-        attachAbortRef.current = attachAbort;
-        void (async () => {
-          try {
-            await api.attachStream(propAgentId, sessionKey, (m) => {
-              const converted = historyToChatMessages([m.message as { role: string; content: unknown; toolCallId?: string }]);
-              if (converted.length > 0) {
-                setMessages((prev) => [...prev, ...converted]);
-              }
-            }, attachAbort.signal);
-          } catch (err) {
-            if (!attachAbort.signal.aborted) {
-              setError(`Attach failed: ${err instanceof Error ? err.message : String(err)}`);
-            }
+      }
+      sessionKeyRef.current = effectiveSessionKey;
+
+      // Single attachStream covers everything: token events, tool events,
+      // turn_end, agent_end. dispatch is pure command, never reads events.
+      const attachAbort = new AbortController();
+      attachAbortRef.current = attachAbort;
+      void (async () => {
+        try {
+          await api.attachStream(effectiveAgentId, effectiveSessionKey, handleStreamEvent, attachAbort.signal);
+        } catch (err) {
+          if (!attachAbort.signal.aborted) {
+            setError(`Attach failed: ${err instanceof Error ? err.message : String(err)}`);
           }
-        })();
-        setAgentReady(true);
-        return;
-      }
-
-      const session = await api.createSession(propAgentId, sessionKey);
-      sessionKeyRef.current = session.key;
-      setAgentId(session.agentId);
-
-      if (session.resumed) {
-        const { items: history } = await api.getHistory(session.agentId, session.key);
-        const chatMessages = historyToChatMessages(history).slice(-MAX_HISTORY_MESSAGES);
-        if (chatMessages.length > 0) {
-          const skipped = history.length - chatMessages.length;
-          const prefix: ChatMessage[] = skipped > 0
-            ? [{ role: "system", content: `… ${skipped} earlier messages`, timestamp: chatMessages[0].timestamp }]
-            : [];
-          setMessages([...prefix, ...chatMessages]);
         }
-      }
+      })();
 
       setAgentReady(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [propAgentId, sessionKey, mode, handleStreamEvent]);
 
   useEffect(() => {
     void initAgent();
@@ -179,97 +241,17 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
   }, []);
 
   const sendMessage = async (text: string) => {
-    if (!sessionKeyRef.current || isStreaming) return;
+    if (!sessionKeyRef.current) return;
 
-    if (isAttached) {
-      setIsStreaming(true);
-      const abort = new AbortController();
-      abortRef.current = abort;
-      try {
-        await api.dispatch(agentId, sessionKeyRef.current, text, () => {}, abort.signal);
-      } catch (err) {
-        if (!abort.signal.aborted) {
-          const msg = err instanceof Error ? err.message : String(err);
-          setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
-        }
-      } finally {
-        abortRef.current = null;
-        setIsStreaming(false);
-      }
-      return;
-    }
-
+    // Optimistic user-message render — server will also fire user_message via
+    // the stream, but rendering immediately keeps the UI snappy.
     const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
-    setIsStreaming(true);
-
-    const sessionKey = sessionKeyRef.current;
-    let blocks: ContentBlock[] = [];
-    const abort = new AbortController();
-    abortRef.current = abort;
-    let streamMsgId = randomUUID();
-    pendingSteerRef.current = [];
-
-    const updateAssistant = () => {
-      const fullText = blocks.filter((b) => b.type === "text").map((b) => b.text).join("");
-      const msgId = streamMsgId;
-      const assistantMsg: ChatMessage = { role: "assistant", content: fullText, blocks: [...blocks], timestamp: new Date(), id: msgId };
-      setMessages((prev) => {
-        const idx = prev.findIndex((m) => m.id === msgId);
-        if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = assistantMsg;
-          return updated;
-        }
-        return [...prev, assistantMsg];
-      });
-    };
-
-    const handleEvent = (e: SSEEvent) => {
-      if (e.type === "text_delta") {
-        const lastBlock = blocks[blocks.length - 1];
-        if (lastBlock?.type === "text") {
-          lastBlock.text += e.text;
-        } else {
-          blocks.push({ type: "text", text: e.text });
-        }
-        updateAssistant();
-      } else if (e.type === "tool_call") {
-        blocks.push({ type: "tool", id: e.toolCallId, name: e.toolName, args: typeof e.args === "string" ? e.args : JSON.stringify(e.args) });
-        updateAssistant();
-      } else if (e.type === "tool_result") {
-        const tc = blocks.find((b): b is ContentBlock & { type: "tool" } => b.type === "tool" && b.id === e.toolCallId);
-        if (tc) {
-          tc.result = extractResultText(e.result);
-          tc.isError = e.isError;
-        }
-        updateAssistant();
-      } else if (e.type === "turn_end") {
-        if (pendingSteerRef.current.length > 0) {
-          const flushed = pendingSteerRef.current.splice(0);
-          setMessages((prev) => [...prev, ...flushed]);
-        }
-        blocks = [];
-        streamMsgId = randomUUID();
-      } else if (e.type === "error") {
-        setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.message}`, timestamp: new Date() }]);
-      }
-    };
 
     try {
-      await api.dispatch(agentId, sessionKey, text, handleEvent, abort.signal);
+      await api.dispatch(agentId, sessionKeyRef.current, text);
     } catch (err) {
-      if (!abort.signal.aborted) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}`, timestamp: new Date() }]);
-      }
-    } finally {
-      if (pendingSteerRef.current.length > 0) {
-        const flushed = pendingSteerRef.current.splice(0);
-        setMessages((prev) => [...prev, ...flushed]);
-      }
-      abortRef.current = null;
-      setIsStreaming(false);
+      setMessages((prev) => [...prev, { role: "system", content: `Error: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }]);
     }
   };
 
@@ -277,18 +259,6 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
     const text = input.trim();
     if (!text) return;
     setInput("");
-
-    if (isStreaming) {
-      const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
-      pendingSteerRef.current.push(userMsg);
-      // Always dispatch — Gateway steers into the active run if one exists.
-      // Server emits `queued` event then closes; the steered output flows
-      // through the original /dispatch's still-open SSE.
-      void api.dispatch(agentId, sessionKeyRef.current!, text, () => {}).catch((err) => {
-        setMessages((prev) => [...prev, { role: "system", content: `Steer failed: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }]);
-      });
-      return;
-    }
 
     const slash = parseSlashCommand(text);
     if (slash) {

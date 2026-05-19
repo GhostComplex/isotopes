@@ -9,6 +9,7 @@ export function createStubGateway(overrides: Partial<Gateway> = {}): Gateway {
   };
   return {
     dispatch: notImpl("dispatch") as Gateway["dispatch"],
+    dispatchAndWait: notImpl("dispatchAndWait") as Gateway["dispatchAndWait"],
     abort: async () => {},
     abortByKey: async () => false,
     agentExists: () => false,
@@ -16,7 +17,7 @@ export function createStubGateway(overrides: Partial<Gateway> = {}): Gateway {
     listSessionsForAgent: async () => [],
     getSession: async () => undefined,
     getMessages: async () => undefined,
-    subscribeMessages: async () => undefined,
+    subscribe: async () => undefined,
     createOrResumeSession: notImpl("createOrResumeSession") as Gateway["createOrResumeSession"],
     deleteSession: async () => false,
     ...overrides,

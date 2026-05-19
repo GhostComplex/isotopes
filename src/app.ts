@@ -92,7 +92,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       workspacePath,
       config: { ...agentFile.heartbeat, enabled: true },
       runAgentLoop: async (agentId, prompt, sessionKey) => {
-        const result = await gateway.dispatch({
+        const result = await gateway.dispatchAndWait({
           agentId,
           sessionKey,
           content: prompt,
@@ -124,7 +124,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
 
     try {
-      const result = await gateway.dispatch({
+      const result = await gateway.dispatchAndWait({
         agentId: job.agentId,
         sessionKey,
         content: prompt,

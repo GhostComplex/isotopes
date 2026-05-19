@@ -1,5 +1,5 @@
 import type { SendableChannels } from "discord.js";
-import type { DispatchCallbacks } from "../../gateway/index.js";
+import type { SessionEvent, SessionEventListener } from "../../gateway/index.js";
 import { parseReply } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 
@@ -88,8 +88,10 @@ export function chunkDiscordMessage(content: string, maxLength = DISCORD_MAX_MES
   return out;
 }
 
-export interface OutboundCallbacks extends DispatchCallbacks {
-  flushRemaining(): Promise<void>;
+export interface DiscordSubscriber {
+  onEvent: SessionEventListener;
+  /** Resolves on agent_end after the final buffer flush completes. */
+  done: Promise<void>;
 }
 
 interface OutboundContext {
@@ -99,7 +101,7 @@ interface OutboundContext {
   showToolCalls?: boolean;
 }
 
-export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks {
+export function createDiscordSubscriber(ctx: OutboundContext): DiscordSubscriber {
   const { channel, triggerMessageId, showToolCalls = false } = ctx;
 
   // Discord's typing indicator lasts ~10s; refresh every 7s while active.
@@ -138,29 +140,24 @@ export function createDiscordCallbacks(ctx: OutboundContext): OutboundCallbacks 
   const buffer = new SegmentedStreamBuffer(flushSegment);
   startTyping();
 
-  const callbacks: OutboundCallbacks = {
-    onTextDelta: (delta) => {
-      if (delta.length === 0) return;
-      void buffer.append(delta);
-    },
-    flushRemaining: async () => {
-      try {
-        await buffer.flushRemaining();
-      } finally {
-        stopTyping();
-      }
-    },
+  let resolveDone!: () => void;
+  const done = new Promise<void>((r) => { resolveDone = r; });
+
+  const onEvent: SessionEventListener = (event: SessionEvent) => {
+    if (event.type === "text_delta") {
+      if (event.delta.length === 0) return;
+      void buffer.append(event.delta);
+    } else if (event.type === "tool_call" && showToolCalls) {
+      void channel.send(`🔧 ${event.toolName}`).catch(() => {});
+    } else if (event.type === "tool_result" && showToolCalls && event.isError) {
+      void channel.send(`⚠️ ${event.toolName} failed`).catch(() => {});
+    } else if (event.type === "agent_end") {
+      void (async () => {
+        try { await buffer.flushRemaining(); }
+        finally { stopTyping(); resolveDone(); }
+      })();
+    }
   };
 
-  if (showToolCalls) {
-    callbacks.onToolStart = async (call) => {
-      try { await channel.send(`🔧 ${call.name}`); } catch { /* tolerate Discord errors */ }
-    };
-    callbacks.onToolEnd = async (result) => {
-      if (!result.isError) return;
-      try { await channel.send(`⚠️ ${result.name} failed`); } catch { /* tolerate Discord errors */ }
-    };
-  }
-
-  return callbacks;
+  return { onEvent, done };
 }

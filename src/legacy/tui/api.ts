@@ -1,4 +1,4 @@
-import type { ChatSessionInfo, DaemonStatus, SessionSummary, SSEEvent } from "./types.js";
+import type { ChatSessionInfo, DaemonStatus, DispatchAck, SessionSummary, StreamEvent } from "./types.js";
 
 const DEFAULT_PORT = 2712;
 
@@ -76,109 +76,27 @@ export async function deleteSession(agentId: string, sessionKey: string): Promis
   await deleteJson(sessionPath(agentId, sessionKey));
 }
 
-// -- SSE streaming --
+// -- Dispatch (fire-and-forget) --
 
-export function parseSSELine(eventType: string, data: string): SSEEvent | null {
-  if (!eventType || !data) return null;
-  try {
-    const parsed = JSON.parse(data);
-    switch (eventType) {
-      case "text_delta":
-        return { type: "text_delta", text: parsed.text };
-      case "tool_call":
-        return { type: "tool_call", toolCallId: parsed.toolCallId, toolName: parsed.toolName, args: parsed.args };
-      case "tool_result":
-        return { type: "tool_result", toolCallId: parsed.toolCallId, toolName: parsed.toolName, result: parsed.result, isError: parsed.isError };
-      case "turn_end":
-        return { type: "turn_end" };
-      case "steered":
-        return { type: "steered", sessionId: parsed.sessionId };
-      case "error":
-        return { type: "error", message: parsed.message };
-      default:
-        return null;
-    }
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Send a message via the unified `/dispatch` endpoint. Always opens SSE.
- *
- * Two outcomes:
- *   - state === "new_run" → SSE streams the run's events; closes with agent_end.
- *   - state === "steered" → SSE writes a single `steered` event then closes.
- *     The steered output flows through whichever earlier dispatch's SSE is
- *     still open (caller's other reader handles it).
- *
- * Caller's `onEvent` sees all event types including `queued`.
- */
+/** POST a message into a session. Returns ack only. All resulting events
+ *  arrive on the open /stream subscription — do NOT consume any response body. */
 export async function dispatch(
   agentId: string,
   sessionKey: string,
   message: string,
-  onEvent: (event: SSEEvent) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/dispatch`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
-    signal,
-  });
-
-  if (!res.ok) {
-    throw new Error(`API dispatch: ${res.status} ${res.statusText}`);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response body");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let currentEvent = "";
-  let dataLines: string[] = [];
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        currentEvent = line.slice(7).trim();
-        dataLines = [];
-      } else if (line.startsWith("data: ")) {
-        dataLines.push(line.slice(6));
-      } else if (line === "") {
-        if (currentEvent && dataLines.length > 0) {
-          const event = parseSSELine(currentEvent, dataLines.join("\n"));
-          if (event) onEvent(event);
-        }
-        currentEvent = "";
-        dataLines = [];
-      }
-    }
-  }
+): Promise<DispatchAck> {
+  return postJson<DispatchAck>(`${sessionPath(agentId, sessionKey)}/dispatch`, { message });
 }
 
-// -- Observer-mode SSE: attach to /stream for transcript-bus updates --
+// -- Event subscription (SSE) --
 
-export interface AttachedMessage {
-  message: { role: string; content: unknown; toolCallId?: string };
-  messageId: string;
-}
-
-/** Long-lived SSE reader. Server keeps the stream open with heartbeats and
- * never sends an end marker — terminates only when `signal` is aborted. */
+/** Long-lived SSE attached to /stream. Receives every SessionEvent the gateway
+ *  emits for this session, regardless of who dispatched. Terminates only when
+ *  `signal` is aborted. */
 export async function attachStream(
   agentId: string,
   sessionKey: string,
-  onMessage: (m: AttachedMessage) => void,
+  onEvent: (event: StreamEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/stream`, { signal });
@@ -206,10 +124,10 @@ export async function attachStream(
       } else if (line.startsWith("data: ")) {
         dataLines.push(line.slice(6));
       } else if (line === "") {
-        if (currentEvent === "message" && dataLines.length > 0) {
+        if (currentEvent && currentEvent !== "ping" && currentEvent !== "connected" && dataLines.length > 0) {
           try {
-            const parsed = JSON.parse(dataLines.join("\n")) as AttachedMessage;
-            onMessage(parsed);
+            const parsed = JSON.parse(dataLines.join("\n")) as StreamEvent;
+            onEvent(parsed);
           } catch {
             // swallow malformed JSON: console.error would corrupt ink's render
           }

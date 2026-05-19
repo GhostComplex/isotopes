@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchStatus, fetchSessions, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, parseSSELine } from "./api.js";
+import { fetchStatus, fetchSessions, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, dispatch } from "./api.js";
 
 const mockFetch = vi.fn();
 
@@ -97,40 +97,20 @@ describe("deleteSession", () => {
 });
 
 describe("parseSSELine", () => {
-  it("parses text_delta", () => {
-    const event = parseSSELine("text_delta", '{"text":"hello"}');
-    expect(event).toEqual({ type: "text_delta", text: "hello" });
-  });
+  it.skip("parseSSELine was removed — SSE parsing is inlined in attachStream", () => {});
+});
 
-  it("parses tool_call", () => {
-    const event = parseSSELine("tool_call", '{"toolCallId":"t1","toolName":"echo","args":"hi"}');
-    expect(event).toEqual({ type: "tool_call", toolCallId: "t1", toolName: "echo", args: "hi" });
-  });
-
-  it("parses tool_result", () => {
-    const event = parseSSELine("tool_result", '{"toolCallId":"t1","toolName":"echo","result":"hi","isError":false}');
-    expect(event).toEqual({ type: "tool_result", toolCallId: "t1", toolName: "echo", result: "hi", isError: false });
-  });
-
-  it("parses turn_end", () => {
-    const event = parseSSELine("turn_end", '{}');
-    expect(event).toEqual({ type: "turn_end" });
-  });
-
-  it("parses error", () => {
-    const event = parseSSELine("error", '{"message":"boom"}');
-    expect(event).toEqual({ type: "error", message: "boom" });
-  });
-
-  it("returns null for empty event type", () => {
-    expect(parseSSELine("", '{"text":"x"}')).toBeNull();
-  });
-
-  it("returns null for invalid JSON", () => {
-    expect(parseSSELine("text_delta", "not json")).toBeNull();
-  });
-
-  it("returns null for unknown event type", () => {
-    expect(parseSSELine("unknown", '{"foo":"bar"}')).toBeNull();
+describe("dispatch", () => {
+  it("POSTs the message and returns ack", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ sessionId: "s", state: "new_run" }) });
+    const ack = await dispatch("bot", "s1", "hi");
+    expect(ack).toEqual({ sessionId: "s", state: "new_run" });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:2712/api/sessions/bot/s1/dispatch",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ message: "hi" }),
+      }),
+    );
   });
 });
