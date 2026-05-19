@@ -151,9 +151,9 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
     return c.json({ key: result.sessionKey, agentId, resumed: result.resumed }, result.resumed ? 200 : 201);
   });
 
-  // Single dispatch entrypoint. Gateway returns "started" (this request owns the
-  // run; SSE streams its events) or "queued" (steered into an active run; events
-  // flow through the original dispatch's still-open SSE).
+  // Single dispatch entrypoint. Gateway returns "new_run" (this request owns the
+  // run; SSE streams its events) or "steered" (forwarded into an active run;
+  // events flow through the original dispatch's still-open SSE).
   app.post("/api/sessions/:agentId/:key/dispatch", async (c) => {
     const agentId = c.req.param("agentId");
     const sessionKey = c.req.param("key");
@@ -195,8 +195,8 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
           },
         );
 
-        if (result.state === "queued") {
-          await stream.writeSSE({ event: "queued", data: JSON.stringify({ sessionId: result.sessionId }) });
+        if (result.state === "steered") {
+          await stream.writeSSE({ event: "steered", data: JSON.stringify({ sessionId: result.sessionId }) });
         } else {
           if (result.errorMessage) {
             await stream.writeSSE({ event: "error", data: JSON.stringify({ message: result.errorMessage }) });

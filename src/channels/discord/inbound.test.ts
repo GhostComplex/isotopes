@@ -56,7 +56,7 @@ function makeGateway(): Gateway & { dispatch: ReturnType<typeof vi.fn> } {
   return {
     dispatch: vi.fn().mockResolvedValue({
       sessionId: "s",
-      state: "started",
+      state: "new_run",
       responseText: "",
       errorMessage: null,
     }),

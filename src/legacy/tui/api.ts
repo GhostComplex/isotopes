@@ -91,8 +91,8 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
         return { type: "tool_result", toolCallId: parsed.toolCallId, toolName: parsed.toolName, result: parsed.result, isError: parsed.isError };
       case "turn_end":
         return { type: "turn_end" };
-      case "queued":
-        return { type: "queued", sessionId: parsed.sessionId };
+      case "steered":
+        return { type: "steered", sessionId: parsed.sessionId };
       case "error":
         return { type: "error", message: parsed.message };
       default:
@@ -107,8 +107,8 @@ export function parseSSELine(eventType: string, data: string): SSEEvent | null {
  * Send a message via the unified `/dispatch` endpoint. Always opens SSE.
  *
  * Two outcomes:
- *   - state === "started" → SSE streams the run's events; closes with agent_end.
- *   - state === "queued"  → SSE writes a single `queued` event then closes.
+ *   - state === "new_run" → SSE streams the run's events; closes with agent_end.
+ *   - state === "steered" → SSE writes a single `steered` event then closes.
  *     The steered output flows through whichever earlier dispatch's SSE is
  *     still open (caller's other reader handles it).
  *

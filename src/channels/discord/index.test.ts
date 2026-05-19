@@ -44,7 +44,7 @@ function makeGateway(): Gateway & {
   return {
     dispatch: vi.fn().mockResolvedValue({
       sessionId: "s",
-      state: "started",
+      state: "new_run",
       responseText: "",
       errorMessage: null,
     }),
@@ -202,7 +202,7 @@ describe("createDiscordChannel — lifecycle", () => {
     const gateway = makeGateway();
     gateway.dispatch.mockImplementation(async () => {
       observed = getA2ASinkFactory();
-      return { sessionId: "s", state: "started", responseText: "", errorMessage: null };
+      return { sessionId: "s", state: "new_run", responseText: "", errorMessage: null };
     });
     const adapter = createDiscordChannel(
       { accounts: { acct: { token: "t", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
@@ -320,7 +320,7 @@ describe("createDiscordChannel — inbound wiring", () => {
     const gateway = makeGateway();
     gateway.dispatch.mockImplementation(async (_msg, cb) => {
       cb?.onTextDelta?.("hello world.");
-      return { sessionId: "s", state: "started", responseText: "", errorMessage: null };
+      return { sessionId: "s", state: "new_run", responseText: "", errorMessage: null };
     });
     const adapter = createDiscordChannel(
       {

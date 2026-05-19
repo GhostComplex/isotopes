@@ -111,13 +111,13 @@ export function createGateway(deps: GatewayDeps): Gateway {
    * Dispatch a message to an agent.
    *
    * - If the session has no active run, starts one and streams events through
-   *   `callbacks` until agent_end. Returns `state: "started"` with the final
+   *   `callbacks` until agent_end. Returns `state: "new_run"` with the final
    *   responseText.
    * - If the session already has an active run, forwards `msg.content` to the
-   *   runner's native queue via `steer` and returns `state: "queued"` immediately.
+   *   runner's native queue via `steer` and returns `state: "steered"` immediately.
    *   The steered content's output continues streaming through the **original**
    *   handle's callbacks (the first dispatcher's). The `callbacks` argument
-   *   passed on a queued call is **ignored** — there is one channel sink per
+   *   passed on a steered call is **ignored** — there is one channel sink per
    *   session, owned by whoever started the run.
    */
   async function dispatch(msg: Message, callbacks?: DispatchCallbacks): Promise<DispatchResult> {
@@ -134,15 +134,15 @@ export function createGateway(deps: GatewayDeps): Gateway {
         if (active.get(sessionId) !== existing) continue;
         try {
           await deps.agentRuntime.steer(sessionId, msg.content);
-          return { sessionId, state: "queued", responseText: "", errorMessage: null };
+          return { sessionId, state: "steered", responseText: "", errorMessage: null };
         } catch (err) {
           // Steer can still race with the run ending between recheck and the
           // steer call. If the run is gone, retry as fresh; otherwise the
-          // failure is something else — log and return queued with no effect.
+          // failure is something else — log and return steered with no effect.
           if (!active.has(sessionId)) continue;
           const errorMessage = err instanceof Error ? err.message : String(err);
           log.warn(`steer failed for ${sessionId}: ${errorMessage}`);
-          return { sessionId, state: "queued", responseText: "", errorMessage };
+          return { sessionId, state: "steered", responseText: "", errorMessage };
         }
       }
 
@@ -165,7 +165,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
       await handle.done;
       return {
         sessionId,
-        state: "started",
+        state: "new_run",
         responseText: handle.responseText,
         errorMessage: handle.errorMessage,
       };

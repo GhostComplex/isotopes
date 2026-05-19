@@ -32,7 +32,7 @@ export interface DispatchCallbacks {
 
 export interface DispatchResult {
   sessionId: string;
-  state: "started" | "queued";
+  state: "new_run" | "steered";
   responseText: string;
   errorMessage: string | null;
 }

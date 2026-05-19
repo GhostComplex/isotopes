@@ -34,7 +34,7 @@ export type SSEEvent =
   | { type: "tool_call"; toolCallId: string; toolName: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; toolName: string; result: unknown; isError: boolean }
   | { type: "turn_end" }
-  | { type: "queued"; sessionId: string }
+  | { type: "steered"; sessionId: string }
   | { type: "error"; message: string };
 
 export type Screen = "chat" | "status" | "sessions";

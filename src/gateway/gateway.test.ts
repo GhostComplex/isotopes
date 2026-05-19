@@ -83,7 +83,7 @@ describe("gateway.dispatch (started)", () => {
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const result = await gateway.dispatch(baseMsg);
-    expect(result.state).toBe("started");
+    expect(result.state).toBe("new_run");
     expect(result.responseText).toBe("hello, world");
     expect(result.errorMessage).toBeNull();
     expect(result.sessionId).toMatch(/^sess-/);
@@ -166,7 +166,7 @@ describe("gateway.dispatch (queued)", () => {
 
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "first" });
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "second" });
-    expect(second.state).toBe("queued");
+    expect(second.state).toBe("steered");
     expect(second.sessionId).toMatch(/^sess-/);
     expect(steerSpy).toHaveBeenCalledWith(second.sessionId, "second");
 
@@ -197,7 +197,7 @@ describe("gateway.dispatch (queued)", () => {
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "race", content: "a" });
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "race", content: "b" });
 
-    expect(second.state).toBe("queued");
+    expect(second.state).toBe("steered");
     expect(steerCalledBeforeRunReady).toBe(false);
 
     await gateway.abort(second.sessionId);
@@ -253,10 +253,10 @@ describe("gateway.dispatch (queued)", () => {
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const first = await gateway.dispatch({ ...baseMsg, sessionKey: "ended", content: "first" });
-    expect(first.state).toBe("started");
+    expect(first.state).toBe("new_run");
 
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "ended", content: "second" });
-    expect(second.state).toBe("started");
+    expect(second.state).toBe("new_run");
     expect(second.responseText).toBe("one");
     expect(steerSpy).not.toHaveBeenCalled();
   });
@@ -277,7 +277,7 @@ describe("gateway.dispatch (queued)", () => {
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "fail", content: "first" });
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "fail", content: "second" });
 
-    expect(second.state).toBe("queued");
+    expect(second.state).toBe("steered");
     expect(second.errorMessage).toBe("pi rejected");
 
     await gateway.abort(second.sessionId);
@@ -312,7 +312,7 @@ describe("gateway.abort", () => {
     await gateway.abort(capturedSid, "test");
 
     const result = await fut;
-    expect(result.state).toBe("started");
+    expect(result.state).toBe("new_run");
     expect(aborted).toBe(true);
   });
 });
@@ -337,7 +337,7 @@ describe("gateway.abortByKey", () => {
     expect(cancelled).toBe(true);
 
     const result = await fut;
-    expect(result.state).toBe("started");
+    expect(result.state).toBe("new_run");
     expect(aborted).toBe(true);
   });
 
