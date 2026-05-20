@@ -37,8 +37,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
   const resolving = new Map<string, Promise<string>>();
   // sessionId -> external subscribers (fan-out targets for emit()).
   const listeners = new Map<string, Set<SessionEventListener>>();
-  // sessionId -> unsubscribe handle for the single ingestStoreEvents subscription on this session.
-  const storeUnsubscribes = new Map<string, () => void>();
 
   function emit(sessionId: string, event: SessionEvent): void {
     const set = listeners.get(sessionId);
@@ -50,25 +48,9 @@ export function createGateway(deps: GatewayDeps): Gateway {
     }
   }
 
-  // Upstream event source #1: long-lived (one per session, survives across runs).
-  async function ingestStoreEvents(agentId: string, sessionId: string): Promise<void> {
-    if (storeUnsubscribes.has(sessionId)) return;
-    const store = deps.sessionStoreManager.peek(agentId);
-    if (!store) return;
-    const unsubscribe = store.subscribe(sessionId, (update) => {
-      const role = (update.message as { role?: string } | undefined)?.role;
-      if (role === "user") {
-        emit(sessionId, { type: "user_message", message: update.message, messageId: update.messageId });
-      } else if (role === "assistant") {
-        emit(sessionId, { type: "assistant_message", message: update.message, messageId: update.messageId });
-      }
-      // tool role messages: skip — currently delivered via assistant turn.
-    });
-    storeUnsubscribes.set(sessionId, unsubscribe);
-  }
-
-  // Upstream event source #2: short-lived (one per run). agent_end is emitted by
-  // the caller's finally so failure paths (throws) also get a terminal event.
+  // Sole upstream event source: translates pi AgentEvents into SessionEvents.
+  // Short-lived (one per run). agent_end is emitted by the caller's finally so
+  // failure paths (throws) also get a terminal event.
   async function ingestRunnerEvents(
     sessionId: string,
     msg: Message,
@@ -87,10 +69,20 @@ export function createGateway(deps: GatewayDeps): Gateway {
       ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
     })) {
       if (!firstSeen) { firstSeen = true; onFirstEvent(); }
-      if (event.type === "message_update") {
+      if (event.type === "message_start") {
+        const role = (event.message as { role?: string } | undefined)?.role;
+        if (role === "user") {
+          emit(sessionId, { type: "user_message", message: event.message, messageId: randomUUID() });
+        }
+      } else if (event.type === "message_update") {
         const ame = event.assistantMessageEvent;
         if (ame.type === "text_delta") {
           emit(sessionId, { type: "text_delta", delta: ame.delta });
+        }
+      } else if (event.type === "message_end") {
+        const role = (event.message as { role?: string } | undefined)?.role;
+        if (role === "assistant") {
+          emit(sessionId, { type: "assistant_message", message: event.message, messageId: randomUUID() });
         }
       } else if (event.type === "tool_execution_start") {
         emit(sessionId, { type: "tool_call", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
@@ -153,7 +145,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
 
   async function dispatch(msg: Message): Promise<DispatchResult> {
     const sessionId = await resolveSessionId(msg);
-    await ingestStoreEvents(msg.agentId, sessionId);
 
     while (true) {
       const existing = active.get(sessionId);
@@ -191,7 +182,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     // — anonymous-session dispatches otherwise resolve to distinct sessionIds.
     const pinnedMsg: Message = msg.sessionKey ? msg : { ...msg, sessionKey: randomUUID() };
     const sessionId = await resolveSessionId(pinnedMsg);
-    await ingestStoreEvents(pinnedMsg.agentId, sessionId);
 
     const done = new Promise<void>((resolve) => {
       const unsubscribe = subscribeInternal(sessionId, (event) => {
@@ -234,7 +224,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     if (!store) return undefined;
     const session = await store.findByKey(sessionKey);
     if (!session) return undefined;
-    await ingestStoreEvents(agentId, session.id);
     return subscribeInternal(session.id, listener);
   }
 
@@ -299,8 +288,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     if (!store) return false;
     const session = await store.findByKey(sessionKey);
     if (!session) return false;
-    const unsub = storeUnsubscribes.get(session.id);
-    if (unsub) { unsub(); storeUnsubscribes.delete(session.id); }
     listeners.delete(session.id);
     await store.delete(session.id);
     return true;
