@@ -48,9 +48,8 @@ export function createGateway(deps: GatewayDeps): Gateway {
     }
   }
 
-  // Sole upstream event source: translates pi AgentEvents into SessionEvents.
-  // Short-lived (one per run). agent_end is emitted by the caller's finally so
-  // failure paths (throws) also get a terminal event.
+  // agent_end is emitted by the caller's finally so failure paths (throws)
+  // also get a terminal event.
   async function ingestRunnerEvents(
     sessionId: string,
     msg: Message,
