@@ -48,8 +48,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     }
   }
 
-  // agent_end is emitted by the caller's finally so failure paths (throws)
-  // also get a terminal event.
   async function ingestRunnerEvents(
     sessionId: string,
     msg: Message,
