@@ -35,8 +35,9 @@ export function createGateway(deps: GatewayDeps): Gateway {
   // Dedupes concurrent resolveSessionId calls so two dispatches with the same
   // sessionKey share one create instead of racing into two distinct sessions.
   const resolving = new Map<string, Promise<string>>();
+  // sessionId -> external subscribers (fan-out targets for emit()).
   const listeners = new Map<string, Set<SessionEventListener>>();
-  // One store subscription per session, mirrored into our bus as user/assistant_message.
+  // sessionId -> our single store.subscribe handle, mirrored into the bus as user/assistant_message.
   const storeUnsubscribes = new Map<string, () => void>();
 
   function emit(sessionId: string, event: SessionEvent): void {
