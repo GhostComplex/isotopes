@@ -67,27 +67,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     storeUnsubscribes.set(sessionId, unsubscribe);
   }
 
-  async function doResolveSessionId(msg: Message): Promise<string> {
-    const store = await deps.sessionStoreManager.getOrCreate(msg.agentId);
-    if (msg.sessionKey) {
-      const existing = await store.findByKey(msg.sessionKey);
-      if (existing) return existing.id;
-      const created = await store.create(msg.agentId, { key: msg.sessionKey });
-      return created.id;
-    }
-    return (await store.create(msg.agentId)).id;
-  }
-
-  function resolveSessionId(msg: Message): Promise<string> {
-    if (!msg.sessionKey) return doResolveSessionId(msg);
-    const cacheKey = `${msg.agentId}::${msg.sessionKey}`;
-    const pending = resolving.get(cacheKey);
-    if (pending) return pending;
-    const promise = doResolveSessionId(msg).finally(() => resolving.delete(cacheKey));
-    resolving.set(cacheKey, promise);
-    return promise;
-  }
-
   // Upstream event source #2: short-lived (one per run). agent_end is emitted by
   // the caller's finally so failure paths (throws) also get a terminal event.
   async function ingestRunnerEvents(
@@ -131,6 +110,27 @@ export function createGateway(deps: GatewayDeps): Gateway {
       }
     }
     return errorMessage;
+  }
+
+  async function doResolveSessionId(msg: Message): Promise<string> {
+    const store = await deps.sessionStoreManager.getOrCreate(msg.agentId);
+    if (msg.sessionKey) {
+      const existing = await store.findByKey(msg.sessionKey);
+      if (existing) return existing.id;
+      const created = await store.create(msg.agentId, { key: msg.sessionKey });
+      return created.id;
+    }
+    return (await store.create(msg.agentId)).id;
+  }
+
+  function resolveSessionId(msg: Message): Promise<string> {
+    if (!msg.sessionKey) return doResolveSessionId(msg);
+    const cacheKey = `${msg.agentId}::${msg.sessionKey}`;
+    const pending = resolving.get(cacheKey);
+    if (pending) return pending;
+    const promise = doResolveSessionId(msg).finally(() => resolving.delete(cacheKey));
+    resolving.set(cacheKey, promise);
+    return promise;
   }
 
   // Scheduler: owns the active-handle lifecycle for one run and guarantees a
