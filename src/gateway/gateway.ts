@@ -133,8 +133,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return promise;
   }
 
-  // Scheduler: owns the active-handle lifecycle for one run and guarantees a
-  // terminal agent_end emit regardless of success/throw.
   async function triggerRun(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
     let readyResolved = false;
     let errorMessage: string | null = null;
