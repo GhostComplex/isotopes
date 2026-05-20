@@ -50,8 +50,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     }
   }
 
-  // Upstream event source #1: store push subscription. Long-lived (one per session,
-  // survives across runs). Translates store writes into user/assistant_message.
+  // Upstream event source #1: long-lived (one per session, survives across runs).
   async function ingestStoreEvents(agentId: string, sessionId: string): Promise<void> {
     if (storeUnsubscribes.has(sessionId)) return;
     const store = deps.sessionStoreManager.peek(agentId);
@@ -89,10 +88,8 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return promise;
   }
 
-  // Upstream event source #2: runner pull (AsyncIterable). Short-lived (one per run).
-  // Translates AgentEvents into text_delta/tool_call/tool_result/turn_end.
-  // Returns errorMessage if the runner reported one, else null. agent_end is emitted
-  // by the caller's finally so failure paths (throws) also get a terminal event.
+  // Upstream event source #2: short-lived (one per run). agent_end is emitted by
+  // the caller's finally so failure paths (throws) also get a terminal event.
   async function ingestRunnerEvents(
     sessionId: string,
     msg: Message,
