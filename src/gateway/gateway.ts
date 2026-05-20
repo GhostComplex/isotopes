@@ -37,7 +37,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
   const resolving = new Map<string, Promise<string>>();
   // sessionId -> external subscribers (fan-out targets for emit()).
   const listeners = new Map<string, Set<SessionEventListener>>();
-  // sessionId -> our single store.subscribe handle, mirrored into the bus as user/assistant_message.
+  // sessionId -> unsubscribe handle for the single ingestStoreEvents subscription on this session.
   const storeUnsubscribes = new Map<string, () => void>();
 
   function emit(sessionId: string, event: SessionEvent): void {
@@ -50,7 +50,9 @@ export function createGateway(deps: GatewayDeps): Gateway {
     }
   }
 
-  async function ensureStoreSubscription(agentId: string, sessionId: string): Promise<void> {
+  // Upstream event source #1: store push subscription. Long-lived (one per session,
+  // survives across runs). Translates store writes into user/assistant_message.
+  async function ingestStoreEvents(agentId: string, sessionId: string): Promise<void> {
     if (storeUnsubscribes.has(sessionId)) return;
     const store = deps.sessionStoreManager.peek(agentId);
     if (!store) return;
@@ -87,46 +89,61 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return promise;
   }
 
-  async function triggerRun(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
-    let readyResolved = false;
+  // Upstream event source #2: runner pull (AsyncIterable). Short-lived (one per run).
+  // Translates AgentEvents into text_delta/tool_call/tool_result/turn_end.
+  // Returns errorMessage if the runner reported one, else null. agent_end is emitted
+  // by the caller's finally so failure paths (throws) also get a terminal event.
+  async function ingestRunnerEvents(
+    sessionId: string,
+    msg: Message,
+    onFirstEvent: () => void,
+  ): Promise<string | null> {
+    let firstSeen = false;
     let errorMessage: string | null = null;
     const cfg = deps.agentRuntime.getAgent(msg.agentId)?.config;
     const cwd = cfg ? resolveAgentWorkspacePath(cfg) : undefined;
-    try {
-      for await (const event of deps.agentRuntime.run({
-        to: msg.agentId,
-        sessionId,
-        content: msg.content,
-        ...(msg.images && msg.images.length > 0 ? { images: msg.images } : {}),
-        ...(cwd ? { cwd } : {}),
-        ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
-      })) {
-        if (!readyResolved) {
-          readyResolved = true;
-          handle.resolveReady();
+    for await (const event of deps.agentRuntime.run({
+      to: msg.agentId,
+      sessionId,
+      content: msg.content,
+      ...(msg.images && msg.images.length > 0 ? { images: msg.images } : {}),
+      ...(cwd ? { cwd } : {}),
+      ...(msg.extraSystemPrompt ? { extraSystemPrompt: msg.extraSystemPrompt } : {}),
+    })) {
+      if (!firstSeen) { firstSeen = true; onFirstEvent(); }
+      if (event.type === "message_update") {
+        const ame = event.assistantMessageEvent;
+        if (ame.type === "text_delta") {
+          emit(sessionId, { type: "text_delta", delta: ame.delta });
         }
-        if (event.type === "message_update") {
-          const ame = event.assistantMessageEvent;
-          if (ame.type === "text_delta") {
-            emit(sessionId, { type: "text_delta", delta: ame.delta });
-          }
-        } else if (event.type === "tool_execution_start") {
-          emit(sessionId, { type: "tool_call", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
-        } else if (event.type === "tool_execution_end") {
-          emit(sessionId, {
-            type: "tool_result",
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            result: event.result,
-            isError: event.isError,
-          });
-        } else if (event.type === "turn_end") {
-          emit(sessionId, { type: "turn_end" });
-        } else if (event.type === "agent_end") {
-          const meta = getAgentEndMeta(event.messages);
-          if (meta.stopReason === "error") errorMessage = meta.errorMessage ?? "Unknown agent error";
-        }
+      } else if (event.type === "tool_execution_start") {
+        emit(sessionId, { type: "tool_call", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
+      } else if (event.type === "tool_execution_end") {
+        emit(sessionId, {
+          type: "tool_result",
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          result: event.result,
+          isError: event.isError,
+        });
+      } else if (event.type === "turn_end") {
+        emit(sessionId, { type: "turn_end" });
+      } else if (event.type === "agent_end") {
+        const meta = getAgentEndMeta(event.messages);
+        if (meta.stopReason === "error") errorMessage = meta.errorMessage ?? "Unknown agent error";
       }
+    }
+    return errorMessage;
+  }
+
+  // Scheduler: owns the active-handle lifecycle for one run and guarantees a
+  // terminal agent_end emit regardless of success/throw.
+  async function triggerRun(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
+    let readyResolved = false;
+    let errorMessage: string | null = null;
+    const markReady = () => { readyResolved = true; handle.resolveReady(); };
+    try {
+      errorMessage = await ingestRunnerEvents(sessionId, msg, markReady);
     } catch (err) {
       errorMessage = err instanceof Error ? err.message : String(err);
       log.error(`triggerRun error for ${sessionId}: ${errorMessage}`);
@@ -141,7 +158,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
 
   async function dispatch(msg: Message): Promise<DispatchResult> {
     const sessionId = await resolveSessionId(msg);
-    await ensureStoreSubscription(msg.agentId, sessionId);
+    await ingestStoreEvents(msg.agentId, sessionId);
 
     while (true) {
       const existing = active.get(sessionId);
@@ -179,7 +196,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     // — anonymous-session dispatches otherwise resolve to distinct sessionIds.
     const pinnedMsg: Message = msg.sessionKey ? msg : { ...msg, sessionKey: randomUUID() };
     const sessionId = await resolveSessionId(pinnedMsg);
-    await ensureStoreSubscription(pinnedMsg.agentId, sessionId);
+    await ingestStoreEvents(pinnedMsg.agentId, sessionId);
 
     const done = new Promise<void>((resolve) => {
       const unsubscribe = subscribeInternal(sessionId, (event) => {
@@ -222,7 +239,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     if (!store) return undefined;
     const session = await store.findByKey(sessionKey);
     if (!session) return undefined;
-    await ensureStoreSubscription(agentId, session.id);
+    await ingestStoreEvents(agentId, session.id);
     return subscribeInternal(session.id, listener);
   }
 
