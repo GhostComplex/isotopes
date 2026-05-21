@@ -1,5 +1,5 @@
 import type { Message as DiscordMessage, SendableChannels } from "discord.js";
-import type { Gateway, Message, SessionEventListener } from "../../gateway/index.js";
+import type { Gateway, Message } from "../../gateway/index.js";
 import { REPLY_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { DiscordAccountConfig, GuildConfig } from "./types.js";
@@ -117,22 +117,21 @@ export async function handleStopCommand(
 interface InboundDeps {
   gateway: Gateway;
   guilds?: Record<string, GuildConfig>;
-  /** Default true. Set false to drop messages authored by other bots. */
   allowBots?: boolean;
-  /** Hook to prepend inbound metadata (sender, channel) before dispatch. */
   transformContent?: (content: string, msg: DiscordMessage) => string;
 }
 
 /** Subscriber for one inbound message — receives session events until agent_end. */
 export interface InboundSubscriber {
-  onEvent: SessionEventListener;
-  /** Resolves after agent_end is seen and any final flush completes. */
+  onEvent: (event: import("../../gateway/index.js").SessionEvent) => void;
   done: Promise<void>;
 }
 
 interface InboundContext {
   botId: string;
   buildSubscriber: (msg: DiscordMessage) => InboundSubscriber;
+  setActiveSubscriber: (sub: InboundSubscriber) => void;
+  clearActiveSubscriber: () => void;
 }
 
 export async function handleInbound(
@@ -152,7 +151,6 @@ export async function handleInbound(
     return;
   }
 
-  // DMs always pass; guild messages need @-mention unless requireMention=false.
   if (msg.guild) {
     const requireMention = deps.guilds?.[msg.guild.id]?.requireMention ?? true;
     if (requireMention && !msg.mentions?.has?.(ctx.botId)) {
@@ -163,7 +161,7 @@ export async function handleInbound(
 
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
   const images = await extractAttachmentImages(msg);
-  if (!cleanedText && images.length === 0) return; // empty turn
+  if (!cleanedText && images.length === 0) return;
   const content = deps.transformContent
     ? deps.transformContent(cleanedText, msg)
     : cleanedText;
@@ -178,30 +176,16 @@ export async function handleInbound(
     ...(images.length > 0 ? { images } : {}),
   };
 
-  // Ensure session exists before subscribing — otherwise we'd miss the first
-  // text_delta in the race between dispatch creating the session and our subscribe.
-  await deps.gateway.createOrResumeSession(routing.agentId, routing.sessionKey);
-
   const subscriber = ctx.buildSubscriber(msg);
-  const unsubscribe = await deps.gateway.subscribe(
-    routing.agentId,
-    routing.sessionKey,
-    subscriber.onEvent,
-  );
-  if (!unsubscribe) {
-    log.warn(`discord receive: subscribe failed for ${routing.sessionKey}`);
-    return;
-  }
+  ctx.setActiveSubscriber(subscriber);
 
   try {
     const result = await deps.gateway.dispatch(message);
     if (result.state === "steered") {
-      // Another dispatcher owns the run; their subscriber renders. Drop ours.
       return;
     }
-    // We own this run. Wait for the subscriber to see agent_end and finish flush.
     await subscriber.done;
   } finally {
-    unsubscribe();
+    ctx.clearActiveSubscriber();
   }
 }

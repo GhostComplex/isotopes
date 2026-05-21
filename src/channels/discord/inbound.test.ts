@@ -81,7 +81,12 @@ describe("handleInbound", () => {
     });
   });
 
-  const ctx = () => ({ botId: BOT_ID, buildSubscriber });
+  const ctx = () => ({
+    botId: BOT_ID,
+    buildSubscriber,
+    setActiveSubscriber: vi.fn(),
+    clearActiveSubscriber: vi.fn(),
+  });
   const sessionKeyFor = (msg: DiscordMessage, botId = BOT_ID): string => {
     const ch = msg.channel as { isThread?: () => boolean };
     if (ch?.isThread?.()) return `discord:${botId}:thread:${msg.channelId}`;
@@ -125,7 +130,6 @@ describe("handleInbound", () => {
     });
     expect(message.extraSystemPrompt).toContain("Chat Reply Tags");
     expect(buildSubscriber).toHaveBeenCalledWith(msg);
-    expect(gateway.subscribe).toHaveBeenCalled();
   });
 
   it("dispatches on DM regardless of mention", async () => {
