@@ -5,17 +5,14 @@ import {
 import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyChannelContext } from "./channels/types.js";
-import {
-  ensureDirectories,
-  resolveAgentWorkspacePath,
-} from "./paths.js";
+import { ensureDirectories } from "./paths.js";
 
-import { ApiServer } from "./legacy/http/server.js";
+import { serve, type ServerType } from "@hono/node-server";
+import { createApi } from "./http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
-import { discoverUIEntries } from "./extensions/ui/loader.js";
 import { loadChannels } from "./extensions/channels/loader.js";
 import { createGateway } from "./gateway/index.js";
 
@@ -30,7 +27,7 @@ export interface Runtime {
   agentRuntime: AgentRuntime;
   agentWorkspaces: Map<string, string>;
   cronScheduler: CronScheduler;
-  apiServer: ApiServer;
+  apiServer: ServerType;
   shutdown: () => Promise<void>;
 }
 
@@ -84,11 +81,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
 
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
 
-  function resolveCwd(agentId: string): string | undefined {
-    const cfg = agentRuntime.getAgent(agentId)?.config;
-    return cfg ? resolveAgentWorkspacePath(cfg) : undefined;
-  }
-
   const heartbeatManagers: HeartbeatManager[] = [];
   for (const agentFile of config.agents) {
     if (!agentFile.heartbeat?.enabled) continue;
@@ -100,13 +92,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       workspacePath,
       config: { ...agentFile.heartbeat, enabled: true },
       runAgentLoop: async (agentId, prompt, sessionKey) => {
-        const cwd = resolveCwd(agentId);
-        const result = await gateway.dispatch({
+        const result = await gateway.dispatchAndWait({
           agentId,
           sessionKey,
           content: prompt,
           source: "heartbeat",
-          ...(cwd ? { cwd } : {}),
         });
         return result.responseText;
       },
@@ -134,13 +124,11 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
 
     try {
-      const cwd = resolveCwd(job.agentId);
-      const result = await gateway.dispatch({
+      const result = await gateway.dispatchAndWait({
         agentId: job.agentId,
         sessionKey,
         content: prompt,
         source: "cron",
-        ...(cwd ? { cwd } : {}),
       });
       log.info(`Cron "${job.name}" completed (${result.responseText.length} chars)`);
     } catch (err) {
@@ -191,19 +179,14 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     channelLoaders.push(channels);
   }
 
-  const uiEntries = discoverUIEntries();
-
-  const apiServer = new ApiServer(
-    { port: apiPort ?? 2712 },
-    {
-      cronScheduler,
-      uiEntries,
-      sessionStoreManager,
-      agentRuntime,
-      gateway,
-    },
-  );
-  await apiServer.start();
+  const port = apiPort ?? 2712;
+  const api = createApi({ cronScheduler, gateway });
+  const apiServer = await new Promise<ServerType>((resolve) => {
+    const s = serve({ fetch: api.fetch, port, hostname: "127.0.0.1" }, () => {
+      log.info(`API server listening on http://127.0.0.1:${port}`);
+      resolve(s);
+    });
+  });
 
   log.info("Runtime started");
 
@@ -214,7 +197,9 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     for (const t of channelLoaders) {
       try { await t.stopAll(); } catch { /* ignore */ }
     }
-    await apiServer.stop();
+    await new Promise<void>((resolve, reject) => {
+      apiServer.close((err) => (err ? reject(err) : resolve()));
+    });
     sessionStoreManager.destroyAll();
 
     try {

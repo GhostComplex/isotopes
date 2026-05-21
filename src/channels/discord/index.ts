@@ -6,13 +6,13 @@ import {
   type SendableChannels,
 } from "discord.js";
 import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
-import type { Gateway } from "../../gateway/index.js";
+import type { Gateway, SessionEvent } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
 import { loggers } from "../../logging/logger.js";
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
-import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
-import { createDiscordCallbacks } from "./outbound.js";
+import { handleInbound, passesAllowlist, handleStopCommand, type InboundSubscriber } from "./inbound.js";
+import { createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -70,6 +70,11 @@ export function createDiscordChannel(
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
+  // sessionKey → persistent subscription. Subscriber is swapped per-message.
+  const sessionSubs = new Map<string, {
+    unsubscribe: () => void;
+    activeSubscriber: InboundSubscriber | null;
+  }>();
 
   return {
     async start(deps: ChannelDeps) {
@@ -92,6 +97,7 @@ export function createDiscordChannel(
             dedupes,
             histories,
             a2aThreads,
+            sessionSubs,
           }),
         ),
       );
@@ -126,6 +132,8 @@ export function createDiscordChannel(
         }),
       );
       clients.clear();
+      for (const entry of sessionSubs.values()) entry.unsubscribe();
+      sessionSubs.clear();
       for (const dedupe of dedupes.values()) dedupe.clear();
       dedupes.clear();
       for (const h of histories.values()) h.clear();
@@ -145,10 +153,11 @@ interface StartAccountArgs {
   dedupes: Map<string, DedupeCache>;
   histories: Map<string, ChannelHistoryBuffer>;
   a2aThreads: Map<string, string>;
+  sessionSubs: Map<string, { unsubscribe: () => void; activeSubscriber: InboundSubscriber | null }>;
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, histories, a2aThreads } = args;
+  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, histories, a2aThreads, sessionSubs } = args;
 
   const token = resolveToken(account);
   if (!token) {
@@ -182,6 +191,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       dedupe,
       history,
       a2aThreads,
+      sessionSubs,
     }).catch((err) => {
       logger.error(`discord: receive failed: ${err instanceof Error ? err.message : String(err)}`);
     });
@@ -219,6 +229,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
           dedupe,
           history,
           a2aThreads,
+          sessionSubs,
         });
       } catch (err) {
         logger.warn(
@@ -240,10 +251,11 @@ interface InboundArgs {
   dedupe: DedupeCache;
   history: ChannelHistoryBuffer;
   a2aThreads: Map<string, string>;
+  sessionSubs: Map<string, { unsubscribe: () => void; activeSubscriber: InboundSubscriber | null }>;
 }
 
 async function dispatchInbound(args: InboundArgs): Promise<void> {
-  const { msg, account, client, gateway, dedupe, history, a2aThreads } = args;
+  const { msg, account, client, gateway, dedupe, history, a2aThreads, sessionSubs } = args;
   const botId = client.user?.id;
   if (!botId) return;
 
@@ -278,6 +290,20 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   }
 
   const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
+
+  // Ensure persistent subscription exists for this session.
+  if (!sessionSubs.has(sessionKey)) {
+    await gateway.createOrResumeSession(agentId, sessionKey);
+    const unsubscribe = await gateway.subscribe(agentId, sessionKey, (event: SessionEvent) => {
+      sessionSubs.get(sessionKey)?.activeSubscriber?.onEvent(event);
+    });
+    if (!unsubscribe) {
+      log.warn(`discord: persistent subscribe failed for ${sessionKey}`);
+      return;
+    }
+    sessionSubs.set(sessionKey, { unsubscribe, activeSubscriber: null });
+  }
+
   await runWithA2A(sinkFactory, () => handleInbound(
     msg,
     { agentId, sessionKey },
@@ -297,11 +323,19 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     },
     {
       botId,
-      buildCallbacks: (triggerMsg) =>
-        createDiscordCallbacks({
+      buildSubscriber: (triggerMsg) =>
+        createDiscordSubscriber({
           channel: triggerMsg.channel as SendableChannels,
           triggerMessageId: triggerMsg.id,
         }),
+      setActiveSubscriber: (sub) => {
+        const entry = sessionSubs.get(sessionKey);
+        if (entry) entry.activeSubscriber = sub;
+      },
+      clearActiveSubscriber: () => {
+        const entry = sessionSubs.get(sessionKey);
+        if (entry) entry.activeSubscriber = null;
+      },
     },
   ));
 }

@@ -2,34 +2,56 @@ import { describe, it, expect, vi } from "vitest";
 import { createGateway } from "./gateway.js";
 import { AgentRuntime, type Runner } from "../agent/runtime.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import type { Message } from "./types.js";
+import type { Message, SessionEvent } from "./types.js";
 
 let nextSessionId = 0;
 
 function makeStores() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stores = new Map<string, any>();
+  function makeStore() {
+    const sessions = new Map();
+    const byKey = new Map<string, string>();
+    const listenersBySession = new Map<string, Set<(u: { message: unknown; messageId: string }) => void>>();
+    return {
+      async create(aid: string, metadata?: { key?: string }) {
+        const id = `sess-${++nextSessionId}`;
+        const session = { id, agentId: aid, metadata, lastActiveAt: new Date() };
+        sessions.set(id, session);
+        if (metadata?.key) byKey.set(metadata.key, id);
+        return session;
+      },
+      async findByKey(key: string) {
+        const id = byKey.get(key);
+        return id ? sessions.get(id) : undefined;
+      },
+      async get(id: string) { return sessions.get(id); },
+      async list() { return [...sessions.values()]; },
+      async getMessages() { return []; },
+      async delete(id: string) {
+        const s = sessions.get(id);
+        if (s?.metadata?.key) byKey.delete(s.metadata.key);
+        sessions.delete(id);
+      },
+      subscribe(sessionId: string, listener: (u: { message: unknown; messageId: string }) => void) {
+        let set = listenersBySession.get(sessionId);
+        if (!set) { set = new Set(); listenersBySession.set(sessionId, set); }
+        set.add(listener);
+        return () => { set?.delete(listener); };
+      },
+    };
+  }
   return {
     async getOrCreate(agentId: string) {
       let s = stores.get(agentId);
-      if (s) return s;
-      const sessions = new Map();
-      const byKey = new Map<string, string>();
-      s = {
-        async create(aid: string, metadata?: { key?: string }) {
-          const id = `sess-${++nextSessionId}`;
-          const session = { id, agentId: aid, metadata, lastActiveAt: new Date() };
-          sessions.set(id, session);
-          if (metadata?.key) byKey.set(metadata.key, id);
-          return session;
-        },
-        async findByKey(key: string) {
-          const id = byKey.get(key);
-          return id ? sessions.get(id) : undefined;
-        },
-      };
-      stores.set(agentId, s);
+      if (!s) { s = makeStore(); stores.set(agentId, s); }
       return s;
+    },
+    peek(agentId: string) {
+      return stores.get(agentId);
+    },
+    all() {
+      return stores.entries();
     },
   } as never;
 }
@@ -77,80 +99,71 @@ function buildRuntime(runner: Runner) {
 
 const baseMsg: Message = { agentId: "main", content: "hi", source: "tui" };
 
-describe("gateway.dispatch (started)", () => {
-  it("returns started + accumulates responseText", async () => {
+// Helper: collect all SessionEvents from subscribe until agent_end resolves.
+async function dispatchAndCollect(
+  gateway: ReturnType<typeof createGateway>,
+  msg: Message,
+): Promise<{ sessionId: string; state: string; events: SessionEvent[] }> {
+  const events: SessionEvent[] = [];
+  const { sessionKey } = await gateway.createOrResumeSession(msg.agentId, msg.sessionKey);
+  const ready = new Promise<void>((resolve) => {
+    void gateway.subscribe(msg.agentId, sessionKey, (event) => {
+      events.push(event);
+      if (event.type === "agent_end") resolve();
+    });
+  });
+  await gateway.dispatch({ ...msg, sessionKey });
+  await ready;
+  const session = await gateway.getSession(msg.agentId, sessionKey);
+  return { sessionId: session?.id ?? "", state: "new_run", events };
+}
+
+describe("gateway.dispatchAndWait", () => {
+  it("returns final responseText after agent_end", async () => {
     const runtime = buildRuntime(fastRunner(["hel", "lo, ", "world"]));
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
-    const result = await gateway.dispatch(baseMsg);
-    expect(result.state).toBe("started");
+    const result = await gateway.dispatchAndWait(baseMsg);
     expect(result.responseText).toBe("hello, world");
     expect(result.errorMessage).toBeNull();
-    expect(result.sessionId).toMatch(/^sess-/);
-  });
-
-  it("invokes onTextDelta + onToolStart/End callbacks", async () => {
-    const toolEvent: AgentEvent = {
-      type: "tool_execution_start", toolCallId: "t1", toolName: "echo", args: { x: 1 },
-    };
-    const toolEnd: AgentEvent = {
-      type: "tool_execution_end", toolCallId: "t1", toolName: "echo", result: "done", isError: false,
-    };
-    const runner: Runner = {
-      resolveSessionId: (req) => req.sessionId ?? "stub",
-      async *run() {
-        yield textDelta("a");
-        yield toolEvent;
-        yield toolEnd;
-        yield textDelta("b");
-        yield agentEnd("ab");
-      },
-    };
-    const runtime = buildRuntime(runner);
-    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
-
-    const onTextDelta = vi.fn();
-    const onToolStart = vi.fn();
-    const onToolEnd = vi.fn();
-    await gateway.dispatch(baseMsg, { onTextDelta, onToolStart, onToolEnd });
-
-    expect(onTextDelta).toHaveBeenCalledWith("a");
-    expect(onTextDelta).toHaveBeenCalledWith("b");
-    expect(onToolStart).toHaveBeenCalledWith({ id: "t1", name: "echo", args: { x: 1 } });
-    expect(onToolEnd).toHaveBeenCalledWith({ id: "t1", name: "echo", result: "done", isError: false });
-  });
-
-  it("invokes onTurnEnd on each turn_end event", async () => {
-    const turnEnd: AgentEvent = { type: "turn_end" } as never;
-    const runner: Runner = {
-      resolveSessionId: (req) => req.sessionId ?? "stub",
-      async *run() {
-        yield textDelta("a");
-        yield turnEnd;
-        yield textDelta("b");
-        yield turnEnd;
-        yield agentEnd("ab");
-      },
-    };
-    const runtime = buildRuntime(runner);
-    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
-
-    const onTurnEnd = vi.fn();
-    await gateway.dispatch(baseMsg, { onTurnEnd });
-
-    expect(onTurnEnd).toHaveBeenCalledTimes(2);
   });
 
   it("captures errorMessage from agent_end", async () => {
     const runtime = buildRuntime(fastRunner(["x"], "error", "boom"));
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
-    const result = await gateway.dispatch(baseMsg);
+    const result = await gateway.dispatchAndWait(baseMsg);
     expect(result.errorMessage).toBe("boom");
   });
 });
 
-describe("gateway.dispatch (queued)", () => {
+describe("gateway.dispatch (new_run)", () => {
+  it("returns new_run state and surfaces text_delta + agent_end on subscribers", async () => {
+    const runtime = buildRuntime(fastRunner(["a", "b"]));
+    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
+
+    const { events, state } = await dispatchAndCollect(gateway, { ...baseMsg, sessionKey: "k1" });
+    expect(state).toBe("new_run");
+    const textDeltas = events.filter((e): e is Extract<SessionEvent, { type: "text_delta" }> => e.type === "text_delta");
+    expect(textDeltas.map((e) => e.delta)).toEqual(["a", "b"]);
+    expect(events.at(-1)?.type).toBe("agent_end");
+  });
+
+  it("emits tool_call + tool_result for tool events", async () => {
+    const toolStart: AgentEvent = { type: "tool_execution_start", toolCallId: "t1", toolName: "echo", args: { x: 1 } };
+    const toolEnd: AgentEvent = { type: "tool_execution_end", toolCallId: "t1", toolName: "echo", result: "done", isError: false };
+    const runner: Runner = {
+      resolveSessionId: (req) => req.sessionId ?? "stub",
+      async *run() { yield textDelta("a"); yield toolStart; yield toolEnd; yield agentEnd("a"); },
+    };
+    const gateway = createGateway({ agentRuntime: buildRuntime(runner), sessionStoreManager: makeStores() });
+    const { events } = await dispatchAndCollect(gateway, { ...baseMsg, sessionKey: "k2" });
+    expect(events.find((e) => e.type === "tool_call")).toMatchObject({ toolCallId: "t1", toolName: "echo", args: { x: 1 } });
+    expect(events.find((e) => e.type === "tool_result")).toMatchObject({ toolCallId: "t1", toolName: "echo", result: "done", isError: false });
+  });
+});
+
+describe("gateway.dispatch (steered)", () => {
   it("forwards to runtime.steer when session is busy", async () => {
     const longRunner: Runner = {
       resolveSessionId: (req) => req.sessionId ?? "stub",
@@ -165,43 +178,12 @@ describe("gateway.dispatch (queued)", () => {
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "first" });
+    await first; // dispatch resolves early on handle.ready
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "second" });
-    expect(second.state).toBe("queued");
-    expect(second.sessionId).toMatch(/^sess-/);
+    expect(second.state).toBe("steered");
     expect(steerSpy).toHaveBeenCalledWith(second.sessionId, "second");
 
     await gateway.abort(second.sessionId);
-    await first;
-  });
-
-  it("steer awaits run readiness (no race against runner registration)", async () => {
-    let runnerStarted = false;
-    let steerCalledBeforeRunReady = false;
-    const slowStartRunner: Runner = {
-      resolveSessionId: (req) => req.sessionId ?? "stub",
-      async *run({ abort }) {
-        // Simulate runner doing async setup before pi registers the run.
-        await new Promise((r) => setTimeout(r, 20));
-        runnerStarted = true;
-        yield textDelta("ready");
-        await new Promise((r) => abort.addEventListener("abort", r, { once: true }));
-        yield agentEnd();
-      },
-    };
-    const runtime = buildRuntime(slowStartRunner);
-    vi.spyOn(runtime, "steer").mockImplementation(async () => {
-      if (!runnerStarted) steerCalledBeforeRunReady = true;
-    });
-    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
-
-    const first = gateway.dispatch({ ...baseMsg, sessionKey: "race", content: "a" });
-    const second = await gateway.dispatch({ ...baseMsg, sessionKey: "race", content: "b" });
-
-    expect(second.state).toBe("queued");
-    expect(steerCalledBeforeRunReady).toBe(false);
-
-    await gateway.abort(second.sessionId);
-    await first;
   });
 
   it("dedupes concurrent resolveSessionId calls for the same sessionKey", async () => {
@@ -243,45 +225,16 @@ describe("gateway.dispatch (queued)", () => {
   });
 
   it("falls through to a fresh run if the prior run ended between observe and steer", async () => {
-    // First run completes immediately. Second dispatch grabs a stale handle
-    // (active still set from the just-finished run could in theory be observed
-    // before the finally-delete; we simulate by serializing dispatches across
-    // a completed first run). The second dispatch must start a fresh run, not
-    // attempt to steer into the dead one.
     const runtime = buildRuntime(fastRunner(["one"]));
     const steerSpy = vi.spyOn(runtime, "steer");
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
-    const first = await gateway.dispatch({ ...baseMsg, sessionKey: "ended", content: "first" });
-    expect(first.state).toBe("started");
+    const first = await gateway.dispatchAndWait({ ...baseMsg, sessionKey: "ended", content: "first" });
+    expect(first.responseText).toBe("one");
 
-    const second = await gateway.dispatch({ ...baseMsg, sessionKey: "ended", content: "second" });
-    expect(second.state).toBe("started");
+    const second = await gateway.dispatchAndWait({ ...baseMsg, sessionKey: "ended", content: "second" });
     expect(second.responseText).toBe("one");
     expect(steerSpy).not.toHaveBeenCalled();
-  });
-
-  it("surfaces non-race steer failures via errorMessage (not silent null)", async () => {
-    const longRunner: Runner = {
-      resolveSessionId: (req) => req.sessionId ?? "stub",
-      async *run({ abort }) {
-        yield textDelta("running");
-        await new Promise((r) => abort.addEventListener("abort", r, { once: true }));
-        yield agentEnd();
-      },
-    };
-    const runtime = buildRuntime(longRunner);
-    vi.spyOn(runtime, "steer").mockRejectedValue(new Error("pi rejected"));
-    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
-
-    const first = gateway.dispatch({ ...baseMsg, sessionKey: "fail", content: "first" });
-    const second = await gateway.dispatch({ ...baseMsg, sessionKey: "fail", content: "second" });
-
-    expect(second.state).toBe("queued");
-    expect(second.errorMessage).toBe("pi rejected");
-
-    await gateway.abort(second.sessionId);
-    await first;
   });
 });
 
@@ -299,20 +252,10 @@ describe("gateway.abort", () => {
     const runtime = buildRuntime(runner);
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
-    let capturedSid = "";
-    const fut = gateway.dispatch(baseMsg, {
-      onTextDelta: () => {
-        if (!capturedSid) {
-          for (const r of runtime.listRuns()) capturedSid = r.sessionId;
-        }
-      },
-    });
+    const ack = await gateway.dispatch({ ...baseMsg, sessionKey: "abk" });
+    await gateway.abort(ack.sessionId, "test");
+    // give the run time to wind down
     await new Promise((r) => setTimeout(r, 10));
-    expect(capturedSid).toMatch(/^sess-/);
-    await gateway.abort(capturedSid, "test");
-
-    const result = await fut;
-    expect(result.state).toBe("started");
     expect(aborted).toBe(true);
   });
 });
@@ -331,13 +274,11 @@ describe("gateway.abortByKey", () => {
     const runtime = buildRuntime(runner);
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
-    const fut = gateway.dispatch({ ...baseMsg, sessionKey: "discord:bot:channel:c1" });
+    await gateway.dispatch({ ...baseMsg, sessionKey: "discord:bot:channel:c1" });
     await new Promise((r) => setTimeout(r, 10));
     const cancelled = await gateway.abortByKey("main", "discord:bot:channel:c1", "user");
     expect(cancelled).toBe(true);
-
-    const result = await fut;
-    expect(result.state).toBe("started");
+    await new Promise((r) => setTimeout(r, 10));
     expect(aborted).toBe(true);
   });
 

@@ -29,12 +29,20 @@ export interface ChatSessionInfo {
   resumed: boolean;
 }
 
-export type SSEEvent =
-  | { type: "text_delta"; text: string }
+export interface DispatchAck {
+  sessionId: string;
+  state: "new_run" | "steered";
+}
+
+/** Mirrors gateway/types.ts SessionEvent — wire shape over SSE. */
+export type StreamEvent =
+  | { type: "user_message"; message: unknown; messageId: string }
+  | { type: "text_delta"; delta: string }
   | { type: "tool_call"; toolCallId: string; toolName: string; args: unknown }
   | { type: "tool_result"; toolCallId: string; toolName: string; result: unknown; isError: boolean }
+  | { type: "assistant_message"; message: unknown; messageId: string }
   | { type: "turn_end" }
-  | { type: "error"; message: string };
+  | { type: "agent_end"; stopReason: "end" | "error"; errorMessage?: string };
 
 export type Screen = "chat" | "status" | "sessions";
 

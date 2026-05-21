@@ -1,5 +1,5 @@
 import type { Message as DiscordMessage, SendableChannels } from "discord.js";
-import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
+import type { Gateway, Message } from "../../gateway/index.js";
 import { REPLY_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { DiscordAccountConfig, GuildConfig } from "./types.js";
@@ -117,20 +117,21 @@ export async function handleStopCommand(
 interface InboundDeps {
   gateway: Gateway;
   guilds?: Record<string, GuildConfig>;
-  /** Default true. Set false to drop messages authored by other bots. */
   allowBots?: boolean;
-  /** Hook to prepend inbound metadata (sender, channel) before dispatch. */
   transformContent?: (content: string, msg: DiscordMessage) => string;
 }
 
-/** DispatchCallbacks + a post-dispatch cleanup hook (e.g. drain a buffer). */
-interface InboundCallbacks extends DispatchCallbacks {
-  flushRemaining?(): Promise<void>;
+/** Subscriber for one inbound message — receives session events until agent_end. */
+export interface InboundSubscriber {
+  onEvent: (event: import("../../gateway/index.js").SessionEvent) => void;
+  done: Promise<void>;
 }
 
 interface InboundContext {
   botId: string;
-  buildCallbacks: (msg: DiscordMessage) => InboundCallbacks;
+  buildSubscriber: (msg: DiscordMessage) => InboundSubscriber;
+  setActiveSubscriber: (sub: InboundSubscriber) => void;
+  clearActiveSubscriber: () => void;
 }
 
 export async function handleInbound(
@@ -150,7 +151,6 @@ export async function handleInbound(
     return;
   }
 
-  // DMs always pass; guild messages need @-mention unless requireMention=false.
   if (msg.guild) {
     const requireMention = deps.guilds?.[msg.guild.id]?.requireMention ?? true;
     if (requireMention && !msg.mentions?.has?.(ctx.botId)) {
@@ -161,7 +161,7 @@ export async function handleInbound(
 
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
   const images = await extractAttachmentImages(msg);
-  if (!cleanedText && images.length === 0) return; // empty turn
+  if (!cleanedText && images.length === 0) return;
   const content = deps.transformContent
     ? deps.transformContent(cleanedText, msg)
     : cleanedText;
@@ -176,18 +176,16 @@ export async function handleInbound(
     ...(images.length > 0 ? { images } : {}),
   };
 
-  const callbacks = ctx.buildCallbacks(msg);
+  const subscriber = ctx.buildSubscriber(msg);
+  ctx.setActiveSubscriber(subscriber);
+
   try {
-    await deps.gateway.dispatch(message, callbacks);
-  } finally {
-    // Must run even on dispatch error: outbound holds per-dispatch resources
-    // (typing interval, edit timers) that only release here.
-    if (callbacks.flushRemaining) {
-      try {
-        await callbacks.flushRemaining();
-      } catch (err) {
-        log.warn(`flushRemaining failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    const result = await deps.gateway.dispatch(message);
+    if (result.state === "steered") {
+      return;
     }
+    await subscriber.done;
+  } finally {
+    ctx.clearActiveSubscriber();
   }
 }

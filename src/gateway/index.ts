@@ -1,8 +1,13 @@
 export { createGateway, type GatewayDeps } from "./gateway.js";
 export type {
+  AwaitResult,
+  CreateSessionResult,
+  DispatchResult,
   Gateway,
   Message,
   MessageSource,
-  DispatchCallbacks,
-  DispatchResult,
+  Session,
+  SessionEvent,
+  SessionEventListener,
+  SessionMetadata,
 } from "./types.js";

@@ -38,6 +38,7 @@ pnpm test:integration
 - `agent/` — Agent runtime, runners, tools, workspace loading, and per-agent host/sandbox middleware (executor, fs bridge, docker container manager, sandbox config). The new home for everything that defines what an agent *is* and how it runs.
 - `gateway/` — Typed Gateway abstraction (steer-only): the canonical entrypoint for channel adapters to dispatch inbound messages, stream callbacks, and abort sessions.
 - `channels/` — Channel adapters. Today: `channels/discord/` (full Discord adapter — inbound pipeline, outbound streaming, dedupe, channel history, image attachments, /stop interception, A2A sink for spawn_agent threads, react, allowlists).
+- `http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status. Single dispatch entry (`POST /api/sessions/:agentId/:key/dispatch`) mirrors Discord's pattern through Gateway. Instantiated directly from `app.ts`.
 - `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/pi/session-store.ts`.
 - `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
@@ -61,7 +62,6 @@ pnpm test:integration
 
 - `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
 - `tui/` — Terminal UI for interactive chat mode.
-- `http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status. Instantiated directly from `app.ts`.
 - `version.ts` — Build version constant.
 
 ### Key patterns
