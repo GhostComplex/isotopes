@@ -140,6 +140,23 @@ export function createGateway(deps: GatewayDeps): Gateway {
     }
   }
 
+  function addListener(sessionId: string, listener: SessionEventListener): () => void {
+    let set = listeners.get(sessionId);
+    if (!set) {
+      set = new Set();
+      listeners.set(sessionId, set);
+    }
+    set.add(listener);
+    return () => {
+      const s = listeners.get(sessionId);
+      if (!s) return;
+      s.delete(listener);
+      if (s.size === 0) listeners.delete(sessionId);
+    };
+  }
+
+  // --- public API ---
+
   async function dispatch(msg: Message): Promise<DispatchResult> {
     const sessionId = await resolveSessionId(msg);
 
@@ -194,22 +211,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     await dispatch(pinnedMsg);
     await done;
     return { responseText, errorMessage };
-  }
-
-  /** Internal: subscribe by sessionId (already resolved). */
-  function addListener(sessionId: string, listener: SessionEventListener): () => void {
-    let set = listeners.get(sessionId);
-    if (!set) {
-      set = new Set();
-      listeners.set(sessionId, set);
-    }
-    set.add(listener);
-    return () => {
-      const s = listeners.get(sessionId);
-      if (!s) return;
-      s.delete(listener);
-      if (s.size === 0) listeners.delete(sessionId);
-    };
   }
 
   async function subscribe(
