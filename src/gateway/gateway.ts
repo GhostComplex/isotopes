@@ -181,7 +181,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     const sessionId = await resolveSessionId(pinnedMsg);
 
     const done = new Promise<void>((resolve) => {
-      const unsubscribe = subscribeInternal(sessionId, (event) => {
+      const unsubscribe = addListener(sessionId, (event) => {
         if (event.type === "text_delta") responseText += event.delta;
         else if (event.type === "agent_end") {
           if (event.stopReason === "error") errorMessage = event.errorMessage ?? "Unknown agent error";
@@ -197,7 +197,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
   }
 
   /** Internal: subscribe by sessionId (already resolved). */
-  function subscribeInternal(sessionId: string, listener: SessionEventListener): () => void {
+  function addListener(sessionId: string, listener: SessionEventListener): () => void {
     let set = listeners.get(sessionId);
     if (!set) {
       set = new Set();
@@ -221,7 +221,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     if (!store) return undefined;
     const session = await store.findByKey(sessionKey);
     if (!session) return undefined;
-    return subscribeInternal(session.id, listener);
+    return addListener(session.id, listener);
   }
 
   async function abort(sessionId: string, reason?: string): Promise<void> {
