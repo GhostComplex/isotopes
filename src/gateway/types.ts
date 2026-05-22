@@ -66,7 +66,6 @@ export interface Gateway {
   agentExists(agentId: string): boolean;
 
   listSessions(): Promise<Session[]>;
-  listSessionsForAgent(agentId: string): Promise<Session[]>;
   getSession(agentId: string, sessionKey: string): Promise<Session | undefined>;
   getMessages(agentId: string, sessionKey: string): Promise<AgentMessage[] | undefined>;
   /** Subscribe to all events for a session. Returns unsubscribe, or undefined if session not found. */

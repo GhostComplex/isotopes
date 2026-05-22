@@ -36,12 +36,6 @@ describe("/api/sessions", () => {
       expect(status).toBe(200);
       expect(data).toEqual({ items: [] });
     });
-
-    it("GET /api/sessions/:agentId/:key returns 404", async () => {
-      const { status, data } = await request(ts.port, "GET", "/api/sessions/test-agent/nonexistent");
-      expect(status).toBe(404);
-      expect((data as { error: string }).error).toContain("not found");
-    });
   });
 
   describe("POST /api/sessions/:agentId — create/resume", () => {

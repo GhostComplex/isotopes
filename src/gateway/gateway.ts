@@ -249,12 +249,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return out;
   }
 
-  async function listSessionsForAgent(agentId: string): Promise<Session[]> {
-    const store = deps.sessionStoreManager.peek(agentId);
-    if (!store) return [];
-    return (await store.list()).filter((s) => s.metadata?.key);
-  }
-
   async function getSession(agentId: string, sessionKey: string): Promise<Session | undefined> {
     const store = deps.sessionStoreManager.peek(agentId);
     return store ? store.findByKey(sessionKey) : undefined;
@@ -298,7 +292,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     abortByKey,
     agentExists,
     listSessions,
-    listSessionsForAgent,
     getSession,
     getMessages,
     subscribe,

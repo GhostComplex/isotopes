@@ -14,7 +14,6 @@ export function createStubGateway(overrides: Partial<Gateway> = {}): Gateway {
     abortByKey: async () => false,
     agentExists: () => false,
     listSessions: async () => [],
-    listSessionsForAgent: async () => [],
     getSession: async () => undefined,
     getMessages: async () => undefined,
     subscribe: async () => undefined,

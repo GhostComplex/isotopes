@@ -19,35 +19,6 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
     });
   });
 
-  app.get("/api/sessions/:agentId", async (c) => {
-    const agentId = c.req.param("agentId");
-    const sessions = await deps.gateway.listSessionsForAgent(agentId);
-    return c.json({
-      items: sessions.map((s) => ({
-        key: s.metadata!.key!,
-        agentId: s.agentId || agentId,
-        status: "active",
-        createdAt: s.lastActiveAt.toISOString(),
-        lastActivityAt: s.lastActiveAt.toISOString(),
-      })),
-    });
-  });
-
-  app.get("/api/sessions/:agentId/:key", async (c) => {
-    const agentId = c.req.param("agentId");
-    const key = c.req.param("key");
-    const session = await deps.gateway.getSession(agentId, key);
-    if (!session) return c.json({ error: "Session not found", status: 404 }, 404);
-    const messages = (await deps.gateway.getMessages(agentId, key)) ?? [];
-    return c.json({
-      key,
-      agentId,
-      status: "active",
-      metadata: session.metadata,
-      history: messages,
-    });
-  });
-
   app.get("/api/sessions/:agentId/:key/messages", async (c) => {
     const messages = await deps.gateway.getMessages(c.req.param("agentId"), c.req.param("key"));
     if (messages === undefined) return c.json({ error: "Session not found", status: 404 }, 404);
