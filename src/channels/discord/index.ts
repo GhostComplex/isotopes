@@ -96,9 +96,6 @@ export function createDiscordChannel(
         ),
       );
 
-      // Per-agent: bind a Channel actions object that resolves (agent, channel)
-      // → bot at call time. Errors clearly when no bot serves the agent in the
-      // requested channel.
       if (deps.channelContexts && clients.size > 0) {
         for (const [agentId, ctx] of deps.channelContexts.entries()) {
           const actions: ChannelActions = {
@@ -265,9 +262,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   const isStopCommand = await handleStopCommand(msg, botId, gateway, agentId, sessionKey, a2aThreads);
   if (isStopCommand) return;
 
-  // Observe every allowlisted guild msg into the channel history buffer
-  // (DMs are 1:1 — session memory is enough). Buffer is consumed (with
-  // trigger excluded) and cleared by transformContent on engaged dispatch.
   if (msg.guild && msg.author.id !== botId) {
     history.append(msg.channelId, {
       messageId: msg.id,

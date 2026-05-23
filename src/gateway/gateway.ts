@@ -167,7 +167,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
       const handle: ActiveHandle = { ready, resolveReady };
       active.set(sessionId, handle);
       void triggerRun(sessionId, msg, handle);
-      // Wait for handle.ready so a follow-up dispatch sees the active run and steers.
       await handle.ready;
       return { sessionId, state: "new_run" };
     }

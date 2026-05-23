@@ -41,7 +41,6 @@ export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConf
       return false;
     }
     if (group.channelAllowlist !== undefined) {
-      // For thread messages, also accept the thread's parent channel.
       const parentId = threadParentId(msg);
       const channelOk = group.channelAllowlist.includes(msg.channelId)
         || (parentId !== undefined && group.channelAllowlist.includes(parentId));
@@ -152,7 +151,6 @@ export async function handleInbound(
     return;
   }
 
-  // DMs always pass; guild messages need @-mention unless requireMention=false.
   if (msg.guild) {
     const requireMention = deps.guilds?.[msg.guild.id]?.requireMention ?? true;
     if (requireMention && !msg.mentions?.has?.(ctx.botId)) {
@@ -178,8 +176,6 @@ export async function handleInbound(
     ...(images.length > 0 ? { images } : {}),
   };
 
-  // Ensure session exists before subscribing — otherwise we'd miss the first
-  // text_delta in the race between dispatch creating the session and our subscribe.
   await deps.gateway.createOrResumeSession(routing.agentId, routing.sessionKey);
 
   const subscriber = ctx.buildSubscriber(msg);
@@ -196,10 +192,8 @@ export async function handleInbound(
   try {
     const result = await deps.gateway.dispatch(message);
     if (result.state === "steered") {
-      // Another dispatcher owns the run; their subscriber renders. Drop ours.
       return;
     }
-    // We own this run. Wait for the subscriber to see agent_end and finish flush.
     await subscriber.done;
   } finally {
     unsubscribe();
