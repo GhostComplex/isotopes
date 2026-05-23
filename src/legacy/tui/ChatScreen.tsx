@@ -29,7 +29,6 @@ export function historyToChatMessages(items: Array<{ role: string; type?: string
 
   const flushAssistant = () => {
     if (current && (current.text || current.blocks.length > 0)) {
-      // Mark all tool calls as completed in history
       for (const b of current.blocks) {
         if (b.type === "tool" && !b.result) b.result = "✓";
       }
@@ -113,8 +112,6 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
   const settledRef = useRef<ChatMessage[]>([]);
   const isAttached = mode === "attach";
 
-  // All token-level events route through a single long-lived attachStream;
-  // dispatch is fire-and-forget. Mutated by the stream handler.
   const blocksRef = useRef<ContentBlock[]>([]);
   const streamMsgIdRef = useRef<string>(randomUUID());
 
@@ -203,14 +200,11 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
           }
         }
       } else {
-        // Attach mode: load history for context, then attach.
         const { items: history } = await api.getHistory(propAgentId, sessionKey);
         setMessages(historyToChatMessages(history));
       }
       sessionKeyRef.current = effectiveSessionKey;
 
-      // Single attachStream covers everything: token events, tool events,
-      // turn_end, agent_end. dispatch is pure command.
       const attachAbort = new AbortController();
       attachAbortRef.current = attachAbort;
       void (async () => {
