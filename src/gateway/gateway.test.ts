@@ -177,6 +177,7 @@ describe("gateway.dispatch (steered)", () => {
     const steerSpy = vi.spyOn(runtime, "steer").mockResolvedValue();
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
+    await gateway.createOrResumeSession("main", "shared");
     const first = gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "first" });
     await first; // dispatch resolves early on handle.ready
     const second = await gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "second" });
@@ -184,44 +185,6 @@ describe("gateway.dispatch (steered)", () => {
     expect(steerSpy).toHaveBeenCalledWith(second.sessionId, "second");
 
     await gateway.abort(second.sessionId);
-  });
-
-  it("dedupes concurrent resolveSessionId calls for the same sessionKey", async () => {
-    const longRunner: Runner = {
-      resolveSessionId: (req) => req.sessionId ?? "stub",
-      async *run({ abort }) {
-        yield textDelta("running");
-        await new Promise((r) => abort.addEventListener("abort", r, { once: true }));
-        yield agentEnd();
-      },
-    };
-    const runtime = buildRuntime(longRunner);
-    vi.spyOn(runtime, "steer").mockResolvedValue();
-    const stores = makeStores();
-    const createSpy = vi.fn();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const s = stores as any;
-    const origGetOrCreate = s.getOrCreate.bind(s);
-    s.getOrCreate = async (agentId: string) => {
-      const store = await origGetOrCreate(agentId);
-      const origCreate = store.create.bind(store);
-      store.create = async (aid: string, metadata?: { key?: string }) => {
-        createSpy(aid, metadata?.key);
-        return origCreate(aid, metadata);
-      };
-      return store;
-    };
-    const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: stores });
-
-    const first = gateway.dispatch({ ...baseMsg, sessionKey: "dup", content: "a" });
-    const second = await gateway.dispatch({ ...baseMsg, sessionKey: "dup", content: "b" });
-
-    expect(second.sessionId).toBeDefined();
-    expect(createSpy).toHaveBeenCalledTimes(1);
-
-    await gateway.abort(second.sessionId);
-    const firstResult = await first;
-    expect(firstResult.sessionId).toBe(second.sessionId);
   });
 
   it("falls through to a fresh run if the prior run ended between observe and steer", async () => {
@@ -252,6 +215,7 @@ describe("gateway.abort", () => {
     const runtime = buildRuntime(runner);
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
+    await gateway.createOrResumeSession("main", "abk");
     const ack = await gateway.dispatch({ ...baseMsg, sessionKey: "abk" });
     await gateway.abort(ack.sessionId, "test");
     // give the run time to wind down
@@ -274,6 +238,7 @@ describe("gateway.abortByKey", () => {
     const runtime = buildRuntime(runner);
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
+    await gateway.createOrResumeSession("main", "discord:bot:channel:c1");
     await gateway.dispatch({ ...baseMsg, sessionKey: "discord:bot:channel:c1" });
     await new Promise((r) => setTimeout(r, 10));
     const cancelled = await gateway.abortByKey("main", "discord:bot:channel:c1", "user");
