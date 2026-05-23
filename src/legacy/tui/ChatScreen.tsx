@@ -259,6 +259,7 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
           }
           setMessages([]);
           settledRef.current = [];
+          attachAbortRef.current?.abort();
           setIsStreaming(true);
           (async () => {
             try {
@@ -268,6 +269,9 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
               const session = await api.createSession(agentId, sessionKey);
               sessionKeyRef.current = session.key;
               setMessages([{ role: "system", content: "New conversation started.", timestamp: new Date() }]);
+              const attachAbort = new AbortController();
+              attachAbortRef.current = attachAbort;
+              void api.attachStream(session.agentId, session.key, handleStreamEvent, attachAbort.signal).catch(() => {});
             } catch (err) {
               setMessages([{ role: "system", content: `Error: ${err instanceof Error ? err.message : String(err)}`, timestamp: new Date() }]);
             } finally {
