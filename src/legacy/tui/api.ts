@@ -72,8 +72,6 @@ export async function deleteSession(agentId: string, sessionKey: string): Promis
   await deleteJson(sessionPath(agentId, sessionKey));
 }
 
-/** POST a message into a session. Returns ack only. All resulting events
- *  arrive on the open /stream subscription — do NOT consume any response body. */
 export async function dispatch(
   agentId: string,
   sessionKey: string,
@@ -82,9 +80,6 @@ export async function dispatch(
   return postJson<DispatchAck>(`${sessionPath(agentId, sessionKey)}/dispatch`, { message });
 }
 
-/** Long-lived SSE attached to /stream. Receives every SessionEvent the gateway
- *  emits for this session, regardless of who dispatched. Terminates only when
- *  `signal` is aborted. */
 export async function attachStream(
   agentId: string,
   sessionKey: string,
