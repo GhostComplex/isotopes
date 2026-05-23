@@ -32,9 +32,6 @@ interface ActiveHandle {
 
 export function createGateway(deps: GatewayDeps): Gateway {
   const active = new Map<string, ActiveHandle>();
-  // Dedupes concurrent resolveSessionId calls so two dispatches with the same
-  // sessionKey share one create instead of racing into two distinct sessions.
-  const resolving = new Map<string, Promise<string>>();
   // sessionId -> external subscribers (fan-out targets for emit()).
   const listeners = new Map<string, Set<SessionEventListener>>();
 
@@ -101,25 +98,13 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return errorMessage;
   }
 
-  async function doResolveSessionId(msg: Message): Promise<string> {
-    const store = await deps.sessionStoreManager.getOrCreate(msg.agentId);
-    if (msg.sessionKey) {
-      const existing = await store.findByKey(msg.sessionKey);
-      if (existing) return existing.id;
-      const created = await store.create(msg.agentId, { key: msg.sessionKey });
-      return created.id;
-    }
-    return (await store.create(msg.agentId)).id;
-  }
-
-  function resolveSessionId(msg: Message): Promise<string> {
-    if (!msg.sessionKey) return doResolveSessionId(msg);
-    const cacheKey = `${msg.agentId}::${msg.sessionKey}`;
-    const pending = resolving.get(cacheKey);
-    if (pending) return pending;
-    const promise = doResolveSessionId(msg).finally(() => resolving.delete(cacheKey));
-    resolving.set(cacheKey, promise);
-    return promise;
+  async function resolveSessionId(msg: Message): Promise<string> {
+    if (!msg.sessionKey) throw new Error("dispatch requires a sessionKey (create the session first)");
+    const store = deps.sessionStoreManager.peek(msg.agentId);
+    if (!store) throw new Error(`No session store for agent "${msg.agentId}"`);
+    const session = await store.findByKey(msg.sessionKey);
+    if (!session) throw new Error(`Session not found: ${msg.sessionKey}`);
+    return session.id;
   }
 
   async function triggerRun(sessionId: string, msg: Message, handle: ActiveHandle): Promise<void> {
@@ -192,10 +177,8 @@ export function createGateway(deps: GatewayDeps): Gateway {
     let responseText = "";
     let errorMessage: string | null = null;
 
-    // Pin the sessionKey so subscribe and dispatch resolve to the same session
-    // — anonymous-session dispatches otherwise resolve to distinct sessionIds.
     const pinnedMsg: Message = msg.sessionKey ? msg : { ...msg, sessionKey: randomUUID() };
-    const sessionId = await resolveSessionId(pinnedMsg);
+    const { sessionId } = await createOrResumeSession(pinnedMsg.agentId, pinnedMsg.sessionKey);
 
     const done = new Promise<void>((resolve) => {
       const unsubscribe = addListener(sessionId, (event) => {
