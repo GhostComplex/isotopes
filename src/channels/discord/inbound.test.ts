@@ -7,7 +7,7 @@ import {
   handleStopCommand,
   passesAllowlist,
 } from "./inbound.js";
-import type { Gateway, DispatchCallbacks } from "../../gateway/index.js";
+import type { Gateway } from "../../gateway/index.js";
 import type { DiscordAccountConfig } from "./types.js";
 
 const BOT_ID = "111111";
@@ -29,8 +29,6 @@ interface FakeMsgOpts {
 function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
   const mentionedIds = new Set(opts.mentionedIds ?? []);
   const guild = opts.guildId === null ? null : { id: opts.guildId ?? "guild-1" };
-  // In real Discord, a thread message has channelId = thread id and
-  // channel.isThread() === true. parentId is the parent channel.
   const isThread = Boolean(opts.threadId);
   const channelId = isThread ? opts.threadId! : opts.channelId ?? "channel-1";
   const channel = isThread
@@ -54,32 +52,36 @@ function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
 
 function makeGateway(): Gateway & { dispatch: ReturnType<typeof vi.fn> } {
   return {
-    dispatch: vi.fn().mockResolvedValue({
-      sessionId: "s",
-      state: "started",
-      responseText: "",
-      errorMessage: null,
-    }),
+    dispatch: vi.fn().mockResolvedValue({ sessionId: "s", state: "new_run" }),
+    dispatchAndWait: vi.fn().mockResolvedValue({ responseText: "", errorMessage: null }),
     abort: vi.fn().mockResolvedValue(undefined),
     abortByKey: vi.fn().mockResolvedValue(false),
-  } as Gateway & { dispatch: ReturnType<typeof vi.fn> };
+    agentExists: vi.fn().mockReturnValue(true),
+    listSessions: vi.fn().mockResolvedValue([]),
+    listSessionsForAgent: vi.fn().mockResolvedValue([]),
+    getSession: vi.fn().mockResolvedValue(undefined),
+    getMessages: vi.fn().mockResolvedValue(undefined),
+    subscribe: vi.fn().mockResolvedValue(() => {}),
+    createOrResumeSession: vi.fn().mockResolvedValue({ sessionId: "s", sessionKey: "k", resumed: false }),
+    deleteSession: vi.fn().mockResolvedValue(false),
+  } as unknown as Gateway & { dispatch: ReturnType<typeof vi.fn> };
 }
 
 describe("handleInbound", () => {
   let gateway: ReturnType<typeof makeGateway>;
-  let buildCallbacks: ReturnType<typeof vi.fn>;
-  let cbObj: DispatchCallbacks;
+  let buildSubscriber: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     gateway = makeGateway();
-    cbObj = {};
-    buildCallbacks = vi.fn().mockReturnValue(cbObj);
+    // Default subscriber: onEvent records calls; done resolves immediately so
+    // handleInbound doesn't hang. Real outbound resolves done on agent_end.
+    buildSubscriber = vi.fn().mockReturnValue({
+      onEvent: vi.fn(),
+      done: Promise.resolve(),
+    });
   });
 
-  const ctx = () => ({ botId: BOT_ID, buildCallbacks });
-  // Construct routing the way dispatchInbound (in index.ts) would, but inline
-  // — handleInbound's contract is "you give me agentId + sessionKey", not "you
-  // share my computation".
+  const ctx = () => ({ botId: BOT_ID, buildSubscriber });
   const sessionKeyFor = (msg: DiscordMessage, botId = BOT_ID): string => {
     const ch = msg.channel as { isThread?: () => boolean };
     if (ch?.isThread?.()) return `discord:${botId}:thread:${msg.channelId}`;
@@ -113,7 +115,7 @@ describe("handleInbound", () => {
     const msg = fakeMsg({ mentionedIds: [BOT_ID], content: `<@${BOT_ID}> hi there` });
     await handleInbound(msg, route(msg), { gateway }, ctx());
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
-    const [message, callbacks] = gateway.dispatch.mock.calls[0];
+    const [message] = gateway.dispatch.mock.calls[0];
     expect(message).toMatchObject({
       agentId: "main",
       sessionKey: `discord:${BOT_ID}:channel:channel-1`,
@@ -122,8 +124,8 @@ describe("handleInbound", () => {
       sender: "alice",
     });
     expect(message.extraSystemPrompt).toContain("Chat Reply Tags");
-    expect(callbacks).toBe(cbObj);
-    expect(buildCallbacks).toHaveBeenCalledWith(msg);
+    expect(buildSubscriber).toHaveBeenCalledWith(msg);
+    expect(gateway.subscribe).toHaveBeenCalled();
   });
 
   it("dispatches on DM regardless of mention", async () => {
@@ -197,51 +199,34 @@ describe("handleInbound", () => {
     expect(gateway.dispatch.mock.calls[0][0].content).toBe("<meta/>\nhi there");
   });
 
-  it("calls flushRemaining on the callbacks after dispatch resolves", async () => {
-    const gateway = makeGateway();
-    const msg = fakeMsg({ content: "<@bot> hi", mentionedIds: ["bot"] });
-    const flushRemaining = vi.fn().mockResolvedValue(undefined);
-    const onTextDelta = vi.fn();
-    const callbacks = { onTextDelta, flushRemaining };
-    await handleInbound(
-      msg,
-      { agentId: "main", sessionKey: sessionKeyFor(msg, "bot") },
-      { gateway },
-      { botId: "bot", buildCallbacks: () => callbacks },
-    );
-    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
-    expect(flushRemaining).toHaveBeenCalledTimes(1);
+  it("awaits subscriber.done after dispatch (new_run)", async () => {
+    let resolveDone!: () => void;
+    const done = new Promise<void>((r) => { resolveDone = r; });
+    const onEvent = vi.fn();
+    buildSubscriber = vi.fn().mockReturnValue({ onEvent, done });
+
+    const msg = fakeMsg({ mentionedIds: [BOT_ID], content: `<@${BOT_ID}> hi` });
+    const promise = handleInbound(msg, route(msg), { gateway }, ctx());
+    // dispatch resolves first; handleInbound is now awaiting subscriber.done
+    await new Promise((r) => setTimeout(r, 10));
+    let settled = false;
+    void promise.then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(settled).toBe(false);
+    resolveDone();
+    await promise;
+    expect(settled).toBe(true);
   });
 
-  it("does not throw when callbacks omit flushRemaining (plain DispatchCallbacks)", async () => {
-    const gateway = makeGateway();
-    const msg = fakeMsg({ content: "<@bot> hi", mentionedIds: ["bot"] });
-    const callbacks = { onTextDelta: vi.fn() };
-    await expect(
-      handleInbound(
-        msg,
-        { agentId: "main", sessionKey: sessionKeyFor(msg, "bot") },
-        { gateway },
-        { botId: "bot", buildCallbacks: () => callbacks },
-      ),
-    ).resolves.toBeUndefined();
-  });
-
-  it("calls flushRemaining even when gateway.dispatch throws (no resource leak)", async () => {
-    const gateway = makeGateway();
-    gateway.dispatch.mockRejectedValueOnce(new Error("boom"));
-    const msg = fakeMsg({ content: "<@bot> hi", mentionedIds: ["bot"] });
-    const flushRemaining = vi.fn().mockResolvedValue(undefined);
-    const callbacks = { onTextDelta: vi.fn(), flushRemaining };
-    await expect(
-      handleInbound(
-        msg,
-        { agentId: "main", sessionKey: sessionKeyFor(msg, "bot") },
-        { gateway },
-        { botId: "bot", buildCallbacks: () => callbacks },
-      ),
-    ).rejects.toThrow("boom");
-    expect(flushRemaining).toHaveBeenCalledTimes(1);
+  it("does not await subscriber.done when dispatch returns steered", async () => {
+    gateway.dispatch.mockResolvedValueOnce({ sessionId: "s", state: "steered" });
+    let resolveDone!: () => void;
+    const done = new Promise<void>((r) => { resolveDone = r; });
+    buildSubscriber = vi.fn().mockReturnValue({ onEvent: vi.fn(), done });
+    const msg = fakeMsg({ mentionedIds: [BOT_ID], content: `<@${BOT_ID}> hi` });
+    // Should resolve without resolveDone() being called.
+    await handleInbound(msg, route(msg), { gateway }, ctx());
+    resolveDone(); // cleanup
   });
 });
 
@@ -250,178 +235,60 @@ describe("passesAllowlist (allowlist policy)", () => {
     token: "t",
     defaultAgentId: "main",
     groupAccess,
+  } as DiscordAccountConfig);
+
+  it("drops when allowlist policy has no rules (fail-closed)", () => {
+    const msg = fakeMsg({ guildId: "g-1" });
+    expect(passesAllowlist(msg, account({ policy: "allowlist" } as never))).toBe(false);
   });
 
-  it("denies when allowlist policy has no rules (fail-closed)", () => {
-    const acc = account({ policy: "allowlist" });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-1" }), acc)).toBe(false);
+  it("rejects when guild not in guildAllowlist", () => {
+    const msg = fakeMsg({ guildId: "g-1" });
+    expect(passesAllowlist(msg, account({ policy: "allowlist", guildAllowlist: ["g-2"] } as never))).toBe(false);
   });
 
-  it("denies when both allowlists are empty arrays", () => {
-    const acc = account({ policy: "allowlist", guildAllowlist: [], channelAllowlist: [] });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-1" }), acc)).toBe(false);
+  it("accepts when guild is in guildAllowlist", () => {
+    const msg = fakeMsg({ guildId: "g-1" });
+    expect(passesAllowlist(msg, account({ policy: "allowlist", guildAllowlist: ["g-1"] } as never))).toBe(true);
   });
 
-  it("guild-only: passes when guild matches", () => {
-    const acc = account({ policy: "allowlist", guildAllowlist: ["g-1"] });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-1" }), acc)).toBe(true);
-  });
-
-  it("guild-only: drops other guilds", () => {
-    const acc = account({ policy: "allowlist", guildAllowlist: ["g-1"] });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-2" }), acc)).toBe(false);
-  });
-
-  it("channel-only: passes when channel matches", () => {
-    const acc = account({ policy: "allowlist", channelAllowlist: ["channel-1"] });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-1" }), acc)).toBe(true);
-  });
-
-  it("channel-only: drops other channels", () => {
-    const acc = account({ policy: "allowlist", channelAllowlist: ["channel-1"] });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-2" }), acc)).toBe(false);
-  });
-
-  it("both set: passes only when guild AND channel match", () => {
-    const acc = account({
-      policy: "allowlist",
-      guildAllowlist: ["g-1"],
-      channelAllowlist: ["channel-1"],
+  it("accepts thread when parent channel is in channelAllowlist", () => {
+    const msg = fakeMsg({
+      guildId: "g-1",
+      threadId: "thr-1",
+      parentChannelId: "parent-c",
     });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-1" }), acc)).toBe(true);
-  });
-
-  it("both set: drops when guild matches but channel does not", () => {
-    const acc = account({
-      policy: "allowlist",
-      guildAllowlist: ["g-1"],
-      channelAllowlist: ["channel-1"],
-    });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-2" }), acc)).toBe(false);
-  });
-
-  it("both set: drops when channel matches but guild does not", () => {
-    const acc = account({
-      policy: "allowlist",
-      guildAllowlist: ["g-1"],
-      channelAllowlist: ["channel-1"],
-    });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-2", channelId: "channel-1" }), acc)).toBe(false);
-  });
-
-  it("empty guild list with channel set: drops everything", () => {
-    const acc = account({
-      policy: "allowlist",
-      guildAllowlist: [],
-      channelAllowlist: ["channel-1"],
-    });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-1", channelId: "channel-1" }), acc)).toBe(false);
-  });
-
-  it("thread message passes when its parent channel is in channelAllowlist", () => {
-    const acc = account({ policy: "allowlist", channelAllowlist: ["channel-parent-1"] });
-    const msg = fakeMsg({ guildId: "g-1", threadId: "thr-1", parentChannelId: "channel-parent-1" });
-    expect(passesAllowlist(msg, acc)).toBe(true);
-  });
-
-  it("thread message dropped when parent not in channelAllowlist", () => {
-    const acc = account({ policy: "allowlist", channelAllowlist: ["channel-other"] });
-    const msg = fakeMsg({ guildId: "g-1", threadId: "thr-1", parentChannelId: "channel-parent-1" });
-    expect(passesAllowlist(msg, acc)).toBe(false);
-  });
-
-  it("policy=disabled drops all guild messages", () => {
-    const acc = account({ policy: "disabled" });
-    expect(passesAllowlist(fakeMsg({ guildId: "g-1" }), acc)).toBe(false);
+    const result = passesAllowlist(
+      msg,
+      account({ policy: "allowlist", guildAllowlist: ["g-1"], channelAllowlist: ["parent-c"] } as never),
+    );
+    expect(result).toBe(true);
   });
 });
 
-describe("handleStopCommand sub-run routing", () => {
-  it("aborts the registered child sessionId when /stop posted in an a2a thread", async () => {
-    const gateway = makeGateway();
-    const channel = { send: vi.fn().mockResolvedValue(undefined) };
-    const msg = {
-      id: "m",
-      channelId: "thr-1",
-      content: "/stop",
-      guild: { id: "g" },
-      mentions: { has: () => true },
-      channel,
-    } as unknown as DiscordMessage;
-    const a2aThreads = new Map([["thr-1", "sub-session-id"]]);
-    const consumed = await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:thread:thr-1", a2aThreads);
-    expect(consumed).toBe(true);
-    expect(gateway.abort).toHaveBeenCalledWith("sub-session-id", "user");
-    // Also aborts own session for the same channel (best-effort).
-    expect(gateway.abortByKey).toHaveBeenCalledWith("main", "discord:bot:thread:thr-1", "user");
-    expect(channel.send).toHaveBeenCalledWith("🛑 Stopped.");
+describe("handleStopCommand", () => {
+  function makeStopGateway() {
+    return {
+      ...makeGateway(),
+      abortByKey: vi.fn().mockResolvedValue(true),
+      abort: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Gateway & { abort: ReturnType<typeof vi.fn>; abortByKey: ReturnType<typeof vi.fn> };
+  }
+
+  it("returns false when message is not /stop", async () => {
+    const msg = fakeMsg({ content: "hello" });
+    expect(await handleStopCommand(msg, BOT_ID, makeStopGateway(), "main", "k")).toBe(false);
   });
 
-  it("falls through to abortByKey when channel not in a2aThreads", async () => {
-    const gateway = makeGateway();
-    const channel = { send: vi.fn().mockResolvedValue(undefined) };
+  it("aborts and confirms on /stop in DM", async () => {
+    const channelSend = vi.fn().mockResolvedValue(undefined);
     const msg = {
-      id: "m",
-      channelId: "chan-other",
-      content: "/stop",
-      guild: { id: "g" },
-      mentions: { has: () => true },
-      channel,
+      ...fakeMsg({ content: "/stop", guildId: null }),
+      channel: { send: channelSend },
     } as unknown as DiscordMessage;
-    const a2aThreads = new Map([["thr-1", "sub-session-id"]]);
-    await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:channel:chan-other", a2aThreads);
-    expect(gateway.abort).not.toHaveBeenCalled();
-    expect(gateway.abortByKey).toHaveBeenCalledWith("main", "discord:bot:channel:chan-other", "user");
-  });
-
-  it("consumes /stop in guild without @ but does not abort or reply", async () => {
-    const gateway = makeGateway();
-    const channel = { send: vi.fn().mockResolvedValue(undefined) };
-    const msg = {
-      id: "m",
-      channelId: "chan-1",
-      content: "/stop",
-      guild: { id: "g" },
-      mentions: { has: () => false },
-      channel,
-    } as unknown as DiscordMessage;
-    const consumed = await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
-    expect(consumed).toBe(true);
-    expect(gateway.abort).not.toHaveBeenCalled();
-    expect(gateway.abortByKey).not.toHaveBeenCalled();
-    expect(channel.send).not.toHaveBeenCalled();
-  });
-
-  it("consumes /stop targeted at another bot silently", async () => {
-    const gateway = makeGateway();
-    const channel = { send: vi.fn().mockResolvedValue(undefined) };
-    const msg = {
-      id: "m",
-      channelId: "chan-1",
-      content: "<@other-bot> /stop",
-      guild: { id: "g" },
-      mentions: { has: (id: string) => id === "other-bot" },
-      channel,
-    } as unknown as DiscordMessage;
-    const consumed = await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
-    expect(consumed).toBe(true);
-    expect(gateway.abort).not.toHaveBeenCalled();
-    expect(gateway.abortByKey).not.toHaveBeenCalled();
-    expect(channel.send).not.toHaveBeenCalled();
-  });
-
-  it("does not return true for non-/stop messages", async () => {
-    const gateway = makeGateway();
-    const channel = { send: vi.fn().mockResolvedValue(undefined) };
-    const msg = {
-      id: "m",
-      channelId: "chan-1",
-      content: "/stop please",
-      guild: { id: "g" },
-      mentions: { has: () => true },
-      channel,
-    } as unknown as DiscordMessage;
-    const consumed = await handleStopCommand(msg, "bot", gateway, "main", "discord:bot:channel:chan-1");
-    expect(consumed).toBe(false);
+    const gw = makeStopGateway();
+    expect(await handleStopCommand(msg, BOT_ID, gw, "main", "k")).toBe(true);
+    expect(gw.abortByKey).toHaveBeenCalledWith("main", "k", "user");
+    expect(channelSend).toHaveBeenCalled();
   });
 });

@@ -12,7 +12,7 @@ import { loggers } from "../../logging/logger.js";
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
-import { createDiscordCallbacks } from "./outbound.js";
+import { createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -96,9 +96,6 @@ export function createDiscordChannel(
         ),
       );
 
-      // Per-agent: bind a Channel actions object that resolves (agent, channel)
-      // → bot at call time. Errors clearly when no bot serves the agent in the
-      // requested channel.
       if (deps.channelContexts && clients.size > 0) {
         for (const [agentId, ctx] of deps.channelContexts.entries()) {
           const actions: ChannelActions = {
@@ -265,9 +262,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   const isStopCommand = await handleStopCommand(msg, botId, gateway, agentId, sessionKey, a2aThreads);
   if (isStopCommand) return;
 
-  // Observe every allowlisted guild msg into the channel history buffer
-  // (DMs are 1:1 — session memory is enough). Buffer is consumed (with
-  // trigger excluded) and cleared by transformContent on engaged dispatch.
   if (msg.guild && msg.author.id !== botId) {
     history.append(msg.channelId, {
       messageId: msg.id,
@@ -297,8 +291,8 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     },
     {
       botId,
-      buildCallbacks: (triggerMsg) =>
-        createDiscordCallbacks({
+      buildSubscriber: (triggerMsg) =>
+        createDiscordSubscriber({
           channel: triggerMsg.channel as SendableChannels,
           triggerMessageId: triggerMsg.id,
         }),

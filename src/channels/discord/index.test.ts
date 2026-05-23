@@ -40,20 +40,27 @@ function makeFakeClient(botId: string): FakeClient {
 function makeGateway(): Gateway & {
   dispatch: ReturnType<typeof vi.fn>;
   abort: ReturnType<typeof vi.fn>;
+  abortByKey: ReturnType<typeof vi.fn>;
+  subscribe: ReturnType<typeof vi.fn>;
 } {
   return {
-    dispatch: vi.fn().mockResolvedValue({
-      sessionId: "s",
-      state: "started",
-      responseText: "",
-      errorMessage: null,
-    }),
+    dispatch: vi.fn().mockResolvedValue({ sessionId: "s", state: "new_run" }),
+    dispatchAndWait: vi.fn().mockResolvedValue({ responseText: "", errorMessage: null }),
     abort: vi.fn().mockResolvedValue(undefined),
     abortByKey: vi.fn().mockResolvedValue(false),
-  } as Gateway & {
+    agentExists: vi.fn().mockReturnValue(true),
+    listSessions: vi.fn().mockResolvedValue([]),
+    listSessionsForAgent: vi.fn().mockResolvedValue([]),
+    getSession: vi.fn().mockResolvedValue(undefined),
+    getMessages: vi.fn().mockResolvedValue(undefined),
+    subscribe: vi.fn().mockResolvedValue(() => {}),
+    createOrResumeSession: vi.fn().mockResolvedValue({ sessionId: "s", sessionKey: "k", resumed: false }),
+    deleteSession: vi.fn().mockResolvedValue(false),
+  } as unknown as Gateway & {
     dispatch: ReturnType<typeof vi.fn>;
     abort: ReturnType<typeof vi.fn>;
     abortByKey: ReturnType<typeof vi.fn>;
+    subscribe: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -202,7 +209,7 @@ describe("createDiscordChannel — lifecycle", () => {
     const gateway = makeGateway();
     gateway.dispatch.mockImplementation(async () => {
       observed = getA2ASinkFactory();
-      return { sessionId: "s", state: "started", responseText: "", errorMessage: null };
+      return { sessionId: "s", state: "new_run", responseText: "", errorMessage: null };
     });
     const adapter = createDiscordChannel(
       { accounts: { acct: { token: "t", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
@@ -315,12 +322,15 @@ describe("createDiscordChannel — inbound wiring", () => {
     expect(agents).toEqual(["agent-a", "agent-b"]);
   });
 
-  it("invokes flushRemaining via the receive→outbound bridge", async () => {
+  it("routes text_delta events into Discord via subscribe", async () => {
     const client = makeFakeClient("bot-A");
     const gateway = makeGateway();
-    gateway.dispatch.mockImplementation(async (_msg, cb) => {
-      cb?.onTextDelta?.("hello world.");
-      return { sessionId: "s", state: "started", responseText: "", errorMessage: null };
+    // Capture the subscriber so we can fire events into it.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let capturedListener: ((event: any) => void) | undefined;
+    gateway.subscribe.mockImplementation(async (_a, _k, listener) => {
+      capturedListener = listener;
+      return () => {};
     });
     const adapter = createDiscordChannel(
       {
@@ -334,6 +344,14 @@ describe("createDiscordChannel — inbound wiring", () => {
 
     const msg = fakeMsg({ mentionedIds: ["bot-A"] });
     client.emit("messageCreate", msg);
+    // Allow handleInbound to run through createOrResumeSession → subscribe → dispatch.
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    expect(capturedListener).toBeDefined();
+    capturedListener!({ type: "text_delta", delta: "hello world." });
+    capturedListener!({ type: "agent_end", stopReason: "end" });
+    // Let the subscriber's async agent_end flush run.
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
 

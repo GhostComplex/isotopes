@@ -36,8 +36,9 @@ pnpm test:integration
 ### Top-level src/ layout
 
 - `agent/` — Agent runtime, runners, tools, workspace loading, and per-agent host/sandbox middleware (executor, fs bridge, docker container manager, sandbox config). The new home for everything that defines what an agent *is* and how it runs.
-- `gateway/` — Typed Gateway abstraction (steer-only): the canonical entrypoint for channel adapters to dispatch inbound messages, stream callbacks, and abort sessions.
+- `gateway/` — Typed Gateway abstraction: canonical entrypoint for all inbound messages. Owns dispatch (fire-and-forget), subscribe (session event fan-out), session CRUD, abort, and cwd resolution. Channel adapters, HTTP, cron, and heartbeat all go through Gateway.
 - `channels/` — Channel adapters. Today: `channels/discord/` (full Discord adapter — inbound pipeline, outbound streaming, dedupe, channel history, image attachments, /stop interception, A2A sink for spawn_agent threads, react, allowlists).
+- `http/` — REST API server built on Hono + `@hono/node-server`. Routes for sessions, dispatch, cron, status. `POST /dispatch` is fire-and-forget; `GET /stream` is the SSE event source. Depends only on `{ cronScheduler, gateway }`.
 - `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/pi/session-store.ts`.
 - `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
@@ -50,7 +51,6 @@ pnpm test:integration
 ### `src/agent/`
 
 - `runtime.ts` — `AgentRuntime`: in-memory agent registry + per-run dispatcher. Validates `RunRequest`, resolves session ID, delegates to a runner.
-- `runtime-adapter.ts` — Chat-style decorator over `runtime.run` for callers that want a single `responseText` instead of an event stream.
 - `types.ts` — `RegisteredAgent`, `RunRequest`, `RunInfo`, `AgentConfig`, `ProviderConfig`, `RunValidationError`.
 - `pi/` — Pi backbone (default agent runtime, not a swappable adapter). Wraps `@mariozechner/pi-agent-core` + `@mariozechner/pi-coding-agent`: `runner.ts`, `session-factory.ts`, `session-store.ts`, `messages.ts`, `system-prompt-override.ts`, `tool-result-truncation.ts`. Other isotopes modules (transports, HTTP, gateway) are allowed to depend on these directly — pi is the host, not a guest.
 - `adapters/claude/` — Third-party adapter for the Claude Agent SDK. Implements the same `Runner` interface but lives under `adapters/` to signal "alternative entry point, not the backbone".
@@ -61,7 +61,6 @@ pnpm test:integration
 
 - `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
 - `tui/` — Terminal UI for interactive chat mode.
-- `http/` — REST API server using raw Node `http` (no Express); routes for chat, sessions, cron, logs, status. Instantiated directly from `app.ts`.
 - `version.ts` — Build version constant.
 
 ### Key patterns
@@ -69,7 +68,7 @@ pnpm test:integration
 - **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` alternative). Swap runners without touching gateway, sandbox, or transport code.
 - **Tool registry**: Tools are `(schema, handler)` pairs assembled per-agent in `agent/tools/index.ts`; tool guards (CLI, FS) are enforced at registration and injected into system prompts.
 - **Extensions (pi-native)**: User-authored extensions in `~/.isotopes/extensions/pi/*.ts` are loaded via pi-coding-agent's `DefaultResourceLoader` and shared across all agents (loader is cached per-agentId in `session-factory.ts`). Per-agent capability scoping is via `tools.allow` / `tools.deny`, not separate extension sets.
-- **Event streaming**: `AgentRuntime.run()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error. `runtime-adapter.ts` collapses it to a single response for chat consumers.
+- **Event streaming**: `AgentRuntime.run()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error. Gateway's `ingestRunnerEvents` translates these into `SessionEvent` for consumers.
 - **Workspace context**: `SOUL.md` / `TOOLS.md` / `MEMORY.md` / `BOOTSTRAP.md` are merged into system prompts and hot-reloaded on change.
 
 ## Testing

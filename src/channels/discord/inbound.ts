@@ -1,5 +1,5 @@
 import type { Message as DiscordMessage, SendableChannels } from "discord.js";
-import type { DispatchCallbacks, Gateway, Message } from "../../gateway/index.js";
+import type { Gateway, Message, SessionEventListener } from "../../gateway/index.js";
 import { REPLY_PROMPT } from "../reply.js";
 import { loggers } from "../../logging/logger.js";
 import type { DiscordAccountConfig, GuildConfig } from "./types.js";
@@ -41,7 +41,6 @@ export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConf
       return false;
     }
     if (group.channelAllowlist !== undefined) {
-      // For thread messages, also accept the thread's parent channel.
       const parentId = threadParentId(msg);
       const channelOk = group.channelAllowlist.includes(msg.channelId)
         || (parentId !== undefined && group.channelAllowlist.includes(parentId));
@@ -123,14 +122,16 @@ interface InboundDeps {
   transformContent?: (content: string, msg: DiscordMessage) => string;
 }
 
-/** DispatchCallbacks + a post-dispatch cleanup hook (e.g. drain a buffer). */
-interface InboundCallbacks extends DispatchCallbacks {
-  flushRemaining?(): Promise<void>;
+/** Subscriber for one inbound message — receives session events until agent_end. */
+export interface InboundSubscriber {
+  onEvent: SessionEventListener;
+  /** Resolves after agent_end is seen and any final flush completes. */
+  done: Promise<void>;
 }
 
 interface InboundContext {
   botId: string;
-  buildCallbacks: (msg: DiscordMessage) => InboundCallbacks;
+  buildSubscriber: (msg: DiscordMessage) => InboundSubscriber;
 }
 
 export async function handleInbound(
@@ -150,7 +151,6 @@ export async function handleInbound(
     return;
   }
 
-  // DMs always pass; guild messages need @-mention unless requireMention=false.
   if (msg.guild) {
     const requireMention = deps.guilds?.[msg.guild.id]?.requireMention ?? true;
     if (requireMention && !msg.mentions?.has?.(ctx.botId)) {
@@ -176,18 +176,26 @@ export async function handleInbound(
     ...(images.length > 0 ? { images } : {}),
   };
 
-  const callbacks = ctx.buildCallbacks(msg);
+  await deps.gateway.createOrResumeSession(routing.agentId, routing.sessionKey);
+
+  const subscriber = ctx.buildSubscriber(msg);
+  const unsubscribe = await deps.gateway.subscribe(
+    routing.agentId,
+    routing.sessionKey,
+    subscriber.onEvent,
+  );
+  if (!unsubscribe) {
+    log.warn(`discord receive: subscribe failed for ${routing.sessionKey}`);
+    return;
+  }
+
   try {
-    await deps.gateway.dispatch(message, callbacks);
-  } finally {
-    // Must run even on dispatch error: outbound holds per-dispatch resources
-    // (typing interval, edit timers) that only release here.
-    if (callbacks.flushRemaining) {
-      try {
-        await callbacks.flushRemaining();
-      } catch (err) {
-        log.warn(`flushRemaining failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    const result = await deps.gateway.dispatch(message);
+    if (result.state === "steered") {
+      return;
     }
+    await subscriber.done;
+  } finally {
+    unsubscribe();
   }
 }
