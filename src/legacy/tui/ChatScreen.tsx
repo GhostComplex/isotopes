@@ -167,8 +167,6 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.errorMessage}`, timestamp: new Date() }]);
       }
     }
-    // user_message / assistant_message events overlap with text_delta render
-    // — ignore here; text_delta is the live source of truth.
   }, [isStreaming, renderAssistantFromBlocks]);
 
   const initAgent = useCallback(async () => {
@@ -368,15 +366,15 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
     return <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
   };
 
-  // Split: settled messages go to Static (terminal scrollback), active message stays dynamic.
-  // settledRef is append-only so Static gets a stable reference and doesn't re-render old items.
+  // Freeze settled count while streaming — Static is write-once, so an in-progress
+  // assistant message pushed there would stop visually updating.
   const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
-  const settledCount = isStreaming ? Math.max(visible.length - 1, 0) : visible.length;
+  const settledCount = isStreaming ? settledRef.current.length : visible.length;
   if (settledCount > settledRef.current.length) {
     const newSettled = visible.slice(settledRef.current.length, settledCount);
     settledRef.current = [...settledRef.current, ...newSettled];
   }
-  const activeMessage = isStreaming && visible.length > 0 ? visible[visible.length - 1] : null;
+  const dynamicMessages = visible.slice(settledCount);
 
   return (
     <Box flexDirection="column">
@@ -394,7 +392,11 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
 
       {error && <Box paddingX={1}><Text color="red">{error}</Text></Box>}
       {!agentReady && !error && <Box paddingX={1}><Text color="gray">Loading agent...</Text></Box>}
-      {activeMessage && <Box paddingX={1} flexDirection="column">{renderMessage(activeMessage, settledRef.current.length)}</Box>}
+      {dynamicMessages.length > 0 && (
+        <Box paddingX={1} flexDirection="column">
+          {dynamicMessages.map((msg, i) => renderMessage(msg, settledRef.current.length + i))}
+        </Box>
+      )}
 
       <Box borderStyle="single" paddingX={1} flexShrink={0} flexGrow={0}>
         <Text color="green">&gt; </Text>
