@@ -34,7 +34,6 @@ export interface DispatchAck {
   state: "new_run" | "steered";
 }
 
-export type { SessionEvent as StreamEvent } from "../gateway/types.js";
 
 export type Screen = "chat" | "status" | "sessions";
 

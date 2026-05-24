@@ -1,4 +1,5 @@
-import type { ChatSessionInfo, DaemonStatus, DispatchAck, SessionSummary, StreamEvent } from "./types.js";
+import type { ChatSessionInfo, DaemonStatus, DispatchAck, SessionSummary } from "./types.js";
+import type { SessionEvent } from "../gateway/types.js";
 import { apiFetch, getBaseUrl } from "../utils/api-client.js";
 
 function sessionPath(agentId: string, sessionKey?: string): string {
@@ -87,13 +88,13 @@ async function* parseSSE(reader: ReadableStreamDefaultReader<Uint8Array>): Async
 export async function attachStream(
   agentId: string,
   sessionKey: string,
-  onEvent: (event: StreamEvent) => void,
+  onEvent: (event: SessionEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/stream`, { signal });
   if (!res.ok) throw new Error(`API stream: ${res.status} ${res.statusText}`);
   const reader = res.body!.getReader();
   for await (const { data } of parseSSE(reader)) {
-    try { onEvent(JSON.parse(data) as StreamEvent); } catch { /* malformed JSON */ }
+    try { onEvent(JSON.parse(data) as SessionEvent); } catch { /* malformed JSON */ }
   }
 }

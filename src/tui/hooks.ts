@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { randomUUID } from "node:crypto";
-import type { ChatMessage, ContentBlock, StreamEvent } from "./types.js";
+import type { ChatMessage, ContentBlock } from "./types.js";
+import type { SessionEvent } from "../gateway/types.js";
 import { extractResultText, historyToChatMessages } from "./messages.js";
 import * as api from "./api.js";
 
@@ -16,7 +17,7 @@ export interface UseStreamResult {
   settled: ChatMessage[];
   dynamic: ChatMessage[];
   isStreaming: boolean;
-  handleEvent: (e: StreamEvent) => void;
+  handleEvent: (e: SessionEvent) => void;
   pushMessage: (msg: ChatMessage) => void;
   resetMessages: (initial?: ChatMessage[]) => void;
 }
@@ -41,7 +42,7 @@ export function useStream(): UseStreamResult {
     });
   }, []);
 
-  const handleEvent = useCallback((e: StreamEvent) => {
+  const handleEvent = useCallback((e: SessionEvent) => {
     if (e.type === "text_delta") {
       setIsStreaming(true);
       const blocks = blocksRef.current;
