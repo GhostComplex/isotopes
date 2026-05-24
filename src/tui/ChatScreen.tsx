@@ -3,6 +3,7 @@ import { Box, Text, Static, useInput, useApp } from "ink";
 import { resolveCommand, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, Screen } from "./types.js";
 import { useChat } from "./hooks.js";
+import { textContent } from "./messages.js";
 
 interface Props {
   agentId: string;
@@ -28,12 +29,12 @@ export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props)
         case "exit": exit(); break;
         case "status": onSwitchScreen("status"); break;
         case "sessions": onSwitchScreen("sessions"); break;
-        case "help": chat.pushMessage({ role: "system", content: HELP_TEXT, timestamp: new Date() }); break;
+        case "help": chat.pushMessage({ role: "system", content: textContent(HELP_TEXT), timestamp: new Date() }); break;
       }
       return;
     }
     if (text.startsWith("/")) {
-      chat.pushMessage({ role: "system", content: `Unknown command: ${text.split(" ")[0]}`, timestamp: new Date() });
+      chat.pushMessage({ role: "system", content: textContent(`Unknown command: ${text.split(" ")[0]}`), timestamp: new Date() });
       return;
     }
     chat.sendMessage(text);
@@ -59,19 +60,10 @@ export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props)
     const roleLabel = msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System";
     const roleColor = msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray";
 
-    if (!msg.blocks) {
-      return (
-        <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
-          <Text color={roleColor} bold>{roleLabel}:</Text>
-          <Text wrap="wrap">{"  "}{msg.content}</Text>
-        </Box>
-      );
-    }
-
     return (
       <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
         <Text color={roleColor} bold>{roleLabel}:</Text>
-        {msg.blocks.map((block, j) => (
+        {msg.content.map((block, j) => (
           <Box key={j}>
             {block.type === "text"
               ? <Text wrap="wrap">{"  "}{block.text}</Text>

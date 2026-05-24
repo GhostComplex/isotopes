@@ -4,8 +4,7 @@ export type ContentBlock =
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
-  content: string;
-  blocks?: ContentBlock[];
+  content: ContentBlock[];
   timestamp: Date;
   id?: string;
 }

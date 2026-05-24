@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { historyToChatMessages, extractResultText } from "./messages.js";
+import { historyToChatMessages, extractResultText, chatText } from "./messages.js";
 
 describe("extractResultText", () => {
   it("returns string as-is", () => {
@@ -32,9 +32,9 @@ describe("historyToChatMessages", () => {
     const result = historyToChatMessages(items);
     expect(result).toHaveLength(2);
     expect(result[0].role).toBe("user");
-    expect(result[0].content).toBe("hi");
+    expect(chatText(result[0])).toBe("hi");
     expect(result[1].role).toBe("assistant");
-    expect(result[1].content).toBe("hello");
+    expect(chatText(result[1])).toBe("hello");
   });
 
   it("skips empty user messages", () => {
@@ -52,7 +52,7 @@ describe("historyToChatMessages", () => {
       { role: "user", content: "[Messages arrived while you were working]\nactual message" },
     ];
     const result = historyToChatMessages(items);
-    expect(result[0].content).toBe("actual message");
+    expect(chatText(result[0])).toBe("actual message");
   });
 
   it("marks toolResult by toolCallId before flush", () => {
@@ -69,8 +69,7 @@ describe("historyToChatMessages", () => {
     ];
     const result = historyToChatMessages(items);
     expect(result).toHaveLength(1);
-    const blocks = result[0].blocks!;
-    // Both are marked ✓ (flush marks remaining, but t2 was marked first by toolCallId)
+    const blocks = result[0].content;
     expect(blocks[0].type === "tool" && blocks[0].result).toBe("✓");
     expect(blocks[1].type === "tool" && blocks[1].result).toBe("✓");
   });
@@ -86,7 +85,7 @@ describe("historyToChatMessages", () => {
       { role: "toolResult" },
     ];
     const result = historyToChatMessages(items);
-    const blocks = result[0].blocks!;
+    const blocks = result[0].content;
     expect(blocks[0].type === "tool" && blocks[0].result).toBe("✓");
   });
 
@@ -97,8 +96,8 @@ describe("historyToChatMessages", () => {
     ];
     const result = historyToChatMessages(items);
     expect(result).toHaveLength(2);
-    expect(result[0].content).toBe("first");
-    expect(result[1].content).toBe("second");
+    expect(chatText(result[0])).toBe("first");
+    expect(chatText(result[1])).toBe("second");
   });
 
   it("handles user content as array of text blocks", () => {
@@ -106,6 +105,6 @@ describe("historyToChatMessages", () => {
       { role: "user", content: [{ type: "text", text: "hello " }, { type: "text", text: "world" }] },
     ];
     const result = historyToChatMessages(items);
-    expect(result[0].content).toBe("hello world");
+    expect(chatText(result[0])).toBe("hello world");
   });
 });
