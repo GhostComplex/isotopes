@@ -34,7 +34,6 @@ export interface DispatchAck {
   state: "new_run" | "steered";
 }
 
-
 export type Screen = "chat" | "status" | "sessions";
 
 export interface TuiOptions {
