@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useApp } from "ink";
 import { fetchStatus, isDaemonRunning } from "./api.js";
 import type { DaemonStatus, Screen } from "./types.js";
 
@@ -20,6 +20,7 @@ function formatUptime(seconds: number): string {
 }
 
 export function StatusScreen({ onSwitchScreen }: Props) {
+  const { exit } = useApp();
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [running, setRunning] = useState<boolean | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -51,7 +52,7 @@ export function StatusScreen({ onSwitchScreen }: Props) {
       void refresh();
     }
     if (key.ctrl && ch === "c") {
-      process.exit(0);
+      exit();
     }
   });
 

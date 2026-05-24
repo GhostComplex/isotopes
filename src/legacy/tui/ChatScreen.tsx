@@ -51,7 +51,7 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
 
   const handleStreamEvent = useCallback((e: StreamEvent) => {
     if (e.type === "text_delta") {
-      if (!isStreaming) setIsStreaming(true);
+      setIsStreaming(true);
       const blocks = blocksRef.current;
       const lastBlock = blocks[blocks.length - 1];
       if (lastBlock?.type === "text") {
@@ -85,7 +85,7 @@ export function ChatScreen({ agentId: propAgentId, sessionKey, mode, onSwitchScr
         setMessages((prev) => [...prev, { role: "system", content: `Error: ${e.errorMessage}`, timestamp: new Date() }]);
       }
     }
-  }, [isStreaming, renderAssistantFromBlocks]);
+  }, [renderAssistantFromBlocks]);
 
   const initAgent = useCallback(async () => {
     setAgentReady(false);
