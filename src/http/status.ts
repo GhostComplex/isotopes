@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { VERSION } from "../legacy/version.js";
+import { VERSION } from "../version.js";
 import type { ApiDeps } from "./server.js";
 
 export function registerStatusRoutes(app: Hono, deps: ApiDeps): void {
