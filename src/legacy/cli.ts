@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
-import { VERSION } from "./version.js";
+import { VERSION } from "../utils/version.js";
 import { loadConfig } from "../config.js";
 import { logger } from "../logging/logger.js";
 import { createRuntime } from "../app.js";
