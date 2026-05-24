@@ -1,3 +1,15 @@
+export type CommandAction = "new" | "exit" | "status" | "sessions" | "help";
+
+const COMMANDS: Record<string, CommandAction> = {
+  new: "new",
+  exit: "exit",
+  quit: "exit",
+  q: "exit",
+  status: "status",
+  sessions: "sessions",
+  help: "help",
+};
+
 export interface SlashCommand {
   command: string;
   args: string;
@@ -16,40 +28,11 @@ export function parseSlashCommand(input: string): SlashCommand | null {
   };
 }
 
-export interface CommandCallbacks {
-  onNewChat: () => void;
-  onExit: () => void;
-  onShowStatus: () => void;
-  onShowSessions: () => void;
-  onHelp: () => void;
-}
-
-export function dispatch(
-  command: string,
-  args: string,
-  callbacks: CommandCallbacks,
-): boolean {
-  switch (command) {
-    case "new":
-      callbacks.onNewChat();
-      return true;
-    case "exit":
-    case "quit":
-    case "q":
-      callbacks.onExit();
-      return true;
-    case "status":
-      callbacks.onShowStatus();
-      return true;
-    case "sessions":
-      callbacks.onShowSessions();
-      return true;
-    case "help":
-      callbacks.onHelp();
-      return true;
-    default:
-      return false;
-  }
+export function resolveCommand(input: string): { action: CommandAction; args: string } | null {
+  const parsed = parseSlashCommand(input);
+  if (!parsed) return null;
+  const action = COMMANDS[parsed.command];
+  return action ? { action, args: parsed.args } : null;
 }
 
 export const HELP_TEXT = [

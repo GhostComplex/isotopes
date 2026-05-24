@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { parseSlashCommand, dispatch } from "./commands.js";
+import { describe, it, expect } from "vitest";
+import { parseSlashCommand, resolveCommand } from "./commands.js";
 
 describe("parseSlashCommand", () => {
   it("returns null for plain text", () => {
@@ -31,36 +31,25 @@ describe("parseSlashCommand", () => {
   });
 });
 
-describe("dispatch", () => {
-  const calls: string[] = [];
-  const callbacks = {
-    onNewChat: () => calls.push("new"),
-    onExit: () => calls.push("exit"),
-    onShowStatus: () => calls.push("status"),
-    onShowSessions: () => calls.push("sessions"),
-    onHelp: () => calls.push("help"),
-  };
-
-  beforeEach(() => { calls.length = 0; });
-
-  it("dispatches /new", () => {
-    expect(dispatch("new", "", callbacks)).toBe(true);
-    expect(calls).toEqual(["new"]);
+describe("resolveCommand", () => {
+  it("resolves known commands", () => {
+    expect(resolveCommand("/new")).toEqual({ action: "new", args: "" });
+    expect(resolveCommand("/status")).toEqual({ action: "status", args: "" });
+    expect(resolveCommand("/sessions")).toEqual({ action: "sessions", args: "" });
+    expect(resolveCommand("/help")).toEqual({ action: "help", args: "" });
   });
 
-  it("dispatches /sessions", () => {
-    expect(dispatch("sessions", "", callbacks)).toBe(true);
-    expect(calls).toEqual(["sessions"]);
+  it("resolves exit aliases", () => {
+    expect(resolveCommand("/exit")).toEqual({ action: "exit", args: "" });
+    expect(resolveCommand("/quit")).toEqual({ action: "exit", args: "" });
+    expect(resolveCommand("/q")).toEqual({ action: "exit", args: "" });
   });
 
-  it("dispatches /exit and aliases", () => {
-    expect(dispatch("exit", "", callbacks)).toBe(true);
-    expect(dispatch("quit", "", callbacks)).toBe(true);
-    expect(dispatch("q", "", callbacks)).toBe(true);
-    expect(calls).toEqual(["exit", "exit", "exit"]);
+  it("returns null for unknown commands", () => {
+    expect(resolveCommand("/unknown")).toBeNull();
   });
 
-  it("returns false for unknown command", () => {
-    expect(dispatch("unknown", "", callbacks)).toBe(false);
+  it("returns null for non-slash input", () => {
+    expect(resolveCommand("hello")).toBeNull();
   });
 });

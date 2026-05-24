@@ -1,32 +1,57 @@
 import type { ChatMessage, ContentBlock } from "./types.js";
 
+// ---------------------------------------------------------------------------
+// Type guards for API content blocks (loosely typed from the wire)
+// ---------------------------------------------------------------------------
+
+function isTextBlock(b: unknown): b is { type: "text"; text: string } {
+  return !!b && typeof b === "object" && (b as Record<string, unknown>).type === "text" && typeof (b as Record<string, unknown>).text === "string";
+}
+
+function isToolCallBlock(b: unknown): b is { type: "toolCall"; id?: string; name: string; arguments?: unknown } {
+  return !!b && typeof b === "object" && (b as Record<string, unknown>).type === "toolCall" && typeof (b as Record<string, unknown>).name === "string";
+}
+
+function hasContent(v: unknown): v is { content: unknown } {
+  return !!v && typeof v === "object" && "content" in (v as Record<string, unknown>);
+}
+
+function extractText(blocks: unknown[]): string {
+  return blocks.filter(isTextBlock).map((b) => b.text).join("");
+}
+
+// ---------------------------------------------------------------------------
+// Public helpers
+// ---------------------------------------------------------------------------
+
+const STEER_PREFIX = "[Messages arrived while you were working]\n";
+
 export function extractResultText(result: unknown): string {
   if (typeof result === "string") return result;
   if (Array.isArray(result)) {
-    const texts: string[] = [];
-    for (const block of result as Array<Record<string, unknown>>) {
-      if (block.type === "text" && typeof block.text === "string") texts.push(block.text);
-    }
-    if (texts.length > 0) return texts.join("\n");
+    const text = result.filter(isTextBlock).map((b) => b.text).join("\n");
+    if (text) return text;
   }
-  if (result && typeof result === "object" && "content" in (result as Record<string, unknown>)) {
-    return extractResultText((result as Record<string, unknown>).content);
-  }
+  if (hasContent(result)) return extractResultText(result.content);
   return JSON.stringify(result);
 }
 
 export function historyToChatMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number; toolCallId?: string }>): ChatMessage[] {
   const result: ChatMessage[] = [];
-  let current: { text: string; blocks: ContentBlock[]; timestamp: Date } | null = null;
+  let pending: { text: string; blocks: ContentBlock[]; timestamp: Date } | null = null;
 
-  const flushAssistant = () => {
-    if (current && (current.text || current.blocks.length > 0)) {
-      for (const b of current.blocks) {
-        if (b.type === "tool" && !b.result) b.result = "✓";
-      }
-      result.push({ role: "assistant", content: current.text, blocks: current.blocks.length > 0 ? current.blocks : undefined, timestamp: current.timestamp });
+  const flush = () => {
+    if (!pending || (!pending.text && pending.blocks.length === 0)) { pending = null; return; }
+    for (const b of pending.blocks) {
+      if (b.type === "tool" && !b.result) b.result = "✓";
     }
-    current = null;
+    result.push({
+      role: "assistant",
+      content: pending.text,
+      blocks: pending.blocks.length > 0 ? pending.blocks : undefined,
+      timestamp: pending.timestamp,
+    });
+    pending = null;
   };
 
   for (const m of items) {
@@ -34,38 +59,27 @@ export function historyToChatMessages(items: Array<{ role: string; type?: string
     const ts = typeof m.timestamp === "number" ? new Date(m.timestamp) : new Date();
 
     if (role === "user") {
-      let text = "";
-      if (typeof m.content === "string") {
-        text = m.content;
-      } else if (Array.isArray(m.content)) {
-        for (const b of m.content as Array<Record<string, unknown>>) {
-          if (b.type === "text" && typeof b.text === "string") text += b.text;
-        }
-      }
+      let text = typeof m.content === "string" ? m.content : Array.isArray(m.content) ? extractText(m.content) : "";
       if (!text) continue;
-      const steerPrefix = "[Messages arrived while you were working]\n";
-      if (text.startsWith(steerPrefix)) text = text.slice(steerPrefix.length);
-      flushAssistant();
+      if (text.startsWith(STEER_PREFIX)) text = text.slice(STEER_PREFIX.length);
+      flush();
       result.push({ role: "user", content: text, timestamp: ts });
     } else if (role === "toolResult") {
-      if (current && m.toolCallId) {
-        const tc = current.blocks.find((b) => b.type === "tool" && b.id === m.toolCallId);
-        if (tc && tc.type === "tool" && !tc.result) tc.result = "✓";
-      } else if (current) {
-        for (const b of current.blocks) {
-          if (b.type === "tool" && !b.result) { b.result = "✓"; break; }
-        }
-      }
+      if (!pending) continue;
+      const tc = m.toolCallId
+        ? pending.blocks.find((b) => b.type === "tool" && b.id === m.toolCallId)
+        : pending.blocks.find((b) => b.type === "tool" && !b.result);
+      if (tc && tc.type === "tool") tc.result = "✓";
     } else if (role === "assistant") {
-      flushAssistant();
-      current = { text: "", blocks: [], timestamp: ts };
+      flush();
+      pending = { text: "", blocks: [], timestamp: ts };
       if (Array.isArray(m.content)) {
-        for (const b of m.content as Array<Record<string, unknown>>) {
-          if (b.type === "text" && typeof b.text === "string") {
-            current.text += b.text;
-            current.blocks.push({ type: "text", text: b.text });
-          } else if (b.type === "toolCall" && typeof b.name === "string") {
-            current.blocks.push({
+        for (const b of m.content as unknown[]) {
+          if (isTextBlock(b)) {
+            pending.text += b.text;
+            pending.blocks.push({ type: "text", text: b.text });
+          } else if (isToolCallBlock(b)) {
+            pending.blocks.push({
               type: "tool",
               id: String(b.id ?? ""),
               name: b.name,
@@ -74,11 +88,11 @@ export function historyToChatMessages(items: Array<{ role: string; type?: string
           }
         }
       } else if (typeof m.content === "string") {
-        current.text += m.content;
-        current.blocks.push({ type: "text", text: m.content });
+        pending.text += m.content;
+        pending.blocks.push({ type: "text", text: m.content });
       }
     }
   }
-  flushAssistant();
+  flush();
   return result;
 }

@@ -50,18 +50,11 @@ export async function dispatch(
   return apiFetch<DispatchAck>("POST", `${sessionPath(agentId, sessionKey)}/dispatch`, { message });
 }
 
-export async function attachStream(
-  agentId: string,
-  sessionKey: string,
-  onEvent: (event: StreamEvent) => void,
-  signal: AbortSignal,
-): Promise<void> {
-  const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/stream`, { signal });
-  if (!res.ok) throw new Error(`API stream: ${res.status} ${res.statusText}`);
+// ---------------------------------------------------------------------------
+// SSE streaming
+// ---------------------------------------------------------------------------
 
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response body");
-
+async function* parseSSE(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<{ event: string; data: string }> {
   const decoder = new TextDecoder();
   let buffer = "";
   let currentEvent = "";
@@ -80,18 +73,27 @@ export async function attachStream(
         dataLines = [];
       } else if (line.startsWith("data: ")) {
         dataLines.push(line.slice(6));
-      } else if (line === "") {
-        if (currentEvent && currentEvent !== "ping" && currentEvent !== "connected" && dataLines.length > 0) {
-          try {
-            const parsed = JSON.parse(dataLines.join("\n")) as StreamEvent;
-            onEvent(parsed);
-          } catch {
-            // swallow malformed JSON: console.error would corrupt ink's render
-          }
+      } else if (line === "" && currentEvent && dataLines.length > 0) {
+        if (currentEvent !== "ping" && currentEvent !== "connected") {
+          yield { event: currentEvent, data: dataLines.join("\n") };
         }
         currentEvent = "";
         dataLines = [];
       }
     }
+  }
+}
+
+export async function attachStream(
+  agentId: string,
+  sessionKey: string,
+  onEvent: (event: StreamEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/stream`, { signal });
+  if (!res.ok) throw new Error(`API stream: ${res.status} ${res.statusText}`);
+  const reader = res.body!.getReader();
+  for await (const { data } of parseSSE(reader)) {
+    try { onEvent(JSON.parse(data) as StreamEvent); } catch { /* malformed JSON */ }
   }
 }
