@@ -1,35 +1,5 @@
 import type { ChatSessionInfo, DaemonStatus, DispatchAck, SessionSummary, StreamEvent } from "./types.js";
-
-const DEFAULT_PORT = 2712;
-
-function getBaseUrl(): string {
-  const port = process.env.ISOTOPES_PORT
-    ? parseInt(process.env.ISOTOPES_PORT, 10)
-    : DEFAULT_PORT;
-  return `http://127.0.0.1:${port}`;
-}
-
-async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${getBaseUrl()}${path}`);
-  if (!res.ok) throw new Error(`API ${path}: ${res.status} ${res.statusText}`);
-  return res.json() as Promise<T>;
-}
-
-async function postJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${getBaseUrl()}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(`API ${path}: ${res.status} ${res.statusText}`);
-  return res.json() as Promise<T>;
-}
-
-async function deleteJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${getBaseUrl()}${path}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`API ${path}: ${res.status} ${res.statusText}`);
-  return res.json() as Promise<T>;
-}
+import { apiFetch, getBaseUrl } from "../../utils/api-client.js";
 
 function sessionPath(agentId: string, sessionKey?: string): string {
   const base = `/api/sessions/${encodeURIComponent(agentId)}`;
@@ -37,11 +7,11 @@ function sessionPath(agentId: string, sessionKey?: string): string {
 }
 
 export async function fetchStatus(): Promise<DaemonStatus> {
-  return fetchJson<DaemonStatus>("/api/status");
+  return apiFetch<DaemonStatus>("GET", "/api/status");
 }
 
 export async function fetchSessions(): Promise<SessionSummary[]> {
-  const data = await fetchJson<{ items: SessionSummary[] }>("/api/sessions");
+  const data = await apiFetch<{ items: SessionSummary[] }>("GET", "/api/sessions");
   return data.items;
 }
 
@@ -57,19 +27,19 @@ export async function isDaemonRunning(): Promise<boolean> {
 export async function createSession(agentId: string, sessionKey?: string): Promise<ChatSessionInfo> {
   const body: Record<string, string> = {};
   if (sessionKey !== undefined) body.sessionKey = sessionKey;
-  return postJson<ChatSessionInfo>(sessionPath(agentId), body);
+  return apiFetch<ChatSessionInfo>("POST", sessionPath(agentId), body);
 }
 
 export async function getHistory(agentId: string, sessionKey: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
-  return fetchJson(`${sessionPath(agentId, sessionKey)}/messages`);
+  return apiFetch("GET", `${sessionPath(agentId, sessionKey)}/messages`);
 }
 
 export async function abortMessage(agentId: string, sessionKey: string): Promise<void> {
-  await postJson(`${sessionPath(agentId, sessionKey)}/abort`);
+  await apiFetch("POST", `${sessionPath(agentId, sessionKey)}/abort`);
 }
 
 export async function deleteSession(agentId: string, sessionKey: string): Promise<void> {
-  await deleteJson(sessionPath(agentId, sessionKey));
+  await apiFetch("DELETE", sessionPath(agentId, sessionKey));
 }
 
 export async function dispatch(
@@ -77,7 +47,7 @@ export async function dispatch(
   sessionKey: string,
   message: string,
 ): Promise<DispatchAck> {
-  return postJson<DispatchAck>(`${sessionPath(agentId, sessionKey)}/dispatch`, { message });
+  return apiFetch<DispatchAck>("POST", `${sessionPath(agentId, sessionKey)}/dispatch`, { message });
 }
 
 export async function attachStream(
@@ -104,7 +74,7 @@ export async function attachStream(
     const lines = buffer.split(/\r?\n/);
     buffer = lines.pop() ?? "";
     for (const line of lines) {
-      if (line.startsWith(":")) continue; // heartbeat comment
+      if (line.startsWith(":")) continue;
       if (line.startsWith("event: ")) {
         currentEvent = line.slice(7).trim();
         dataLines = [];
