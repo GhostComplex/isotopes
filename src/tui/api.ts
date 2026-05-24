@@ -1,5 +1,5 @@
 import type { ChatSessionInfo, DaemonStatus, DispatchAck, SessionSummary, StreamEvent } from "./types.js";
-import { apiFetch, getBaseUrl } from "../../utils/api-client.js";
+import { apiFetch, getBaseUrl } from "../utils/api-client.js";
 
 function sessionPath(agentId: string, sessionKey?: string): string {
   const base = `/api/sessions/${encodeURIComponent(agentId)}`;
