@@ -62,44 +62,24 @@ export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props)
     if (!msg.blocks) {
       return (
         <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
-          <Text wrap="wrap">
-            <Text color={roleColor} bold>{roleLabel}</Text>
-            <Text>: {msg.content}</Text>
-          </Text>
+          <Text color={roleColor} bold>{roleLabel}:</Text>
+          <Text wrap="wrap">{"  "}{msg.content}</Text>
         </Box>
       );
     }
 
-    const elements: React.ReactNode[] = [];
-    let labelRendered = false;
-    for (let j = 0; j < msg.blocks.length; j++) {
-      const block = msg.blocks[j];
-      if (block.type === "text") {
-        elements.push(
+    return (
+      <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
+        <Text color={roleColor} bold>{roleLabel}:</Text>
+        {msg.blocks.map((block, j) => (
           <Box key={j}>
-            <Text wrap="wrap">
-              {!labelRendered && <Text color={roleColor} bold>{roleLabel}: </Text>}
-              {block.text}
-            </Text>
+            {block.type === "text"
+              ? <Text wrap="wrap">{"  "}{block.text}</Text>
+              : <Text color="gray" dimColor wrap="truncate-end">{"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}</Text>}
           </Box>
-        );
-        labelRendered = true;
-      } else {
-        if (!labelRendered) {
-          elements.push(<Box key="label"><Text color={roleColor} bold>{roleLabel}:</Text></Box>);
-          labelRendered = true;
-        }
-        elements.push(
-          <Box key={j}>
-            <Text color="gray" dimColor wrap="truncate-end">
-              {"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}
-            </Text>
-          </Box>
-        );
-      }
-    }
-
-    return <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>{elements}</Box>;
+        ))}
+      </Box>
+    );
   };
 
   const isAttached = mode === "attach";
