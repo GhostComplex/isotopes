@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { historyToChatMessages, extractResultText } from "./ChatScreen.js";
+import { historyToChatMessages, extractResultText } from "./messages.js";
 
 describe("extractResultText", () => {
   it("returns string as-is", () => {
