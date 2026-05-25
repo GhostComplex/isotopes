@@ -2,7 +2,7 @@ export type ContentItem =
   | { type: "text"; text: string }
   | { type: "tool"; id: string; name: string; args: string; result?: string; isError?: boolean };
 
-export interface ChatMessage {
+export interface TuiMessage {
   role: "user" | "assistant" | "system";
   content: ContentItem[];
   timestamp: Date;

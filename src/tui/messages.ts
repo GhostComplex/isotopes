@@ -1,4 +1,4 @@
-import type { ChatMessage, ContentItem } from "./types.js";
+import type { TuiMessage, ContentItem } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Type guards for API content items (loosely typed from the wire)
@@ -32,8 +32,8 @@ export function extractResultText(result: unknown): string {
   return JSON.stringify(result);
 }
 
-export function historyToChatMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number; toolCallId?: string }>): ChatMessage[] {
-  const result: ChatMessage[] = [];
+export function historyToTuiMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number; toolCallId?: string }>): TuiMessage[] {
+  const result: TuiMessage[] = [];
   let pending: { content: ContentItem[]; timestamp: Date } | null = null;
 
   const flush = () => {

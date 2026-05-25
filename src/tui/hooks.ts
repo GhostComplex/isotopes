@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { randomUUID } from "node:crypto";
-import type { ChatMessage, ContentItem } from "./types.js";
+import type { TuiMessage, ContentItem } from "./types.js";
 import type { SessionEvent } from "../gateway/types.js";
-import { extractResultText, historyToChatMessages, toContent } from "./messages.js";
+import { extractResultText, historyToTuiMessages, toContent } from "./messages.js";
 import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
@@ -13,27 +13,27 @@ const MAX_HISTORY_MESSAGES = 20;
 // ---------------------------------------------------------------------------
 
 export interface UseStreamResult {
-  messages: ChatMessage[];
-  settled: ChatMessage[];
-  dynamic: ChatMessage[];
+  messages: TuiMessage[];
+  settled: TuiMessage[];
+  dynamic: TuiMessage[];
   isStreaming: boolean;
   handleEvent: (e: SessionEvent) => void;
-  pushMessage: (msg: ChatMessage) => void;
-  resetMessages: (initial?: ChatMessage[]) => void;
+  pushMessage: (msg: TuiMessage) => void;
+  resetMessages: (initial?: TuiMessage[]) => void;
 }
 
 export function useStream(): UseStreamResult {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<TuiMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
   const contentRef = useRef<ContentItem[]>([]);
   const streamMsgIdRef = useRef(randomUUID());
-  const settledRef = useRef<ChatMessage[]>([]);
+  const settledRef = useRef<TuiMessage[]>([]);
 
   const flushContent = useCallback(() => {
     const items = contentRef.current;
     const msgId = streamMsgIdRef.current;
-    const msg: ChatMessage = { role: "assistant", content: [...items], timestamp: new Date(), id: msgId };
+    const msg: TuiMessage = { role: "assistant", content: [...items], timestamp: new Date(), id: msgId };
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === msgId);
       if (idx >= 0) { const next = [...prev]; next[idx] = msg; return next; }
@@ -76,11 +76,11 @@ export function useStream(): UseStreamResult {
     }
   }, [flushContent]);
 
-  const pushMessage = useCallback((msg: ChatMessage) => {
+  const pushMessage = useCallback((msg: TuiMessage) => {
     setMessages((prev) => [...prev, msg]);
   }, []);
 
-  const resetMessages = useCallback((initial?: ChatMessage[]) => {
+  const resetMessages = useCallback((initial?: TuiMessage[]) => {
     setMessages(initial ?? []);
     settledRef.current = [];
     contentRef.current = [];
@@ -104,14 +104,14 @@ export function useStream(): UseStreamResult {
 // ---------------------------------------------------------------------------
 
 export interface UseChatResult {
-  messages: ChatMessage[];
-  settled: ChatMessage[];
-  dynamic: ChatMessage[];
+  messages: TuiMessage[];
+  settled: TuiMessage[];
+  dynamic: TuiMessage[];
   isStreaming: boolean;
   agentReady: boolean;
   effectiveAgentId: string;
   error: string | null;
-  pushMessage: (msg: ChatMessage) => void;
+  pushMessage: (msg: TuiMessage) => void;
   sendMessage: (text: string) => void;
   startNewChat: () => void;
   abortStream: () => void;
@@ -161,10 +161,10 @@ export function useChat(
           if (session.resumed) {
             const { items } = await api.getMessages(aid, skey);
             if (cancelled) return;
-            const msgs = historyToChatMessages(items).slice(-MAX_HISTORY_MESSAGES);
+            const msgs = historyToTuiMessages(items).slice(-MAX_HISTORY_MESSAGES);
             if (msgs.length > 0) {
               const skipped = items.length - msgs.length;
-              const prefix: ChatMessage[] = skipped > 0
+              const prefix: TuiMessage[] = skipped > 0
                 ? [{ role: "system", content: toContent(`… ${skipped} earlier messages`), timestamp: msgs[0].timestamp }]
                 : [];
               stream.resetMessages([...prefix, ...msgs]);
@@ -173,7 +173,7 @@ export function useChat(
         } else {
           const { items } = await api.getMessages(agentId, sessionKey);
           if (cancelled) return;
-          stream.resetMessages(historyToChatMessages(items));
+          stream.resetMessages(historyToTuiMessages(items));
         }
         sessionKeyRef.current = skey;
         connectStream(aid, skey);

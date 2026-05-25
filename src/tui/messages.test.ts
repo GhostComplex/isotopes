@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { historyToChatMessages, extractResultText, toContent } from "./messages.js";
+import { historyToTuiMessages, extractResultText, toContent } from "./messages.js";
 
 describe("extractResultText", () => {
   it("returns string as-is", () => {
@@ -23,13 +23,13 @@ describe("extractResultText", () => {
   });
 });
 
-describe("historyToChatMessages", () => {
+describe("historyToTuiMessages", () => {
   it("converts user and assistant messages", () => {
     const items = [
       { role: "user", content: "hi", timestamp: 1000 },
       { role: "assistant", content: [{ type: "text", text: "hello" }], timestamp: 2000 },
     ];
-    const result = historyToChatMessages(items);
+    const result = historyToTuiMessages(items);
     expect(result).toHaveLength(2);
     expect(result[0].role).toBe("user");
     expect(result[0].content).toEqual(toContent("hi"));
@@ -42,7 +42,7 @@ describe("historyToChatMessages", () => {
       { role: "user", content: [] },
       { role: "assistant", content: [{ type: "text", text: "response" }] },
     ];
-    const result = historyToChatMessages(items);
+    const result = historyToTuiMessages(items);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("assistant");
   });
@@ -51,7 +51,7 @@ describe("historyToChatMessages", () => {
     const items = [
       { role: "user", content: "[Messages arrived while you were working]\nactual message" },
     ];
-    const result = historyToChatMessages(items);
+    const result = historyToTuiMessages(items);
     expect(result[0].content).toEqual(toContent("actual message"));
   });
 
@@ -67,7 +67,7 @@ describe("historyToChatMessages", () => {
       { role: "toolResult", toolCallId: "t2" },
       { role: "toolResult", toolCallId: "t1" },
     ];
-    const result = historyToChatMessages(items);
+    const result = historyToTuiMessages(items);
     expect(result).toHaveLength(1);
     const content = result[0].content;
     expect(content[0].type === "tool" && content[0].result).toBe("✓");
@@ -84,7 +84,7 @@ describe("historyToChatMessages", () => {
       },
       { role: "toolResult" },
     ];
-    const result = historyToChatMessages(items);
+    const result = historyToTuiMessages(items);
     const content = result[0].content;
     expect(content[0].type === "tool" && content[0].result).toBe("✓");
   });
@@ -94,7 +94,7 @@ describe("historyToChatMessages", () => {
       { role: "assistant", content: [{ type: "text", text: "first" }] },
       { role: "assistant", content: [{ type: "text", text: "second" }] },
     ];
-    const result = historyToChatMessages(items);
+    const result = historyToTuiMessages(items);
     expect(result).toHaveLength(2);
     expect(result[0].content).toEqual(toContent("first"));
     expect(result[1].content).toEqual(toContent("second"));
@@ -104,7 +104,7 @@ describe("historyToChatMessages", () => {
     const items = [
       { role: "user", content: [{ type: "text", text: "hello " }, { type: "text", text: "world" }] },
     ];
-    const result = historyToChatMessages(items);
+    const result = historyToTuiMessages(items);
     expect(result[0].content).toEqual(toContent("hello world"));
   });
 });

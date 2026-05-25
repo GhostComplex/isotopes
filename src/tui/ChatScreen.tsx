@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Box, Text, Static, useInput, useApp } from "ink";
 import { resolveCommand, HELP_TEXT } from "./commands.js";
-import type { ChatMessage, Screen } from "./types.js";
+import type { TuiMessage, Screen } from "./types.js";
 import { useChat } from "./hooks.js";
 import { toContent } from "./messages.js";
 
@@ -56,7 +56,7 @@ export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props)
 
   const contentWidth = (process.stdout.columns || 80) - 2;
 
-  const renderMessage = (msg: ChatMessage, i: number) => {
+  const renderMessage = (msg: TuiMessage, i: number) => {
     const roleLabel = msg.role === "user" ? "You" : msg.role === "assistant" ? "Agent" : "System";
     const roleColor = msg.role === "user" ? "green" : msg.role === "assistant" ? "blue" : "gray";
 
