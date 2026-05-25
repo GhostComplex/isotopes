@@ -7,7 +7,7 @@ import { tuiMessage } from "./messages.js";
 
 interface Props {
   agentId: string;
-  sessionKey?: string;
+  sessionKey: string;
   onSwitchScreen: (screen: Screen) => void;
 }
 

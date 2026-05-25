@@ -117,7 +117,7 @@ export interface UseChatResult {
 
 export function useChat(
   agentId: string,
-  sessionKey?: string,
+  sessionKey: string,
 ): UseChatResult {
   const stream = useStream();
   const [agentReady, setAgentReady] = useState(false);
@@ -147,20 +147,16 @@ export function useChat(
           return;
         }
 
-        let aid = agentId;
-        let skey: string;
+        const session = await api.createSession(agentId, sessionKey);
+        if (cancelled) return;
+        const aid = session.agentId;
+        const skey = session.key;
+        setEffectiveAgentId(session.agentId);
 
-        if (sessionKey) {
-          skey = sessionKey;
-          const { items } = await api.getMessages(agentId, sessionKey);
+        if (session.resumed) {
+          const { items } = await api.getMessages(aid, skey);
           if (cancelled) return;
           stream.resetMessages(historyToTuiMessages(items));
-        } else {
-          const session = await api.createSession(agentId);
-          if (cancelled) return;
-          aid = session.agentId;
-          skey = session.key;
-          setEffectiveAgentId(session.agentId);
         }
 
         sessionKeyRef.current = skey;

@@ -37,7 +37,7 @@ export function App({ options }: Props) {
     <ChatScreen
       key={`${agentId}:${sessionKey}`}
       agentId={agentId}
-      sessionKey={sessionKey === "tui" ? undefined : sessionKey}
+      sessionKey={sessionKey}
       onSwitchScreen={setScreen}
     />
   );
