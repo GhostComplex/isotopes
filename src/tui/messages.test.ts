@@ -6,12 +6,12 @@ describe("extractResultText", () => {
     expect(extractResultText("hello")).toBe("hello");
   });
 
-  it("joins text blocks from array", () => {
-    const blocks = [
+  it("joins text items from array", () => {
+    const items = [
       { type: "text", text: "line1" },
       { type: "text", text: "line2" },
     ];
-    expect(extractResultText(blocks)).toBe("line1\nline2");
+    expect(extractResultText(items)).toBe("line1\nline2");
   });
 
   it("unwraps content property", () => {
@@ -69,9 +69,9 @@ describe("historyToChatMessages", () => {
     ];
     const result = historyToChatMessages(items);
     expect(result).toHaveLength(1);
-    const blocks = result[0].content;
-    expect(blocks[0].type === "tool" && blocks[0].result).toBe("✓");
-    expect(blocks[1].type === "tool" && blocks[1].result).toBe("✓");
+    const content = result[0].content;
+    expect(content[0].type === "tool" && content[0].result).toBe("✓");
+    expect(content[1].type === "tool" && content[1].result).toBe("✓");
   });
 
   it("falls back to first-unresolved when no toolCallId", () => {
@@ -85,8 +85,8 @@ describe("historyToChatMessages", () => {
       { role: "toolResult" },
     ];
     const result = historyToChatMessages(items);
-    const blocks = result[0].content;
-    expect(blocks[0].type === "tool" && blocks[0].result).toBe("✓");
+    const content = result[0].content;
+    expect(content[0].type === "tool" && content[0].result).toBe("✓");
   });
 
   it("splits consecutive assistant messages into separate entries", () => {
@@ -100,7 +100,7 @@ describe("historyToChatMessages", () => {
     expect(result[1].content).toEqual(textContent("second"));
   });
 
-  it("handles user content as array of text blocks", () => {
+  it("handles user content as array of text items", () => {
     const items = [
       { role: "user", content: [{ type: "text", text: "hello " }, { type: "text", text: "world" }] },
     ];

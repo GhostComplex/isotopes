@@ -63,11 +63,11 @@ export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props)
     return (
       <Box key={msg.id ?? i} flexDirection="column" width={contentWidth} marginTop={i > 0 ? 1 : 0}>
         <Text color={roleColor} bold>{roleLabel}:</Text>
-        {msg.content.map((block, j) => (
+        {msg.content.map((item, j) => (
           <Box key={j}>
-            {block.type === "text"
-              ? <Text wrap="wrap">{"  "}{block.text}</Text>
-              : <Text color="gray" dimColor wrap="truncate-end">{"  "}{block.name}({block.args.length > 60 ? block.args.slice(0, 60) + "…" : block.args}){block.isError ? " ✗" : block.result ? " ✓" : " …"}</Text>}
+            {item.type === "text"
+              ? <Text wrap="wrap">{"  "}{item.text}</Text>
+              : <Text color="gray" dimColor wrap="truncate-end">{"  "}{item.name}({item.args.length > 60 ? item.args.slice(0, 60) + "…" : item.args}){item.isError ? " ✗" : item.result ? " ✓" : " …"}</Text>}
           </Box>
         ))}
       </Box>

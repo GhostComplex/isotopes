@@ -1,14 +1,14 @@
 import type { ChatMessage, ContentItem } from "./types.js";
 
 // ---------------------------------------------------------------------------
-// Type guards for API content blocks (loosely typed from the wire)
+// Type guards for API content items (loosely typed from the wire)
 // ---------------------------------------------------------------------------
 
-function isTextBlock(b: unknown): b is { type: "text"; text: string } {
+function isTextContent(b: unknown): b is { type: "text"; text: string } {
   return !!b && typeof b === "object" && (b as Record<string, unknown>).type === "text" && typeof (b as Record<string, unknown>).text === "string";
 }
 
-function isToolCallBlock(b: unknown): b is { type: "toolCall"; id?: string; name: string; arguments?: unknown } {
+function isToolCall(b: unknown): b is { type: "toolCall"; id?: string; name: string; arguments?: unknown } {
   return !!b && typeof b === "object" && (b as Record<string, unknown>).type === "toolCall" && typeof (b as Record<string, unknown>).name === "string";
 }
 
@@ -25,7 +25,7 @@ export function textContent(text: string): ContentItem[] {
 export function extractResultText(result: unknown): string {
   if (typeof result === "string") return result;
   if (Array.isArray(result)) {
-    const text = result.filter(isTextBlock).map((b) => b.text).join("\n");
+    const text = result.filter(isTextContent).map((b) => b.text).join("\n");
     if (text) return text;
   }
   if (result && typeof result === "object" && "content" in result) return extractResultText((result as { content: unknown }).content);
@@ -50,8 +50,8 @@ export function historyToChatMessages(items: Array<{ role: string; type?: string
     const ts = typeof m.timestamp === "number" ? new Date(m.timestamp) : new Date();
 
     if (role === "user") {
-      const blocks: unknown[] = Array.isArray(m.content) ? m.content : [];
-      let text = typeof m.content === "string" ? m.content : blocks.filter(isTextBlock).map((b) => b.text).join("");
+      const items: unknown[] = Array.isArray(m.content) ? m.content : [];
+      let text = typeof m.content === "string" ? m.content : items.filter(isTextContent).map((b) => b.text).join("");
       if (!text) continue;
       if (text.startsWith(STEER_PREFIX)) text = text.slice(STEER_PREFIX.length);
       flush();
@@ -67,9 +67,9 @@ export function historyToChatMessages(items: Array<{ role: string; type?: string
       pending = { content: [], timestamp: ts };
       if (Array.isArray(m.content)) {
         for (const b of m.content as unknown[]) {
-          if (isTextBlock(b)) {
+          if (isTextContent(b)) {
             pending.content.push({ type: "text", text: b.text });
-          } else if (isToolCallBlock(b)) {
+          } else if (isToolCall(b)) {
             pending.content.push({
               type: "tool",
               id: String(b.id ?? ""),

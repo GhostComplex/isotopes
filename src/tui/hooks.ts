@@ -9,7 +9,7 @@ const MAX_VISIBLE_MESSAGES = 50;
 const MAX_HISTORY_MESSAGES = 20;
 
 // ---------------------------------------------------------------------------
-// useStream — SSE event handling + block accumulation + settled/dynamic split
+// useStream — SSE event handling + content accumulation + settled/dynamic split
 // ---------------------------------------------------------------------------
 
 export interface UseStreamResult {
@@ -26,14 +26,14 @@ export function useStream(): UseStreamResult {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
-  const blocksRef = useRef<ContentItem[]>([]);
+  const contentRef = useRef<ContentItem[]>([]);
   const streamMsgIdRef = useRef(randomUUID());
   const settledRef = useRef<ChatMessage[]>([]);
 
-  const flushBlocks = useCallback(() => {
-    const blocks = blocksRef.current;
+  const flushContent = useCallback(() => {
+    const items = contentRef.current;
     const msgId = streamMsgIdRef.current;
-    const msg: ChatMessage = { role: "assistant", content: [...blocks], timestamp: new Date(), id: msgId };
+    const msg: ChatMessage = { role: "assistant", content: [...items], timestamp: new Date(), id: msgId };
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === msgId);
       if (idx >= 0) { const next = [...prev]; next[idx] = msg; return next; }
@@ -44,37 +44,37 @@ export function useStream(): UseStreamResult {
   const handleEvent = useCallback((e: SessionEvent) => {
     if (e.type === "text_delta") {
       setIsStreaming(true);
-      const blocks = blocksRef.current;
-      const last = blocks[blocks.length - 1];
+      const items = contentRef.current;
+      const last = items[items.length - 1];
       if (last?.type === "text") {
         (last as { text: string }).text += e.delta;
       } else {
-        blocks.push({ type: "text", text: e.delta });
+        items.push({ type: "text", text: e.delta });
       }
-      flushBlocks();
+      flushContent();
     } else if (e.type === "tool_call") {
-      blocksRef.current.push({
+      contentRef.current.push({
         type: "tool",
         id: e.toolCallId,
         name: e.toolName,
         args: typeof e.args === "string" ? e.args : JSON.stringify(e.args),
       });
-      flushBlocks();
+      flushContent();
     } else if (e.type === "tool_result") {
-      const tc = blocksRef.current.find((b): b is ContentItem & { type: "tool" } => b.type === "tool" && b.id === e.toolCallId);
+      const tc = contentRef.current.find((b): b is ContentItem & { type: "tool" } => b.type === "tool" && b.id === e.toolCallId);
       if (tc) { tc.result = extractResultText(e.result); tc.isError = e.isError; }
-      flushBlocks();
+      flushContent();
     } else if (e.type === "turn_end") {
-      blocksRef.current = [];
+      contentRef.current = [];
       streamMsgIdRef.current = randomUUID();
     } else if (e.type === "agent_end") {
-      blocksRef.current = [];
+      contentRef.current = [];
       setIsStreaming(false);
       if (e.stopReason === "error" && e.errorMessage) {
         setMessages((prev) => [...prev, { role: "system", content: textContent(`Error: ${e.errorMessage}`), timestamp: new Date() }]);
       }
     }
-  }, [flushBlocks]);
+  }, [flushContent]);
 
   const pushMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev, msg]);
@@ -83,7 +83,7 @@ export function useStream(): UseStreamResult {
   const resetMessages = useCallback((initial?: ChatMessage[]) => {
     setMessages(initial ?? []);
     settledRef.current = [];
-    blocksRef.current = [];
+    contentRef.current = [];
     streamMsgIdRef.current = randomUUID();
   }, []);
 
