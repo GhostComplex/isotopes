@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { historyToTuiMessages, toContent } from "./messages.js";
+import { historyToTuiMessages, tuiMessage } from "./messages.js";
 
 describe("historyToTuiMessages", () => {
   it("converts user and assistant messages", () => {
@@ -10,9 +10,9 @@ describe("historyToTuiMessages", () => {
     const result = historyToTuiMessages(items);
     expect(result).toHaveLength(2);
     expect(result[0].role).toBe("user");
-    expect(result[0].content).toEqual(toContent("hi"));
+    expect(result[0].content).toEqual(tuiMessage("user", "hi").content);
     expect(result[1].role).toBe("assistant");
-    expect(result[1].content).toEqual(toContent("hello"));
+    expect(result[1].content).toEqual(tuiMessage("assistant", "hello").content);
   });
 
   it("skips empty user messages", () => {
@@ -30,7 +30,7 @@ describe("historyToTuiMessages", () => {
       { role: "user", content: "[Messages arrived while you were working]\nactual message" },
     ];
     const result = historyToTuiMessages(items);
-    expect(result[0].content).toEqual(toContent("actual message"));
+    expect(result[0].content).toEqual(tuiMessage("user", "actual message").content);
   });
 
   it("marks toolResult by toolCallId before flush", () => {
@@ -74,8 +74,8 @@ describe("historyToTuiMessages", () => {
     ];
     const result = historyToTuiMessages(items);
     expect(result).toHaveLength(2);
-    expect(result[0].content).toEqual(toContent("first"));
-    expect(result[1].content).toEqual(toContent("second"));
+    expect(result[0].content).toEqual(tuiMessage("assistant", "first").content);
+    expect(result[1].content).toEqual(tuiMessage("assistant", "second").content);
   });
 
   it("handles user content as array of text items", () => {
@@ -83,6 +83,6 @@ describe("historyToTuiMessages", () => {
       { role: "user", content: [{ type: "text", text: "hello " }, { type: "text", text: "world" }] },
     ];
     const result = historyToTuiMessages(items);
-    expect(result[0].content).toEqual(toContent("hello world"));
+    expect(result[0].content).toEqual(tuiMessage("user", "hello world").content);
   });
 });

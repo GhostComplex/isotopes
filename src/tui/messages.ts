@@ -18,8 +18,12 @@ function isToolCall(b: unknown): b is { type: "toolCall"; id?: string; name: str
 
 const STEER_PREFIX = "[Messages arrived while you were working]\n";
 
-export function toContent(text: string): ContentItem[] {
-  return [{ type: "text", text }];
+export function tuiMessage(role: TuiMessage["role"], content: string | ContentItem[], timestamp = new Date()): TuiMessage {
+  return {
+    role,
+    content: typeof content === "string" ? [{ type: "text", text: content }] : content,
+    timestamp,
+  };
 }
 
 export function historyToTuiMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number; toolCallId?: string }>): TuiMessage[] {
@@ -31,7 +35,7 @@ export function historyToTuiMessages(items: Array<{ role: string; type?: string;
     for (const b of pending.content) {
       if (b.type === "tool" && !b.completed) b.completed = true;
     }
-    result.push({ role: "assistant", content: pending.content, timestamp: pending.timestamp });
+    result.push(tuiMessage("assistant", pending.content, pending.timestamp));
     pending = null;
   };
 
@@ -45,7 +49,7 @@ export function historyToTuiMessages(items: Array<{ role: string; type?: string;
       if (!text) continue;
       if (text.startsWith(STEER_PREFIX)) text = text.slice(STEER_PREFIX.length);
       flush();
-      result.push({ role: "user", content: toContent(text), timestamp: ts });
+      result.push(tuiMessage("user", text, ts));
     } else if (role === "toolResult") {
       if (!pending) continue;
       const tc = m.toolCallId
