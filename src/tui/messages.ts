@@ -33,8 +33,8 @@ export function historyToTuiMessages(items: Array<{ role: string; type?: string;
   );
 
   function parseUserText(m: { content?: unknown }): string {
-    const items: unknown[] = Array.isArray(m.content) ? m.content : [];
-    return typeof m.content === "string" ? m.content : items.filter(isText).map((b) => b.text).join("");
+    const userTextItems: unknown[] = Array.isArray(m.content) ? m.content : [];
+    return typeof m.content === "string" ? m.content : userTextItems.filter(isText).map((b) => b.text).join("");
   }
 
   function parseAssistantContent(m: { content?: unknown }): ContentItem[] {

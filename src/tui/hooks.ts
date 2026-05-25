@@ -144,6 +144,8 @@ export function useSession(
   }, [effectiveAgentId, pushMessage]);
 
   const abortStream = useCallback(() => {
+    abortRef.current?.abort();
+    setIsStreaming(false);
     if (sessionKeyRef.current) void api.abortSession(effectiveAgentId, sessionKeyRef.current).catch(() => {});
   }, [effectiveAgentId]);
 

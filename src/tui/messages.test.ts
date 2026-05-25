@@ -45,7 +45,7 @@ describe("historyToTuiMessages", () => {
     expect(content[1].type === "tool" && content[1].completed).toBe(true);
   });
 
-  it("falls back to first-unresolved when no toolCallId", () => {
+  it("marks all history tool calls as completed even without matching toolResult", () => {
     const items = [
       {
         role: "assistant",

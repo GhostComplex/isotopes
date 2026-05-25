@@ -78,7 +78,7 @@ export function ChatScreen({ agentId, sessionKey, onSwitchScreen }: Props) {
         <Text bold>isotopes</Text>
         <Text> — agent: </Text>
         <Text color="cyan">{session.effectiveAgentId || "loading..."}</Text>
-        {sessionKey && <Text color="magenta"> [session: {sessionKey}]</Text>}
+        {sessionKey !== "tui" && <Text color="magenta"> [session: {sessionKey}]</Text>}
         {session.isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
