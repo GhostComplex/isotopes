@@ -7,18 +7,18 @@ function sessionPath(agentId: string, sessionKey?: string): string {
   return sessionKey ? `${base}/${encodeURIComponent(sessionKey)}` : base;
 }
 
-export async function fetchStatus(): Promise<DaemonStatus> {
+export async function getStatus(): Promise<DaemonStatus> {
   return apiFetch<DaemonStatus>("GET", "/api/status");
 }
 
-export async function fetchSessions(): Promise<SessionItem[]> {
+export async function getSessions(): Promise<SessionItem[]> {
   const data = await apiFetch<{ items: SessionItem[] }>("GET", "/api/sessions");
   return data.items;
 }
 
 export async function isDaemonRunning(): Promise<boolean> {
   try {
-    await fetchStatus();
+    await getStatus();
     return true;
   } catch {
     return false;
@@ -35,7 +35,7 @@ export async function getMessages(agentId: string, sessionKey: string): Promise<
   return apiFetch("GET", `${sessionPath(agentId, sessionKey)}/messages`);
 }
 
-export async function abortMessage(agentId: string, sessionKey: string): Promise<void> {
+export async function abortRun(agentId: string, sessionKey: string): Promise<void> {
   await apiFetch("POST", `${sessionPath(agentId, sessionKey)}/abort`);
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchStatus, fetchSessions, isDaemonRunning, createSession, getMessages, abortMessage, deleteSession, dispatch } from "./api.js";
+import { getStatus, getSessions, isDaemonRunning, createSession, getMessages, abortRun, deleteSession, dispatch } from "./api.js";
 
 const mockFetch = vi.fn();
 
@@ -11,11 +11,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("fetchStatus", () => {
+describe("getStatus", () => {
   it("returns parsed status", async () => {
     const data = { version: "0.1.0", uptime: 123, cronJobs: 2 };
     mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve(data) });
-    const result = await fetchStatus();
+    const result = await getStatus();
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
       "http://127.0.0.1:2712/api/status",
@@ -25,7 +25,7 @@ describe("fetchStatus", () => {
 
   it("throws on non-ok response", async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 500, statusText: "Internal" });
-    await expect(fetchStatus()).rejects.toThrow("API error: 500");
+    await expect(getStatus()).rejects.toThrow("API error: 500");
   });
 });
 
@@ -57,11 +57,11 @@ describe("createSession", () => {
   });
 });
 
-describe("fetchSessions", () => {
+describe("getSessions", () => {
   it("returns all sessions", async () => {
     const data = { items: [{ key: "bot:main", agentId: "bot", status: "active", lastActivityAt: "" }] };
     mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve(data) });
-    const result = await fetchSessions();
+    const result = await getSessions();
     expect(result).toEqual(data.items);
     expect(mockFetch).toHaveBeenCalledWith(
       "http://127.0.0.1:2712/api/sessions",
@@ -83,10 +83,10 @@ describe("getMessages", () => {
   });
 });
 
-describe("abortMessage", () => {
+describe("abortRun", () => {
   it("posts abort", async () => {
     mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
-    await abortMessage("bot", "s1");
+    await abortRun("bot", "s1");
     expect(mockFetch).toHaveBeenCalledWith(
       "http://127.0.0.1:2712/api/sessions/bot/s1/abort",
       expect.objectContaining({ method: "POST" }),

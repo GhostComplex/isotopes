@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { fetchSessions, isDaemonRunning } from "./api.js";
+import { getSessions, isDaemonRunning } from "./api.js";
 import type { Screen, SessionItem } from "./types.js";
 
 interface Props {
@@ -24,7 +24,7 @@ export function SessionsScreen({ currentAgentId, currentSessionKey, onSwitchScre
       setRunning(isUp);
       if (!isUp) return;
       try {
-        const list = await fetchSessions();
+        const list = await getSessions();
         if (cancelled) return;
         const sorted = [...list].sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? ""));
         setSessions(sorted);

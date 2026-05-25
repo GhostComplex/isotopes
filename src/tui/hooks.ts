@@ -213,7 +213,7 @@ export function useChat(
   }, [effectiveAgentId, sessionKey, mode, stream.pushMessage, stream.resetMessages, connectStream]);
 
   const abortStream = useCallback(() => {
-    if (sessionKeyRef.current) void api.abortMessage(effectiveAgentId, sessionKeyRef.current).catch(() => {});
+    if (sessionKeyRef.current) void api.abortRun(effectiveAgentId, sessionKeyRef.current).catch(() => {});
   }, [effectiveAgentId]);
 
   return {

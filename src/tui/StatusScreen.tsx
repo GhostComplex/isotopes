@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import { fetchStatus, isDaemonRunning } from "./api.js";
+import { getStatus, isDaemonRunning } from "./api.js";
 import type { DaemonStatus, Screen } from "./types.js";
 
 interface Props {
@@ -30,7 +30,7 @@ export function StatusScreen({ onSwitchScreen }: Props) {
     setRunning(isUp);
     if (isUp) {
       try {
-        setStatus(await fetchStatus());
+        setStatus(await getStatus());
       } catch {
         // keep prior status
       }
