@@ -4,7 +4,7 @@ export function getApiPort(): number {
   return process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : DEFAULT_PORT;
 }
 
-export function getBaseUrl(): string {
+function getBaseUrl(): string {
   return `http://127.0.0.1:${getApiPort()}`;
 }
 
@@ -28,4 +28,10 @@ export async function apiFetch<T = unknown>(
   if (!res.ok) throw new ApiError(res.status);
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+export async function apiStream(path: string, signal: AbortSignal): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+  const res = await fetch(`${getBaseUrl()}${path}`, { signal });
+  if (!res.ok) throw new ApiError(res.status);
+  return res.body!.getReader();
 }

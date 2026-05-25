@@ -1,6 +1,6 @@
 import type { DaemonStatus, DispatchResult, SessionInfo, SessionItem } from "./types.js";
 import type { SessionEvent } from "../gateway/types.js";
-import { apiFetch, getBaseUrl } from "../utils/api-client.js";
+import { apiFetch, apiStream } from "../utils/api-client.js";
 
 function sessionPath(agentId: string, sessionKey?: string): string {
   const base = `/api/sessions/${encodeURIComponent(agentId)}`;
@@ -91,9 +91,7 @@ export async function subscribe(
   onEvent: (event: SessionEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${getBaseUrl()}${sessionPath(agentId, sessionKey)}/stream`, { signal });
-  if (!res.ok) throw new Error(`API stream: ${res.status} ${res.statusText}`);
-  const reader = res.body!.getReader();
+  const reader = await apiStream(`${sessionPath(agentId, sessionKey)}/stream`, signal);
   for await (const { data } of parseSSE(reader)) {
     try { onEvent(JSON.parse(data) as SessionEvent); } catch { /* malformed JSON */ }
   }
