@@ -131,7 +131,7 @@ export function useChat(
     attachAbortRef.current?.abort();
     const ctrl = new AbortController();
     attachAbortRef.current = ctrl;
-    void api.attachStream(aid, skey, stream.handleEvent, ctrl.signal).catch((err) => {
+    void api.subscribe(aid, skey, stream.handleEvent, ctrl.signal).catch((err) => {
       if (!ctrl.signal.aborted) setError(`Attach failed: ${err instanceof Error ? err.message : String(err)}`);
     });
   }, [stream.handleEvent]);

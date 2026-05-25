@@ -85,7 +85,7 @@ async function* parseSSE(reader: ReadableStreamDefaultReader<Uint8Array>): Async
   }
 }
 
-export async function attachStream(
+export async function subscribe(
   agentId: string,
   sessionKey: string,
   onEvent: (event: SessionEvent) => void,
