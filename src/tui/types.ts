@@ -1,6 +1,6 @@
 export type ContentItem =
   | { type: "text"; text: string }
-  | { type: "tool"; id: string; name: string; args: string; result?: string; isError?: boolean };
+  | { type: "tool"; id: string; name: string; args: string; completed?: boolean; isError?: boolean };
 
 export interface TuiMessage {
   role: "user" | "assistant" | "system";

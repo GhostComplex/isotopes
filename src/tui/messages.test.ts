@@ -1,27 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { historyToTuiMessages, extractResultText, toContent } from "./messages.js";
-
-describe("extractResultText", () => {
-  it("returns string as-is", () => {
-    expect(extractResultText("hello")).toBe("hello");
-  });
-
-  it("joins text items from array", () => {
-    const items = [
-      { type: "text", text: "line1" },
-      { type: "text", text: "line2" },
-    ];
-    expect(extractResultText(items)).toBe("line1\nline2");
-  });
-
-  it("unwraps content property", () => {
-    expect(extractResultText({ content: "nested" })).toBe("nested");
-  });
-
-  it("JSON stringifies unknown shapes", () => {
-    expect(extractResultText(42)).toBe("42");
-  });
-});
+import { historyToTuiMessages, toContent } from "./messages.js";
 
 describe("historyToTuiMessages", () => {
   it("converts user and assistant messages", () => {
@@ -70,8 +48,8 @@ describe("historyToTuiMessages", () => {
     const result = historyToTuiMessages(items);
     expect(result).toHaveLength(1);
     const content = result[0].content;
-    expect(content[0].type === "tool" && content[0].result).toBe("✓");
-    expect(content[1].type === "tool" && content[1].result).toBe("✓");
+    expect(content[0].type === "tool" && content[0].completed).toBe(true);
+    expect(content[1].type === "tool" && content[1].completed).toBe(true);
   });
 
   it("falls back to first-unresolved when no toolCallId", () => {
@@ -86,7 +64,7 @@ describe("historyToTuiMessages", () => {
     ];
     const result = historyToTuiMessages(items);
     const content = result[0].content;
-    expect(content[0].type === "tool" && content[0].result).toBe("✓");
+    expect(content[0].type === "tool" && content[0].completed).toBe(true);
   });
 
   it("splits consecutive assistant messages into separate entries", () => {

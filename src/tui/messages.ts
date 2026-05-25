@@ -22,16 +22,6 @@ export function toContent(text: string): ContentItem[] {
   return [{ type: "text", text }];
 }
 
-export function extractResultText(result: unknown): string {
-  if (typeof result === "string") return result;
-  if (Array.isArray(result)) {
-    const text = result.filter(isText).map((b) => b.text).join("\n");
-    if (text) return text;
-  }
-  if (result && typeof result === "object" && "content" in result) return extractResultText((result as { content: unknown }).content);
-  return JSON.stringify(result);
-}
-
 export function historyToTuiMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number; toolCallId?: string }>): TuiMessage[] {
   const result: TuiMessage[] = [];
   let pending: { content: ContentItem[]; timestamp: Date } | null = null;
@@ -39,7 +29,7 @@ export function historyToTuiMessages(items: Array<{ role: string; type?: string;
   const flush = () => {
     if (!pending || pending.content.length === 0) { pending = null; return; }
     for (const b of pending.content) {
-      if (b.type === "tool" && !b.result) b.result = "✓";
+      if (b.type === "tool" && !b.completed) b.completed = true;
     }
     result.push({ role: "assistant", content: pending.content, timestamp: pending.timestamp });
     pending = null;
@@ -60,8 +50,8 @@ export function historyToTuiMessages(items: Array<{ role: string; type?: string;
       if (!pending) continue;
       const tc = m.toolCallId
         ? pending.content.find((b) => b.type === "tool" && b.id === m.toolCallId)
-        : pending.content.find((b) => b.type === "tool" && !b.result);
-      if (tc && tc.type === "tool") tc.result = "✓";
+        : pending.content.find((b) => b.type === "tool" && !b.completed);
+      if (tc && tc.type === "tool") tc.completed = true;
     } else if (role === "assistant") {
       flush();
       pending = { content: [], timestamp: ts };

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { randomUUID } from "node:crypto";
 import type { TuiMessage, ContentItem } from "./types.js";
 import type { SessionEvent } from "../gateway/types.js";
-import { extractResultText, historyToTuiMessages, toContent } from "./messages.js";
+import { historyToTuiMessages, toContent } from "./messages.js";
 import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
@@ -62,7 +62,7 @@ export function useStream(): UseStreamResult {
       flushContent();
     } else if (e.type === "tool_result") {
       const tc = contentRef.current.find((b): b is ContentItem & { type: "tool" } => b.type === "tool" && b.id === e.toolCallId);
-      if (tc) { tc.result = extractResultText(e.result); tc.isError = e.isError; }
+      if (tc) { tc.completed = true; tc.isError = e.isError; }
       flushContent();
     } else if (e.type === "turn_end") {
       contentRef.current = [];

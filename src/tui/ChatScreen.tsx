@@ -67,7 +67,7 @@ export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props)
           <Box key={j}>
             {item.type === "text"
               ? <Text wrap="wrap">{"  "}{item.text}</Text>
-              : <Text color="gray" dimColor wrap="truncate-end">{"  "}{item.name}({item.args.length > 60 ? item.args.slice(0, 60) + "…" : item.args}){item.isError ? " ✗" : item.result ? " ✓" : " …"}</Text>}
+              : <Text color="gray" dimColor wrap="truncate-end">{"  "}{item.name}({item.args.length > 60 ? item.args.slice(0, 60) + "…" : item.args}){item.isError ? " ✗" : item.completed ? " ✓" : " …"}</Text>}
           </Box>
         ))}
       </Box>
