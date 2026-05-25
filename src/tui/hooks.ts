@@ -7,27 +7,45 @@ import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
 
-// ---------------------------------------------------------------------------
-// useStream — SSE event handling + content accumulation + settled/dynamic split
-// ---------------------------------------------------------------------------
-
-export interface UseStreamResult {
+export interface UseSessionResult {
   messages: TuiMessage[];
   settled: TuiMessage[];
   dynamic: TuiMessage[];
   isStreaming: boolean;
-  handleEvent: (e: SessionEvent) => void;
+  agentReady: boolean;
+  effectiveAgentId: string;
+  error: string | null;
   pushMessage: (msg: TuiMessage) => void;
-  resetMessages: (initial?: TuiMessage[]) => void;
+  sendMessage: (text: string) => void;
+  abortStream: () => void;
 }
 
-export function useStream(): UseStreamResult {
+export function useSession(
+  agentId: string,
+  sessionKey: string,
+): UseSessionResult {
   const [messages, setMessages] = useState<TuiMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [agentReady, setAgentReady] = useState(false);
+  const [effectiveAgentId, setEffectiveAgentId] = useState(agentId);
+  const [error, setError] = useState<string | null>(null);
 
   const contentRef = useRef<ContentItem[]>([]);
   const streamMsgIdRef = useRef(randomUUID());
   const settledRef = useRef<TuiMessage[]>([]);
+  const sessionKeyRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const resetMessages = useCallback((initial?: TuiMessage[]) => {
+    setMessages(initial ?? []);
+    settledRef.current = [];
+    contentRef.current = [];
+    streamMsgIdRef.current = randomUUID();
+  }, []);
+
+  const pushMessage = useCallback((msg: TuiMessage) => {
+    setMessages((prev) => [...prev, msg]);
+  }, []);
 
   const flushContent = useCallback(() => {
     const items = contentRef.current;
@@ -75,66 +93,14 @@ export function useStream(): UseStreamResult {
     }
   }, [flushContent]);
 
-  const pushMessage = useCallback((msg: TuiMessage) => {
-    setMessages((prev) => [...prev, msg]);
-  }, []);
-
-  const resetMessages = useCallback((initial?: TuiMessage[]) => {
-    setMessages(initial ?? []);
-    settledRef.current = [];
-    contentRef.current = [];
-    streamMsgIdRef.current = randomUUID();
-  }, []);
-
-  // Settled/dynamic split: freeze settled count while streaming so the
-  // in-progress assistant message stays in the dynamic (re-renderable) section.
-  const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
-  const settledCount = isStreaming ? settledRef.current.length : visible.length;
-  if (settledCount > settledRef.current.length) {
-    settledRef.current = visible.slice(0, settledCount);
-  }
-  const dynamic = visible.slice(settledRef.current.length);
-
-  return { messages, settled: settledRef.current, dynamic, isStreaming, handleEvent, pushMessage, resetMessages };
-}
-
-// ---------------------------------------------------------------------------
-// useChat — session management + message dispatch + stream lifecycle
-// ---------------------------------------------------------------------------
-
-export interface UseChatResult {
-  messages: TuiMessage[];
-  settled: TuiMessage[];
-  dynamic: TuiMessage[];
-  isStreaming: boolean;
-  agentReady: boolean;
-  effectiveAgentId: string;
-  error: string | null;
-  pushMessage: (msg: TuiMessage) => void;
-  sendMessage: (text: string) => void;
-  abortStream: () => void;
-}
-
-export function useChat(
-  agentId: string,
-  sessionKey: string,
-): UseChatResult {
-  const stream = useStream();
-  const [agentReady, setAgentReady] = useState(false);
-  const [effectiveAgentId, setEffectiveAgentId] = useState(agentId);
-  const [error, setError] = useState<string | null>(null);
-
-  const sessionKeyRef = useRef<string | null>(null);
-  const attachAbortRef = useRef<AbortController | null>(null);
-
   const connectStream = useCallback((aid: string, skey: string) => {
-    attachAbortRef.current?.abort();
+    abortRef.current?.abort();
     const ctrl = new AbortController();
-    attachAbortRef.current = ctrl;
-    void api.subscribe(aid, skey, stream.handleEvent, ctrl.signal).catch((err) => {
-      if (!ctrl.signal.aborted) setError(`Attach failed: ${err instanceof Error ? err.message : String(err)}`);
+    abortRef.current = ctrl;
+    void api.subscribe(aid, skey, handleEvent, ctrl.signal).catch((err) => {
+      if (!ctrl.signal.aborted) setError(`Subscribe failed: ${err instanceof Error ? err.message : String(err)}`);
     });
-  }, [stream.handleEvent]);
+  }, [handleEvent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,7 +122,7 @@ export function useChat(
         if (session.resumed) {
           const { items } = await api.getMessages(aid, skey);
           if (cancelled) return;
-          stream.resetMessages(historyToTuiMessages(items));
+          resetMessages(historyToTuiMessages(items));
         }
 
         sessionKeyRef.current = skey;
@@ -166,30 +132,39 @@ export function useChat(
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
     })();
-    return () => { cancelled = true; attachAbortRef.current?.abort(); };
+    return () => { cancelled = true; abortRef.current?.abort(); };
   }, []);
 
   const sendMessage = useCallback((text: string) => {
     if (!sessionKeyRef.current) return;
-    stream.pushMessage(tuiMessage("user", text));
+    pushMessage(tuiMessage("user", text));
     void api.dispatch(effectiveAgentId, sessionKeyRef.current, text).catch((err) => {
-      stream.pushMessage(tuiMessage("system", `Error: ${err instanceof Error ? err.message : String(err)}`));
+      pushMessage(tuiMessage("system", `Error: ${err instanceof Error ? err.message : String(err)}`));
     });
-  }, [effectiveAgentId, stream.pushMessage]);
+  }, [effectiveAgentId, pushMessage]);
 
   const abortStream = useCallback(() => {
     if (sessionKeyRef.current) void api.abortSession(effectiveAgentId, sessionKeyRef.current).catch(() => {});
   }, [effectiveAgentId]);
 
+  // Settled/dynamic split: freeze settled count while streaming so the
+  // in-progress assistant message stays in the dynamic (re-renderable) section.
+  const visible = messages.slice(-MAX_VISIBLE_MESSAGES);
+  const settledCount = isStreaming ? settledRef.current.length : visible.length;
+  if (settledCount > settledRef.current.length) {
+    settledRef.current = visible.slice(0, settledCount);
+  }
+  const dynamic = visible.slice(settledRef.current.length);
+
   return {
-    messages: stream.messages,
-    settled: stream.settled,
-    dynamic: stream.dynamic,
-    isStreaming: stream.isStreaming,
+    messages,
+    settled: settledRef.current,
+    dynamic,
+    isStreaming,
     agentReady,
     effectiveAgentId,
     error,
-    pushMessage: stream.pushMessage,
+    pushMessage,
     sendMessage,
     abortStream,
   };

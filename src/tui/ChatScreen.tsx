@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Box, Text, Static, useInput, useApp } from "ink";
 import { resolveCommand, HELP_TEXT } from "./commands.js";
 import type { TuiMessage, Screen } from "./types.js";
-import { useChat } from "./hooks.js";
+import { useSession } from "./hooks.js";
 import { tuiMessage } from "./messages.js";
 
 interface Props {
@@ -13,7 +13,7 @@ interface Props {
 
 export function ChatScreen({ agentId, sessionKey, onSwitchScreen }: Props) {
   const { exit } = useApp();
-  const chat = useChat(agentId, sessionKey);
+  const session = useSession(agentId, sessionKey);
   const [input, setInput] = useState("");
 
   const handleSubmit = () => {
@@ -27,22 +27,22 @@ export function ChatScreen({ agentId, sessionKey, onSwitchScreen }: Props) {
         case "exit": exit(); break;
         case "status": onSwitchScreen("status"); break;
         case "sessions": onSwitchScreen("sessions"); break;
-        case "help": chat.pushMessage(tuiMessage("system", HELP_TEXT)); break;
+        case "help": session.pushMessage(tuiMessage("system", HELP_TEXT)); break;
       }
       return;
     }
     if (text.startsWith("/")) {
-      chat.pushMessage(tuiMessage("system", `Unknown command: ${text.split(" ")[0]}`));
+      session.pushMessage(tuiMessage("system", `Unknown command: ${text.split(" ")[0]}`));
       return;
     }
-    chat.sendMessage(text);
+    session.sendMessage(text);
   };
 
   useInput((ch, key) => {
     if (key.return) {
       handleSubmit();
-    } else if ((key.escape || (key.ctrl && ch === "c")) && chat.isStreaming) {
-      chat.abortStream();
+    } else if ((key.escape || (key.ctrl && ch === "c")) && session.isStreaming) {
+      session.abortStream();
     } else if (key.ctrl && ch === "c") {
       exit();
     } else if (key.backspace || key.delete) {
@@ -77,20 +77,20 @@ export function ChatScreen({ agentId, sessionKey, onSwitchScreen }: Props) {
       <Box borderStyle="single" paddingX={1} flexShrink={0} flexGrow={0}>
         <Text bold>isotopes</Text>
         <Text> — agent: </Text>
-        <Text color="cyan">{chat.effectiveAgentId || "loading..."}</Text>
+        <Text color="cyan">{session.effectiveAgentId || "loading..."}</Text>
         {sessionKey && <Text color="magenta"> [session: {sessionKey}]</Text>}
-        {chat.isStreaming && <Text color="yellow"> (streaming...)</Text>}
+        {session.isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 
-      <Static items={chat.settled.map((msg, i) => ({ ...msg, _idx: i }))}>
+      <Static items={session.settled.map((msg, i) => ({ ...msg, _idx: i }))}>
         {(item) => renderMessage(item, item._idx)}
       </Static>
 
-      {chat.error && <Box paddingX={1}><Text color="red">{chat.error}</Text></Box>}
-      {!chat.agentReady && !chat.error && <Box paddingX={1}><Text color="gray">Loading agent...</Text></Box>}
-      {chat.dynamic.length > 0 && (
+      {session.error && <Box paddingX={1}><Text color="red">{session.error}</Text></Box>}
+      {!session.agentReady && !session.error && <Box paddingX={1}><Text color="gray">Loading agent...</Text></Box>}
+      {session.dynamic.length > 0 && (
         <Box paddingX={1} flexDirection="column">
-          {chat.dynamic.map((msg, i) => renderMessage(msg, chat.settled.length + i))}
+          {session.dynamic.map((msg, i) => renderMessage(msg, session.settled.length + i))}
         </Box>
       )}
 
@@ -98,7 +98,7 @@ export function ChatScreen({ agentId, sessionKey, onSwitchScreen }: Props) {
         <Text color="green">&gt; </Text>
         <Text wrap="truncate">{input}</Text>
         <Text color="gray">█</Text>
-        {chat.isStreaming && !input && (
+        {session.isStreaming && !input && (
           <Text color="gray" dimColor> type to steer · esc to stop</Text>
         )}
       </Box>
