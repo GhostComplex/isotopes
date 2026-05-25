@@ -16,11 +16,12 @@ function isToolCall(b: unknown): b is { type: "toolCall"; id?: string; name: str
 // Public helpers
 // ---------------------------------------------------------------------------
 
-export function tuiMessage(role: TuiMessage["role"], content: string | ContentItem[], timestamp = new Date()): TuiMessage {
+export function tuiMessage(role: TuiMessage["role"], content: string | ContentItem[], timestamp = new Date(), id?: string): TuiMessage {
   return {
     role,
     content: typeof content === "string" ? [{ type: "text", text: content }] : content,
     timestamp,
+    ...(id !== undefined && { id }),
   };
 }
 

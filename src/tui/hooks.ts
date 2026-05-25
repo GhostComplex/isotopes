@@ -33,7 +33,7 @@ export function useStream(): UseStreamResult {
   const flushContent = useCallback(() => {
     const items = contentRef.current;
     const msgId = streamMsgIdRef.current;
-    const msg: TuiMessage = { role: "assistant", content: [...items], timestamp: new Date(), id: msgId };
+    const msg = tuiMessage("assistant", [...items], new Date(), msgId);
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === msgId);
       if (idx >= 0) { const next = [...prev]; next[idx] = msg; return next; }
