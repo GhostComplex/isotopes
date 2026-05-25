@@ -1,10 +1,10 @@
-export type ContentBlock =
+export type ContentItem =
   | { type: "text"; text: string }
   | { type: "tool"; id: string; name: string; args: string; result?: string; isError?: boolean };
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
-  content: ContentBlock[];
+  content: ContentItem[];
   timestamp: Date;
   id?: string;
 }

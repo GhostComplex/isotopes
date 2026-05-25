@@ -1,4 +1,4 @@
-import type { ChatMessage, ContentBlock } from "./types.js";
+import type { ChatMessage, ContentItem } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Type guards for API content blocks (loosely typed from the wire)
@@ -18,7 +18,7 @@ function isToolCallBlock(b: unknown): b is { type: "toolCall"; id?: string; name
 
 const STEER_PREFIX = "[Messages arrived while you were working]\n";
 
-export function textContent(text: string): ContentBlock[] {
+export function textContent(text: string): ContentItem[] {
   return [{ type: "text", text }];
 }
 
@@ -34,7 +34,7 @@ export function extractResultText(result: unknown): string {
 
 export function historyToChatMessages(items: Array<{ role: string; type?: string; content?: unknown; timestamp?: number; toolCallId?: string }>): ChatMessage[] {
   const result: ChatMessage[] = [];
-  let pending: { content: ContentBlock[]; timestamp: Date } | null = null;
+  let pending: { content: ContentItem[]; timestamp: Date } | null = null;
 
   const flush = () => {
     if (!pending || pending.content.length === 0) { pending = null; return; }

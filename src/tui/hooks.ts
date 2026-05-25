@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { randomUUID } from "node:crypto";
-import type { ChatMessage, ContentBlock } from "./types.js";
+import type { ChatMessage, ContentItem } from "./types.js";
 import type { SessionEvent } from "../gateway/types.js";
 import { extractResultText, historyToChatMessages, textContent } from "./messages.js";
 import * as api from "./api.js";
@@ -26,7 +26,7 @@ export function useStream(): UseStreamResult {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
-  const blocksRef = useRef<ContentBlock[]>([]);
+  const blocksRef = useRef<ContentItem[]>([]);
   const streamMsgIdRef = useRef(randomUUID());
   const settledRef = useRef<ChatMessage[]>([]);
 
@@ -61,7 +61,7 @@ export function useStream(): UseStreamResult {
       });
       flushBlocks();
     } else if (e.type === "tool_result") {
-      const tc = blocksRef.current.find((b): b is ContentBlock & { type: "tool" } => b.type === "tool" && b.id === e.toolCallId);
+      const tc = blocksRef.current.find((b): b is ContentItem & { type: "tool" } => b.type === "tool" && b.id === e.toolCallId);
       if (tc) { tc.result = extractResultText(e.result); tc.isError = e.isError; }
       flushBlocks();
     } else if (e.type === "turn_end") {
