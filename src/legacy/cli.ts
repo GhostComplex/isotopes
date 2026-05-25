@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import { VERSION } from "../utils/version.js";
+import { apiFetch, ApiError, getApiPort } from "../utils/api-client.js";
 import { loadConfig } from "../config.js";
 import { logger } from "../logging/logger.js";
 import { createRuntime } from "../app.js";
@@ -26,10 +27,6 @@ const SERVICE_NAME = "ai.isotopes.daemon";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getApiPort(): number {
-  return process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : 2712;
-}
-
 function makeServiceConfig(): LaunchAgentConfig {
   return {
     name: SERVICE_NAME,
@@ -47,29 +44,8 @@ function requireMacOS(): void {
 }
 
 // ---------------------------------------------------------------------------
-// API helpers
+// CLI helpers
 // ---------------------------------------------------------------------------
-
-class ApiError extends Error {
-  constructor(public status: number) {
-    super(`API error: ${status}`);
-  }
-}
-
-async function apiCall<T = unknown>(
-  method: string,
-  apiPath: string,
-  body?: unknown,
-): Promise<T> {
-  const init: RequestInit = { method };
-  if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
-    init.body = JSON.stringify(body);
-  }
-  const res = await fetch(`http://127.0.0.1:${getApiPort()}${apiPath}`, init);
-  if (!res.ok) throw new ApiError(res.status);
-  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
-}
 
 function requireArg(value: string | undefined, usage: string): string {
   if (!value) {
@@ -101,7 +77,7 @@ async function apiAction(opts: {
   success: string;
 }): Promise<void> {
   try {
-    await apiCall(opts.method, opts.path, opts.body);
+    await apiFetch(opts.method, opts.path, opts.body);
     console.log(opts.success);
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
@@ -286,7 +262,7 @@ async function handleCronCommand(): Promise<void> {
     switch (subCmd) {
       case "list":
       case undefined: {
-        const jobs = await apiCall<CronJob[]>("GET", "/api/cron");
+        const jobs = await apiFetch<CronJob[]>("GET", "/api/cron");
         printJsonOr(jobs, () => {
           if (jobs.length === 0) {
             console.log("No cron jobs configured");
@@ -312,7 +288,7 @@ async function handleCronCommand(): Promise<void> {
           console.error('Example: isotopes cron add "0 9 * * *" "Send daily summary"');
           process.exit(1);
         }
-        const job = await apiCall<{ id: string }>("POST", "/api/cron", { schedule, task });
+        const job = await apiFetch<{ id: string }>("POST", "/api/cron", { schedule, task });
         console.log(`Cron job created: ${job.id}`);
         break;
       }
@@ -490,7 +466,7 @@ async function run(): Promise<void> {
       break;
 
     case "tui": {
-      const { launchTui } = await import("./tui/index.js");
+      const { launchTui } = await import("../tui/index.js");
       await launchTui({ agent: values.agent });
       break;
     }

@@ -38,7 +38,6 @@ export function App({ options }: Props) {
       key={`${agentId}:${sessionKey}`}
       agentId={agentId}
       sessionKey={sessionKey}
-      mode={sessionKey === "tui" ? "owned" : "attach"}
       onSwitchScreen={setScreen}
     />
   );

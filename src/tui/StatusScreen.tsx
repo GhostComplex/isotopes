@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Box, Text, useInput } from "ink";
-import { fetchStatus, isDaemonRunning } from "./api.js";
+import { Box, Text, useInput, useApp } from "ink";
+import { getStatus, isDaemonRunning } from "./api.js";
 import type { DaemonStatus, Screen } from "./types.js";
 
 interface Props {
@@ -20,6 +20,7 @@ function formatUptime(seconds: number): string {
 }
 
 export function StatusScreen({ onSwitchScreen }: Props) {
+  const { exit } = useApp();
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [running, setRunning] = useState<boolean | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -29,7 +30,7 @@ export function StatusScreen({ onSwitchScreen }: Props) {
     setRunning(isUp);
     if (isUp) {
       try {
-        setStatus(await fetchStatus());
+        setStatus(await getStatus());
       } catch {
         // keep prior status
       }
@@ -51,7 +52,7 @@ export function StatusScreen({ onSwitchScreen }: Props) {
       void refresh();
     }
     if (key.ctrl && ch === "c") {
-      process.exit(0);
+      exit();
     }
   });
 
