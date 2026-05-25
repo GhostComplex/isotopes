@@ -12,10 +12,6 @@ function isToolCallBlock(b: unknown): b is { type: "toolCall"; id?: string; name
   return !!b && typeof b === "object" && (b as Record<string, unknown>).type === "toolCall" && typeof (b as Record<string, unknown>).name === "string";
 }
 
-function hasContent(v: unknown): v is { content: unknown } {
-  return !!v && typeof v === "object" && "content" in (v as Record<string, unknown>);
-}
-
 // ---------------------------------------------------------------------------
 // Public helpers
 // ---------------------------------------------------------------------------
@@ -36,7 +32,7 @@ export function extractResultText(result: unknown): string {
     const text = result.filter(isTextBlock).map((b) => b.text).join("\n");
     if (text) return text;
   }
-  if (hasContent(result)) return extractResultText(result.content);
+  if (result && typeof result === "object" && "content" in result) return extractResultText((result as { content: unknown }).content);
   return JSON.stringify(result);
 }
 
