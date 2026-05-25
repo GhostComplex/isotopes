@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { historyToChatMessages, extractResultText, chatText } from "./messages.js";
+import { historyToChatMessages, extractResultText, textContent } from "./messages.js";
 
 describe("extractResultText", () => {
   it("returns string as-is", () => {
@@ -32,9 +32,9 @@ describe("historyToChatMessages", () => {
     const result = historyToChatMessages(items);
     expect(result).toHaveLength(2);
     expect(result[0].role).toBe("user");
-    expect(chatText(result[0])).toBe("hi");
+    expect(result[0].content).toEqual(textContent("hi"));
     expect(result[1].role).toBe("assistant");
-    expect(chatText(result[1])).toBe("hello");
+    expect(result[1].content).toEqual(textContent("hello"));
   });
 
   it("skips empty user messages", () => {
@@ -52,7 +52,7 @@ describe("historyToChatMessages", () => {
       { role: "user", content: "[Messages arrived while you were working]\nactual message" },
     ];
     const result = historyToChatMessages(items);
-    expect(chatText(result[0])).toBe("actual message");
+    expect(result[0].content).toEqual(textContent("actual message"));
   });
 
   it("marks toolResult by toolCallId before flush", () => {
@@ -96,8 +96,8 @@ describe("historyToChatMessages", () => {
     ];
     const result = historyToChatMessages(items);
     expect(result).toHaveLength(2);
-    expect(chatText(result[0])).toBe("first");
-    expect(chatText(result[1])).toBe("second");
+    expect(result[0].content).toEqual(textContent("first"));
+    expect(result[1].content).toEqual(textContent("second"));
   });
 
   it("handles user content as array of text blocks", () => {
@@ -105,6 +105,6 @@ describe("historyToChatMessages", () => {
       { role: "user", content: [{ type: "text", text: "hello " }, { type: "text", text: "world" }] },
     ];
     const result = historyToChatMessages(items);
-    expect(chatText(result[0])).toBe("hello world");
+    expect(result[0].content).toEqual(textContent("hello world"));
   });
 });

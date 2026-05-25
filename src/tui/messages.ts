@@ -22,10 +22,6 @@ export function textContent(text: string): ContentBlock[] {
   return [{ type: "text", text }];
 }
 
-export function chatText(msg: ChatMessage): string {
-  return msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
-}
-
 export function extractResultText(result: unknown): string {
   if (typeof result === "string") return result;
   if (Array.isArray(result)) {
