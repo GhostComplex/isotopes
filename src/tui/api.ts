@@ -1,4 +1,4 @@
-import type { ChatSessionInfo, DaemonStatus, DispatchAck, SessionSummary } from "./types.js";
+import type { DaemonStatus, DispatchResult, SessionInfo, SessionItem } from "./types.js";
 import type { SessionEvent } from "../gateway/types.js";
 import { apiFetch, getBaseUrl } from "../utils/api-client.js";
 
@@ -11,8 +11,8 @@ export async function fetchStatus(): Promise<DaemonStatus> {
   return apiFetch<DaemonStatus>("GET", "/api/status");
 }
 
-export async function fetchSessions(): Promise<SessionSummary[]> {
-  const data = await apiFetch<{ items: SessionSummary[] }>("GET", "/api/sessions");
+export async function fetchSessions(): Promise<SessionItem[]> {
+  const data = await apiFetch<{ items: SessionItem[] }>("GET", "/api/sessions");
   return data.items;
 }
 
@@ -25,10 +25,10 @@ export async function isDaemonRunning(): Promise<boolean> {
   }
 }
 
-export async function createSession(agentId: string, sessionKey?: string): Promise<ChatSessionInfo> {
+export async function createSession(agentId: string, sessionKey?: string): Promise<SessionInfo> {
   const body: Record<string, string> = {};
   if (sessionKey !== undefined) body.sessionKey = sessionKey;
-  return apiFetch<ChatSessionInfo>("POST", sessionPath(agentId), body);
+  return apiFetch<SessionInfo>("POST", sessionPath(agentId), body);
 }
 
 export async function getHistory(agentId: string, sessionKey: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
@@ -47,8 +47,8 @@ export async function dispatch(
   agentId: string,
   sessionKey: string,
   message: string,
-): Promise<DispatchAck> {
-  return apiFetch<DispatchAck>("POST", `${sessionPath(agentId, sessionKey)}/dispatch`, { message });
+): Promise<DispatchResult> {
+  return apiFetch<DispatchResult>("POST", `${sessionPath(agentId, sessionKey)}/dispatch`, { message });
 }
 
 // ---------------------------------------------------------------------------

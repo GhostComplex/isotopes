@@ -15,20 +15,20 @@ export interface DaemonStatus {
   cronJobs: number;
 }
 
-export interface SessionSummary {
+export interface SessionItem {
   key: string;
   agentId: string;
   status: string;
   lastActivityAt: string;
 }
 
-export interface ChatSessionInfo {
+export interface SessionInfo {
   key: string;
   agentId: string;
   resumed: boolean;
 }
 
-export interface DispatchAck {
+export interface DispatchResult {
   sessionId: string;
   state: "new_run" | "steered";
 }

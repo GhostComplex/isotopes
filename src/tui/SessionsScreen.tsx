@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { fetchSessions, isDaemonRunning } from "./api.js";
-import type { Screen, SessionSummary } from "./types.js";
+import type { Screen, SessionItem } from "./types.js";
 
 interface Props {
   currentAgentId: string;
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function SessionsScreen({ currentAgentId, currentSessionKey, onSwitchScreen, onSelect }: Props) {
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [running, setRunning] = useState<boolean | null>(null);
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState<string | null>(null);
