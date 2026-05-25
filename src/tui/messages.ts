@@ -16,8 +16,6 @@ function isToolCall(b: unknown): b is { type: "toolCall"; id?: string; name: str
 // Public helpers
 // ---------------------------------------------------------------------------
 
-const STEER_PREFIX = "[Messages arrived while you were working]\n";
-
 export function tuiMessage(role: TuiMessage["role"], content: string | ContentItem[], timestamp = new Date()): TuiMessage {
   return {
     role,
@@ -34,10 +32,8 @@ export function historyToTuiMessages(items: Array<{ role: string; type?: string;
   );
 
   function parseUserText(m: { content?: unknown }): string {
-    const blocks: unknown[] = Array.isArray(m.content) ? m.content : [];
-    let text = typeof m.content === "string" ? m.content : blocks.filter(isText).map((b) => b.text).join("");
-    if (text.startsWith(STEER_PREFIX)) text = text.slice(STEER_PREFIX.length);
-    return text;
+    const items: unknown[] = Array.isArray(m.content) ? m.content : [];
+    return typeof m.content === "string" ? m.content : items.filter(isText).map((b) => b.text).join("");
   }
 
   function parseAssistantContent(m: { content?: unknown }): ContentItem[] {

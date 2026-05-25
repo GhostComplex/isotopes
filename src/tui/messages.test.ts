@@ -25,13 +25,6 @@ describe("historyToTuiMessages", () => {
     expect(result[0].role).toBe("assistant");
   });
 
-  it("strips steer prefix from user messages", () => {
-    const items = [
-      { role: "user", content: "[Messages arrived while you were working]\nactual message" },
-    ];
-    const result = historyToTuiMessages(items);
-    expect(result[0].content).toEqual(tuiMessage("user", "actual message").content);
-  });
 
   it("marks toolResult by toolCallId before flush", () => {
     const items = [
