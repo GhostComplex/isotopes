@@ -31,7 +31,7 @@ export async function createSession(agentId: string, sessionKey?: string): Promi
   return apiFetch<SessionInfo>("POST", sessionPath(agentId), body);
 }
 
-export async function getHistory(agentId: string, sessionKey: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
+export async function getMessages(agentId: string, sessionKey: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
   return apiFetch("GET", `${sessionPath(agentId, sessionKey)}/messages`);
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchStatus, fetchSessions, isDaemonRunning, createSession, getHistory, abortMessage, deleteSession, dispatch } from "./api.js";
+import { fetchStatus, fetchSessions, isDaemonRunning, createSession, getMessages, abortMessage, deleteSession, dispatch } from "./api.js";
 
 const mockFetch = vi.fn();
 
@@ -70,11 +70,11 @@ describe("fetchSessions", () => {
   });
 });
 
-describe("getHistory", () => {
+describe("getMessages", () => {
   it("returns messages for session", async () => {
     const data = { items: [{ role: "user", content: "hi" }] };
     mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve(data) });
-    const result = await getHistory("bot", "s1");
+    const result = await getMessages("bot", "s1");
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
       "http://127.0.0.1:2712/api/sessions/bot/s1/messages",

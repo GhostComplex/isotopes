@@ -159,7 +159,7 @@ export function useChat(
           skey = session.key;
           setEffectiveAgentId(session.agentId);
           if (session.resumed) {
-            const { items } = await api.getHistory(aid, skey);
+            const { items } = await api.getMessages(aid, skey);
             if (cancelled) return;
             const msgs = historyToChatMessages(items).slice(-MAX_HISTORY_MESSAGES);
             if (msgs.length > 0) {
@@ -171,7 +171,7 @@ export function useChat(
             }
           }
         } else {
-          const { items } = await api.getHistory(agentId, sessionKey);
+          const { items } = await api.getMessages(agentId, sessionKey);
           if (cancelled) return;
           stream.resetMessages(historyToChatMessages(items));
         }
