@@ -55,7 +55,10 @@ export function historyToTuiMessages(items: Array<{ role: string; type?: string;
       const tc = m.toolCallId
         ? pending.content.find((b) => b.type === "tool" && b.id === m.toolCallId)
         : pending.content.find((b) => b.type === "tool" && !b.completed);
-      if (tc && tc.type === "tool") tc.completed = true;
+      if (tc && tc.type === "tool") {
+        tc.completed = true;
+        tc.isError = (m as { isError?: boolean }).isError ?? false;
+      }
     } else if (role === "assistant") {
       flush();
       pending = { content: [], timestamp: ts };
