@@ -1,11 +1,11 @@
 const DEFAULT_PORT = 2712;
 
-export function getApiPort(): number {
-  return process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : DEFAULT_PORT;
-}
-
 function getBaseUrl(): string {
   return `http://127.0.0.1:${getApiPort()}`;
+}
+
+export function getApiPort(): number {
+  return process.env.ISOTOPES_PORT ? parseInt(process.env.ISOTOPES_PORT, 10) : DEFAULT_PORT;
 }
 
 export class ApiError extends Error {
