@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { randomUUID } from "node:crypto";
 import type { ChatMessage, ContentItem } from "./types.js";
 import type { SessionEvent } from "../gateway/types.js";
-import { extractResultText, historyToChatMessages, textContent } from "./messages.js";
+import { extractResultText, historyToChatMessages, toContent } from "./messages.js";
 import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
@@ -71,7 +71,7 @@ export function useStream(): UseStreamResult {
       contentRef.current = [];
       setIsStreaming(false);
       if (e.stopReason === "error" && e.errorMessage) {
-        setMessages((prev) => [...prev, { role: "system", content: textContent(`Error: ${e.errorMessage}`), timestamp: new Date() }]);
+        setMessages((prev) => [...prev, { role: "system", content: toContent(`Error: ${e.errorMessage}`), timestamp: new Date() }]);
       }
     }
   }, [flushContent]);
@@ -165,7 +165,7 @@ export function useChat(
             if (msgs.length > 0) {
               const skipped = items.length - msgs.length;
               const prefix: ChatMessage[] = skipped > 0
-                ? [{ role: "system", content: textContent(`… ${skipped} earlier messages`), timestamp: msgs[0].timestamp }]
+                ? [{ role: "system", content: toContent(`… ${skipped} earlier messages`), timestamp: msgs[0].timestamp }]
                 : [];
               stream.resetMessages([...prefix, ...msgs]);
             }
@@ -187,15 +187,15 @@ export function useChat(
 
   const sendMessage = useCallback((text: string) => {
     if (!sessionKeyRef.current) return;
-    stream.pushMessage({ role: "user", content: textContent(text), timestamp: new Date() });
+    stream.pushMessage({ role: "user", content: toContent(text), timestamp: new Date() });
     void api.dispatch(effectiveAgentId, sessionKeyRef.current, text).catch((err) => {
-      stream.pushMessage({ role: "system", content: textContent(`Error: ${err instanceof Error ? err.message : String(err)}`), timestamp: new Date() });
+      stream.pushMessage({ role: "system", content: toContent(`Error: ${err instanceof Error ? err.message : String(err)}`), timestamp: new Date() });
     });
   }, [effectiveAgentId, stream.pushMessage]);
 
   const startNewChat = useCallback(() => {
     if (mode === "attach") {
-      stream.pushMessage({ role: "system", content: textContent("/new is disabled while attached. Use /sessions to switch."), timestamp: new Date() });
+      stream.pushMessage({ role: "system", content: toContent("/new is disabled while attached. Use /sessions to switch."), timestamp: new Date() });
       return;
     }
     stream.resetMessages();
@@ -204,10 +204,10 @@ export function useChat(
         if (sessionKeyRef.current) await api.deleteSession(effectiveAgentId, sessionKeyRef.current).catch(() => {});
         const session = await api.createSession(effectiveAgentId, sessionKey);
         sessionKeyRef.current = session.key;
-        stream.resetMessages([{ role: "system", content: textContent("New conversation started."), timestamp: new Date() }]);
+        stream.resetMessages([{ role: "system", content: toContent("New conversation started."), timestamp: new Date() }]);
         connectStream(session.agentId, session.key);
       } catch (err) {
-        stream.resetMessages([{ role: "system", content: textContent(`Error: ${err instanceof Error ? err.message : String(err)}`), timestamp: new Date() }]);
+        stream.resetMessages([{ role: "system", content: toContent(`Error: ${err instanceof Error ? err.message : String(err)}`), timestamp: new Date() }]);
       }
     })();
   }, [effectiveAgentId, sessionKey, mode, stream.pushMessage, stream.resetMessages, connectStream]);

@@ -3,7 +3,7 @@ import { Box, Text, Static, useInput, useApp } from "ink";
 import { resolveCommand, HELP_TEXT } from "./commands.js";
 import type { ChatMessage, Screen } from "./types.js";
 import { useChat } from "./hooks.js";
-import { textContent } from "./messages.js";
+import { toContent } from "./messages.js";
 
 interface Props {
   agentId: string;
@@ -29,12 +29,12 @@ export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props)
         case "exit": exit(); break;
         case "status": onSwitchScreen("status"); break;
         case "sessions": onSwitchScreen("sessions"); break;
-        case "help": chat.pushMessage({ role: "system", content: textContent(HELP_TEXT), timestamp: new Date() }); break;
+        case "help": chat.pushMessage({ role: "system", content: toContent(HELP_TEXT), timestamp: new Date() }); break;
       }
       return;
     }
     if (text.startsWith("/")) {
-      chat.pushMessage({ role: "system", content: textContent(`Unknown command: ${text.split(" ")[0]}`), timestamp: new Date() });
+      chat.pushMessage({ role: "system", content: toContent(`Unknown command: ${text.split(" ")[0]}`), timestamp: new Date() });
       return;
     }
     chat.sendMessage(text);

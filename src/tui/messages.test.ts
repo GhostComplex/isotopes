@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { historyToChatMessages, extractResultText, textContent } from "./messages.js";
+import { historyToChatMessages, extractResultText, toContent } from "./messages.js";
 
 describe("extractResultText", () => {
   it("returns string as-is", () => {
@@ -32,9 +32,9 @@ describe("historyToChatMessages", () => {
     const result = historyToChatMessages(items);
     expect(result).toHaveLength(2);
     expect(result[0].role).toBe("user");
-    expect(result[0].content).toEqual(textContent("hi"));
+    expect(result[0].content).toEqual(toContent("hi"));
     expect(result[1].role).toBe("assistant");
-    expect(result[1].content).toEqual(textContent("hello"));
+    expect(result[1].content).toEqual(toContent("hello"));
   });
 
   it("skips empty user messages", () => {
@@ -52,7 +52,7 @@ describe("historyToChatMessages", () => {
       { role: "user", content: "[Messages arrived while you were working]\nactual message" },
     ];
     const result = historyToChatMessages(items);
-    expect(result[0].content).toEqual(textContent("actual message"));
+    expect(result[0].content).toEqual(toContent("actual message"));
   });
 
   it("marks toolResult by toolCallId before flush", () => {
@@ -96,8 +96,8 @@ describe("historyToChatMessages", () => {
     ];
     const result = historyToChatMessages(items);
     expect(result).toHaveLength(2);
-    expect(result[0].content).toEqual(textContent("first"));
-    expect(result[1].content).toEqual(textContent("second"));
+    expect(result[0].content).toEqual(toContent("first"));
+    expect(result[1].content).toEqual(toContent("second"));
   });
 
   it("handles user content as array of text items", () => {
@@ -105,6 +105,6 @@ describe("historyToChatMessages", () => {
       { role: "user", content: [{ type: "text", text: "hello " }, { type: "text", text: "world" }] },
     ];
     const result = historyToChatMessages(items);
-    expect(result[0].content).toEqual(textContent("hello world"));
+    expect(result[0].content).toEqual(toContent("hello world"));
   });
 });

@@ -18,7 +18,7 @@ function isToolCall(b: unknown): b is { type: "toolCall"; id?: string; name: str
 
 const STEER_PREFIX = "[Messages arrived while you were working]\n";
 
-export function textContent(text: string): ContentItem[] {
+export function toContent(text: string): ContentItem[] {
   return [{ type: "text", text }];
 }
 
@@ -55,7 +55,7 @@ export function historyToChatMessages(items: Array<{ role: string; type?: string
       if (!text) continue;
       if (text.startsWith(STEER_PREFIX)) text = text.slice(STEER_PREFIX.length);
       flush();
-      result.push({ role: "user", content: textContent(text), timestamp: ts });
+      result.push({ role: "user", content: toContent(text), timestamp: ts });
     } else if (role === "toolResult") {
       if (!pending) continue;
       const tc = m.toolCallId
