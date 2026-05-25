@@ -11,11 +11,6 @@ export async function getStatus(): Promise<DaemonStatus> {
   return apiFetch<DaemonStatus>("GET", "/api/status");
 }
 
-export async function getSessions(): Promise<SessionItem[]> {
-  const data = await apiFetch<{ items: SessionItem[] }>("GET", "/api/sessions");
-  return data.items;
-}
-
 export async function isDaemonRunning(): Promise<boolean> {
   try {
     await getStatus();
@@ -25,22 +20,27 @@ export async function isDaemonRunning(): Promise<boolean> {
   }
 }
 
+export async function getSessions(): Promise<SessionItem[]> {
+  const data = await apiFetch<{ items: SessionItem[] }>("GET", "/api/sessions");
+  return data.items;
+}
+
 export async function createSession(agentId: string, sessionKey?: string): Promise<SessionInfo> {
   const body: Record<string, string> = {};
   if (sessionKey !== undefined) body.sessionKey = sessionKey;
   return apiFetch<SessionInfo>("POST", sessionPath(agentId), body);
 }
 
-export async function getMessages(agentId: string, sessionKey: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
-  return apiFetch("GET", `${sessionPath(agentId, sessionKey)}/messages`);
+export async function deleteSession(agentId: string, sessionKey: string): Promise<void> {
+  await apiFetch("DELETE", sessionPath(agentId, sessionKey));
 }
 
-export async function abortRun(agentId: string, sessionKey: string): Promise<void> {
+export async function abortSession(agentId: string, sessionKey: string): Promise<void> {
   await apiFetch("POST", `${sessionPath(agentId, sessionKey)}/abort`);
 }
 
-export async function deleteSession(agentId: string, sessionKey: string): Promise<void> {
-  await apiFetch("DELETE", sessionPath(agentId, sessionKey));
+export async function getMessages(agentId: string, sessionKey: string): Promise<{ items: Array<{ role: string; content?: unknown; timestamp?: number }> }> {
+  return apiFetch("GET", `${sessionPath(agentId, sessionKey)}/messages`);
 }
 
 export async function dispatch(
