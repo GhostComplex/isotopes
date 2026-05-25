@@ -33,7 +33,6 @@ describe("parseSlashCommand", () => {
 
 describe("resolveCommand", () => {
   it("resolves known commands", () => {
-    expect(resolveCommand("/new")).toEqual({ action: "new", args: "" });
     expect(resolveCommand("/status")).toEqual({ action: "status", args: "" });
     expect(resolveCommand("/sessions")).toEqual({ action: "sessions", args: "" });
     expect(resolveCommand("/help")).toEqual({ action: "help", args: "" });

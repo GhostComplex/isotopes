@@ -6,7 +6,6 @@ import { historyToTuiMessages, tuiMessage } from "./messages.js";
 import * as api from "./api.js";
 
 const MAX_VISIBLE_MESSAGES = 50;
-const MAX_HISTORY_MESSAGES = 20;
 
 // ---------------------------------------------------------------------------
 // useStream — SSE event handling + content accumulation + settled/dynamic split
@@ -113,14 +112,12 @@ export interface UseChatResult {
   error: string | null;
   pushMessage: (msg: TuiMessage) => void;
   sendMessage: (text: string) => void;
-  startNewChat: () => void;
   abortStream: () => void;
 }
 
 export function useChat(
   agentId: string,
-  sessionKey: string,
-  mode: "owned" | "attach",
+  sessionKey?: string,
 ): UseChatResult {
   const stream = useStream();
   const [agentReady, setAgentReady] = useState(false);
@@ -151,30 +148,21 @@ export function useChat(
         }
 
         let aid = agentId;
-        let skey = sessionKey;
-        if (mode === "owned") {
-          const session = await api.createSession(agentId, sessionKey);
+        let skey: string;
+
+        if (sessionKey) {
+          skey = sessionKey;
+          const { items } = await api.getMessages(agentId, sessionKey);
+          if (cancelled) return;
+          stream.resetMessages(historyToTuiMessages(items));
+        } else {
+          const session = await api.createSession(agentId);
           if (cancelled) return;
           aid = session.agentId;
           skey = session.key;
           setEffectiveAgentId(session.agentId);
-          if (session.resumed) {
-            const { items } = await api.getMessages(aid, skey);
-            if (cancelled) return;
-            const msgs = historyToTuiMessages(items).slice(-MAX_HISTORY_MESSAGES);
-            if (msgs.length > 0) {
-              const skipped = items.length - msgs.length;
-              const prefix: TuiMessage[] = skipped > 0
-                ? [tuiMessage("system", `… ${skipped} earlier messages`, msgs[0].timestamp)]
-                : [];
-              stream.resetMessages([...prefix, ...msgs]);
-            }
-          }
-        } else {
-          const { items } = await api.getMessages(agentId, sessionKey);
-          if (cancelled) return;
-          stream.resetMessages(historyToTuiMessages(items));
         }
+
         sessionKeyRef.current = skey;
         connectStream(aid, skey);
         setAgentReady(true);
@@ -193,25 +181,6 @@ export function useChat(
     });
   }, [effectiveAgentId, stream.pushMessage]);
 
-  const startNewChat = useCallback(() => {
-    if (mode === "attach") {
-      stream.pushMessage(tuiMessage("system", "/new is disabled while attached. Use /sessions to switch."));
-      return;
-    }
-    stream.resetMessages();
-    (async () => {
-      try {
-        if (sessionKeyRef.current) await api.deleteSession(effectiveAgentId, sessionKeyRef.current).catch(() => {});
-        const session = await api.createSession(effectiveAgentId, sessionKey);
-        sessionKeyRef.current = session.key;
-        stream.resetMessages([tuiMessage("system", "New conversation started.")]);
-        connectStream(session.agentId, session.key);
-      } catch (err) {
-        stream.resetMessages([tuiMessage("system", `Error: ${err instanceof Error ? err.message : String(err)}`)]);
-      }
-    })();
-  }, [effectiveAgentId, sessionKey, mode, stream.pushMessage, stream.resetMessages, connectStream]);
-
   const abortStream = useCallback(() => {
     if (sessionKeyRef.current) void api.abortSession(effectiveAgentId, sessionKeyRef.current).catch(() => {});
   }, [effectiveAgentId]);
@@ -226,7 +195,6 @@ export function useChat(
     error,
     pushMessage: stream.pushMessage,
     sendMessage,
-    startNewChat,
     abortStream,
   };
 }

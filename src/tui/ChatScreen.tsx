@@ -7,14 +7,13 @@ import { tuiMessage } from "./messages.js";
 
 interface Props {
   agentId: string;
-  sessionKey: string;
-  mode: "owned" | "attach";
+  sessionKey?: string;
   onSwitchScreen: (screen: Screen) => void;
 }
 
-export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props) {
+export function ChatScreen({ agentId, sessionKey, onSwitchScreen }: Props) {
   const { exit } = useApp();
-  const chat = useChat(agentId, sessionKey, mode);
+  const chat = useChat(agentId, sessionKey);
   const [input, setInput] = useState("");
 
   const handleSubmit = () => {
@@ -25,7 +24,6 @@ export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props)
     const cmd = resolveCommand(text);
     if (cmd) {
       switch (cmd.action) {
-        case "new": chat.startNewChat(); break;
         case "exit": exit(); break;
         case "status": onSwitchScreen("status"); break;
         case "sessions": onSwitchScreen("sessions"); break;
@@ -74,15 +72,13 @@ export function ChatScreen({ agentId, sessionKey, mode, onSwitchScreen }: Props)
     );
   };
 
-  const isAttached = mode === "attach";
-
   return (
     <Box flexDirection="column">
       <Box borderStyle="single" paddingX={1} flexShrink={0} flexGrow={0}>
         <Text bold>isotopes</Text>
         <Text> — agent: </Text>
         <Text color="cyan">{chat.effectiveAgentId || "loading..."}</Text>
-        {isAttached && <Text color="magenta"> [attached: {sessionKey}]</Text>}
+        {sessionKey && <Text color="magenta"> [session: {sessionKey}]</Text>}
         {chat.isStreaming && <Text color="yellow"> (streaming...)</Text>}
       </Box>
 

@@ -1,7 +1,6 @@
-export type CommandAction = "new" | "exit" | "status" | "sessions" | "help";
+export type CommandAction = "exit" | "status" | "sessions" | "help";
 
 const COMMANDS: Record<string, CommandAction> = {
-  new: "new",
   exit: "exit",
   quit: "exit",
   q: "exit",
@@ -36,7 +35,6 @@ export function resolveCommand(input: string): { action: CommandAction; args: st
 }
 
 export const HELP_TEXT = [
-  "/new          — Start a new conversation",
   "/sessions     — Browse and attach to any session",
   "/status       — Show daemon status",
   "/help         — Show this help",
