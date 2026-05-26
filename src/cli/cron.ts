@@ -10,11 +10,12 @@ function requireArg(value: string | undefined, usage: string): string {
 
 type CronJob = {
   id: string;
-  schedule: string;
+  name: string;
+  expression: string;
   agentId: string;
   enabled: boolean;
-  lastRun?: string;
-  nextRun?: string;
+  lastRun?: string | null;
+  nextRun?: string | null;
 };
 
 export async function handleCronCommand(positionals: string[]): Promise<void> {
@@ -25,14 +26,14 @@ export async function handleCronCommand(positionals: string[]): Promise<void> {
     switch (subCmd) {
       case "list":
       case undefined: {
-        const jobs = await apiFetch<CronJob[]>("GET", "/api/cron");
+        const { items: jobs } = await apiFetch<{ items: CronJob[] }>("GET", "/api/cron");
         if (jobs.length === 0) {
           console.log("No cron jobs configured");
         } else {
           console.log(`Cron Jobs (${jobs.length}):\n`);
           for (const j of jobs) {
-            console.log(`  ${j.id} [${j.enabled ? "enabled" : "disabled"}]`);
-            console.log(`    Schedule: ${j.schedule}`);
+            console.log(`  ${j.id} — ${j.name} [${j.enabled ? "enabled" : "disabled"}]`);
+            console.log(`    Expression: ${j.expression}`);
             console.log(`    Agent: ${j.agentId}`);
             if (j.lastRun) console.log(`    Last run: ${j.lastRun}`);
             if (j.nextRun) console.log(`    Next run: ${j.nextRun}`);
@@ -42,14 +43,21 @@ export async function handleCronCommand(positionals: string[]): Promise<void> {
         break;
       }
       case "add": {
-        const schedule = positionals[1];
-        const task = positionals.slice(2).join(" ");
-        if (!schedule || !task) {
-          console.error("Usage: isotopes cron add <schedule> <task>");
-          console.error('Example: isotopes cron add "0 9 * * *" "Send daily summary"');
+        const name = positionals[1];
+        const expression = positionals[2];
+        const agentId = positionals[3];
+        const task = positionals.slice(4).join(" ");
+        if (!name || !expression || !agentId || !task) {
+          console.error("Usage: isotopes cron add <name> <expression> <agentId> <task>");
+          console.error('Example: isotopes cron add daily-summary "0 9 * * *" main "Send daily summary"');
           process.exit(1);
         }
-        const job = await apiFetch<{ id: string }>("POST", "/api/cron", { schedule, task });
+        const job = await apiFetch<{ id: string }>("POST", "/api/cron", {
+          name,
+          expression,
+          agentId,
+          action: { type: "message", message: task },
+        });
         console.log(`Cron job created: ${job.id}`);
         break;
       }

@@ -36,7 +36,8 @@ Usage:
   isotopes tui [--agent id]          Interactive TUI chat with an agent
 
   isotopes cron list                 List scheduled jobs
-  isotopes cron add <spec> <task>    Add a cron job
+  isotopes cron add <name> <expr> <agent> <task>
+                                     Add a cron job
   isotopes cron remove <id>          Remove a cron job
   isotopes cron enable <id>          Enable a job
   isotopes cron disable <id>         Disable a job
