@@ -3,9 +3,9 @@
 import { parseArgs } from "node:util";
 import { VERSION } from "../utils/version.js";
 import { loadConfig } from "../config.js";
-import { logger } from "../logging/logger.js";
+import { logger, enableFileLogging } from "../logging/logger.js";
 import { createRuntime } from "../app.js";
-import { getConfigPath } from "../paths.js";
+import { getConfigPath, getLogsDir } from "../paths.js";
 
 const args = process.argv.slice(2);
 const subcommand = args[0] && !args[0].startsWith("-") ? args[0] : undefined;
@@ -78,6 +78,7 @@ if (values.version) {
 }
 
 async function main() {
+  enableFileLogging(getLogsDir());
   const configPath = values.config ?? getConfigPath();
   logger.info(`Loading config from ${configPath}`);
   const config = await loadConfig(configPath);
