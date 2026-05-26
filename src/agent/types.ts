@@ -15,16 +15,13 @@ export interface ProviderConfig {
 
 export interface AgentConfig {
   id: string;
-  /** Default "pi". */
   runner?: "pi" | "claude";
   /** Defaults to ${ISOTOPES_HOME}/workspace-${id}. */
   workspace?: string;
   toolSettings?: AgentToolSettings;
   model?: string;
   sandbox?: SandboxConfig;
-  /** Default false. */
   spawnable?: boolean;
-  /** Default "parent-reuse". */
   sessionPolicy?: "always-new" | "parent-reuse";
 }
 
@@ -38,7 +35,6 @@ export interface RegisteredAgent {
   config: AgentConfig;
   /** Absent → in-memory session (no continuity across calls). */
   readonly sessionStore?: DefaultSessionStore;
-  /** Defaults to "parent-reuse". */
   readonly sessionPolicy?: AgentSessionPolicy;
   readonly spawnableAgentIds?: readonly string[];
   readonly channelContext?: LazyChannelContext;
@@ -82,11 +78,8 @@ export class RunValidationError extends Error {
   }
 }
 
-// ── Session types ──────────────────────────────────────────────
-
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
-/** Per-message append notification for transcript-bus subscribers. */
 export interface TranscriptUpdate {
   sessionId: string;
   message: AgentMessage;
@@ -95,7 +88,6 @@ export interface TranscriptUpdate {
 
 export type TranscriptListener = (update: TranscriptUpdate) => void;
 
-/** A conversation session binding an agent to a channel channel. */
 export interface Session {
   id: string;
   agentId: string;
@@ -103,10 +95,6 @@ export interface Session {
   lastActiveAt: Date;
 }
 
-/**
- * Session metadata. `channel` is set for sessions originating from a chat
- * channel (discord/web).
- */
 export interface SessionMetadata {
   key?: string;
   channel?: string;
@@ -116,7 +104,6 @@ export interface SessionMetadata {
   threadId?: string;
 }
 
-/** Persistent store for sessions and their message histories. */
 export interface SessionStore {
   create(agentId: string, metadata?: SessionMetadata): Promise<Session>;
   get(sessionId: string): Promise<Session | undefined>;
