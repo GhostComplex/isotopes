@@ -1,5 +1,5 @@
-import { apiFetch } from "../utils/api-client.js";
-import { requireArg, apiAction, printJsonOr } from "./helpers.js";
+import { apiFetch, ApiError } from "../utils/api-client.js";
+import { requireArg, printJsonOr } from "./helpers.js";
 
 type CronJob = {
   id: string;
@@ -53,12 +53,21 @@ export async function handleCronCommand(positionals: string[], json: boolean): P
       case "run": {
         const id = requireArg(positionals[1], `isotopes cron ${subCmd} <id>`);
         const spec = {
-          remove: { method: "DELETE", path: `/api/cron/${id}`, success: `Cron job removed: ${id}` },
-          enable: { method: "POST", path: `/api/cron/${id}/enable`, success: `Cron job enabled: ${id}` },
-          disable: { method: "POST", path: `/api/cron/${id}/disable`, success: `Cron job disabled: ${id}` },
-          run: { method: "POST", path: `/api/cron/${id}/run`, success: `Cron job triggered: ${id}` },
+          remove: { method: "DELETE" as const, path: `/api/cron/${id}`, success: `Cron job removed: ${id}` },
+          enable: { method: "POST" as const, path: `/api/cron/${id}/enable`, success: `Cron job enabled: ${id}` },
+          disable: { method: "POST" as const, path: `/api/cron/${id}/disable`, success: `Cron job disabled: ${id}` },
+          run: { method: "POST" as const, path: `/api/cron/${id}/run`, success: `Cron job triggered: ${id}` },
         }[subCmd];
-        await apiAction({ ...spec, notFoundLabel: "Job", notFoundId: id });
+        try {
+          await apiFetch(spec.method, spec.path);
+          console.log(spec.success);
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) {
+            console.error(`Job not found: ${id}`);
+            process.exit(1);
+          }
+          throw err;
+        }
         break;
       }
       default:
