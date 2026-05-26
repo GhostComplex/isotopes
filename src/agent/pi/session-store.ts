@@ -10,7 +10,7 @@ import type {
   SessionStore,
   TranscriptListener,
   TranscriptUpdate,
-} from "../../sessions/types.js";
+} from "../types.js";
 import {
   ensureAgentSessionsDir,
   normalizeAgentId,

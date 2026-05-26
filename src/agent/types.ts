@@ -15,16 +15,13 @@ export interface ProviderConfig {
 
 export interface AgentConfig {
   id: string;
-  /** Default "pi". */
   runner?: "pi" | "claude";
   /** Defaults to ${ISOTOPES_HOME}/workspace-${id}. */
   workspace?: string;
   toolSettings?: AgentToolSettings;
   model?: string;
   sandbox?: SandboxConfig;
-  /** Default false. */
   spawnable?: boolean;
-  /** Default "parent-reuse". */
   sessionPolicy?: "always-new" | "parent-reuse";
 }
 
@@ -38,7 +35,6 @@ export interface RegisteredAgent {
   config: AgentConfig;
   /** Absent → in-memory session (no continuity across calls). */
   readonly sessionStore?: DefaultSessionStore;
-  /** Defaults to "parent-reuse". */
   readonly sessionPolicy?: AgentSessionPolicy;
   readonly spawnableAgentIds?: readonly string[];
   readonly channelContext?: LazyChannelContext;
@@ -80,4 +76,44 @@ export class RunValidationError extends Error {
     super(message);
     this.name = "RunValidationError";
   }
+}
+
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+
+export interface TranscriptUpdate {
+  sessionId: string;
+  message: AgentMessage;
+  messageId: string;
+}
+
+export type TranscriptListener = (update: TranscriptUpdate) => void;
+
+export interface Session {
+  id: string;
+  agentId: string;
+  metadata?: SessionMetadata;
+  lastActiveAt: Date;
+}
+
+export interface SessionMetadata {
+  /** e.g. discord:{botId}:channel:{id}:{agentId} */
+  key?: string;
+  channel?: string;
+  channelId?: string;
+  channelName?: string;
+  guildName?: string;
+  threadId?: string;
+}
+
+export interface SessionStore {
+  create(agentId: string, metadata?: SessionMetadata): Promise<Session>;
+  get(sessionId: string): Promise<Session | undefined>;
+  findByKey(key: string): Promise<Session | undefined>;
+  addMessage(sessionId: string, message: AgentMessage): Promise<void>;
+  getMessages(sessionId: string): Promise<AgentMessage[]>;
+  delete(sessionId: string): Promise<void>;
+  list(): Promise<Session[]>;
+  clearMessages(sessionId: string): Promise<void>;
+  getSessionManager(sessionId: string): Promise<import("@mariozechner/pi-coding-agent").SessionManager | undefined>;
+  subscribe(sessionId: string, listener: TranscriptListener): () => void;
 }

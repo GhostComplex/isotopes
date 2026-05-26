@@ -1,13 +1,13 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AgentRuntime } from "../agent/runtime.js";
 import type { SessionStoreManager } from "../agent/pi/session-store.js";
+import type { Session } from "../agent/types.js";
 import type {
   AwaitResult,
   CreateSessionResult,
   DispatchResult,
   Gateway,
   Message,
-  Session,
   SessionEvent,
   SessionEventListener,
 } from "./types.js";

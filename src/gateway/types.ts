@@ -1,7 +1,5 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { Session } from "../sessions/types.js";
-
-export type { Session, SessionMetadata } from "../sessions/types.js";
+import type { Session } from "../agent/types.js";
 
 export type MessageSource = "channel" | "tui" | "ui" | "cron" | "heartbeat" | "spawn";
 

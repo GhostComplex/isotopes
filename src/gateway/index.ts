@@ -6,8 +6,6 @@ export type {
   Gateway,
   Message,
   MessageSource,
-  Session,
   SessionEvent,
   SessionEventListener,
-  SessionMetadata,
 } from "./types.js";
