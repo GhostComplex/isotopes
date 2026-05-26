@@ -4,7 +4,7 @@
   "description": "Lightweight, self-hostable AI agent framework",
   "type": "module",
   "bin": {
-    "isotopes": "dist/legacy/cli.js"
+    "isotopes": "dist/cli/index.js"
   },
   "files": [
     "dist/",
@@ -22,8 +22,8 @@
   },
   "scripts": {
     "build": "tsc && node scripts/copy-build-assets.cjs",
-    "dev": "tsx src/legacy/cli.ts",
-    "start": "node dist/legacy/cli.js",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.js",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",
