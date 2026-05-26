@@ -1,7 +1,5 @@
-// src/logging/logger.test.ts — Unit tests for logger
-
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createLogger, logger, loggers } from "./logger.js";
+import { createLogger } from "./logger.js";
 
 describe("Logger", () => {
   beforeEach(() => {
@@ -19,146 +17,64 @@ describe("Logger", () => {
   describe("createLogger", () => {
     it("creates a logger with tag", () => {
       const log = createLogger("test");
-
       log.info("Hello");
-
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining("[test]"),
-        // no extra args
-      );
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[test]"));
     });
 
     it("includes timestamp", () => {
       const log = createLogger("test");
-
       log.info("Hello");
-
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringMatching(/\[\d{4}-\d{2}-\d{2}T/),
-      );
+      expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/\[\d{4}-\d{2}-\d{2}T/));
     });
 
     it("includes level", () => {
       const log = createLogger("test");
-
       log.warn("Warning!");
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("[WARN ]"));
+    });
 
-      expect(console.warn).toHaveBeenCalledWith(
-        expect.stringContaining("[WARN ]"),
-      );
+    it("passes extra args to console", () => {
+      const log = createLogger("test");
+      const obj = { foo: "bar" };
+      log.info("Message", obj);
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Message"), obj);
     });
   });
 
   describe("log levels", () => {
-    it("logs info by default", () => {
+    it("filters debug at default info level", () => {
       const log = createLogger("test");
+      log.debug("hidden");
+      expect(console.debug).not.toHaveBeenCalled();
+    });
 
-      log.info("Info message");
-
+    it("passes info/warn/error at default level", () => {
+      const log = createLogger("test");
+      log.info("i");
+      log.warn("w");
+      log.error("e");
       expect(console.log).toHaveBeenCalled();
-    });
-
-    it("logs warn by default", () => {
-      const log = createLogger("test");
-
-      log.warn("Warn message");
-
       expect(console.warn).toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalled();
     });
 
-    it("logs error by default", () => {
+    it("enables debug when DEBUG=true", () => {
       const log = createLogger("test");
 
-      log.error("Error message");
+      log.debug("hidden");
+      expect(console.debug).not.toHaveBeenCalled();
 
-      expect(console.error).toHaveBeenCalled();
+      vi.stubEnv("DEBUG", "true");
+      log.debug("visible");
+      expect(console.debug).toHaveBeenCalledWith(expect.stringContaining("visible"));
     });
   });
 
   describe("child loggers", () => {
     it("creates child logger with combined tag", () => {
-      const parent = createLogger("parent");
-      const child = parent.child("child");
-
+      const child = createLogger("parent").child("child");
       child.info("Hello");
-
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining("[parent:child]"),
-      );
-    });
-  });
-
-  describe("pre-configured loggers", () => {
-    it("exports named loggers", () => {
-      expect(loggers.core).toBeDefined();
-      expect(loggers.discord).toBeDefined();
-      expect(loggers.agent).toBeDefined();
-      expect(loggers.session).toBeDefined();
-      expect(loggers.tools).toBeDefined();
-      expect(loggers.config).toBeDefined();
-    });
-  });
-
-  describe("default logger", () => {
-    it("has isotopes tag", () => {
-      logger.info("Test");
-
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining("[isotopes]"),
-      );
-    });
-  });
-
-  describe("extra arguments", () => {
-    it("passes extra args to console", () => {
-      const log = createLogger("test");
-      const obj = { foo: "bar" };
-
-      log.info("Message", obj);
-
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining("Message"),
-        obj,
-      );
-    });
-  });
-
-  describe("dynamic log level", () => {
-    it("respects LOG_LEVEL changes at runtime", () => {
-      // Start with info level
-      vi.stubEnv("LOG_LEVEL", "info");
-      const log = createLogger("dynamic");
-
-      // debug should be filtered at info level
-      log.debug("should not appear");
-      expect(console.debug).not.toHaveBeenCalled();
-
-      // Change to debug level
-      vi.stubEnv("LOG_LEVEL", "debug");
-
-      // Now debug should appear (same logger instance)
-      log.debug("should appear");
-      expect(console.debug).toHaveBeenCalledWith(
-        expect.stringContaining("should appear"),
-      );
-    });
-
-    it("respects LOG_LEVEL changes for filtering", () => {
-      // Start with debug level
-      vi.stubEnv("LOG_LEVEL", "debug");
-      const log = createLogger("dynamic");
-
-      log.info("info at debug level");
-      expect(console.log).toHaveBeenCalled();
-
-      vi.mocked(console.log).mockClear();
-
-      // Raise to error level
-      vi.stubEnv("LOG_LEVEL", "error");
-
-      // info should now be filtered
-      log.info("info at error level");
-      expect(console.log).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[parent:child]"));
     });
   });
 });

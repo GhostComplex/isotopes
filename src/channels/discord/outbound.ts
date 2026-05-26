@@ -1,9 +1,9 @@
 import type { SendableChannels } from "discord.js";
 import type { SessionEvent, SessionEventListener } from "../../gateway/index.js";
 import { parseReply } from "../reply.js";
-import { loggers } from "../../logging/logger.js";
+import { createLogger } from "../../logging/logger.js";
 
-const log = loggers.discord;
+const log = createLogger("discord");
 
 const SENTENCE_BOUNDARIES = [". ", "! ", "? ", "\n\n"];
 const DEFAULT_MAX_BUFFER_SIZE = 500;

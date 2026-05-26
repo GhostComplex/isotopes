@@ -8,7 +8,7 @@ import {
 import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
-import { loggers } from "../../logging/logger.js";
+import { createLogger } from "../../logging/logger.js";
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
@@ -23,7 +23,7 @@ import type {
   DiscordChannelsConfig,
 } from "./types.js";
 
-const log = loggers.discord;
+const log = createLogger("discord");
 
 
 /** Minimum surface the adapter touches — testable without discord.js. */

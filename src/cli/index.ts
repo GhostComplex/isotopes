@@ -3,9 +3,9 @@
 import { parseArgs } from "node:util";
 import { VERSION } from "../utils/version.js";
 import { loadConfig } from "../config.js";
-import { logger } from "../logging/logger.js";
+import { enableFileLogging } from "../logging/logger.js";
 import { createRuntime } from "../app.js";
-import { getConfigPath } from "../paths.js";
+import { getConfigPath, getLogsDir } from "../paths.js";
 
 const args = process.argv.slice(2);
 const subcommand = args[0] && !args[0].startsWith("-") ? args[0] : undefined;
@@ -63,8 +63,7 @@ Config: ~/.isotopes/isotopes.yaml
 
 Environment:
   ISOTOPES_HOME   Override home directory (default: ~/.isotopes)
-  LOG_LEVEL       Set log level (debug/info/warn/error)
-  DEBUG=isotopes  Enable debug logging
+  DEBUG=true      Enable debug logging
 `;
 
 if (values.help) {
@@ -78,14 +77,13 @@ if (values.version) {
 }
 
 async function main() {
+  if (process.stdout.isTTY) enableFileLogging(getLogsDir());
   const configPath = values.config ?? getConfigPath();
-  logger.info(`Loading config from ${configPath}`);
   const config = await loadConfig(configPath);
-  logger.info(`Loaded ${config.agents.length} agent(s)`);
 
   const runtime = await createRuntime({ config });
 
-  logger.info("Running... Press Ctrl+C to stop");
+  console.log("Running... Press Ctrl+C to stop");
 
   const onSignal = async () => {
     await runtime.shutdown();
@@ -143,6 +141,6 @@ async function run(): Promise<void> {
 }
 
 run().catch((error) => {
-  logger.error(`Fatal error: ${error.message}`);
+  console.error(`Fatal error: ${error instanceof Error ? error.message : error}`);
   process.exit(1);
 });

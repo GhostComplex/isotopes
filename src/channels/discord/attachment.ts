@@ -1,8 +1,8 @@
 import type { Message as DiscordMessage } from "discord.js";
-import { loggers } from "../../logging/logger.js";
+import { createLogger } from "../../logging/logger.js";
 import type { InboundImage } from "../../gateway/types.js";
 
-const log = loggers.discord;
+const log = createLogger("discord");
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const MAX_BYTES = 10 * 1024 * 1024;

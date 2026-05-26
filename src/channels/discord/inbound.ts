@@ -1,12 +1,12 @@
 import type { Message as DiscordMessage, SendableChannels } from "discord.js";
 import type { Gateway, Message, SessionEventListener } from "../../gateway/index.js";
 import { REPLY_PROMPT } from "../reply.js";
-import { loggers } from "../../logging/logger.js";
+import { createLogger } from "../../logging/logger.js";
 import type { DiscordAccountConfig, GuildConfig } from "./types.js";
 import { isDmAllowed, resolveGroupPolicy } from "./config.js";
 import { extractAttachmentImages } from "./attachment.js";
 
-const log = loggers.discord;
+const log = createLogger("discord");
 
 /** True if msg is in a Discord thread (uses channel.isThread, not msg.thread). */
 function isThreadMessage(msg: DiscordMessage): boolean {
