@@ -27,40 +27,35 @@ export async function handleLogsCommand(opts: LogsOptions): Promise<void> {
 
   if (opts.follow) {
     let position = (await fs.stat(logFile)).size;
-    let reading = false;
-    let trailingFragment = "";
+    let remainder = "";
 
-    const readNew = () => {
-      if (reading) return;
+    const readNewLines = (): string[] => {
       let currentSize: number;
       try {
         currentSize = nodeFs.statSync(logFile).size;
       } catch {
-        return;
+        return [];
       }
       if (currentSize < position) position = 0;
-      if (currentSize === position) return;
+      if (currentSize === position) return [];
 
-      reading = true;
-      const readStart = position;
+      const buf = Buffer.alloc(currentSize - position);
+      const fd = nodeFs.openSync(logFile, "r");
+      nodeFs.readSync(fd, buf, 0, buf.length, position);
+      nodeFs.closeSync(fd);
       position = currentSize;
 
-      const stream = nodeFs.createReadStream(logFile, { start: readStart, end: currentSize - 1, encoding: "utf-8" });
-      let buf = "";
-      stream.on("data", (chunk: string | Buffer) => { buf += String(chunk); });
-      stream.on("end", () => {
-        reading = false;
-        const text = trailingFragment + buf;
-        const parts = text.split("\n");
-        trailingFragment = parts.pop() ?? "";
-        for (const line of parts) {
-          if (line && matchesLevel(line)) console.log(line);
-        }
-      });
-      stream.on("error", () => { reading = false; });
+      const text = remainder + buf.toString("utf-8");
+      const parts = text.split("\n");
+      remainder = parts.pop() ?? "";
+      return parts.filter(Boolean);
     };
 
-    nodeFs.watchFile(logFile, { interval: 500 }, () => readNew());
+    nodeFs.watchFile(logFile, { interval: 500 }, () => {
+      for (const line of readNewLines()) {
+        if (matchesLevel(line)) console.log(line);
+      }
+    });
     process.on("SIGINT", () => {
       nodeFs.unwatchFile(logFile);
       process.exit(0);
