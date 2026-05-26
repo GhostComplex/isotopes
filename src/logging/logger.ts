@@ -3,8 +3,8 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 const LOG_LEVELS: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
 function getLogLevel(): LogLevel {
-  const env = process.env.LOG_LEVEL?.toLowerCase();
-  if (env && env in LOG_LEVELS) return env as LogLevel;
+  const level = process.env.LOG_LEVEL?.toLowerCase();
+  if (level && level in LOG_LEVELS) return level as LogLevel;
   const debug = process.env.DEBUG;
   if (debug === "isotopes" || debug === "*" || debug === "true") return "debug";
   return "info";
