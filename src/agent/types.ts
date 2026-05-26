@@ -96,6 +96,7 @@ export interface Session {
 }
 
 export interface SessionMetadata {
+  /** e.g. discord:{botId}:channel:{id}:{agentId} */
   key?: string;
   channel?: string;
   channelId?: string;
