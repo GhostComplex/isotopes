@@ -31,7 +31,7 @@ export function createLogger(tag: string): Logger {
     const fn = level === "warn" ? console.warn : level === "error" ? console.error : level === "debug" ? console.debug : console.log;
     fn(line, ...args);
     if (fileStream) {
-      const suffix = args.length > 0 ? " " + args.map((a) => typeof a === "string" ? a : JSON.stringify(a)).join(" ") : "";
+      const suffix = args.length > 0 ? " " + args.map((a) => a instanceof Error ? (a.stack ?? a.message) : typeof a === "string" ? a : JSON.stringify(a)).join(" ") : "";
       fileStream.write(line + suffix + "\n");
     }
   };

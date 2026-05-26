@@ -77,7 +77,7 @@ if (values.version) {
 }
 
 async function main() {
-  enableFileLogging(getLogsDir());
+  if (process.stdout.isTTY) enableFileLogging(getLogsDir());
   const configPath = values.config ?? getConfigPath();
   const config = await loadConfig(configPath);
 
