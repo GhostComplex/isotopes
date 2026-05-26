@@ -5,11 +5,3 @@ export function requireArg(value: string | undefined, usage: string): string {
   }
   return value;
 }
-
-export function printJsonOr(json: boolean, data: unknown, fallback: () => void): void {
-  if (json) {
-    console.log(JSON.stringify(data, null, 2));
-  } else {
-    fallback();
-  }
-}

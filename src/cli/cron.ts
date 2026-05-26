@@ -1,5 +1,5 @@
 import { apiFetch, ApiError } from "../utils/api-client.js";
-import { requireArg, printJsonOr } from "./helpers.js";
+import { requireArg } from "./helpers.js";
 
 type CronJob = {
   id: string;
@@ -18,11 +18,11 @@ export async function handleCronCommand(positionals: string[], json: boolean): P
       case "list":
       case undefined: {
         const jobs = await apiFetch<CronJob[]>("GET", "/api/cron");
-        printJsonOr(json, jobs, () => {
-          if (jobs.length === 0) {
+        if (json) {
+          console.log(JSON.stringify(jobs, null, 2));
+        } else if (jobs.length === 0) {
             console.log("No cron jobs configured");
-            return;
-          }
+        } else {
           console.log(`Cron Jobs (${jobs.length}):\n`);
           for (const j of jobs) {
             console.log(`  ${j.id} [${j.enabled ? "enabled" : "disabled"}]`);
@@ -32,7 +32,7 @@ export async function handleCronCommand(positionals: string[], json: boolean): P
             if (j.nextRun) console.log(`    Next run: ${j.nextRun}`);
             console.log();
           }
-        });
+        }
         break;
       }
       case "add": {
