@@ -11,7 +11,7 @@ const PROVIDER_SKIP = `# provider:
 #   apiKey: \${MINIMAX_API_KEY}
 `;
 
-function renderProvider(answers: InitAnswers): string {
+function formatProvider(answers: InitAnswers): string {
   const { provider } = answers;
   if (provider.type === "ghc-proxy") {
     return `provider:
@@ -31,7 +31,7 @@ function renderProvider(answers: InitAnswers): string {
   return PROVIDER_SKIP;
 }
 
-function renderAgents(answers: InitAnswers): string {
+function formatAgents(answers: InitAnswers): string {
   const lines = [`agents:`, `  - id: main`];
   if (answers.codingAgent === "claude") {
     lines.push(`  - id: coding`, `    runner: claude`, `    spawnable: true`);
@@ -39,7 +39,7 @@ function renderAgents(answers: InitAnswers): string {
   return lines.join("\n") + "\n";
 }
 
-function renderChannels(answers: InitAnswers): string {
+function formatChannels(answers: InitAnswers): string {
   if (answers.channel.type !== "discord") return "";
   const { token, dmPolicy, dmUserId, groupPolicy, groupAllowlist } = answers.channel;
 
@@ -98,8 +98,8 @@ channels:
 ${dmBlock}${groupBlock}`;
 }
 
-export function renderConfig(answers: InitAnswers): string {
-  return [HEADER, renderProvider(answers), renderAgents(answers), renderChannels(answers)]
+export function toYaml(answers: InitAnswers): string {
+  return [HEADER, formatProvider(answers), formatAgents(answers), formatChannels(answers)]
     .filter((s) => s.length > 0)
     .join("\n");
 }

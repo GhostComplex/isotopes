@@ -14,9 +14,9 @@ export async function handleInitCommand(force: boolean): Promise<void> {
   }
 
   const { runInitWizard } = await import("../init/wizard.js");
-  const { renderConfig } = await import("../init/render.js");
+  const { toYaml } = await import("../init/to-yaml.js");
   const answers = await runInitWizard();
-  const yaml = renderConfig(answers);
+  const yaml = toYaml(answers);
 
   await fs.writeFile(configPath, yaml, "utf-8");
   console.log(`Wrote config to ${configPath}`);
