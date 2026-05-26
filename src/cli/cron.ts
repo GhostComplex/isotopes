@@ -17,7 +17,7 @@ type CronJob = {
   nextRun?: string;
 };
 
-export async function handleCronCommand(positionals: string[], json: boolean): Promise<void> {
+export async function handleCronCommand(positionals: string[]): Promise<void> {
   const subCmd = positionals[0];
 
   try {
@@ -25,9 +25,7 @@ export async function handleCronCommand(positionals: string[], json: boolean): P
       case "list":
       case undefined: {
         const jobs = await apiFetch<CronJob[]>("GET", "/api/cron");
-        if (json) {
-          console.log(JSON.stringify(jobs, null, 2));
-        } else if (jobs.length === 0) {
+        if (jobs.length === 0) {
             console.log("No cron jobs configured");
         } else {
           console.log(`Cron Jobs (${jobs.length}):\n`);

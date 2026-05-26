@@ -19,7 +19,6 @@ const { values, positionals } = parseArgs({
     version: { type: "boolean", short: "v" },
     config: { type: "string", short: "c" },
     agent: { type: "string" },
-    json: { type: "boolean" },
     lines: { type: "string" },
     level: { type: "string" },
     follow: { type: "boolean", short: "f" },
@@ -57,7 +56,6 @@ Options:
   -v, --version    Show version
   -c, --config     Path to config file
   --agent          Agent ID for tui command
-  --json           Output as JSON (cron commands)
   --lines          Number of log lines (default: 50)
   --level          Filter logs by level (debug/info/warn/error)
   -f, --follow     Follow log output
@@ -120,7 +118,7 @@ async function run(): Promise<void> {
 
     case "cron": {
       const { handleCronCommand } = await import("./cron.js");
-      await handleCronCommand(positionals, values.json ?? false);
+      await handleCronCommand(positionals);
       break;
     }
 
