@@ -30,7 +30,10 @@ export function createLogger(tag: string): Logger {
     const line = `[${new Date().toISOString()}] [${level.toUpperCase().padEnd(5)}] [${tag}] ${message}`;
     const fn = level === "warn" ? console.warn : level === "error" ? console.error : level === "debug" ? console.debug : console.log;
     fn(line, ...args);
-    if (fileStream) fileStream.write(line + "\n");
+    if (fileStream) {
+      const suffix = args.length > 0 ? " " + args.map((a) => typeof a === "string" ? a : JSON.stringify(a)).join(" ") : "";
+      fileStream.write(line + suffix + "\n");
+    }
   };
 
   return {
