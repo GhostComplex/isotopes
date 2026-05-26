@@ -3,6 +3,7 @@ import {
   type IsotopesConfigFile,
 } from "./config.js";
 import { SessionStoreManager } from "./agent/pi/session-store.js";
+import { getApiPort } from "./utils/api-client.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyChannelContext } from "./channels/types.js";
 import { ensureDirectories } from "./paths.js";
@@ -20,7 +21,6 @@ const log = createLogger("runtime");
 
 export interface RuntimeOptions {
   config: IsotopesConfigFile;
-  apiPort?: number;
 }
 
 export interface Runtime {
@@ -32,7 +32,7 @@ export interface Runtime {
 }
 
 export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
-  const { config, apiPort } = opts;
+  const { config } = opts;
 
   await ensureDirectories();
 
@@ -179,7 +179,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     channelLoaders.push(channels);
   }
 
-  const port = apiPort ?? 2712;
+  const port = getApiPort();
   const api = createApi({ cronScheduler, gateway });
   const apiServer = await new Promise<ServerType>((resolve) => {
     const s = serve({ fetch: api.fetch, port, hostname: "127.0.0.1" }, () => {
