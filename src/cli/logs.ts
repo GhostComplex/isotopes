@@ -41,8 +41,11 @@ export async function handleLogsCommand(opts: LogsOptions): Promise<void> {
 
       const buf = Buffer.alloc(currentSize - position);
       const fd = nodeFs.openSync(logFile, "r");
-      nodeFs.readSync(fd, buf, 0, buf.length, position);
-      nodeFs.closeSync(fd);
+      try {
+        nodeFs.readSync(fd, buf, 0, buf.length, position);
+      } finally {
+        nodeFs.closeSync(fd);
+      }
       position = currentSize;
 
       const text = remainder + buf.toString("utf-8");

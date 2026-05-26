@@ -10,7 +10,7 @@ function makeServiceConfig(): LaunchAgentConfig {
   return {
     name: SERVICE_NAME,
     execPath: process.argv[0],
-    cliPath: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../cli/index.js"),
+    cliPath: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "index.js"),
     logPath: path.join(getLogsDir(), "isotopes.out.log"),
   };
 }

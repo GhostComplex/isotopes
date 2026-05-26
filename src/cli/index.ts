@@ -26,8 +26,7 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
 });
 
-const HELP_TEXT = `
-Isotopes v${VERSION}
+const HELP_TEXT = `Isotopes v${VERSION}
 
 Usage:
   isotopes                           Run in foreground (default)
