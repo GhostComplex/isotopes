@@ -8,19 +8,6 @@ export function requireArg(value: string | undefined, usage: string): string {
   return value;
 }
 
-export async function withDaemonErrors(fn: () => Promise<void>): Promise<void> {
-  try {
-    await fn();
-  } catch (err) {
-    if (err instanceof TypeError && String(err).includes("fetch")) {
-      console.error("Cannot connect to daemon. Is it running? Run `isotopes` in the foreground or via the LaunchAgent.");
-    } else {
-      console.error("Error:", err instanceof Error ? err.message : err);
-    }
-    process.exit(1);
-  }
-}
-
 export async function apiAction(opts: {
   method: string;
   path: string;

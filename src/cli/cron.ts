@@ -1,5 +1,5 @@
 import { apiFetch } from "../utils/api-client.js";
-import { requireArg, withDaemonErrors, apiAction, printJsonOr } from "./helpers.js";
+import { requireArg, apiAction, printJsonOr } from "./helpers.js";
 
 type CronJob = {
   id: string;
@@ -13,7 +13,7 @@ type CronJob = {
 export async function handleCronCommand(positionals: string[], json: boolean): Promise<void> {
   const subCmd = positionals[0];
 
-  await withDaemonErrors(async () => {
+  try {
     switch (subCmd) {
       case "list":
       case undefined: {
@@ -66,5 +66,12 @@ export async function handleCronCommand(positionals: string[], json: boolean): P
         console.error("Usage: isotopes cron [list|add|remove|enable|disable|run] [args]");
         process.exit(1);
     }
-  });
+  } catch (err) {
+    if (err instanceof TypeError && String(err).includes("fetch")) {
+      console.error("Cannot connect to daemon. Is it running? Run `isotopes` in the foreground or via the LaunchAgent.");
+    } else {
+      console.error("Error:", err instanceof Error ? err.message : err);
+    }
+    process.exit(1);
+  }
 }
