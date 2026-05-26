@@ -2,7 +2,6 @@
 
 import { parseArgs } from "node:util";
 import { VERSION } from "../utils/version.js";
-import { getApiPort } from "../utils/api-client.js";
 import { loadConfig } from "../config.js";
 import { logger } from "../logging/logger.js";
 import { createRuntime } from "../app.js";
@@ -84,7 +83,7 @@ async function main() {
   const config = await loadConfig(configPath);
   logger.info(`Loaded ${config.agents.length} agent(s)`);
 
-  const runtime = await createRuntime({ config, apiPort: getApiPort() });
+  const runtime = await createRuntime({ config });
 
   logger.info("Running... Press Ctrl+C to stop");
 
