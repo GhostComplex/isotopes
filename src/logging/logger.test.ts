@@ -58,14 +58,13 @@ describe("Logger", () => {
       expect(console.error).toHaveBeenCalled();
     });
 
-    it("respects LOG_LEVEL changes at runtime", () => {
-      vi.stubEnv("LOG_LEVEL", "info");
+    it("enables debug when DEBUG=true", () => {
       const log = createLogger("test");
 
       log.debug("hidden");
       expect(console.debug).not.toHaveBeenCalled();
 
-      vi.stubEnv("LOG_LEVEL", "debug");
+      vi.stubEnv("DEBUG", "true");
       log.debug("visible");
       expect(console.debug).toHaveBeenCalledWith(expect.stringContaining("visible"));
     });

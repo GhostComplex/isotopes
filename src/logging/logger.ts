@@ -8,11 +8,7 @@ const LOG_LEVELS: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error
 let fileStream: nodeFs.WriteStream | null = null;
 
 function getLogLevel(): LogLevel {
-  const level = process.env.LOG_LEVEL?.toLowerCase();
-  if (level && level in LOG_LEVELS) return level as LogLevel;
-  const debug = process.env.DEBUG;
-  if (debug === "isotopes" || debug === "*" || debug === "true") return "debug";
-  return "info";
+  return process.env.DEBUG === "true" ? "debug" : "info";
 }
 
 export function enableFileLogging(logDir: string): void {

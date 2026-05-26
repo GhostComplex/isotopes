@@ -63,8 +63,7 @@ Config: ~/.isotopes/isotopes.yaml
 
 Environment:
   ISOTOPES_HOME   Override home directory (default: ~/.isotopes)
-  LOG_LEVEL       Set log level (debug/info/warn/error)
-  DEBUG=isotopes  Enable debug logging
+  DEBUG=true      Enable debug logging
 `;
 
 if (values.help) {
