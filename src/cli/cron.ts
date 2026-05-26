@@ -19,6 +19,7 @@ type CronJob = {
 
 export async function handleCronCommand(positionals: string[]): Promise<void> {
   const subCmd = positionals[0];
+  let notFoundId: string | undefined;
 
   try {
     switch (subCmd) {
@@ -26,7 +27,7 @@ export async function handleCronCommand(positionals: string[]): Promise<void> {
       case undefined: {
         const jobs = await apiFetch<CronJob[]>("GET", "/api/cron");
         if (jobs.length === 0) {
-            console.log("No cron jobs configured");
+          console.log("No cron jobs configured");
         } else {
           console.log(`Cron Jobs (${jobs.length}):\n`);
           for (const j of jobs) {
@@ -52,27 +53,32 @@ export async function handleCronCommand(positionals: string[]): Promise<void> {
         console.log(`Cron job created: ${job.id}`);
         break;
       }
-      case "remove":
-      case "enable":
-      case "disable":
+      case "remove": {
+        const id = requireArg(positionals[1], "isotopes cron remove <id>");
+        notFoundId = id;
+        await apiFetch("DELETE", `/api/cron/${id}`);
+        console.log(`Cron job removed: ${id}`);
+        break;
+      }
+      case "enable": {
+        const id = requireArg(positionals[1], "isotopes cron enable <id>");
+        notFoundId = id;
+        await apiFetch("POST", `/api/cron/${id}/enable`);
+        console.log(`Cron job enabled: ${id}`);
+        break;
+      }
+      case "disable": {
+        const id = requireArg(positionals[1], "isotopes cron disable <id>");
+        notFoundId = id;
+        await apiFetch("POST", `/api/cron/${id}/disable`);
+        console.log(`Cron job disabled: ${id}`);
+        break;
+      }
       case "run": {
-        const id = requireArg(positionals[1], `isotopes cron ${subCmd} <id>`);
-        const spec = {
-          remove: { method: "DELETE" as const, path: `/api/cron/${id}`, success: `Cron job removed: ${id}` },
-          enable: { method: "POST" as const, path: `/api/cron/${id}/enable`, success: `Cron job enabled: ${id}` },
-          disable: { method: "POST" as const, path: `/api/cron/${id}/disable`, success: `Cron job disabled: ${id}` },
-          run: { method: "POST" as const, path: `/api/cron/${id}/run`, success: `Cron job triggered: ${id}` },
-        }[subCmd];
-        try {
-          await apiFetch(spec.method, spec.path);
-          console.log(spec.success);
-        } catch (err) {
-          if (err instanceof ApiError && err.status === 404) {
-            console.error(`Job not found: ${id}`);
-            process.exit(1);
-          }
-          throw err;
-        }
+        const id = requireArg(positionals[1], "isotopes cron run <id>");
+        notFoundId = id;
+        await apiFetch("POST", `/api/cron/${id}/run`);
+        console.log(`Cron job triggered: ${id}`);
         break;
       }
       default:
@@ -81,7 +87,9 @@ export async function handleCronCommand(positionals: string[]): Promise<void> {
         process.exit(1);
     }
   } catch (err) {
-    if (err instanceof TypeError && String(err).includes("fetch")) {
+    if (err instanceof ApiError && err.status === 404 && notFoundId) {
+      console.error(`Job not found: ${notFoundId}`);
+    } else if (err instanceof TypeError && String(err).includes("fetch")) {
       console.error("Cannot connect to daemon. Is it running? Run `isotopes` in the foreground or via the LaunchAgent.");
     } else {
       console.error("Error:", err instanceof Error ? err.message : err);
