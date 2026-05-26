@@ -3,7 +3,7 @@
 import { parseArgs } from "node:util";
 import { VERSION } from "../utils/version.js";
 import { loadConfig } from "../config.js";
-import { logger, enableFileLogging } from "../logging/logger.js";
+import { enableFileLogging } from "../logging/logger.js";
 import { createRuntime } from "../app.js";
 import { getConfigPath, getLogsDir } from "../paths.js";
 
@@ -80,13 +80,11 @@ if (values.version) {
 async function main() {
   enableFileLogging(getLogsDir());
   const configPath = values.config ?? getConfigPath();
-  logger.info(`Loading config from ${configPath}`);
   const config = await loadConfig(configPath);
-  logger.info(`Loaded ${config.agents.length} agent(s)`);
 
   const runtime = await createRuntime({ config });
 
-  logger.info("Running... Press Ctrl+C to stop");
+  console.log("Running... Press Ctrl+C to stop");
 
   const onSignal = async () => {
     await runtime.shutdown();
@@ -144,6 +142,6 @@ async function run(): Promise<void> {
 }
 
 run().catch((error) => {
-  logger.error(`Fatal error: ${error.message}`);
+  console.error(`Fatal error: ${error instanceof Error ? error.message : error}`);
   process.exit(1);
 });

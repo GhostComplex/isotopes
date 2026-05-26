@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createLogger, logger } from "./logger.js";
+import { createLogger } from "./logger.js";
 
 describe("Logger", () => {
   beforeEach(() => {
@@ -76,13 +76,6 @@ describe("Logger", () => {
       const child = createLogger("parent").child("child");
       child.info("Hello");
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[parent:child]"));
-    });
-  });
-
-  describe("default logger", () => {
-    it("has isotopes tag", () => {
-      logger.info("Test");
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[isotopes]"));
     });
   });
 });

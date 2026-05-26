@@ -45,5 +45,3 @@ export function createLogger(tag: string): Logger {
     child: (subtag) => createLogger(`${tag}:${subtag}`),
   };
 }
-
-export const logger = createLogger("isotopes");
