@@ -1,5 +1,12 @@
 import { apiFetch, ApiError } from "../utils/api-client.js";
-import { requireArg } from "./helpers.js";
+
+function requireArg(value: string | undefined, usage: string): string {
+  if (!value) {
+    console.error(`Usage: ${usage}`);
+    process.exit(1);
+  }
+  return value;
+}
 
 type CronJob = {
   id: string;
