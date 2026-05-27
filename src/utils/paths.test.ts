@@ -9,7 +9,6 @@ import {
   getConfigPath,
   ensureWorkspaceDir,
   resolveBuiltinSkillsDir,
-  ensureAgentSessionsDir,
 } from "./paths.js";
 
 describe("paths", () => {
@@ -67,20 +66,6 @@ describe("paths", () => {
     });
   });
 
-  describe("ensureAgentSessionsDir", () => {
-    it("creates ~/.isotopes/agents/<id>/sessions and returns it", async () => {
-      const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-paths-"));
-      const home = path.join(tmp, "home");
-      vi.stubEnv("ISOTOPES_HOME", home);
-      try {
-        const dir = await ensureAgentSessionsDir("alice");
-        expect(dir).toBe(path.join(home, "agents", "alice", "sessions"));
-        await expect(fs.stat(dir)).resolves.toMatchObject({});
-      } finally {
-        await fs.rm(tmp, { recursive: true, force: true });
-      }
-    });
-  });
 });
 
 describe("resolveBuiltinSkillsDir", () => {

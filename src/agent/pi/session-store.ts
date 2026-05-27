@@ -11,7 +11,7 @@ import type {
   TranscriptListener,
   TranscriptUpdate,
 } from "../types.js";
-import { ensureAgentSessionsDir } from "../../utils/paths.js";
+import { getIsotopesHome } from "../../utils/paths.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("session-store");
@@ -277,7 +277,8 @@ export class SessionStoreManager {
     if (pending) return pending;
 
     const init = (async () => {
-      const dataDir = await ensureAgentSessionsDir(agentId);
+      const dataDir = path.join(getIsotopesHome(), "agents", agentId, "sessions");
+      await fs.mkdir(dataDir, { recursive: true });
       const store = new DefaultSessionStore(dataDir);
       await store.init();
       this.stores.set(agentId, store);

@@ -12,12 +12,6 @@ export function getLogsDir(): string {
   return path.join(getIsotopesHome(), "logs");
 }
 
-export async function ensureAgentSessionsDir(agentId: string): Promise<string> {
-  const dir = path.join(getIsotopesHome(), "agents", agentId, "sessions");
-  await fs.mkdir(dir, { recursive: true });
-  return dir;
-}
-
 export function getConfigPath(): string {
   return path.join(getIsotopesHome(), "isotopes.yaml");
 }
