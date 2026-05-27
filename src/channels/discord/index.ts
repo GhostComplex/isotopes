@@ -46,7 +46,6 @@ const defaultClientFactory: ClientFactory = () =>
     partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember],
   }) as unknown as ClientLike;
 
-
 interface CreateDiscordChannelOptions {
   /** Test seam: override Discord.js Client construction. */
   clientFactory?: ClientFactory;
@@ -120,7 +119,6 @@ export function createDiscordChannel(
     },
   };
 }
-
 
 interface StartAccountArgs {
   accountId: string;
@@ -197,9 +195,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
           history,
           a2aThreads,
         });
-      } catch {
-        // will be replaced with logging
-      }
+      } catch { /* ignore */ }
     })();
   });
 
@@ -275,7 +271,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     },
   ));
 }
-
 
 /** Find the unique account whose effective agent for this channel matches. */
 function clientForAgentInChannel(

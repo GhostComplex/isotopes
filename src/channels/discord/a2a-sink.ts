@@ -1,5 +1,4 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { createLogger } from "../../logging/logger.js";
 import type {
   A2ASink,
   A2ASinkStartInfo,
@@ -7,8 +6,6 @@ import type {
   A2ASinkSummary,
 } from "../../agent/a2a-sink.js";
 import { chunkDiscordMessage } from "./outbound.js";
-
-const log = createLogger("discord-a2a-sink");
 
 const HEADER_PREFIX = "🤖";
 const TOOL_PREFIX = "🔧";
@@ -53,14 +50,9 @@ export class DiscordA2ASink implements A2ASink {
       );
       this.threadId = thread.id;
       this.deps.registerA2AThread(thread.id, info.sessionId);
-      log.debug("Sub-run thread opened", { sessionId: info.sessionId, threadId: thread.id });
       return { status: "ok", surfaceId: thread.id };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
-      log.warn("Failed to open sub-run thread; streaming disabled", {
-        sessionId: info.sessionId,
-        error,
-      });
       this.threadId = undefined;
       return { status: "error", error };
     }
@@ -109,9 +101,7 @@ export class DiscordA2ASink implements A2ASink {
       : (summary.error ? `\n${truncate(summary.error, 1500)}` : "");
     try {
       await this.deps.sendMessage(this.threadId, head + body);
-    } catch (err) {
-      log.warn("Failed to post summary", { sessionId: this.sessionId, error: err instanceof Error ? err.message : String(err) });
-    }
+    } catch { /* ignore */ }
     try {
       this.deps.unregisterA2AThread(this.threadId);
     } catch { /* ignore */ }
@@ -131,12 +121,7 @@ export class DiscordA2ASink implements A2ASink {
     for (const c of chunks) {
       try {
         await this.deps.sendMessage(this.threadId, c);
-      } catch (err) {
-        log.warn("Failed to send message to sub-run thread", {
-          sessionId: this.sessionId,
-          threadId: this.threadId,
-          error: err instanceof Error ? err.message : String(err),
-        });
+      } catch {
         return;
       }
     }

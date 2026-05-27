@@ -1,9 +1,6 @@
 import type { SendableChannels } from "discord.js";
 import type { SessionEvent, SessionEventListener } from "../../gateway/index.js";
 import { parseReply } from "../reply.js";
-import { createLogger } from "../../logging/logger.js";
-
-const log = createLogger("discord");
 
 const SENTENCE_BOUNDARIES = [". ", "! ", "? ", "\n\n"];
 const DEFAULT_MAX_BUFFER_SIZE = 500;
@@ -26,10 +23,9 @@ export class SegmentedStreamBuffer {
     this.tail = this.tail.then(async () => {
       this.buffer += text;
       await this.tryFlush();
-    }).catch((err) => {
+    }).catch(() => {
       // Don't poison subsequent appends on a transient Discord error.
       this.buffer = "";
-      log.warn(`SegmentedStreamBuffer flush failed: ${err instanceof Error ? err.message : String(err)}`);
     });
     return this.tail;
   }
@@ -40,9 +36,7 @@ export class SegmentedStreamBuffer {
       const toFlush = this.buffer;
       this.buffer = "";
       await this.onFlush(toFlush);
-    }).catch((err) => {
-      log.warn(`SegmentedStreamBuffer final flush failed: ${err instanceof Error ? err.message : String(err)}`);
-    });
+    }).catch(() => { /* ignore */ });
     return this.tail;
   }
 

@@ -12,7 +12,6 @@ function makeLogger(): Logger & { warnings: string[] } {
     info: () => {},
     warn: (msg: string) => { warnings.push(msg); },
     error: () => {},
-    child: () => log,
   };
   return Object.assign(log, { warnings });
 }

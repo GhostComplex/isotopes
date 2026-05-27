@@ -1,7 +1,6 @@
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
-import { createLogger } from "../logging/logger.js";
 import type {
   RegisteredAgent,
   RunRequest,
@@ -37,8 +36,6 @@ import { LazyChannelContext } from "../channels/types.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
 import type { SandboxConfig } from "./middleware/sandbox-config.js";
-
-const log = createLogger("agents:runtime");
 
 export const MAX_DEPTH = 5;
 export const MAX_CHILDREN_PER_PARENT = 5;
@@ -116,9 +113,6 @@ export class AgentRuntime {
     if (opts.extensionPaths) this.extensionPaths = opts.extensionPaths;
     if (opts.sandboxBaseConfig) {
       this.sandboxExecutor = SandboxExecutor.fromConfig(opts.sandboxBaseConfig);
-      if (this.sandboxExecutor) {
-        log.info(`Sandbox executor initialized (image: ${opts.sandboxBaseConfig.docker?.image})`);
-      }
     }
 
     if (opts.globalProvider) {
@@ -208,7 +202,6 @@ export class AgentRuntime {
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
     };
     this.registerRunner(agentConfig.id, new ClaudeRunner(), { spawnable: agentConfig.spawnable === true });
-    log.info(`Added agent: ${agent.id} (runner: claude)`);
     return { agent, workspacePath: null };
   }
 
@@ -221,11 +214,7 @@ export class AgentRuntime {
     const workspacePath = getAgentWorkspacePath(agentConfig);
     await fs.mkdir(workspacePath, { recursive: true });
 
-    const seededFiles = await seedWorkspaceTemplates(workspacePath, agentConfig.id);
-    if (seededFiles.length > 0) {
-      log.info(`Seeded ${seededFiles.length} template file(s) for ${agentConfig.id}: ${seededFiles.join(", ")}`);
-    }
-
+    await seedWorkspaceTemplates(workspacePath, agentConfig.id);
     await reconcileWorkspaceState(workspacePath);
     await ensureWorkspaceStructure(workspacePath);
 
@@ -240,11 +229,6 @@ export class AgentRuntime {
 
     const runner = new PiRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(agent.id, runner, { spawnable: agentConfig.spawnable === true });
-
-    log.info(`Added agent: ${agent.id} (runner: pi, workspace: ${workspacePath})`);
-    if (agentConfig.sandbox?.enabled) {
-      log.info(`spawn_agent disabled for ${agentConfig.id} (sandbox active)`);
-    }
 
     return {
       agent,
@@ -326,13 +310,9 @@ export class AgentRuntime {
     const timeoutHandle = setTimeout(() => this.cancel(sessionId, { reason: "timeout" }), sec * 1000);
     timeoutHandle.unref();
 
-    log.info("run", { runId, agentId: req.to, sessionId, depth });
-
     try {
       req.onRunStart?.(sessionId);
-    } catch (err) {
-      log.warn("onRunStart callback threw", { runId, error: err instanceof Error ? err.message : String(err) });
-    }
+    } catch { /* ignore */ }
 
     try {
       for await (const event of entry.runner.run({
@@ -341,11 +321,6 @@ export class AgentRuntime {
         abort: abort.signal,
         onSession: (session) => { handle.session = session; },
       })) {
-        if (event.type === "tool_execution_start") {
-          log.debug("tool_call", { runId, sessionId, agentId: req.to, toolName: event.toolName, id: event.toolCallId });
-        } else if (event.type === "tool_execution_end") {
-          log.debug("tool_result", { runId, sessionId, id: event.toolCallId });
-        }
         yield event;
       }
     } finally {
@@ -353,9 +328,7 @@ export class AgentRuntime {
       // Consumer break → abort inner runner so no orphan SDK work.
       if (!handle.abort.signal.aborted) handle.abort.abort();
       if (handle.cancelReason && req.onCancel) {
-        try { req.onCancel(handle.cancelReason); } catch (err) {
-          log.warn("onCancel callback threw", { runId, error: err instanceof Error ? err.message : String(err) });
-        }
+        try { req.onCancel(handle.cancelReason); } catch { /* ignore */ }
       }
       this.runs.delete(sessionId);
     }
@@ -365,7 +338,6 @@ export class AgentRuntime {
     const handle = this.runs.get(sessionId);
     if (!handle) return false;
     if (opts?.reason) handle.cancelReason = opts.reason;
-    log.info("Cancelling run", { sessionId, runId: handle.runId, agentId: handle.agentId, reason: opts?.reason });
     handle.abort.abort();
     return true;
   }

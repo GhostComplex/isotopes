@@ -51,10 +51,7 @@ export async function start(opts: AppOptions): Promise<App> {
   const channels = await startChannels({ gateway, config, logger: log, channelContexts });
   const apiServer = await startApiServer(cronScheduler, gateway);
 
-  log.info("App started");
-
   const shutdown = async () => {
-    log.info("Shutting down...");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
     try { await channels.stopAll(); } catch { /* ignore */ }
@@ -64,9 +61,7 @@ export async function start(opts: AppOptions): Promise<App> {
     sessionStoreManager.destroyAll();
     try {
       await agentRuntime.shutdown();
-    } catch (err) {
-      log.warn(`Sandbox cleanup error: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    } catch { /* ignore */ }
   };
 
   return { agentRuntime, agentWorkspaces, cronScheduler, apiServer, shutdown };
@@ -147,7 +142,6 @@ function startHeartbeats(
 
     hb.start();
     managers.push(hb);
-    log.info(`Heartbeat enabled for "${agentFile.id}" (every ${agentFile.heartbeat.intervalSeconds ?? 300}s)`);
   }
 
   return managers;
@@ -160,25 +154,20 @@ function startCron(
 ): CronScheduler {
   const scheduler = new CronScheduler(async (job) => {
     if (!agentRuntime.getAgent(job.agentId)) {
-      log.error(`Cron job "${job.name}" references unknown agent "${job.agentId}"`);
       return;
     }
 
     const prompt = job.action.type === "prompt" ? job.action.prompt : job.action.content;
     const sessionKey = `cron:${job.agentId}:${job.name}`;
-    log.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
 
     try {
-      const result = await gateway.dispatchAndWait({
+      await gateway.dispatchAndWait({
         agentId: job.agentId,
         sessionKey,
         content: prompt,
         source: "cron",
       });
-      log.info(`Cron "${job.name}" completed (${result.responseText.length} chars)`);
-    } catch (err) {
-      log.error(`Cron "${job.name}" failed:`, err);
-    }
+    } catch { /* ignore */ }
   });
 
   for (const agentFile of config.agents) {
@@ -192,7 +181,6 @@ function startCron(
         enabled: task.enabled ?? true,
       });
     }
-    log.info(`Registered ${agentFile.cron.tasks.length} cron task(s) for "${agentFile.id}"`);
   }
 
   if (config.cron?.length) {
@@ -205,7 +193,6 @@ function startCron(
         enabled: task.enabled ?? true,
       });
     }
-    log.info(`Registered ${config.cron.length} top-level cron task(s)`);
   }
 
   scheduler.start();
@@ -217,7 +204,6 @@ async function startApiServer(cronScheduler: CronScheduler, gateway: Gateway): P
   const api = createApi({ cronScheduler, gateway });
   return new Promise<ServerType>((resolve) => {
     const s = serve({ fetch: api.fetch, port, hostname: "127.0.0.1" }, () => {
-      log.info(`API server listening on http://127.0.0.1:${port}`);
       resolve(s);
     });
   });

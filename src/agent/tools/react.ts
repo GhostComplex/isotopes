@@ -1,9 +1,6 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
-import { createLogger } from "../../logging/logger.js";
 import type { ChannelContext } from "../../channels/types.js";
-
-const log = createLogger("tools:react");
 
 function jsonResult(value: unknown): AgentToolResult<undefined> {
   return { content: [{ type: "text", text: JSON.stringify(value) }], details: undefined };
@@ -33,11 +30,9 @@ export function createMessageReactTool(ctx: ChannelContext): AgentTool<typeof me
       if (!actions.react) return jsonResult({ error: "Channel does not support reactions" });
       try {
         await actions.react(message_id, emoji, channel_id);
-        log.info("Reaction added", { messageId: message_id, emoji });
         return jsonResult({ success: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        log.warn("Reaction failed", { messageId: message_id, emoji, error: message });
         return jsonResult({ error: message });
       }
     },

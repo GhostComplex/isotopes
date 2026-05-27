@@ -5,10 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { createLogger } from "../logging/logger.js";
-
 const execAsync = promisify(exec);
-const log = createLogger("daemon:launchd");
 
 export interface LaunchAgentConfig {
   /** Reverse-domain identifier, e.g. "ai.isotopes.daemon" */
@@ -81,27 +78,21 @@ export async function install(config: LaunchAgentConfig): Promise<void> {
   const domain = `gui/${process.getuid?.() ?? 0}`;
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, buildPlist(config), "utf-8");
-  log.info(`Wrote LaunchAgent plist to ${target}`);
 
   // bootout-then-bootstrap so re-install picks up plist changes
   await execAsync(`launchctl bootout ${domainTarget(config.name)}`).catch(() => undefined);
   await execAsync(`launchctl bootstrap ${domain} ${target}`);
-  log.info(`Loaded LaunchAgent ${config.name}`);
 }
 
 export async function uninstall(name: string): Promise<void> {
   const target = plistPath(name);
-  await execAsync(`launchctl bootout ${domainTarget(name)}`).catch((err) => {
-    log.debug("Could not bootout agent before uninstall (may not be loaded):", err);
-  });
+  await execAsync(`launchctl bootout ${domainTarget(name)}`).catch(() => { /* ignore */ });
   await fs.unlink(target);
-  log.info(`Removed LaunchAgent plist ${target}`);
 }
 
 // SIGTERM and respawn in one step. Throws if the agent isn't loaded.
 export async function restart(name: string): Promise<void> {
   await execAsync(`launchctl kickstart -k ${domainTarget(name)}`);
-  log.info(`Restarted LaunchAgent ${name}`);
 }
 
 export async function status(name: string): Promise<LaunchAgentStatus> {

@@ -1,12 +1,9 @@
 import type { Message as DiscordMessage, SendableChannels } from "discord.js";
 import type { Gateway, Message, SessionEventListener } from "../../gateway/index.js";
 import { REPLY_PROMPT } from "../reply.js";
-import { createLogger } from "../../logging/logger.js";
 import type { DiscordAccountConfig, GuildConfig } from "./types.js";
 import { isDmAllowed, resolveGroupPolicy } from "./config.js";
 import { extractAttachmentImages } from "./attachment.js";
-
-const log = createLogger("discord");
 
 /** True if msg is in a Discord thread (uses channel.isThread, not msg.thread). */
 function isThreadMessage(msg: DiscordMessage): boolean {
@@ -22,22 +19,18 @@ function threadParentId(msg: DiscordMessage): string | undefined {
 export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConfig): boolean {
   if (!msg.guild) {
     const ok = isDmAllowed(account, msg.author.id);
-    if (!ok) log.debug(`discord: drop dm from ${msg.author.id} (dmAccess policy)`);
     return ok;
   }
   const group = resolveGroupPolicy(account);
   if (group.policy === "disabled") {
-    log.debug(`discord: drop guild message ${msg.id} (groupAccess.policy=disabled)`);
     return false;
   }
   if (group.policy === "allowlist") {
     // Fail-closed: allowlist policy with no rules is a misconfiguration.
     if (group.guildAllowlist === undefined && group.channelAllowlist === undefined) {
-      log.debug(`discord: drop guild message ${msg.id} (allowlist policy with no rules)`);
       return false;
     }
     if (group.guildAllowlist !== undefined && !group.guildAllowlist.includes(msg.guild.id)) {
-      log.debug(`discord: drop ${msg.id} (guild ${msg.guild.id} not in guildAllowlist)`);
       return false;
     }
     if (group.channelAllowlist !== undefined) {
@@ -45,7 +38,6 @@ export function passesAllowlist(msg: DiscordMessage, account: DiscordAccountConf
       const channelOk = group.channelAllowlist.includes(msg.channelId)
         || (parentId !== undefined && group.channelAllowlist.includes(parentId));
       if (!channelOk) {
-        log.debug(`discord: drop ${msg.id} (channel ${msg.channelId} not in channelAllowlist)`);
         return false;
       }
     }
@@ -86,22 +78,14 @@ export async function handleStopCommand(
     try {
       await gateway.abort(subSessionId, "user");
       didStop = true;
-      log.info(`discord: /stop sub-run aborted (sessionId=${subSessionId})`);
-    } catch (err) {
-      log.warn(`discord: /stop sub-run abort failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    } catch { /* ignore */ }
   }
 
   try {
     if (await gateway.abortByKey(agentId, sessionKey, "user")) {
       didStop = true;
-      log.info(`discord: /stop aborted sessionKey=${sessionKey}`);
-    } else {
-      log.info(`discord: /stop no active run for sessionKey=${sessionKey}`);
     }
-  } catch (err) {
-    log.warn(`discord: /stop abort failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  } catch { /* ignore */ }
 
   if ("send" in msg.channel) {
     try {
@@ -142,19 +126,16 @@ export async function handleInbound(
 ): Promise<void> {
   if (msg.author.id === ctx.botId) return;
   if (msg.author.bot && deps.allowBots === false) {
-    log.debug(`discord receive: drop bot message from ${msg.author.username}`);
     return;
   }
 
   if (msg.guild && isThreadMessage(msg) && deps.guilds?.[msg.guild.id]?.respondInThreads === false) {
-    log.debug(`discord receive: drop thread message ${msg.id} (respondInThreads=false)`);
     return;
   }
 
   if (msg.guild) {
     const requireMention = deps.guilds?.[msg.guild.id]?.requireMention ?? true;
     if (requireMention && !msg.mentions?.has?.(ctx.botId)) {
-      log.debug(`discord receive: not mentioned (id=${msg.id})`);
       return;
     }
   }
@@ -185,7 +166,6 @@ export async function handleInbound(
     subscriber.onEvent,
   );
   if (!unsubscribe) {
-    log.warn(`discord receive: subscribe failed for ${routing.sessionKey}`);
     return;
   }
 
