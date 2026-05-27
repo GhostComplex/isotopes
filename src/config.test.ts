@@ -370,6 +370,19 @@ agents:
       await expect(loadConfig(configPath)).rejects.toThrow();
     });
 
+    it("rejects agent ids with invalid characters", async () => {
+      const configPath = path.join(tempDir, "isotopes.yaml");
+      await fs.writeFile(configPath, "agents:\n  - id: Agent:Dev\n");
+      await expect(loadConfig(configPath)).rejects.toThrow(/Invalid agent id/);
+    });
+
+    it("accepts valid agent ids", async () => {
+      const configPath = path.join(tempDir, "isotopes.yaml");
+      await fs.writeFile(configPath, "agents:\n  - id: code-reviewer_v2\n");
+      const config = await loadConfig(configPath);
+      expect(config.agents[0].id).toBe("code-reviewer_v2");
+    });
+
     it("loads file with unknown extension by trying YAML first", async () => {
       const configPath = path.join(tempDir, "config.toml");
       await fs.writeFile(

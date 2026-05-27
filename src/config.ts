@@ -177,6 +177,15 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
     throw new Error("Config must have at least one agent");
   }
 
+  const agentIdPattern = /^[a-z0-9_-]+$/;
+  for (const agent of raw.agents) {
+    if (!agentIdPattern.test(agent.id)) {
+      throw new Error(
+        `Invalid agent id "${agent.id}": must match [a-z0-9_-]+`,
+      );
+    }
+  }
+
   return processEnvVars(raw);
 }
 
