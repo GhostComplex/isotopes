@@ -53,7 +53,6 @@ export class DefaultSessionStore implements SessionStore {
   private keyIndex = new Map<string, string>();
   private indexDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly INDEX_DEBOUNCE_MS = 1_000;
-  /** Transcript-bus listeners per sessionId. */
   private listeners = new Map<string, Set<TranscriptListener>>();
 
   constructor(private readonly dataDir: string) {}
@@ -141,10 +140,6 @@ export class DefaultSessionStore implements SessionStore {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Persistence
-  // -------------------------------------------------------------------------
-
   private indexFile(): string {
     return path.join(this.dataDir, "sessions.json");
   }
@@ -228,7 +223,6 @@ export class DefaultSessionStore implements SessionStore {
     }
   }
 
-  /** Subscribe a transcript-bus listener. Multiple listeners per session are allowed. */
   subscribe(sessionId: string, listener: TranscriptListener): () => void {
     let set = this.listeners.get(sessionId);
     if (!set) {
@@ -252,15 +246,10 @@ function toSession(s: StoredSession): Session {
   };
 }
 
-// ---------------------------------------------------------------------------
-// SessionStoreManager — one DefaultSessionStore per agentId.
-// ---------------------------------------------------------------------------
-
 export class SessionStoreManager {
   private stores = new Map<string, DefaultSessionStore>();
   private inits = new Map<string, Promise<DefaultSessionStore>>();
 
-  /** Concurrent calls for the same agentId share one initialization. */
   async getOrCreate(agentId: string): Promise<DefaultSessionStore> {
     const existing = this.stores.get(agentId);
     if (existing) return existing;
@@ -282,7 +271,6 @@ export class SessionStoreManager {
     return init;
   }
 
-  /** Sync; returns undefined if the store has not been created yet. */
   peek(agentId: string): DefaultSessionStore | undefined {
     return this.stores.get(agentId);
   }
