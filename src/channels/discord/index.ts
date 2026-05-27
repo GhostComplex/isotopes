@@ -195,9 +195,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
           history,
           a2aThreads,
         });
-      } catch {
-        // will be replaced with logging
-      }
+      } catch { /* ignore */ }
     })();
   });
 

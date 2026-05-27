@@ -123,8 +123,7 @@ export async function seedWorkspaceTemplates(
       await fs.writeFile(filePath, template.content, { flag: "wx" });
       created.push(template.filename);
     } catch (err) {
-      // EEXIST is expected — file already exists, skip silently
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") { /* ignore */ }
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
   }
 
