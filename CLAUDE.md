@@ -46,8 +46,8 @@ pnpm test:integration
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
 - `init/` — `isotopes init` setup wizard built with Ink.
 - `logging/` — `createLogger("tag")` factory.
-- `extensions/` — Discovery for user-managed customization at `~/.isotopes/extensions/`. Three typed slots: `pi/loader.ts` (pi-coding-agent extensions from `~/.isotopes/extensions/pi/*.ts`), `ui/loader.ts` (static SPA dirs from `~/.isotopes/extensions/ui/<id>/`, mounted at `/ui/<id>`), and `channels/loader.ts` (loads built-in channel adapters from `channels/`).
-- Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema + agent ID validation).
+- `extensions/` — Discovery for user-managed customization at `~/.isotopes/extensions/`. Three typed slots: `pi/loader.ts` (pi-coding-agent extensions from `~/.isotopes/extensions/pi/*.ts`), `ui/loader.ts` (static SPA dirs from `~/.isotopes/extensions/ui/<id>/`, mounted at `/ui/<id>`), and `channels/loader.ts` (starts built-in channel adapters from `channels/`).
+- Standalone files: `app.ts` (application bootstrap — `start()` assembles and launches all components), `config.ts` (YAML config + schema + agent ID validation).
 
 ### `src/agent/`
 
