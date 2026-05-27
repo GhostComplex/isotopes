@@ -4,7 +4,7 @@ import { loadSkills, formatSkillsForPrompt } from "@mariozechner/pi-coding-agent
 import { getIsotopesHome, getAgentWorkspacePath, getBuiltinSkillsPath } from "../../utils/paths.js";
 import type { AgentConfig } from "../types.js";
 
-export const WORKSPACE_FILES = [
+const WORKSPACE_FILES = [
   "SOUL.md",
   "IDENTITY.md",
   "USER.md",
@@ -13,11 +13,7 @@ export const WORKSPACE_FILES = [
   "BOOTSTRAP.md",
 ] as const;
 
-export const MEMORY_FILES = [
-  "MEMORY.md",
-] as const;
-
-export interface WorkspaceContext {
+interface WorkspaceContext {
   systemPromptAdditions: string;
   memory: string | null;
   workspacePath: string;
