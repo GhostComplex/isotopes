@@ -36,7 +36,7 @@ export function getConfigPath(): string {
 }
 
 /** Absolute paths returned as-is; relative paths resolve from ISOTOPES_HOME. */
-export function resolveExplicitWorkspacePath(workspacePath: string): string {
+function resolveExplicitWorkspacePath(workspacePath: string): string {
   if (path.isAbsolute(workspacePath)) {
     return workspacePath;
   }
