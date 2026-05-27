@@ -161,10 +161,6 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   cronScheduler.start();
-  const jobCount = cronScheduler.listJobs().length;
-  if (jobCount > 0) {
-    log.info(`Cron scheduler started with ${jobCount} job(s)`);
-  }
 
   const channels = await loadChannels({
     gateway,
