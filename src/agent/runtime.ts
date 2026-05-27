@@ -225,9 +225,8 @@ export class AgentRuntime {
 
     let workspacePath: string;
     if (agentFile.workspace) {
-      const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
-      await fs.mkdir(resolved, { recursive: true });
-      workspacePath = resolved;
+      workspacePath = resolveExplicitWorkspacePath(agentFile.workspace);
+      await fs.mkdir(workspacePath, { recursive: true });
       log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
     } else {
       workspacePath = await ensureWorkspaceDir(agentConfig.id);
