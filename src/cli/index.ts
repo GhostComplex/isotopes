@@ -5,7 +5,7 @@ import { VERSION } from "../utils/version.js";
 import { loadConfig } from "../config.js";
 import { enableFileLogging } from "../logging/logger.js";
 import { createRuntime } from "../app.js";
-import { getConfigPath, getLogsDir } from "../paths.js";
+import { getConfigPath, getLogsDir } from "../utils/paths.js";
 
 const args = process.argv.slice(2);
 const subcommand = args[0] && !args[0].startsWith("-") ? args[0] : undefined;

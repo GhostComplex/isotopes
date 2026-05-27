@@ -29,7 +29,7 @@ import {
   ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
   resolveExplicitWorkspacePath,
-} from "../paths.js";
+} from "../utils/paths.js";
 import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";

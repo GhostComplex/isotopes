@@ -14,7 +14,7 @@ import type {
 import {
   ensureAgentSessionsDir,
   normalizeAgentId,
-} from "../../paths.js";
+} from "../../utils/paths.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("session-store");

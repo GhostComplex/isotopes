@@ -6,7 +6,7 @@ import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { getApiPort } from "./utils/api-client.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyChannelContext } from "./channels/types.js";
-import { ensureDirectories } from "./paths.js";
+import { ensureDirectories } from "./utils/paths.js";
 
 import { serve, type ServerType } from "@hono/node-server";
 import { createApi } from "./http/server.js";

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { loadSkills, formatSkillsForPrompt } from "@mariozechner/pi-coding-agent";
-import { getIsotopesHome, resolveAgentWorkspacePath, resolveBuiltinSkillsDir } from "../../paths.js";
+import { getIsotopesHome, resolveAgentWorkspacePath, resolveBuiltinSkillsDir } from "../../utils/paths.js";
 import type { AgentConfig } from "../types.js";
 import { createLogger } from "../../logging/logger.js";
 

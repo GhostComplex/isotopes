@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import nodeFs from "node:fs";
-import { getLogsDir } from "../paths.js";
+import { getLogsDir } from "../utils/paths.js";
 
 interface LogsOptions {
   lines: number;

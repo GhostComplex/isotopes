@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getLogsDir } from "../paths.js";
+import { getLogsDir } from "../utils/paths.js";
 import * as launchd from "../daemon/launchd.js";
 import type { LaunchAgentConfig } from "../daemon/launchd.js";
 

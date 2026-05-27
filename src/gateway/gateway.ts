@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 import { createLogger } from "../logging/logger.js";
 import { getAgentEndMeta } from "../agent/pi/messages.js";
-import { resolveAgentWorkspacePath } from "../paths.js";
+import { resolveAgentWorkspacePath } from "../utils/paths.js";
 import { randomUUID } from "node:crypto";
 
 const log = createLogger("gateway");
