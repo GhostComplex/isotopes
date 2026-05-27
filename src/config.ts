@@ -17,35 +17,28 @@ export interface ProviderConfigFile {
 
 export interface HeartbeatConfigFile {
   enabled?: boolean;
-  /** Default: 300 (5 min) */
   intervalSeconds?: number;
 }
 
 export interface CronTaskConfigFile {
   name: string;
-  /** Cron expression, e.g. "0 * * * *" */
   schedule: string;
   prompt: string;
-  /** Default: true */
   enabled?: boolean;
 }
 
 export interface AgentConfigFile {
   id: string;
-  /** Default: "pi" */
   runner?: "pi" | "claude";
-  /** Default: true */
   enabled?: boolean;
-  /** Absolute or ISOTOPES_HOME-relative. Default: workspace-{id}/. */
+  /** Absolute or ISOTOPES_HOME-relative. */
   workspace?: string;
   tools?: AgentToolsConfigFile;
   model?: string;
   sandbox?: SandboxConfigFile;
   heartbeat?: HeartbeatConfigFile;
   cron?: { tasks: CronTaskConfigFile[] };
-  /** Default: false */
   spawnable?: boolean;
-  /** Default: "parent-reuse" */
   sessionPolicy?: "always-new" | "parent-reuse";
 }
 
