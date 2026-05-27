@@ -43,7 +43,7 @@ export async function start(opts: AppOptions): Promise<App> {
   }
 
   const sessionStoreManager = new SessionStoreManager();
-  const agentRuntime = initAgentRuntime(config);
+  const agentRuntime = createAgentRuntime(config);
   const { agentWorkspaces, channelContexts } = await registerAgents(config, agentRuntime, sessionStoreManager);
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
   const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway);
@@ -72,7 +72,7 @@ export async function start(opts: AppOptions): Promise<App> {
   return { agentRuntime, agentWorkspaces, cronScheduler, apiServer, shutdown };
 }
 
-function initAgentRuntime(config: IsotopesConfigFile): AgentRuntime {
+function createAgentRuntime(config: IsotopesConfigFile): AgentRuntime {
   const sandboxBaseConfig = config.sandbox
     ? resolveSandboxConfigFromFile("<global>", undefined, config.sandbox)
     : undefined;
