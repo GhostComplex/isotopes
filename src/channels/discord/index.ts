@@ -22,9 +22,6 @@ import type {
   DiscordChannelsConfig,
 } from "./types.js";
 
-
-
-
 /** Minimum surface the adapter touches — testable without discord.js. */
 export interface ClientLike {
   user: { id: string; tag?: string } | null;
