@@ -86,9 +86,7 @@ export async function install(config: LaunchAgentConfig): Promise<void> {
 
 export async function uninstall(name: string): Promise<void> {
   const target = plistPath(name);
-  await execAsync(`launchctl bootout ${domainTarget(name)}`).catch(() => {
-    // May not be loaded — ignore
-  });
+  await execAsync(`launchctl bootout ${domainTarget(name)}`).catch(() => { /* ignore */ });
   await fs.unlink(target);
 }
 
