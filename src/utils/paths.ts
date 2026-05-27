@@ -35,16 +35,12 @@ export function getConfigPath(): string {
   return path.join(getIsotopesHome(), "isotopes.yaml");
 }
 
-/** Absolute paths returned as-is; relative paths resolve from ISOTOPES_HOME. */
-function resolveExplicitWorkspacePath(workspacePath: string): string {
-  if (path.isAbsolute(workspacePath)) {
-    return workspacePath;
-  }
-  return path.resolve(getIsotopesHome(), workspacePath);
-}
-
 export function resolveAgentWorkspacePath(config: { id: string; workspace?: string }): string {
-  if (config.workspace) return resolveExplicitWorkspacePath(config.workspace);
+  if (config.workspace) {
+    return path.isAbsolute(config.workspace)
+      ? config.workspace
+      : path.resolve(getIsotopesHome(), config.workspace);
+  }
   return getWorkspacePath(config.id);
 }
 
