@@ -4,8 +4,7 @@ import { loadSkills, formatSkillsForPrompt } from "@mariozechner/pi-coding-agent
 import { getIsotopesHome, getAgentWorkspacePath, getBuiltinSkillsPath } from "../../utils/paths.js";
 import type { AgentConfig } from "../types.js";
 
-/** Standard workspace files that contribute to system prompt */
-export const WORKSPACE_FILES = [
+const WORKSPACE_FILES = [
   "SOUL.md",
   "IDENTITY.md",
   "USER.md",
@@ -14,23 +13,13 @@ export const WORKSPACE_FILES = [
   "BOOTSTRAP.md",
 ] as const;
 
-/** Memory files loaded for context */
-export const MEMORY_FILES = [
-  "MEMORY.md",
-] as const;
-
-export interface WorkspaceContext {
-  /** Combined content from workspace files (SOUL.md, USER.md, etc.) */
+interface WorkspaceContext {
   systemPromptAdditions: string;
-  /** Content from MEMORY.md if present */
   memory: string | null;
-  /** Path to the workspace directory */
   workspacePath: string;
-  /** Skills prompt block (XML format) */
   skillsPrompt: string;
 }
 
-/** Load workspace files (SOUL/MEMORY/etc) + skills into a context object. */
 export async function loadWorkspaceContext(workspacePath: string, options?: { builtinSkillsPath?: string }): Promise<WorkspaceContext> {
   const additions: string[] = [];
 
@@ -42,24 +31,13 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
   }
 
   let memory: string | null = null;
-  const memoryPath = path.join(workspacePath, "MEMORY.md");
-  memory = await readFileIfExists(memoryPath);
+  memory = await readFileIfExists(path.join(workspacePath, "MEMORY.md"));
 
-  // Yesterday's daily memory
   const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
-  const yesterdayMemoryPath = path.join(workspacePath, "memory", `${yesterday}.md`);
-  const yesterdayMemory = await readFileIfExists(yesterdayMemoryPath);
-  if (yesterdayMemory) {
-    memory = memory ? `${memory}\n\n## Yesterday's Notes\n\n${yesterdayMemory}` : `## Yesterday's Notes\n\n${yesterdayMemory}`;
-  }
+  memory = await appendDailyMemory(memory, workspacePath, yesterday, "Yesterday's Notes");
 
-  // Today's daily memory
   const today = new Date().toISOString().split("T")[0];
-  const dailyMemoryPath = path.join(workspacePath, "memory", `${today}.md`);
-  const dailyMemory = await readFileIfExists(dailyMemoryPath);
-  if (dailyMemory) {
-    memory = memory ? `${memory}\n\n## Today's Notes\n\n${dailyMemory}` : `## Today's Notes\n\n${dailyMemory}`;
-  }
+  memory = await appendDailyMemory(memory, workspacePath, today, "Today's Notes");
 
   const skillResult = loadSkills({
     cwd: workspacePath,
@@ -81,7 +59,6 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
   };
 }
 
-/** Build a complete system prompt from a loaded workspace context. */
 export function buildSystemPrompt(workspace: WorkspaceContext | null): string {
   if (!workspace) return "";
 
@@ -94,7 +71,6 @@ export function buildSystemPrompt(workspace: WorkspaceContext | null): string {
   return parts.join("\n\n---\n\n");
 }
 
-/** End-to-end: resolve agent's workspace path, load context, build prompt. */
 export async function buildAgentSystemPrompt(config: AgentConfig): Promise<string> {
   const ctx = await loadWorkspaceContext(getAgentWorkspacePath(config), {
     builtinSkillsPath: getBuiltinSkillsPath(),
@@ -102,10 +78,16 @@ export async function buildAgentSystemPrompt(config: AgentConfig): Promise<strin
   return buildSystemPrompt(ctx);
 }
 
-/** Ensure workspace + memory subdir exist. */
 export async function ensureWorkspaceStructure(workspacePath: string): Promise<void> {
   await fs.mkdir(workspacePath, { recursive: true });
   await fs.mkdir(path.join(workspacePath, "memory"), { recursive: true });
+}
+
+async function appendDailyMemory(memory: string | null, workspacePath: string, date: string, heading: string): Promise<string | null> {
+  const content = await readFileIfExists(path.join(workspacePath, "memory", `${date}.md`));
+  if (!content) return memory;
+  const block = `## ${heading}\n\n${content}`;
+  return memory ? `${memory}\n\n${block}` : block;
 }
 
 // Stat-based identity cache: skip re-reads when (dev, ino, size, mtime) match.

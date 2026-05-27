@@ -31,7 +31,6 @@ import {
 } from "../utils/paths.js";
 import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
-import { reconcileWorkspaceState } from "./workspace/state.js";
 import { LazyChannelContext } from "../channels/types.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
@@ -215,7 +214,6 @@ export class AgentRuntime {
     await fs.mkdir(workspacePath, { recursive: true });
 
     await seedWorkspaceTemplates(workspacePath, agentConfig.id);
-    await reconcileWorkspaceState(workspacePath);
     await ensureWorkspaceStructure(workspacePath);
 
     const agent: RegisteredAgent = {
