@@ -123,9 +123,7 @@ export class DefaultSessionStore implements SessionStore {
     await this.persistIndex();
     try {
       await fs.rm(this.transcriptFile(sessionId), { force: true });
-    } catch {
-      // TODO: add logging
-    }
+    } catch { /* ignore */ }
   }
 
   async clearMessages(sessionId: string): Promise<void> {

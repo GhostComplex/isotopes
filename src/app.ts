@@ -62,9 +62,7 @@ export async function start(opts: AppOptions): Promise<App> {
     sessionStoreManager.destroyAll();
     try {
       await agentRuntime.shutdown();
-    } catch {
-      // TODO: add logging
-    }
+    } catch { /* ignore */ }
   };
 
   return { agentRuntime, agentWorkspaces, cronScheduler, apiServer, shutdown };
@@ -170,9 +168,7 @@ function startCron(
         content: prompt,
         source: "cron",
       });
-    } catch {
-      // TODO: add logging
-    }
+    } catch { /* ignore */ }
   });
 
   for (const agentFile of config.agents) {

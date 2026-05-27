@@ -37,9 +37,7 @@ export class SegmentedStreamBuffer {
       const toFlush = this.buffer;
       this.buffer = "";
       await this.onFlush(toFlush);
-    }).catch(() => {
-      // TODO: add logging
-    });
+    }).catch(() => { /* ignore */ });
     return this.tail;
   }
 

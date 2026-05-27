@@ -125,9 +125,7 @@ export async function seedWorkspaceTemplates(
       created.push(template.filename);
     } catch (err) {
       // EEXIST is expected — file already exists, skip silently
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
-        // TODO: add logging
-      }
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") { /* ignore */ }
     }
   }
 

@@ -316,9 +316,7 @@ export class AgentRuntime {
 
     try {
       req.onRunStart?.(sessionId);
-    } catch {
-      // TODO: add logging
-    }
+    } catch { /* ignore */ }
 
     try {
       for await (const event of entry.runner.run({
@@ -334,9 +332,7 @@ export class AgentRuntime {
       // Consumer break → abort inner runner so no orphan SDK work.
       if (!handle.abort.signal.aborted) handle.abort.abort();
       if (handle.cancelReason && req.onCancel) {
-        try { req.onCancel(handle.cancelReason); } catch {
-          // TODO: add logging
-        }
+        try { req.onCancel(handle.cancelReason); } catch { /* ignore */ }
       }
       this.runs.delete(sessionId);
     }

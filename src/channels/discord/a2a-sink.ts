@@ -102,9 +102,7 @@ export class DiscordA2ASink implements A2ASink {
       : (summary.error ? `\n${truncate(summary.error, 1500)}` : "");
     try {
       await this.deps.sendMessage(this.threadId, head + body);
-    } catch {
-      // TODO: add logging
-    }
+    } catch { /* ignore */ }
     try {
       this.deps.unregisterA2AThread(this.threadId);
     } catch { /* ignore */ }

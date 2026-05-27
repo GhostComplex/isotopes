@@ -79,18 +79,14 @@ export async function handleStopCommand(
     try {
       await gateway.abort(subSessionId, "user");
       didStop = true;
-    } catch {
-      // TODO: add logging
-    }
+    } catch { /* ignore */ }
   }
 
   try {
     if (await gateway.abortByKey(agentId, sessionKey, "user")) {
       didStop = true;
     }
-  } catch {
-    // TODO: add logging
-  }
+  } catch { /* ignore */ }
 
   if ("send" in msg.channel) {
     try {

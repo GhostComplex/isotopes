@@ -59,9 +59,7 @@ export class CronScheduler {
         job.nextRun = job.schedule.nextRun() ?? undefined;
         try {
           await this.dispatchJob(job);
-        } catch {
-          // TODO: add logging
-        }
+        } catch { /* ignore */ }
       },
     );
 

@@ -37,9 +37,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     const set = listeners.get(sessionId);
     if (!set) return;
     for (const fn of set) {
-      try { fn(event); } catch {
-        // TODO: add logging
-      }
+      try { fn(event); } catch { /* ignore */ }
     }
   }
 

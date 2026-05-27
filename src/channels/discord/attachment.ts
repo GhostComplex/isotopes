@@ -22,9 +22,7 @@ export async function extractAttachmentImages(msg: DiscordMessage): Promise<Inbo
       }
       const buffer = Buffer.from(await res.arrayBuffer());
       images.push({ type: "image", data: buffer.toString("base64"), mimeType: ct });
-    } catch {
-      // TODO: add logging
-    }
+    } catch { /* ignore */ }
   }
   return images;
 }
