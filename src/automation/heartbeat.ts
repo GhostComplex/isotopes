@@ -74,11 +74,7 @@ export class HeartbeatManager {
     let content: string;
     try {
       content = await fs.readFile(heartbeatPath, "utf-8");
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        return;
-      }
-      // non-ENOENT error — skip this tick
+    } catch {
       return;
     }
 
