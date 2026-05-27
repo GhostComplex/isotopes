@@ -27,7 +27,6 @@ import {
 } from "../config.js";
 import fs from "node:fs/promises";
 import {
-  ensureWorkspaceDir,
   resolveAgentWorkspacePath,
 } from "../utils/paths.js";
 import { ensureWorkspaceStructure } from "./workspace/context.js";
@@ -223,13 +222,10 @@ export class AgentRuntime {
   ): Promise<AddAgentResult> {
     const { agentFile, channelContext, spawnableAgentIds, sessionStore } = opts;
 
-    let workspacePath: string;
+    const workspacePath = resolveAgentWorkspacePath(agentConfig);
+    await fs.mkdir(workspacePath, { recursive: true });
     if (agentFile.workspace) {
-      workspacePath = resolveAgentWorkspacePath(agentConfig);
-      await fs.mkdir(workspacePath, { recursive: true });
       log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
-    } else {
-      workspacePath = await ensureWorkspaceDir(agentConfig.id);
     }
 
     const seededFiles = await seedWorkspaceTemplates(workspacePath, agentConfig.id);

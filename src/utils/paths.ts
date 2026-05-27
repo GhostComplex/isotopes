@@ -1,6 +1,5 @@
 import os from "node:os";
 import path from "node:path";
-import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -23,12 +22,6 @@ export function resolveAgentWorkspacePath(config: { id: string; workspace?: stri
       : path.resolve(getIsotopesHome(), config.workspace);
   }
   return path.join(getIsotopesHome(), `workspace-${config.id}`);
-}
-
-export async function ensureWorkspaceDir(agentId: string): Promise<string> {
-  const workspacePath = path.join(getIsotopesHome(), `workspace-${agentId}`);
-  await fs.mkdir(workspacePath, { recursive: true });
-  return workspacePath;
 }
 
 export function resolveBuiltinSkillsDir(): string | undefined {

@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 import os from "node:os";
-import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import {
   getIsotopesHome,
   getLogsDir,
   getConfigPath,
-  ensureWorkspaceDir,
   resolveBuiltinSkillsDir,
 } from "./paths.js";
 
@@ -50,22 +48,6 @@ describe("paths", () => {
       expect(getConfigPath()).toBe("/custom/isotopes.yaml");
     });
   });
-
-  describe("ensureWorkspaceDir", () => {
-    it("creates workspace-{id} dir and returns its path", async () => {
-      const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-paths-"));
-      const home = path.join(tmp, "home");
-      vi.stubEnv("ISOTOPES_HOME", home);
-      try {
-        const ws = await ensureWorkspaceDir("default");
-        expect(ws).toBe(path.join(home, "workspace-default"));
-        await expect(fs.stat(ws)).resolves.toMatchObject({});
-      } finally {
-        await fs.rm(tmp, { recursive: true, force: true });
-      }
-    });
-  });
-
 });
 
 describe("resolveBuiltinSkillsDir", () => {
