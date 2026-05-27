@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { DefaultSessionStore, SessionStoreManager } from "./session-store.js";
-import { getAgentSessionsDir } from "../../utils/paths.js";
 
 import { userMessage, assistantMessage, messageText } from "./messages.js";
 
@@ -419,8 +418,7 @@ describe("SessionStoreManager.getOrCreate", () => {
   it("creates a store rooted at the per-agent sessions dir", async () => {
     const mgr = new SessionStoreManager();
     const store = await mgr.getOrCreate("alice");
-    const expected = getAgentSessionsDir("alice");
-    expect(expected).toBe(path.join(tmpRoot, "agents", "alice", "sessions"));
+    const expected = path.join(tmpRoot, "agents", "alice", "sessions");
     const stat = await fs.stat(expected);
     expect(stat.isDirectory()).toBe(true);
     expect(store).toBeDefined();

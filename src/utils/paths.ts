@@ -12,16 +12,8 @@ export function getLogsDir(): string {
   return path.join(getIsotopesHome(), "logs");
 }
 
-export function getWorkspacePath(agentId: string): string {
-  return path.join(getIsotopesHome(), `workspace-${agentId}`);
-}
-
-export function getAgentSessionsDir(agentId: string): string {
-  return path.join(getIsotopesHome(), "agents", agentId, "sessions");
-}
-
 export async function ensureAgentSessionsDir(agentId: string): Promise<string> {
-  const dir = getAgentSessionsDir(agentId);
+  const dir = path.join(getIsotopesHome(), "agents", agentId, "sessions");
   await fs.mkdir(dir, { recursive: true });
   return dir;
 }
@@ -36,11 +28,11 @@ export function resolveAgentWorkspacePath(config: { id: string; workspace?: stri
       ? config.workspace
       : path.resolve(getIsotopesHome(), config.workspace);
   }
-  return getWorkspacePath(config.id);
+  return path.join(getIsotopesHome(), `workspace-${config.id}`);
 }
 
 export async function ensureWorkspaceDir(agentId: string): Promise<string> {
-  const workspacePath = getWorkspacePath(agentId);
+  const workspacePath = path.join(getIsotopesHome(), `workspace-${agentId}`);
   await fs.mkdir(workspacePath, { recursive: true });
   return workspacePath;
 }
