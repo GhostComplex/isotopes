@@ -15,7 +15,7 @@ import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
-import { loadChannels } from "./extensions/channels/loader.js";
+import { startChannels } from "./extensions/channels/loader.js";
 import { createGateway, type Gateway } from "./gateway/index.js";
 
 const log = createLogger("app");
@@ -48,7 +48,7 @@ export async function start(opts: AppOptions): Promise<App> {
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
   const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway);
   const cronScheduler = startCron(config, agentRuntime, gateway);
-  const channels = await loadChannels({ gateway, config, logger: log, channelContexts });
+  const channels = await startChannels({ gateway, config, logger: log, channelContexts });
   const apiServer = await startApiServer(cronScheduler, gateway);
 
   log.info("App started");

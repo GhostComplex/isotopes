@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Gateway } from "../../gateway/index.js";
 import type { Logger } from "../../logging/logger.js";
 import type { Channel } from "../../channels/types.js";
-import { loadChannels } from "./loader.js";
+import { startChannels } from "./loader.js";
 
 function makeLogger(): Logger & { warnings: string[] } {
   const warnings: string[] = [];
@@ -19,7 +19,7 @@ function makeLogger(): Logger & { warnings: string[] } {
 
 const fakeGateway = {} as Gateway;
 
-describe("loadChannels", () => {
+describe("startChannels", () => {
   beforeEach(() => {
     vi.resetModules();
   });
@@ -30,7 +30,7 @@ describe("loadChannels", () => {
 
   it("loads no adapters when channels.discord config is absent", async () => {
     const logger = makeLogger();
-    const result = await loadChannels({
+    const result = await startChannels({
       gateway: fakeGateway,
       config: {},
       logger,
@@ -43,7 +43,7 @@ describe("loadChannels", () => {
     // The real adapter module now exists. With no accounts in config, it
     // starts as a no-op and logs the "no accounts configured" warning.
     const logger = makeLogger();
-    const result = await loadChannels({
+    const result = await startChannels({
       gateway: fakeGateway,
       config: { channels: { discord: { token: "x" } } },
       logger,
@@ -62,7 +62,7 @@ describe("loadChannels", () => {
     vi.doMock("../../channels/discord/index.js", () => ({ createDiscordChannel }));
 
     // Re-import after mocking so the dynamic import inside loader resolves.
-    const { loadChannels: load } = await import("./loader.js");
+    const { startChannels: load } = await import("./loader.js");
 
     const logger = makeLogger();
     const discordCfg = { token: "abc" };
