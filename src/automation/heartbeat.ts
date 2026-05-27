@@ -105,9 +105,7 @@ export class HeartbeatManager {
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
       }
-    } catch {
-      // heartbeat error (timeout or runtime failure) — skip silently
-    } finally {
+    } catch { /* ignore */ } finally {
       this.isRunning = false;
     }
   }
