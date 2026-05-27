@@ -81,7 +81,6 @@ export function createDiscordChannel(
             accountId,
             account,
             gateway,
-
             clientFactory,
             clients,
             dedupes,
