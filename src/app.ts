@@ -115,12 +115,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
       return;
     }
 
-    let prompt: string;
-    if (job.action.type === "prompt") {
-      prompt = job.action.prompt;
-    } else {
-      prompt = job.action.content;
-    }
+    const prompt = job.action.type === "prompt" ? job.action.prompt : job.action.content;
 
     const sessionKey = `cron:${job.agentId}:${job.name}`;
     log.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
@@ -166,20 +161,17 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   }
 
   cronScheduler.start();
-  if (cronScheduler.listJobs().length > 0) {
-    log.info(`Cron scheduler started with ${cronScheduler.listJobs().length} job(s)`);
+  const jobCount = cronScheduler.listJobs().length;
+  if (jobCount > 0) {
+    log.info(`Cron scheduler started with ${jobCount} job(s)`);
   }
 
-  const channelLoaders: { stopAll: () => Promise<void> }[] = [];
-  {
-    const channels = await loadChannels({
-      gateway,
-      config,
-      logger: log,
-      channelContexts,
-    });
-    channelLoaders.push(channels);
-  }
+  const channels = await loadChannels({
+    gateway,
+    config,
+    logger: log,
+    channelContexts,
+  });
 
   const port = getApiPort();
   const api = createApi({ cronScheduler, gateway });
@@ -196,9 +188,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     log.info("Shutting down...");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
-    for (const t of channelLoaders) {
-      try { await t.stopAll(); } catch { /* ignore */ }
-    }
+    try { await channels.stopAll(); } catch { /* ignore */ }
     await new Promise<void>((resolve, reject) => {
       apiServer.close((err) => (err ? reject(err) : resolve()));
     });
