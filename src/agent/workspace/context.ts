@@ -34,16 +34,10 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
   memory = await readFileIfExists(path.join(workspacePath, "MEMORY.md"));
 
   const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
-  const yesterdayMemory = await readFileIfExists(path.join(workspacePath, "memory", `${yesterday}.md`));
-  if (yesterdayMemory) {
-    memory = memory ? `${memory}\n\n## Yesterday's Notes\n\n${yesterdayMemory}` : `## Yesterday's Notes\n\n${yesterdayMemory}`;
-  }
+  memory = await appendDailyMemory(memory, workspacePath, yesterday, "Yesterday's Notes");
 
   const today = new Date().toISOString().split("T")[0];
-  const dailyMemory = await readFileIfExists(path.join(workspacePath, "memory", `${today}.md`));
-  if (dailyMemory) {
-    memory = memory ? `${memory}\n\n## Today's Notes\n\n${dailyMemory}` : `## Today's Notes\n\n${dailyMemory}`;
-  }
+  memory = await appendDailyMemory(memory, workspacePath, today, "Today's Notes");
 
   const skillResult = loadSkills({
     cwd: workspacePath,
@@ -87,6 +81,13 @@ export async function buildAgentSystemPrompt(config: AgentConfig): Promise<strin
 export async function ensureWorkspaceStructure(workspacePath: string): Promise<void> {
   await fs.mkdir(workspacePath, { recursive: true });
   await fs.mkdir(path.join(workspacePath, "memory"), { recursive: true });
+}
+
+async function appendDailyMemory(memory: string | null, workspacePath: string, date: string, heading: string): Promise<string | null> {
+  const content = await readFileIfExists(path.join(workspacePath, "memory", `${date}.md`));
+  if (!content) return memory;
+  const block = `## ${heading}\n\n${content}`;
+  return memory ? `${memory}\n\n${block}` : block;
 }
 
 // Stat-based identity cache: skip re-reads when (dev, ino, size, mtime) match.
