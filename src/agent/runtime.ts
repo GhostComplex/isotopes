@@ -25,8 +25,8 @@ import {
   type AgentToolsConfigFile,
   type ProviderConfigFile,
 } from "../config.js";
+import fs from "node:fs/promises";
 import {
-  ensureExplicitWorkspaceDir,
   ensureWorkspaceDir,
   resolveExplicitWorkspacePath,
 } from "../utils/paths.js";
@@ -226,7 +226,8 @@ export class AgentRuntime {
     let workspacePath: string;
     if (agentFile.workspace) {
       const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
-      workspacePath = await ensureExplicitWorkspaceDir(resolved);
+      await fs.mkdir(resolved, { recursive: true });
+      workspacePath = resolved;
       log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
     } else {
       workspacePath = await ensureWorkspaceDir(agentConfig.id);

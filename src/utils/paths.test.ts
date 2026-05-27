@@ -14,7 +14,6 @@ import {
   ensureDirectories,
   ensureWorkspaceDir,
   resolveBuiltinSkillsDir,
-  ensureExplicitWorkspaceDir,
   ensureAgentSessionsDir,
   resolveExplicitWorkspacePath,
 } from "./paths.js";
@@ -161,20 +160,6 @@ describe("paths", () => {
       try {
         const ws = await ensureWorkspaceDir("assistant");
         expect(ws).toBe(path.join(home, "workspace-assistant"));
-        await expect(fs.stat(ws)).resolves.toMatchObject({});
-      } finally {
-        await fs.rm(tmp, { recursive: true, force: true });
-      }
-    });
-  });
-
-  describe("ensureExplicitWorkspaceDir", () => {
-    it("creates the resolved path", async () => {
-      const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-paths-"));
-      const ws = path.join(tmp, "explicit-ws");
-      try {
-        const result = await ensureExplicitWorkspaceDir(ws);
-        expect(result).toBe(ws);
         await expect(fs.stat(ws)).resolves.toMatchObject({});
       } finally {
         await fs.rm(tmp, { recursive: true, force: true });

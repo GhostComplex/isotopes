@@ -59,11 +59,6 @@ export async function ensureWorkspaceDir(agentId: string): Promise<string> {
   return workspacePath;
 }
 
-export async function ensureExplicitWorkspaceDir(resolvedPath: string): Promise<string> {
-  await fs.mkdir(resolvedPath, { recursive: true });
-  return resolvedPath;
-}
-
 function looksLikeSkillsDir(dir: string): boolean {
   try {
     const entries = readdirSync(dir, { withFileTypes: true });
