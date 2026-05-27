@@ -6,9 +6,10 @@ import type {
   RegisteredAgent,
   RunRequest,
   RunInfo,
+  ProviderConfig,
+  AgentConfig,
 } from "./types.js";
 import { RunValidationError } from "./types.js";
-import type { ProviderConfig } from "./types.js";
 import type { PiSessionDeps } from "./pi/session-factory.js";
 import { PiRunner } from "./pi/runner.js";
 import { ClaudeRunner } from "./adapters/claude/runner.js";
@@ -39,9 +40,7 @@ import type { SandboxConfig } from "./middleware/sandbox-config.js";
 
 const log = createLogger("agents:runtime");
 
-/** Spawn-tree depth limit. Top-level = 1; reject when child would land > MAX_DEPTH. */
 export const MAX_DEPTH = 5;
-/** Concurrent in-flight children per parentSessionId. */
 export const MAX_CHILDREN_PER_PARENT = 5;
 /** Default per-run timeout when req.timeoutSeconds is absent. */
 export const DEFAULT_TIMEOUT_SEC = 900;
@@ -152,8 +151,6 @@ export class AgentRuntime {
     };
   }
 
-  /** Register a runner under a name. The runner's agent (if any) becomes
-   * visible via getAgent / listAgents. */
   registerRunner(
     name: string,
     runner: Runner,
@@ -170,7 +167,6 @@ export class AgentRuntime {
     return this.entries.has(name);
   }
 
-  /** Names of all registered entries. */
   runnerNames(): string[] {
     return Array.from(this.entries.keys());
   }
@@ -205,7 +201,7 @@ export class AgentRuntime {
       : this.registerPi(agentConfig, opts);
   }
 
-  private registerClaude(agentConfig: import("./types.js").AgentConfig): AddAgentResult {
+  private registerClaude(agentConfig: AgentConfig): AddAgentResult {
     const agent: RegisteredAgent = {
       id: agentConfig.id,
       config: agentConfig,
@@ -217,7 +213,7 @@ export class AgentRuntime {
   }
 
   private async registerPi(
-    agentConfig: import("./types.js").AgentConfig,
+    agentConfig: AgentConfig,
     opts: AddAgentOptions,
   ): Promise<AddAgentResult> {
     const { channelContext, spawnableAgentIds, sessionStore } = opts;
@@ -277,13 +273,11 @@ export class AgentRuntime {
     return true;
   }
 
-  /** Compute spawn-tree depth: parent.depth + 1, or 1 for top-level. */
   private computeDepth(parentSessionId: string | undefined): number {
     if (!parentSessionId) return 1;
     return (this.runs.get(parentSessionId)?.depth ?? 0) + 1;
   }
 
-  /** Count active sibling runs sharing the same parentSessionId. */
   private countActiveSiblings(parentSessionId: string | undefined): number {
     if (!parentSessionId) return 0;
     let n = 0;
@@ -367,7 +361,6 @@ export class AgentRuntime {
     }
   }
 
-  /** Cancel an in-flight run by sessionId. */
   cancel(sessionId: string, opts?: { reason?: string }): boolean {
     const handle = this.runs.get(sessionId);
     if (!handle) return false;
@@ -377,7 +370,6 @@ export class AgentRuntime {
     return true;
   }
 
-  /** True iff there's an active run for this sessionId. */
   isRunning(sessionId: string): boolean {
     return this.runs.has(sessionId);
   }
@@ -390,7 +382,6 @@ export class AgentRuntime {
     for (const sessionId of [...this.runs.keys()]) this.cancel(sessionId);
   }
 
-  /** Tear down sandbox containers. Idempotent. */
   async shutdown(): Promise<void> {
     if (this.sandboxExecutor) {
       try {
@@ -408,7 +399,6 @@ export class AgentRuntime {
     await handle.session.steer(message);
   }
 
-  /** Look up the active run for a sessionId. */
   getRunBySession(sessionId: string): RunInfo | undefined {
     const h = this.runs.get(sessionId);
     if (!h) return undefined;
