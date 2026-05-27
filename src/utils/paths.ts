@@ -50,7 +50,6 @@ export async function ensureWorkspaceDir(agentId: string): Promise<string> {
   return workspacePath;
 }
 
-/** `<package-root>/skills/` — two levels up from this file (utils/paths.ts). */
 export function resolveBuiltinSkillsDir(): string | undefined {
   const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const candidate = path.join(pkgRoot, "skills");
