@@ -140,8 +140,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
     };
   }
 
-  // --- public API ---
-
   async function dispatch(msg: Message): Promise<DispatchResult> {
     const sessionId = await resolveSessionId(msg);
 
@@ -220,7 +218,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
   }
 
   function agentExists(agentId: string): boolean {
-    return deps.agentRuntime.getAgent(agentId)?.config !== undefined;
+    return deps.agentRuntime.getAgent(agentId) !== undefined;
   }
 
   async function listSessions(): Promise<Session[]> {
