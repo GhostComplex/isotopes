@@ -126,7 +126,6 @@ interface StartAccountArgs {
   accountId: string;
   account: DiscordAccountConfig;
   gateway: Gateway;
-
   clientFactory: ClientFactory;
   clients: Map<string, ClientLike>;
   dedupes: Map<string, DedupeCache>;
