@@ -20,11 +20,11 @@ import { createGateway } from "./gateway/index.js";
 
 const log = createLogger("runtime");
 
-export interface RuntimeOptions {
+export interface AppOptions {
   config: IsotopesConfigFile;
 }
 
-export interface Runtime {
+export interface App {
   agentRuntime: AgentRuntime;
   agentWorkspaces: Map<string, string>;
   cronScheduler: CronScheduler;
@@ -32,7 +32,7 @@ export interface Runtime {
   shutdown: () => Promise<void>;
 }
 
-export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
+export async function start(opts: AppOptions): Promise<App> {
   const { config } = opts;
 
   await fs.mkdir(getIsotopesHome(), { recursive: true });
@@ -178,7 +178,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
     });
   });
 
-  log.info("Runtime started");
+  log.info("App started");
 
   const shutdown = async () => {
     log.info("Shutting down...");

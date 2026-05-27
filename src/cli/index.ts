@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { VERSION } from "../utils/version.js";
 import { loadConfig } from "../config.js";
 import { enableFileLogging } from "../logging/logger.js";
-import { createRuntime } from "../app.js";
+import { start } from "../app.js";
 import { getConfigPath, getLogsPath } from "../utils/paths.js";
 
 const args = process.argv.slice(2);
@@ -81,12 +81,12 @@ async function main() {
   const configPath = values.config ?? getConfigPath();
   const config = await loadConfig(configPath);
 
-  const runtime = await createRuntime({ config });
+  const app = await start({ config });
 
   console.log("Running... Press Ctrl+C to stop");
 
   const onSignal = async () => {
-    await runtime.shutdown();
+    await app.shutdown();
     process.exit(0);
   };
   process.on("SIGINT", onSignal);
