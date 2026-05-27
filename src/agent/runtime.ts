@@ -7,9 +7,9 @@ import type {
   RunRequest,
   RunInfo,
   ProviderConfig,
+  AgentConfig,
 } from "./types.js";
 import { RunValidationError } from "./types.js";
-import type { AgentConfig } from "./types.js";
 import type { PiSessionDeps } from "./pi/session-factory.js";
 import { PiRunner } from "./pi/runner.js";
 import { ClaudeRunner } from "./adapters/claude/runner.js";
