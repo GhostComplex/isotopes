@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 import { createLogger } from "../logging/logger.js";
 import { getAgentEndMeta } from "../agent/pi/messages.js";
-import { resolveAgentWorkspacePath } from "../utils/paths.js";
+import { getAgentWorkspacePath } from "../utils/paths.js";
 import { randomUUID } from "node:crypto";
 
 const log = createLogger("gateway");
@@ -53,7 +53,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     let firstSeen = false;
     let errorMessage: string | null = null;
     const cfg = deps.agentRuntime.getAgent(msg.agentId)?.config;
-    const cwd = cfg ? resolveAgentWorkspacePath(cfg) : undefined;
+    const cwd = cfg ? getAgentWorkspacePath(cfg) : undefined;
     for await (const event of deps.agentRuntime.run({
       to: msg.agentId,
       sessionId,

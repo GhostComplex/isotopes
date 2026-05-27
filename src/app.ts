@@ -7,7 +7,7 @@ import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { getApiPort } from "./utils/api-client.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyChannelContext } from "./channels/types.js";
-import { getIsotopesHome, getLogsDir } from "./utils/paths.js";
+import { getIsotopesHome, getLogsPath } from "./utils/paths.js";
 
 import { serve, type ServerType } from "@hono/node-server";
 import { createApi } from "./http/server.js";
@@ -36,7 +36,7 @@ export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const { config } = opts;
 
   await fs.mkdir(getIsotopesHome(), { recursive: true });
-  await fs.mkdir(getLogsDir(), { recursive: true });
+  await fs.mkdir(getLogsPath(), { recursive: true });
 
   const sessionStoreManager = new SessionStoreManager();
 

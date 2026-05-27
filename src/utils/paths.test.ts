@@ -4,9 +4,9 @@ import os from "node:os";
 import { existsSync } from "node:fs";
 import {
   getIsotopesHome,
-  getLogsDir,
+  getLogsPath,
   getConfigPath,
-  resolveBuiltinSkillsDir,
+  getBuiltinSkillsPath,
 } from "./paths.js";
 
 describe("paths", () => {
@@ -30,10 +30,10 @@ describe("paths", () => {
     });
   });
 
-  describe("getLogsDir", () => {
+  describe("getLogsPath", () => {
     it("returns ~/.isotopes/logs", () => {
       const expected = path.join(os.homedir(), ".isotopes", "logs");
-      expect(getLogsDir()).toBe(expected);
+      expect(getLogsPath()).toBe(expected);
     });
   });
 
@@ -50,14 +50,14 @@ describe("paths", () => {
   });
 });
 
-describe("resolveBuiltinSkillsDir", () => {
+describe("getBuiltinSkillsPath", () => {
   it("returns a path ending in 'skills' when the package root has a skills dir", () => {
-    const result = resolveBuiltinSkillsDir();
+    const result = getBuiltinSkillsPath();
     if (result !== undefined) expect(path.basename(result)).toBe("skills");
   });
 
   it("returns the skills dir relative to the package root", () => {
-    const result = resolveBuiltinSkillsDir();
+    const result = getBuiltinSkillsPath();
     expect(result).toBeDefined();
     expect(existsSync(result!)).toBe(true);
     expect(existsSync(path.join(path.dirname(result!), "package.json"))).toBe(true);

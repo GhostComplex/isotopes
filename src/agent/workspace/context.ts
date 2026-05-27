@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { loadSkills, formatSkillsForPrompt } from "@mariozechner/pi-coding-agent";
-import { getIsotopesHome, resolveAgentWorkspacePath, resolveBuiltinSkillsDir } from "../../utils/paths.js";
+import { getIsotopesHome, getAgentWorkspacePath, getBuiltinSkillsPath } from "../../utils/paths.js";
 import type { AgentConfig } from "../types.js";
 import { createLogger } from "../../logging/logger.js";
 
@@ -102,8 +102,8 @@ export function buildSystemPrompt(workspace: WorkspaceContext | null): string {
 
 /** End-to-end: resolve agent's workspace path, load context, build prompt. */
 export async function buildAgentSystemPrompt(config: AgentConfig): Promise<string> {
-  const ctx = await loadWorkspaceContext(resolveAgentWorkspacePath(config), {
-    builtinSkillsPath: resolveBuiltinSkillsDir(),
+  const ctx = await loadWorkspaceContext(getAgentWorkspacePath(config), {
+    builtinSkillsPath: getBuiltinSkillsPath(),
   });
   return buildSystemPrompt(ctx);
 }

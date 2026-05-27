@@ -27,7 +27,7 @@ import {
 } from "../config.js";
 import fs from "node:fs/promises";
 import {
-  resolveAgentWorkspacePath,
+  getAgentWorkspacePath,
 } from "../utils/paths.js";
 import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
@@ -222,7 +222,7 @@ export class AgentRuntime {
   ): Promise<AddAgentResult> {
     const { channelContext, spawnableAgentIds, sessionStore } = opts;
 
-    const workspacePath = resolveAgentWorkspacePath(agentConfig);
+    const workspacePath = getAgentWorkspacePath(agentConfig);
     await fs.mkdir(workspacePath, { recursive: true });
     if (agentConfig.workspace) {
       log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
