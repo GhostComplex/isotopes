@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import {
   getIsotopesHome,
   getLogsDir,
@@ -131,45 +132,15 @@ describe("paths", () => {
 });
 
 describe("resolveBuiltinSkillsDir", () => {
-  beforeEach(() => { vi.unstubAllEnvs(); });
-  afterEach(() => { vi.unstubAllEnvs(); });
-
-  it("returns the ISOTOPES_BUILTIN_SKILLS_DIR override when set", () => {
-    vi.stubEnv("ISOTOPES_BUILTIN_SKILLS_DIR", "/some/override/path");
-    expect(resolveBuiltinSkillsDir()).toBe("/some/override/path");
-  });
-
-  it("trims whitespace around the override", () => {
-    vi.stubEnv("ISOTOPES_BUILTIN_SKILLS_DIR", "  /padded/path  ");
-    expect(resolveBuiltinSkillsDir()).toBe("/padded/path");
-  });
-
-  it("ignores an empty/whitespace-only override and falls back to walk-up", () => {
-    vi.stubEnv("ISOTOPES_BUILTIN_SKILLS_DIR", "   ");
-    const result = resolveBuiltinSkillsDir();
-    expect(typeof result === "string" || result === undefined).toBe(true);
-  });
-
-  it("walk-up returns a path ending in 'skills' when the package's bundled dir is found", () => {
+  it("returns a path ending in 'skills' when the package root has a skills dir", () => {
     const result = resolveBuiltinSkillsDir();
     if (result !== undefined) expect(path.basename(result)).toBe("skills");
   });
 
-  it("returns the override even if the directory does not actually exist", () => {
-    vi.stubEnv("ISOTOPES_BUILTIN_SKILLS_DIR", "/nonexistent/dir/skills");
-    expect(resolveBuiltinSkillsDir()).toBe("/nonexistent/dir/skills");
-  });
-
-  it("override accepts a real directory created at runtime", async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-builtin-"));
-    const skillDir = path.join(tmp, "skills", "demo");
-    await fs.mkdir(skillDir, { recursive: true });
-    await fs.writeFile(path.join(skillDir, "SKILL.md"), "# demo\n");
-    vi.stubEnv("ISOTOPES_BUILTIN_SKILLS_DIR", path.join(tmp, "skills"));
-    try {
-      expect(resolveBuiltinSkillsDir()).toBe(path.join(tmp, "skills"));
-    } finally {
-      await fs.rm(tmp, { recursive: true, force: true });
-    }
+  it("returns the skills dir relative to the package root", () => {
+    const result = resolveBuiltinSkillsDir();
+    expect(result).toBeDefined();
+    expect(existsSync(result!)).toBe(true);
+    expect(existsSync(path.join(path.dirname(result!), "package.json"))).toBe(true);
   });
 });

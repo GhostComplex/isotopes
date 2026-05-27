@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { readdirSync, existsSync as syncExistsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export function getIsotopesHome(): string {
@@ -50,37 +50,19 @@ export async function ensureWorkspaceDir(agentId: string): Promise<string> {
   return workspacePath;
 }
 
-function looksLikeSkillsDir(dir: string): boolean {
-  try {
-    const entries = readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      if (entry.isDirectory() && syncExistsSync(path.join(dir, entry.name, "SKILL.md"))) {
-        return true;
-      }
-    }
-  } catch { /* unreadable */ }
-  return false;
-}
-
-/** Override with ISOTOPES_BUILTIN_SKILLS_DIR (or legacy ISOTOPES_BUNDLED_SKILLS_DIR). */
+/** Find the package root (dir containing package.json) and return `<root>/skills/`. */
 export function resolveBuiltinSkillsDir(): string | undefined {
-  const override = (process.env.ISOTOPES_BUILTIN_SKILLS_DIR ?? process.env.ISOTOPES_BUNDLED_SKILLS_DIR)?.trim();
-  if (override) return override;
-
   try {
-    const thisFile = fileURLToPath(import.meta.url);
-    let current = path.dirname(thisFile);
-    for (let depth = 0; depth < 6; depth++) {
-      const candidate = path.join(current, "skills");
-      if (syncExistsSync(candidate) && looksLikeSkillsDir(candidate)) {
-        return candidate;
+    let current = path.dirname(fileURLToPath(import.meta.url));
+    for (let depth = 0; depth < 4; depth++) {
+      if (existsSync(path.join(current, "package.json"))) {
+        const candidate = path.join(current, "skills");
+        return existsSync(candidate) ? candidate : undefined;
       }
       const parent = path.dirname(current);
       if (parent === current) break;
       current = parent;
     }
   } catch { /* silent */ }
-
   return undefined;
 }
