@@ -1,9 +1,7 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { createLogger } from "../logging/logger.js";
 import type { ApiDeps } from "./server.js";
 
-const log = createLogger("api:sessions");
 
 export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
   app.get("/api/sessions", async (c) => {
@@ -68,7 +66,6 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
     }
 
     const result = await deps.gateway.createOrResumeSession(agentId, body?.sessionKey);
-    log.info(`Session ${result.resumed ? "resumed" : "created"}: ${result.sessionKey} (agent: ${agentId})`);
     return c.json({ key: result.sessionKey, agentId, resumed: result.resumed }, result.resumed ? 200 : 201);
   });
 

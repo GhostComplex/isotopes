@@ -1,9 +1,7 @@
 import { spawn } from "node:child_process";
-import { createLogger } from "../../logging/logger.js";
 import { ContainerManager, type ContainerInfo } from "./container.js";
 import { type DockerConfig, type Mount, type SandboxConfig, type WorkspaceAccess } from "./sandbox-config.js";
 
-const log = createLogger("middleware:executor");
 
 /** Cap collected stdout/stderr per `execute()` call to prevent OOM from runaway commands. */
 export const EXEC_MAX_OUTPUT_BYTES = 100 * 1024;
@@ -193,8 +191,7 @@ export class SandboxExecutor {
           const updated: ContainerInfo = { ...existing, status: "running" };
           this.containers.set(agentId, updated);
           return updated;
-        } catch (err) {
-          log.debug(`Failed to restart container ${existing.id}, recreating`, err);
+        } catch {
           await this.safeRemove(existing.id);
         }
       }
@@ -207,7 +204,6 @@ export class SandboxExecutor {
     // Reap an orphan from a previous process — otherwise `docker create` fails on the name conflict.
     const orphan = await this.containerManager.status(containerName);
     if (orphan) {
-      log.info(`Removing orphan container ${containerName} (${orphan.status}) from previous run`);
       await this.safeRemove(orphan.id);
     }
 
@@ -273,8 +269,8 @@ export class SandboxExecutor {
 
   private async safeRemove(containerId: string): Promise<void> {
     try { await this.containerManager.stop(containerId, 5); }
-    catch (err) { log.debug(`Stop failed for ${containerId}`, err); }
+    catch { /* ignore */ }
     try { await this.containerManager.remove(containerId, true); }
-    catch (err) { log.debug(`Remove failed for ${containerId}`, err); }
+    catch { /* ignore */ }
   }
 }

@@ -1,9 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createLogger } from "../../logging/logger.js";
 import { isBrandNewWorkspace } from "./templates.js";
 
-const log = createLogger("workspace:state");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,7 +63,6 @@ export async function writeWorkspaceState(
 
   const statePath = getStatePath(workspacePath);
   await fs.writeFile(statePath, JSON.stringify(state, null, 2), "utf-8");
-  log.debug(`Wrote workspace state: ${statePath}`);
 }
 
 /**
@@ -98,7 +95,6 @@ export async function reconcileWorkspaceState(workspacePath: string): Promise<Wo
   if (bootstrapExists && !state.bootstrapSeededAt) {
     state.bootstrapSeededAt = new Date().toISOString();
     await writeWorkspaceState(workspacePath, state);
-    log.info(`Recorded bootstrap seeded at ${state.bootstrapSeededAt}`);
     return state;
   }
 
@@ -106,7 +102,6 @@ export async function reconcileWorkspaceState(workspacePath: string): Promise<Wo
   if (state.bootstrapSeededAt && !bootstrapExists) {
     state.setupCompletedAt = new Date().toISOString();
     await writeWorkspaceState(workspacePath, state);
-    log.info(`Hatch complete for workspace at ${workspacePath}`);
     return state;
   }
 
@@ -116,7 +111,6 @@ export async function reconcileWorkspaceState(workspacePath: string): Promise<Wo
     if (!brandNew) {
       state.setupCompletedAt = new Date().toISOString();
       await writeWorkspaceState(workspacePath, state);
-      log.info(`Marked legacy workspace as setup-complete: ${workspacePath}`);
     }
   }
 

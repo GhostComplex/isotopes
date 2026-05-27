@@ -1,9 +1,6 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type, type Static } from "typebox";
-import { createLogger } from "../../logging/logger.js";
 import type { Executor } from "../middleware/executor.js";
-
-const log = createLogger("tools:exec");
 
 const DEFAULT_TIMEOUT_SEC = 1800;
 
@@ -48,7 +45,6 @@ export function createExecTool(options: ExecToolOptions): AgentTool<typeof execS
 
       try {
         const result = await executor.execute(argv, { workspacePath: cwd, timeout: timeoutMs });
-        log.info("Command executed", { command, cwd, exitCode: result.exitCode });
         return jsonResult({
           stdout: result.stdout.toString("utf8"),
           stderr: result.stderr.toString("utf8"),
@@ -57,13 +53,11 @@ export function createExecTool(options: ExecToolOptions): AgentTool<typeof execS
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("timed out")) {
-          log.warn("Command timed out", { command, timeoutMs });
           return jsonResult({
             stdout: "", stderr: "", exit_code: 124,
             error: `Command timed out after ${timeoutMs / 1000}s`,
           });
         }
-        log.warn("Exec failed", { command, error: msg });
         return jsonResult({
           stdout: "", stderr: `[exec error] ${msg}`, exit_code: 1,
           error: `Exec failed: ${msg}`,

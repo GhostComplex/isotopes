@@ -1,9 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getIsotopesHome } from "../../utils/paths.js";
-import { createLogger } from "../../logging/logger.js";
 
-const log = createLogger("extensions");
 
 export function discoverExtensionPaths(): string[] {
   const dir = path.join(getIsotopesHome(), "extensions", "pi");
@@ -14,9 +12,6 @@ export function discoverExtensionPaths(): string[] {
     if (!e.isFile()) continue;
     if (!/\.(ts|js|mts|mjs)$/.test(e.name)) continue;
     paths.push(path.join(dir, e.name));
-  }
-  if (paths.length > 0) {
-    log.info(`Discovered ${paths.length} extension(s) in ${dir}`);
   }
   return paths;
 }

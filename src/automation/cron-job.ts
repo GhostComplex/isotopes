@@ -1,11 +1,9 @@
 import { Cron } from "croner";
 import { randomUUID } from "node:crypto";
-import { createLogger } from "../logging/logger.js";
 import type { CronAction } from "./types.js";
 
 export type { CronAction };
 
-const log = createLogger("cron");
 
 /** A registered cron job with its parsed schedule and execution state. */
 export interface CronJob {
@@ -57,13 +55,12 @@ export class CronScheduler {
       //   (matches the old `timer.unref()` we used to call directly).
       { paused: startPaused, protect: true, unref: true },
       async () => {
-        log.info(`Triggering cron job "${job.name}" (${job.id})`);
         job.lastRun = new Date();
         job.nextRun = job.schedule.nextRun() ?? undefined;
         try {
           await this.dispatchJob(job);
-        } catch (err) {
-          log.error(`Cron dispatch failed for "${job.name}":`, err);
+        } catch {
+          // TODO: add logging
         }
       },
     );
@@ -73,7 +70,6 @@ export class CronScheduler {
     }
 
     this.jobs.set(job.id, job);
-    log.info(`Registered cron job "${job.name}" (${job.id}): ${job.expression}`);
 
     return job;
   }
@@ -86,7 +82,6 @@ export class CronScheduler {
     // finishes naturally but croner won't fire this job again.
     job.schedule.stop();
     this.jobs.delete(jobId);
-    log.info(`Unregistered cron job ${jobId}`);
     return true;
   }
 
@@ -106,7 +101,6 @@ export class CronScheduler {
       }
     }
 
-    log.info(`Cron scheduler started with ${this.jobs.size} job(s)`);
   }
 
   /** Pauses all jobs but preserves their registrations. Idempotent. */
@@ -119,6 +113,5 @@ export class CronScheduler {
       job.nextRun = undefined;
     }
 
-    log.info("Cron scheduler stopped");
   }
 }

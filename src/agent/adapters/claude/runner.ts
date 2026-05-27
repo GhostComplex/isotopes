@@ -1,13 +1,11 @@
 import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "node:crypto";
-import { createLogger } from "../../../logging/logger.js";
 import type { RunRequest } from "../../types.js";
 import { RunValidationError } from "../../types.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-ai";
 
-const log = createLogger("agents:runner:claude");
 
 export class ClaudeRunner {
   resolveSessionId(req: RunRequest): string {
@@ -38,7 +36,6 @@ export class ClaudeRunner {
       settingSources: ["user"],
     };
 
-    log.info("ClaudeRunner.run", { sessionId: opts.sessionId, cwd: request.cwd });
 
     const toolNameById = new Map<string, string>();
     let assistantText = "";

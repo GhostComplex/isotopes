@@ -1,9 +1,6 @@
 import { spawn } from "node:child_process";
-import { createLogger } from "../../logging/logger.js";
 import { EXEC_MAX_OUTPUT_BYTES, type ExecResult } from "./executor.js";
 import type { DockerConfig, Mount, WorkspaceAccess } from "./sandbox-config.js";
-
-const log = createLogger("middleware:container");
 
 export type ContainerStatus = "created" | "running" | "paused" | "exited";
 
@@ -79,8 +76,7 @@ export class ContainerManager {
       const line = stdout.toString("utf8").trim();
       if (!line) return null;
       return parseInspectLine(line);
-    } catch (err) {
-      log.debug(`status(${containerId}) failed`, err);
+    } catch {
       return null;
     }
   }

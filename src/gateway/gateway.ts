@@ -11,12 +11,10 @@ import type {
   SessionEvent,
   SessionEventListener,
 } from "./types.js";
-import { createLogger } from "../logging/logger.js";
 import { getAgentEndMeta } from "../agent/pi/messages.js";
 import { getAgentWorkspacePath } from "../utils/paths.js";
 import { randomUUID } from "node:crypto";
 
-const log = createLogger("gateway");
 
 export interface GatewayDeps {
   agentRuntime: AgentRuntime;
@@ -39,8 +37,8 @@ export function createGateway(deps: GatewayDeps): Gateway {
     const set = listeners.get(sessionId);
     if (!set) return;
     for (const fn of set) {
-      try { fn(event); } catch (err) {
-        log.warn(`subscriber threw: ${err instanceof Error ? err.message : String(err)}`);
+      try { fn(event); } catch {
+        // TODO: add logging
       }
     }
   }
@@ -115,7 +113,6 @@ export function createGateway(deps: GatewayDeps): Gateway {
       errorMessage = await ingestRunnerEvents(sessionId, msg, markReady);
     } catch (err) {
       errorMessage = err instanceof Error ? err.message : String(err);
-      log.error(`triggerRun error for ${sessionId}: ${errorMessage}`);
     } finally {
       active.delete(sessionId);
       if (!readyResolved) handle.resolveReady();
@@ -153,9 +150,8 @@ export function createGateway(deps: GatewayDeps): Gateway {
         try {
           await deps.agentRuntime.steer(sessionId, msg.content);
           return { sessionId, state: "steered" };
-        } catch (err) {
+        } catch {
           if (!active.has(sessionId)) continue;
-          log.warn(`steer failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
           return { sessionId, state: "steered" };
         }
       }

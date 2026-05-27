@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createLogger, type Logger } from "../logging/logger.js";
 
 export interface HeartbeatConfig {
   enabled: boolean;
@@ -16,7 +15,6 @@ export interface HeartbeatManagerOptions {
   workspacePath: string;
   config: HeartbeatConfig;
   runAgentLoop: RunAgentLoop;
-  logger?: Logger;
 }
 
 const DEFAULT_INTERVAL_SECONDS = 300;
@@ -31,7 +29,6 @@ export class HeartbeatManager {
   private readonly workspacePath: string;
   private readonly intervalMs: number;
   private readonly runAgentLoop: RunAgentLoop;
-  private readonly log: Logger;
 
   private timer: ReturnType<typeof setInterval> | undefined;
   private isRunning = false;
@@ -41,7 +38,6 @@ export class HeartbeatManager {
     this.workspacePath = options.workspacePath;
     this.intervalMs = (options.config.intervalSeconds ?? DEFAULT_INTERVAL_SECONDS) * 1000;
     this.runAgentLoop = options.runAgentLoop;
-    this.log = options.logger ?? createLogger(`heartbeat:${options.agentId}`);
   }
 
   start(): void {
@@ -54,9 +50,6 @@ export class HeartbeatManager {
     // Don't keep the process alive solely for heartbeats.
     if (this.timer.unref) this.timer.unref();
 
-    this.log.info(
-      `Heartbeat started for "${this.agentId}" (every ${this.intervalMs / 1000}s)`,
-    );
   }
 
   stop(): void {
@@ -65,7 +58,6 @@ export class HeartbeatManager {
     clearInterval(this.timer);
     this.timer = undefined;
 
-    this.log.info(`Heartbeat stopped for "${this.agentId}"`);
   }
 
   /** Manually trigger a single heartbeat. Useful for testing. */
@@ -75,7 +67,6 @@ export class HeartbeatManager {
 
   private async tick(): Promise<void> {
     if (this.isRunning) {
-      this.log.debug(`Heartbeat skipped for "${this.agentId}" (previous still running)`);
       return;
     }
 
@@ -85,10 +76,9 @@ export class HeartbeatManager {
       content = await fs.readFile(heartbeatPath, "utf-8");
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        this.log.debug(`No HEARTBEAT.md found for "${this.agentId}" — skipping`);
         return;
       }
-      this.log.error(`Failed to read HEARTBEAT.md for "${this.agentId}":`, err);
+      // non-ENOENT error — skip this tick
       return;
     }
 
@@ -96,7 +86,6 @@ export class HeartbeatManager {
     const prompt = buildHeartbeatPrompt(content);
 
     this.isRunning = true;
-    this.log.info(`Heartbeat triggered for "${this.agentId}"`);
 
     try {
       // Cap at 2× interval so a hung run doesn't pin isRunning forever.
@@ -104,7 +93,7 @@ export class HeartbeatManager {
       const timeoutMs = this.intervalMs * 2;
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
       try {
-        const response = await Promise.race([
+        await Promise.race([
           this.runAgentLoop(this.agentId, prompt, sessionKey),
           new Promise<never>((_, reject) => {
             timeoutHandle = setTimeout(
@@ -113,16 +102,11 @@ export class HeartbeatManager {
             );
           }),
         ]);
-        this.log.info(`Heartbeat response from "${this.agentId}": ${response}`);
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
       }
-    } catch (err) {
-      if (err instanceof HeartbeatTimeoutError) {
-        this.log.warn(`Heartbeat timed out for "${this.agentId}" after ${err.timeoutMs}ms — underlying run may still be in flight`);
-      } else {
-        this.log.error(`Heartbeat error for "${this.agentId}":`, err);
-      }
+    } catch {
+      // heartbeat error (timeout or runtime failure) — skip silently
     } finally {
       this.isRunning = false;
     }

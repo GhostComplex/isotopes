@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "@hono/node-server/serve-static";
 import path from "node:path";
-import { createLogger } from "../logging/logger.js";
 import type { CronScheduler } from "../automation/cron-job.js";
 import type { Gateway } from "../gateway/index.js";
 import { registerCronRoutes } from "./cron.js";
@@ -10,7 +9,6 @@ import { registerStatusRoutes } from "./status.js";
 import { registerSessionRoutes } from "./sessions.js";
 import { matchUIEntry, discoverUIEntries, type UIEntry } from "../extensions/ui/loader.js";
 
-const log = createLogger("api:server");
 
 export interface ApiDeps {
   cronScheduler: CronScheduler;
@@ -30,12 +28,6 @@ export function createApi(deps: ApiDeps): Hono {
     }),
   );
 
-  app.use("*", async (c, next) => {
-    const start = Date.now();
-    await next();
-    log.info(`${c.req.method} ${c.req.path} ${c.res.status} ${Date.now() - start}ms`);
-  });
-
   mountUI(app, discoverUIEntries());
 
   registerCronRoutes(app, deps);
@@ -47,7 +39,6 @@ export function createApi(deps: ApiDeps): Hono {
   );
 
   app.onError((err, c) => {
-    log.error("Route error:", err);
     return c.json(
       { error: err instanceof Error ? err.message : "Internal server error", status: 500 },
       500,

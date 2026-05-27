@@ -58,23 +58,15 @@ describe("Logger", () => {
       expect(console.error).toHaveBeenCalled();
     });
 
-    it("enables debug when DEBUG=true", () => {
+    it("enables debug when LOG_LEVEL=debug", () => {
       const log = createLogger("test");
 
       log.debug("hidden");
       expect(console.debug).not.toHaveBeenCalled();
 
-      vi.stubEnv("DEBUG", "true");
+      vi.stubEnv("LOG_LEVEL", "debug");
       log.debug("visible");
       expect(console.debug).toHaveBeenCalledWith(expect.stringContaining("visible"));
-    });
-  });
-
-  describe("child loggers", () => {
-    it("creates child logger with combined tag", () => {
-      const child = createLogger("parent").child("child");
-      child.info("Hello");
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[parent:child]"));
     });
   });
 });

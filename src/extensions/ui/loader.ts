@@ -1,9 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getIsotopesHome } from "../../utils/paths.js";
-import { createLogger } from "../../logging/logger.js";
 
-const log = createLogger("ui");
 
 export interface UIEntry {
   id: string;
@@ -26,9 +24,6 @@ export function discoverUIEntries(): UIEntry[] {
       mountPath: `/ui/${e.name}`,
       spaFallback: true,
     });
-  }
-  if (entries.length > 0) {
-    log.info(`Discovered ${entries.length} UI dir(s) in ${root}`);
   }
   return entries;
 }

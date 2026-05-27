@@ -2,9 +2,7 @@ import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createLogger } from "../../logging/logger.js";
 
-const log = createLogger("workspace:templates");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -125,18 +123,14 @@ export async function seedWorkspaceTemplates(
     try {
       await fs.writeFile(filePath, template.content, { flag: "wx" });
       created.push(template.filename);
-      log.debug(`Seeded template: ${template.filename}`);
     } catch (err) {
       // EEXIST is expected — file already exists, skip silently
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
-        log.error(`Failed to seed template ${template.filename}:`, err);
+        // TODO: add logging
       }
     }
   }
 
-  if (created.length > 0) {
-    log.info(`Seeded ${created.length} template(s) in ${workspacePath}: ${created.join(", ")}`);
-  }
 
   return created;
 }

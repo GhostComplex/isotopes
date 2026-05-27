@@ -8,7 +8,9 @@ const LOG_LEVELS: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error
 let fileStream: nodeFs.WriteStream | null = null;
 
 function getLogLevel(): LogLevel {
-  return process.env.DEBUG === "true" ? "debug" : "info";
+  const level = process.env.LOG_LEVEL?.toLowerCase();
+  if (level && level in LOG_LEVELS) return level as LogLevel;
+  return "info";
 }
 
 export function enableFileLogging(logDir: string): void {
@@ -21,7 +23,7 @@ export interface Logger {
   info(message: string, ...args: unknown[]): void;
   warn(message: string, ...args: unknown[]): void;
   error(message: string, ...args: unknown[]): void;
-  child(subtag: string): Logger;
+
 }
 
 export function createLogger(tag: string): Logger {
@@ -41,6 +43,5 @@ export function createLogger(tag: string): Logger {
     info: (msg, ...args) => log("info", msg, args),
     warn: (msg, ...args) => log("warn", msg, args),
     error: (msg, ...args) => log("error", msg, args),
-    child: (subtag) => createLogger(`${tag}:${subtag}`),
   };
 }

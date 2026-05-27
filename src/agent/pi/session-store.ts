@@ -12,9 +12,7 @@ import type {
   TranscriptUpdate,
 } from "../types.js";
 import { getIsotopesHome } from "../../utils/paths.js";
-import { createLogger } from "../../logging/logger.js";
 
-const log = createLogger("session-store");
 
 interface PersistedSessionRecord {
   id: string;
@@ -125,8 +123,8 @@ export class DefaultSessionStore implements SessionStore {
     await this.persistIndex();
     try {
       await fs.rm(this.transcriptFile(sessionId), { force: true });
-    } catch (err) {
-      log.debug(`Could not remove transcript file for session ${sessionId}`, err);
+    } catch {
+      // TODO: add logging
     }
   }
 
@@ -191,7 +189,6 @@ export class DefaultSessionStore implements SessionStore {
     try {
       raw = await fs.readFile(this.indexFile(), "utf-8");
     } catch {
-      log.debug("No session index found (first run or empty store)");
       return;
     }
     const index = JSON.parse(raw) as PersistedSessionIndex;
@@ -230,7 +227,7 @@ export class DefaultSessionStore implements SessionStore {
     if (!set) return;
     for (const fn of set) {
       try { fn(update); }
-      catch (err) { log.warn("Transcript listener threw", err); }
+      catch { /* ignore */ }
     }
   }
 
@@ -262,7 +259,6 @@ function toSession(s: StoredSession): Session {
 // SessionStoreManager — one DefaultSessionStore per agentId.
 // ---------------------------------------------------------------------------
 
-const mgrLog = createLogger("session-store-manager");
 
 export class SessionStoreManager {
   private stores = new Map<string, DefaultSessionStore>();
@@ -283,7 +279,6 @@ export class SessionStoreManager {
       await store.init();
       this.stores.set(agentId, store);
       this.inits.delete(agentId);
-      mgrLog.debug(`Initialized session store for agent ${agentId} at ${dataDir}`);
       return store;
     })();
 

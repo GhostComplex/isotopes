@@ -6,9 +6,7 @@ import { RunValidationError } from "../types.js";
 import type { RunRequest } from "../types.js";
 import { type A2ASink, getA2ASinkFactory } from "../a2a-sink.js";
 import { getAgentEndMeta } from "../pi/messages.js";
-import { createLogger } from "../../logging/logger.js";
 
-const log = createLogger("tools:spawn");
 
 export type A2ASurfaceInfo =
   | { status: "ok"; surfaceId: string }
@@ -102,7 +100,6 @@ export function createSpawnAgentTool(options: SpawnAgentToolOptions): AgentTool 
         parentSessionId,
         onCancel: (reason) => { cancelReason = reason; },
       };
-      log.info("spawn_agent", { from: parentAgentId, to, cwd, parent: parentSessionId });
 
       const sinkFactory = getA2ASinkFactory();
       let sink: A2ASink | undefined;
