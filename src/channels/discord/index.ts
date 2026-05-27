@@ -7,8 +7,7 @@ import {
 } from "discord.js";
 import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
-import type { Logger } from "../../logging/logger.js";
-import { createLogger } from "../../logging/logger.js";
+
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
@@ -22,9 +21,6 @@ import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
 } from "./types.js";
-
-const log = createLogger("discord");
-
 
 /** Minimum surface the adapter touches — testable without discord.js. */
 export interface ClientLike {
@@ -73,10 +69,9 @@ export function createDiscordChannel(
 
   return {
     async start(deps: ChannelDeps) {
-      const { gateway, logger } = deps;
+      const { gateway } = deps;
       const accountIds = Object.keys(accounts);
       if (accountIds.length === 0) {
-        logger.warn("channels.discord present but no accounts configured — adapter is a no-op");
         return;
       }
 
@@ -86,7 +81,6 @@ export function createDiscordChannel(
             accountId,
             account,
             gateway,
-            logger,
             clientFactory,
             clients,
             dedupes,
@@ -113,13 +107,9 @@ export function createDiscordChannel(
     async stop() {
       await Promise.all(
         Array.from(clients.values()).map(async (client) => {
-          try {
-            client.removeAllListeners?.();
-            const result = client.destroy();
-            if (result && typeof (result as Promise<void>).then === "function") await result;
-          } catch (err) {
-            log.warn(`discord: destroy failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
+          client.removeAllListeners?.();
+          const result = client.destroy();
+          if (result && typeof (result as Promise<void>).then === "function") await result;
         }),
       );
       clients.clear();
@@ -136,7 +126,6 @@ interface StartAccountArgs {
   accountId: string;
   account: DiscordAccountConfig;
   gateway: Gateway;
-  logger: Logger;
   clientFactory: ClientFactory;
   clients: Map<string, ClientLike>;
   dedupes: Map<string, DedupeCache>;
@@ -145,11 +134,10 @@ interface StartAccountArgs {
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, histories, a2aThreads } = args;
+  const { accountId, account, gateway, clientFactory, clients, dedupes, histories, a2aThreads } = args;
 
   const token = resolveToken(account);
   if (!token) {
-    logger.warn(`discord: account "${accountId}" has no token/tokenEnv — skipping`);
     return;
   }
 
@@ -161,13 +149,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
   const history = new ChannelHistoryBuffer();
   histories.set(accountId, history);
 
-  client.on("clientReady", () => {
-    logger.info(`discord: account "${accountId}" logged in as ${client.user?.tag ?? client.user?.id ?? "?"}`);
-  });
-
-  client.on("error", (err: unknown) => {
-    logger.error(`discord: client error (${accountId}): ${err instanceof Error ? err.message : String(err)}`);
-  });
+  client.on("error", () => {});
 
   client.on("messageCreate", (...rawArgs: unknown[]) => {
     const msg = rawArgs[0] as DiscordMessage;
@@ -179,8 +161,6 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       dedupe,
       history,
       a2aThreads,
-    }).catch((err) => {
-      logger.error(`discord: receive failed: ${err instanceof Error ? err.message : String(err)}`);
     });
   });
 
@@ -217,11 +197,8 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
           history,
           a2aThreads,
         });
-      } catch (err) {
-        logger.warn(
-          `discord: raw DM fetch failed for channel=${channelId} message=${messageId}: ` +
-            `${err instanceof Error ? err.message : String(err)}`,
-        );
+      } catch {
+        // will be replaced with logging
       }
     })();
   });
@@ -249,7 +226,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   // Dedupe: WS RESUME may replay messages. Drop duplicates before any side
   // effects (history append, /stop intercept, dispatch).
   if (dedupe.isDuplicate(msg.id)) {
-    log.debug(`discord receive: dedupe drop ${msg.id}`);
     return;
   }
 
