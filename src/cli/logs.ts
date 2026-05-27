@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import nodeFs from "node:fs";
-import { getLogsDir } from "../paths.js";
+import { getLogsPath } from "../utils/paths.js";
 
 interface LogsOptions {
   lines: number;
@@ -10,7 +10,7 @@ interface LogsOptions {
 }
 
 export async function handleLogsCommand(opts: LogsOptions): Promise<void> {
-  const logFile = path.join(getLogsDir(), "isotopes.log");
+  const logFile = path.join(getLogsPath(), "isotopes.log");
 
   try {
     await fs.access(logFile);

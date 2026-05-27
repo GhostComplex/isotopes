@@ -25,11 +25,10 @@ import {
   type AgentToolsConfigFile,
   type ProviderConfigFile,
 } from "../config.js";
+import fs from "node:fs/promises";
 import {
-  ensureExplicitWorkspaceDir,
-  ensureWorkspaceDir,
-  resolveExplicitWorkspacePath,
-} from "../paths.js";
+  getAgentWorkspacePath,
+} from "../utils/paths.js";
 import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { reconcileWorkspaceState } from "./workspace/state.js";
@@ -221,16 +220,10 @@ export class AgentRuntime {
     agentConfig: import("./types.js").AgentConfig,
     opts: AddAgentOptions,
   ): Promise<AddAgentResult> {
-    const { agentFile, channelContext, spawnableAgentIds, sessionStore } = opts;
+    const { channelContext, spawnableAgentIds, sessionStore } = opts;
 
-    let workspacePath: string;
-    if (agentFile.workspace) {
-      const resolved = resolveExplicitWorkspacePath(agentFile.workspace);
-      workspacePath = await ensureExplicitWorkspaceDir(resolved);
-      log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
-    } else {
-      workspacePath = await ensureWorkspaceDir(agentConfig.id);
-    }
+    const workspacePath = getAgentWorkspacePath(agentConfig);
+    await fs.mkdir(workspacePath, { recursive: true });
 
     const seededFiles = await seedWorkspaceTemplates(workspacePath, agentConfig.id);
     if (seededFiles.length > 0) {

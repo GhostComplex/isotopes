@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getLogsDir } from "../paths.js";
+import { getLogsPath } from "../utils/paths.js";
 import * as launchd from "../daemon/launchd.js";
 import type { LaunchAgentConfig } from "../daemon/launchd.js";
 
@@ -11,7 +11,7 @@ function makeServiceConfig(): LaunchAgentConfig {
     name: SERVICE_NAME,
     execPath: process.argv[0],
     cliPath: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "index.js"),
-    logPath: path.join(getLogsDir(), "isotopes.log"),
+    logPath: path.join(getLogsPath(), "isotopes.log"),
   };
 }
 

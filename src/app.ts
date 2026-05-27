@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import {
   resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
@@ -6,7 +7,7 @@ import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { getApiPort } from "./utils/api-client.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyChannelContext } from "./channels/types.js";
-import { ensureDirectories } from "./paths.js";
+import { getIsotopesHome, getLogsPath } from "./utils/paths.js";
 
 import { serve, type ServerType } from "@hono/node-server";
 import { createApi } from "./http/server.js";
@@ -34,7 +35,8 @@ export interface Runtime {
 export async function createRuntime(opts: RuntimeOptions): Promise<Runtime> {
   const { config } = opts;
 
-  await ensureDirectories();
+  await fs.mkdir(getIsotopesHome(), { recursive: true });
+  await fs.mkdir(getLogsPath(), { recursive: true });
 
   const sessionStoreManager = new SessionStoreManager();
 

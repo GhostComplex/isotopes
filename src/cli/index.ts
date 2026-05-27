@@ -5,7 +5,7 @@ import { VERSION } from "../utils/version.js";
 import { loadConfig } from "../config.js";
 import { enableFileLogging } from "../logging/logger.js";
 import { createRuntime } from "../app.js";
-import { getConfigPath, getLogsDir } from "../paths.js";
+import { getConfigPath, getLogsPath } from "../utils/paths.js";
 
 const args = process.argv.slice(2);
 const subcommand = args[0] && !args[0].startsWith("-") ? args[0] : undefined;
@@ -77,7 +77,7 @@ if (values.version) {
 }
 
 async function main() {
-  if (process.stdout.isTTY) enableFileLogging(getLogsDir());
+  if (process.stdout.isTTY) enableFileLogging(getLogsPath());
   const configPath = values.config ?? getConfigPath();
   const config = await loadConfig(configPath);
 

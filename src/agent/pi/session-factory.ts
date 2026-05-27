@@ -18,7 +18,7 @@ import type { SandboxExecutor } from "../middleware/executor.js";
 import { createAgentTools } from "../tools/index.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../workspace/context.js";
-import { resolveAgentWorkspacePath } from "../../paths.js";
+import { getAgentWorkspacePath } from "../../utils/paths.js";
 
 const ISOTOPES_HOME = process.env.ISOTOPES_HOME || path.join(process.env.HOME || "/tmp", ".isotopes");
 const DEFAULT_MODEL = "claude-opus-4-7";
@@ -123,7 +123,7 @@ export async function createPiSession(
   const sessionManager = await agent.sessionStore.getSessionManager(sessionId);
   if (!sessionManager) throw new Error(`Session "${sessionId}" not found`);
 
-  const sessionCwd = cwd ?? resolveAgentWorkspacePath(agent.config);
+  const sessionCwd = cwd ?? getAgentWorkspacePath(agent.config);
   const agentDir = path.join(ISOTOPES_HOME, "agents", agent.id, "agent");
   const settingsManager = SettingsManager.inMemory();
 

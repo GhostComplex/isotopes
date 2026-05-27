@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { getConfigPath, getIsotopesHome } from "../paths.js";
+import { getConfigPath, getIsotopesHome } from "../utils/paths.js";
 
 export async function handleInitCommand(force: boolean): Promise<void> {
   const home = getIsotopesHome();

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getIsotopesHome } from "../../paths.js";
+import { getIsotopesHome } from "../../utils/paths.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("extensions");

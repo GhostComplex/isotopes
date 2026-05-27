@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { DefaultSessionStore, SessionStoreManager } from "./session-store.js";
-import { getAgentSessionsDir, normalizeAgentId } from "../../paths.js";
 
 import { userMessage, assistantMessage, messageText } from "./messages.js";
 
@@ -415,34 +414,22 @@ afterEach(async () => {
   await fs.rm(tmpRoot, { recursive: true, force: true });
 });
 
-describe("normalizeAgentId", () => {
-  it("lowercases and replaces unsafe chars with -", () => {
-    expect(normalizeAgentId("Alice")).toBe("alice");
-    expect(normalizeAgentId("subagent:dev:task")).toBe("subagent-dev-task");
-    expect(normalizeAgentId("a/b\\c")).toBe("a-b-c");
-    expect(normalizeAgentId("code-reviewer_v2")).toBe("code-reviewer_v2");
-  });
-});
-
 describe("SessionStoreManager.getOrCreate", () => {
   it("creates a store rooted at the per-agent sessions dir", async () => {
     const mgr = new SessionStoreManager();
     const store = await mgr.getOrCreate("alice");
-    const expected = getAgentSessionsDir("alice");
-    expect(expected).toBe(path.join(tmpRoot, "agents", "alice", "sessions"));
+    const expected = path.join(tmpRoot, "agents", "alice", "sessions");
     const stat = await fs.stat(expected);
     expect(stat.isDirectory()).toBe(true);
     expect(store).toBeDefined();
     mgr.destroyAll();
   });
 
-  it("memoizes by normalized id", async () => {
+  it("memoizes by id", async () => {
     const mgr = new SessionStoreManager();
-    const a = await mgr.getOrCreate("Alice");
-    const b = await mgr.getOrCreate("ALICE");
-    const c = await mgr.getOrCreate("alice");
+    const a = await mgr.getOrCreate("alice");
+    const b = await mgr.getOrCreate("alice");
     expect(a).toBe(b);
-    expect(b).toBe(c);
     mgr.destroyAll();
   });
 
@@ -470,7 +457,7 @@ describe("SessionStoreManager.peek + all + destroyAll", () => {
     const mgr = new SessionStoreManager();
     expect(mgr.peek("alice")).toBeUndefined();
     await mgr.getOrCreate("alice");
-    expect(mgr.peek("Alice")).toBeDefined();
+    expect(mgr.peek("alice")).toBeDefined();
     mgr.destroyAll();
   });
 
