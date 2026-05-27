@@ -3,9 +3,6 @@ import path from "node:path";
 import { loadSkills, formatSkillsForPrompt } from "@mariozechner/pi-coding-agent";
 import { getIsotopesHome, getAgentWorkspacePath, getBuiltinSkillsPath } from "../../utils/paths.js";
 import type { AgentConfig } from "../types.js";
-import { createLogger } from "../../logging/logger.js";
-
-const log = createLogger("skills");
 
 export const WORKSPACE_FILES = [
   "SOUL.md",
@@ -62,9 +59,6 @@ export async function loadWorkspaceContext(workspacePath: string, options?: { bu
     ],
     includeDefaults: false,
   });
-  for (const d of skillResult.diagnostics) {
-    log.warn(`skill ${d.type}: ${d.message}`, { path: d.path });
-  }
   const skillsPrompt = formatSkillsForPrompt(skillResult.skills);
 
   return {
