@@ -16,9 +16,9 @@ import { HeartbeatManager } from "./automation/heartbeat.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
 import { loadChannels } from "./extensions/channels/loader.js";
-import { createGateway } from "./gateway/index.js";
+import { createGateway, type Gateway } from "./gateway/index.js";
 
-const log = createLogger("runtime");
+const log = createLogger("app");
 
 export interface AppOptions {
   config: IsotopesConfigFile;
@@ -38,24 +38,58 @@ export async function start(opts: AppOptions): Promise<App> {
   await fs.mkdir(getIsotopesHome(), { recursive: true });
   await fs.mkdir(getLogsPath(), { recursive: true });
 
-  const sessionStoreManager = new SessionStoreManager();
-
   if (!config.provider) {
     throw new Error("config.provider is required (top-level provider config in isotopes.yaml)");
   }
 
+  const sessionStoreManager = new SessionStoreManager();
+  const agentRuntime = initAgentRuntime(config);
+  const { agentWorkspaces, channelContexts } = await registerAgents(config, agentRuntime, sessionStoreManager);
+  const gateway = createGateway({ agentRuntime, sessionStoreManager });
+  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway);
+  const cronScheduler = startCron(config, agentRuntime, gateway);
+  const channels = await loadChannels({ gateway, config, logger: log, channelContexts });
+  const apiServer = await startApiServer(cronScheduler, gateway);
+
+  log.info("App started");
+
+  const shutdown = async () => {
+    log.info("Shutting down...");
+    cronScheduler.stop();
+    for (const hb of heartbeatManagers) hb.stop();
+    try { await channels.stopAll(); } catch { /* ignore */ }
+    await new Promise<void>((resolve, reject) => {
+      apiServer.close((err) => (err ? reject(err) : resolve()));
+    });
+    sessionStoreManager.destroyAll();
+    try {
+      await agentRuntime.shutdown();
+    } catch (err) {
+      log.warn(`Sandbox cleanup error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  return { agentRuntime, agentWorkspaces, cronScheduler, apiServer, shutdown };
+}
+
+function initAgentRuntime(config: IsotopesConfigFile): AgentRuntime {
   const sandboxBaseConfig = config.sandbox
     ? resolveSandboxConfigFromFile("<global>", undefined, config.sandbox)
     : undefined;
-
   const extensionPaths = discoverExtensionPaths();
 
-  const agentRuntime = new AgentRuntime({
+  return new AgentRuntime({
     globalProvider: config.provider,
     ...(sandboxBaseConfig ? { sandboxBaseConfig } : {}),
     ...(extensionPaths.length > 0 ? { extensionPaths } : {}),
   });
+}
 
+async function registerAgents(
+  config: IsotopesConfigFile,
+  agentRuntime: AgentRuntime,
+  sessionStoreManager: SessionStoreManager,
+) {
   const agentWorkspaces = new Map<string, string>();
   const channelContexts = new Map<string, LazyChannelContext>();
 
@@ -81,9 +115,16 @@ export async function start(opts: AppOptions): Promise<App> {
     if (result.workspacePath !== null) agentWorkspaces.set(result.agent.id, result.workspacePath);
   }
 
-  const gateway = createGateway({ agentRuntime, sessionStoreManager });
+  return { agentWorkspaces, channelContexts };
+}
 
-  const heartbeatManagers: HeartbeatManager[] = [];
+function startHeartbeats(
+  config: IsotopesConfigFile,
+  agentWorkspaces: Map<string, string>,
+  gateway: Gateway,
+): HeartbeatManager[] {
+  const managers: HeartbeatManager[] = [];
+
   for (const agentFile of config.agents) {
     if (!agentFile.heartbeat?.enabled) continue;
     const workspacePath = agentWorkspaces.get(agentFile.id);
@@ -105,18 +146,25 @@ export async function start(opts: AppOptions): Promise<App> {
     });
 
     hb.start();
-    heartbeatManagers.push(hb);
+    managers.push(hb);
     log.info(`Heartbeat enabled for "${agentFile.id}" (every ${agentFile.heartbeat.intervalSeconds ?? 300}s)`);
   }
 
-  const cronScheduler = new CronScheduler(async (job) => {
+  return managers;
+}
+
+function startCron(
+  config: IsotopesConfigFile,
+  agentRuntime: AgentRuntime,
+  gateway: Gateway,
+): CronScheduler {
+  const scheduler = new CronScheduler(async (job) => {
     if (!agentRuntime.getAgent(job.agentId)) {
       log.error(`Cron job "${job.name}" references unknown agent "${job.agentId}"`);
       return;
     }
 
     const prompt = job.action.type === "prompt" ? job.action.prompt : job.action.content;
-
     const sessionKey = `cron:${job.agentId}:${job.name}`;
     log.info(`Cron executing "${job.name}" for agent "${job.agentId}" (session: ${sessionKey})`);
 
@@ -136,7 +184,7 @@ export async function start(opts: AppOptions): Promise<App> {
   for (const agentFile of config.agents) {
     if (!agentFile.cron?.tasks?.length) continue;
     for (const task of agentFile.cron.tasks) {
-      cronScheduler.register({
+      scheduler.register({
         name: task.name,
         expression: task.schedule,
         agentId: agentFile.id,
@@ -149,7 +197,7 @@ export async function start(opts: AppOptions): Promise<App> {
 
   if (config.cron?.length) {
     for (const task of config.cron) {
-      cronScheduler.register({
+      scheduler.register({
         name: task.name,
         expression: task.expression,
         agentId: task.agentId,
@@ -160,48 +208,17 @@ export async function start(opts: AppOptions): Promise<App> {
     log.info(`Registered ${config.cron.length} top-level cron task(s)`);
   }
 
-  cronScheduler.start();
+  scheduler.start();
+  return scheduler;
+}
 
-  const channels = await loadChannels({
-    gateway,
-    config,
-    logger: log,
-    channelContexts,
-  });
-
+async function startApiServer(cronScheduler: CronScheduler, gateway: Gateway): Promise<ServerType> {
   const port = getApiPort();
   const api = createApi({ cronScheduler, gateway });
-  const apiServer = await new Promise<ServerType>((resolve) => {
+  return new Promise<ServerType>((resolve) => {
     const s = serve({ fetch: api.fetch, port, hostname: "127.0.0.1" }, () => {
       log.info(`API server listening on http://127.0.0.1:${port}`);
       resolve(s);
     });
   });
-
-  log.info("App started");
-
-  const shutdown = async () => {
-    log.info("Shutting down...");
-    cronScheduler.stop();
-    for (const hb of heartbeatManagers) hb.stop();
-    try { await channels.stopAll(); } catch { /* ignore */ }
-    await new Promise<void>((resolve, reject) => {
-      apiServer.close((err) => (err ? reject(err) : resolve()));
-    });
-    sessionStoreManager.destroyAll();
-
-    try {
-      await agentRuntime.shutdown();
-    } catch (err) {
-      log.warn(`Sandbox cleanup error: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  };
-
-  return {
-    agentRuntime,
-    agentWorkspaces,
-    cronScheduler,
-    apiServer,
-    shutdown,
-  };
 }
