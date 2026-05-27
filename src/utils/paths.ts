@@ -35,11 +35,6 @@ export function getConfigPath(): string {
   return path.join(getIsotopesHome(), "isotopes.yaml");
 }
 
-export async function ensureDirectories(): Promise<void> {
-  await fs.mkdir(getIsotopesHome(), { recursive: true });
-  await fs.mkdir(getLogsDir(), { recursive: true });
-}
-
 /** Absolute paths returned as-is; relative paths resolve from ISOTOPES_HOME. */
 export function resolveExplicitWorkspacePath(workspacePath: string): string {
   if (path.isAbsolute(workspacePath)) {

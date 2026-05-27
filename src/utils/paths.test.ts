@@ -11,7 +11,6 @@ import {
   getAgentSessionsDir,
   normalizeAgentId,
   getConfigPath,
-  ensureDirectories,
   ensureWorkspaceDir,
   resolveBuiltinSkillsDir,
   ensureAgentSessionsDir,
@@ -110,32 +109,6 @@ describe("paths", () => {
     it("resolves relative paths from default home when ISOTOPES_HOME is unset", () => {
       const expected = path.resolve(path.join(os.homedir(), ".isotopes"), "my-workspace");
       expect(resolveExplicitWorkspacePath("my-workspace")).toBe(expected);
-    });
-  });
-
-  describe("ensureDirectories", () => {
-    it("creates the home and logs directories", async () => {
-      const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-paths-"));
-      const home = path.join(tmp, "home");
-      vi.stubEnv("ISOTOPES_HOME", home);
-      try {
-        await ensureDirectories();
-        await expect(fs.stat(home)).resolves.toMatchObject({});
-        await expect(fs.stat(path.join(home, "logs"))).resolves.toMatchObject({});
-      } finally {
-        await fs.rm(tmp, { recursive: true, force: true });
-      }
-    });
-
-    it("is idempotent — second call does not throw", async () => {
-      const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "isotopes-paths-"));
-      vi.stubEnv("ISOTOPES_HOME", path.join(tmp, "home"));
-      try {
-        await ensureDirectories();
-        await expect(ensureDirectories()).resolves.toBeUndefined();
-      } finally {
-        await fs.rm(tmp, { recursive: true, force: true });
-      }
     });
   });
 
