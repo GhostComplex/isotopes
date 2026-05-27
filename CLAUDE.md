@@ -11,7 +11,7 @@ Isotopes is a self-hostable AI agent framework for multi-agent collaboration acr
 ```bash
 pnpm install           # Install dependencies (pnpm is canonical, not npm)
 pnpm build             # Compile TypeScript (plain tsc -> dist/)
-pnpm dev               # Run without building (tsx src/legacy/cli.ts)
+pnpm dev               # Run without building (tsx src/cli/index.ts)
 pnpm lint              # ESLint
 pnpm lint:fix          # ESLint with auto-fix
 pnpm typecheck         # tsc --noEmit
@@ -39,29 +39,24 @@ pnpm test:integration
 - `gateway/` — Typed Gateway abstraction: canonical entrypoint for all inbound messages. Owns dispatch (fire-and-forget), subscribe (session event fan-out), session CRUD, abort, and cwd resolution. Channel adapters, HTTP, cron, and heartbeat all go through Gateway.
 - `channels/` — Channel adapters. Today: `channels/discord/` (full Discord adapter — inbound pipeline, outbound streaming, dedupe, channel history, image attachments, /stop interception, A2A sink for spawn_agent threads, react, allowlists).
 - `http/` — REST API server built on Hono + `@hono/node-server`. Routes for sessions, dispatch, cron, status. `POST /dispatch` is fire-and-forget; `GET /stream` is the SSE event source. Depends only on `{ cronScheduler, gateway }`.
-- `sessions/` — Session type definitions only; the in-memory + JSONL impl lives in `agent/pi/session-store.ts`.
+- `cli/` — CLI entry point (`index.ts`), subcommands (`init.ts`, `logs.ts`, `service.ts`, `cron.ts`). Parses args, dispatches subcommands, runs foreground.
+- `tui/` — Terminal UI for interactive chat mode.
+- `utils/` — Shared utilities: `paths.ts` (ISOTOPES_HOME resolution, workspace/config paths), `api-client.ts` (HTTP client for the local API), `version.ts` (build version from package.json).
 - `automation/` — `CronScheduler` (cron-based task scheduling) and `HeartbeatManager` (periodic agent wake-ups). `types.ts` holds the config-shape `CronActionConfig`.
 - `daemon/` — macOS-only LaunchAgent install/uninstall/restart/status (`launchd.ts`). Other platforms: run `isotopes` in the foreground or supervise it yourself.
 - `init/` — `isotopes init` setup wizard built with Ink.
 - `logging/` — `createLogger("tag")` factory.
 - `extensions/` — Discovery for user-managed customization at `~/.isotopes/extensions/`. Three typed slots: `pi/loader.ts` (pi-coding-agent extensions from `~/.isotopes/extensions/pi/*.ts`), `ui/loader.ts` (static SPA dirs from `~/.isotopes/extensions/ui/<id>/`, mounted at `/ui/<id>`), and `channels/loader.ts` (loads built-in channel adapters from `channels/`).
-- `legacy/` — Transitional area being decomposed PR-by-PR. New code should not land here.
-- Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema), `paths.ts` (`ISOTOPES_HOME` resolution), `test-helpers.ts` (shared test mocks).
+- Standalone files: `app.ts` (daemon wiring), `config.ts` (YAML config + schema + agent ID validation).
 
 ### `src/agent/`
 
 - `runtime.ts` — `AgentRuntime`: in-memory agent registry + per-run dispatcher. Validates `RunRequest`, resolves session ID, delegates to a runner.
-- `types.ts` — `RegisteredAgent`, `RunRequest`, `RunInfo`, `AgentConfig`, `ProviderConfig`, `RunValidationError`.
+- `types.ts` — `RegisteredAgent`, `RunRequest`, `RunInfo`, `AgentConfig`, `ProviderConfig`, `RunValidationError`, plus session types (`Session`, `SessionStore`, `SessionMetadata`, `TranscriptUpdate`).
 - `pi/` — Pi backbone (default agent runtime, not a swappable adapter). Wraps `@mariozechner/pi-agent-core` + `@mariozechner/pi-coding-agent`: `runner.ts`, `session-factory.ts`, `session-store.ts`, `messages.ts`, `system-prompt-override.ts`, `tool-result-truncation.ts`. Other isotopes modules (transports, HTTP, gateway) are allowed to depend on these directly — pi is the host, not a guest.
 - `adapters/claude/` — Third-party adapter for the Claude Agent SDK. Implements the same `Runner` interface but lives under `adapters/` to signal "alternative entry point, not the backbone".
 - `tools/` — Built-in agent tools (`web` for `web_fetch`, `react` for channel reactions) and the registry (`index.ts`) that assembles per-agent tool sets.
 - `workspace/` — Loads `SOUL.md` / `TOOLS.md` / `MEMORY.md` / `BOOTSTRAP.md` into system prompts; manages workspace state and template files.
-
-### `src/legacy/` (transitional)
-
-- `cli.ts` — CLI entry point. Parses args, dispatches subcommands, runs foreground. Includes `isotopes service install/uninstall/restart/status` for macOS LaunchAgent management. Dynamically imports `init/wizard.tsx` and `tui/index.tsx`.
-- `tui/` — Terminal UI for interactive chat mode.
-- `version.ts` — Build version constant.
 
 ### Key patterns
 
@@ -76,7 +71,6 @@ pnpm test:integration
 - Framework: Vitest with `globals: true`
 - Tests are co-located with source files (`.test.ts` suffix in same directory)
 - Additional tests in `tests/` (top-level)
-- Mock helpers in `src/test-helpers.ts`
 - Integration tests in `tests/integration/` are excluded from `pnpm test`
 
 ## Linting
