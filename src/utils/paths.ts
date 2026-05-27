@@ -50,19 +50,9 @@ export async function ensureWorkspaceDir(agentId: string): Promise<string> {
   return workspacePath;
 }
 
-/** Find the package root (dir containing package.json) and return `<root>/skills/`. */
+/** `<package-root>/skills/` — two levels up from this file (utils/paths.ts). */
 export function resolveBuiltinSkillsDir(): string | undefined {
-  try {
-    let current = path.dirname(fileURLToPath(import.meta.url));
-    for (let depth = 0; depth < 4; depth++) {
-      if (existsSync(path.join(current, "package.json"))) {
-        const candidate = path.join(current, "skills");
-        return existsSync(candidate) ? candidate : undefined;
-      }
-      const parent = path.dirname(current);
-      if (parent === current) break;
-      current = parent;
-    }
-  } catch { /* silent */ }
-  return undefined;
+  const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+  const candidate = path.join(pkgRoot, "skills");
+  return existsSync(candidate) ? candidate : undefined;
 }
