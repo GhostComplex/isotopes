@@ -16,13 +16,8 @@ export function getWorkspacePath(agentId: string): string {
   return path.join(getIsotopesHome(), `workspace-${agentId}`);
 }
 
-/** Lowercases and replaces any character outside `[a-z0-9_-]` with `-`. */
-export function normalizeAgentId(agentId: string): string {
-  return agentId.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
-}
-
 export function getAgentSessionsDir(agentId: string): string {
-  return path.join(getIsotopesHome(), "agents", normalizeAgentId(agentId), "sessions");
+  return path.join(getIsotopesHome(), "agents", agentId, "sessions");
 }
 
 export async function ensureAgentSessionsDir(agentId: string): Promise<string> {

@@ -11,10 +11,7 @@ import type {
   TranscriptListener,
   TranscriptUpdate,
 } from "../types.js";
-import {
-  ensureAgentSessionsDir,
-  normalizeAgentId,
-} from "../../utils/paths.js";
+import { ensureAgentSessionsDir } from "../../utils/paths.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("session-store");
@@ -273,31 +270,29 @@ export class SessionStoreManager {
 
   /** Concurrent calls for the same agentId share one initialization. */
   async getOrCreate(agentId: string): Promise<DefaultSessionStore> {
-    const key = normalizeAgentId(agentId);
-
-    const existing = this.stores.get(key);
+    const existing = this.stores.get(agentId);
     if (existing) return existing;
 
-    const pending = this.inits.get(key);
+    const pending = this.inits.get(agentId);
     if (pending) return pending;
 
     const init = (async () => {
       const dataDir = await ensureAgentSessionsDir(agentId);
       const store = new DefaultSessionStore(dataDir);
       await store.init();
-      this.stores.set(key, store);
-      this.inits.delete(key);
+      this.stores.set(agentId, store);
+      this.inits.delete(agentId);
       mgrLog.debug(`Initialized session store for agent ${agentId} at ${dataDir}`);
       return store;
     })();
 
-    this.inits.set(key, init);
+    this.inits.set(agentId, init);
     return init;
   }
 
   /** Sync; returns undefined if the store has not been created yet. */
   peek(agentId: string): DefaultSessionStore | undefined {
-    return this.stores.get(normalizeAgentId(agentId));
+    return this.stores.get(agentId);
   }
 
   all(): Map<string, DefaultSessionStore> {

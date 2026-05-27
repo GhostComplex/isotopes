@@ -10,7 +10,6 @@ import {
   getLogsDir,
   getWorkspacePath,
   getAgentSessionsDir,
-  normalizeAgentId,
   getConfigPath,
   ensureWorkspaceDir,
   resolveBuiltinSkillsDir,
@@ -56,22 +55,10 @@ describe("paths", () => {
     });
   });
 
-  describe("normalizeAgentId", () => {
-    it("lowercases and replaces unsafe chars", () => {
-      expect(normalizeAgentId("Alice")).toBe("alice");
-      expect(normalizeAgentId("a/b:c")).toBe("a-b-c");
-    });
-  });
-
   describe("getAgentSessionsDir", () => {
     it("returns ~/.isotopes/agents/<id>/sessions", () => {
       const expected = path.join(os.homedir(), ".isotopes", "agents", "alice", "sessions");
       expect(getAgentSessionsDir("alice")).toBe(expected);
-    });
-
-    it("normalizes the agent id segment", () => {
-      const expected = path.join(os.homedir(), ".isotopes", "agents", "code-reviewer-v2", "sessions");
-      expect(getAgentSessionsDir("Code:Reviewer/v2")).toBe(expected);
     });
   });
 
