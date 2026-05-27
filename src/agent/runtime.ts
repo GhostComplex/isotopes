@@ -224,9 +224,6 @@ export class AgentRuntime {
 
     const workspacePath = getAgentWorkspacePath(agentConfig);
     await fs.mkdir(workspacePath, { recursive: true });
-    if (agentConfig.workspace) {
-      log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
-    }
 
     const seededFiles = await seedWorkspaceTemplates(workspacePath, agentConfig.id);
     if (seededFiles.length > 0) {
