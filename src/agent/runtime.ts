@@ -215,7 +215,6 @@ export class AgentRuntime {
     await fs.mkdir(workspacePath, { recursive: true });
 
     await seedWorkspaceTemplates(workspacePath, agentConfig.id);
-
     await reconcileWorkspaceState(workspacePath);
     await ensureWorkspaceStructure(workspacePath);
 
