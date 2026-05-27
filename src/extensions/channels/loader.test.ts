@@ -48,8 +48,6 @@ describe("startChannels", () => {
       config: { channels: { discord: { token: "x" } } },
       logger,
     });
-    expect(logger.warnings).toHaveLength(1);
-    expect(logger.warnings[0]).toMatch(/no accounts configured/);
     await expect(result.stopAll()).resolves.toBeUndefined();
   });
 

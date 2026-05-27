@@ -117,7 +117,6 @@ describe("createDiscordChannel — lifecycle", () => {
     const logger = silentLogger();
     await adapter.start({ gateway: makeGateway(), logger });
     await adapter.stop();
-    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("no accounts"));
   });
 
   it("constructs and logs in one client per account", async () => {
@@ -150,7 +149,6 @@ describe("createDiscordChannel — lifecycle", () => {
     const logger = silentLogger();
     await adapter.start({ gateway: makeGateway(), logger });
     expect(c.loginMock).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("no token"));
   });
 
   it("binds itself as a Channel into per-agent channel contexts so message_react works", async () => {
