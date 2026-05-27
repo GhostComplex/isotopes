@@ -3,23 +3,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** A workspace template file definition. */
 export interface WorkspaceTemplate {
-  /** Filename relative to workspace root */
   filename: string;
-  /** Default file content */
   content: string;
   /** Only seed if workspace is brand-new (no existing files) */
   firstRunOnly?: boolean;
 }
-
-// ---------------------------------------------------------------------------
-// Template loading
-// ---------------------------------------------------------------------------
 
 const TEMPLATE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "template-files");
 
@@ -34,11 +23,6 @@ function loadTemplate(filename: string): string {
   return content;
 }
 
-// ---------------------------------------------------------------------------
-// Template definitions
-// ---------------------------------------------------------------------------
-
-/** File names that indicate a workspace has been previously configured. */
 const EXISTING_CONTENT_FILES = [
   "SOUL.md",
   "IDENTITY.md",
@@ -65,44 +49,23 @@ export function getWorkspaceTemplates(agentId?: string): WorkspaceTemplate[] {
   ];
 }
 
-/**
- * Check if a workspace directory has any existing content files.
- * Returns false for brand-new (empty) workspaces.
- */
 export async function isBrandNewWorkspace(workspacePath: string): Promise<boolean> {
   for (const filename of EXISTING_CONTENT_FILES) {
     try {
       await fs.access(path.join(workspacePath, filename));
-      return false; // File exists — not brand new
-    } catch {
-      // File doesn't exist, continue checking
-    }
+      return false;
+    } catch { /* not found */ }
   }
 
-  // Also check for memory files or git history
   try {
-    const memoryDir = path.join(workspacePath, "memory");
-    const entries = await fs.readdir(memoryDir);
-    if (entries.some((e) => e.endsWith(".md"))) {
-      return false;
-    }
-  } catch {
-    // memory dir doesn't exist or empty
-  }
+    const entries = await fs.readdir(path.join(workspacePath, "memory"));
+    if (entries.some((e) => e.endsWith(".md"))) return false;
+  } catch { /* not found */ }
 
   return true;
 }
 
-/**
- * Seed template files into a workspace directory.
- *
- * Uses `fs.writeFile` with `{ flag: 'wx' }` (write-exclusive) so existing
- * files are never overwritten. Returns the list of files that were created.
- *
- * `BOOTSTRAP.md` is only seeded for brand-new workspaces (no existing content).
- *
- * @param workspacePath — Absolute path to the agent's workspace directory.
- */
+/** Uses `wx` flag so existing files are never overwritten. */
 export async function seedWorkspaceTemplates(
   workspacePath: string,
   agentId?: string,
@@ -112,15 +75,10 @@ export async function seedWorkspaceTemplates(
   const created: string[] = [];
 
   for (const template of templates) {
-    // Skip first-run-only templates if workspace already has content
-    if (template.firstRunOnly && !brandNew) {
-      continue;
-    }
-
-    const filePath = path.join(workspacePath, template.filename);
+    if (template.firstRunOnly && !brandNew) continue;
 
     try {
-      await fs.writeFile(filePath, template.content, { flag: "wx" });
+      await fs.writeFile(path.join(workspacePath, template.filename), template.content, { flag: "wx" });
       created.push(template.filename);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
