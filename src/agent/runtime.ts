@@ -220,11 +220,11 @@ export class AgentRuntime {
     agentConfig: import("./types.js").AgentConfig,
     opts: AddAgentOptions,
   ): Promise<AddAgentResult> {
-    const { agentFile, channelContext, spawnableAgentIds, sessionStore } = opts;
+    const { channelContext, spawnableAgentIds, sessionStore } = opts;
 
     const workspacePath = resolveAgentWorkspacePath(agentConfig);
     await fs.mkdir(workspacePath, { recursive: true });
-    if (agentFile.workspace) {
+    if (agentConfig.workspace) {
       log.info(`Using explicit workspace for ${agentConfig.id}: ${workspacePath}`);
     }
 
