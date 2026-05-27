@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { getIsotopesHome } from "../../utils/paths.js";
 
-
 export function discoverExtensionPaths(): string[] {
   const dir = path.join(getIsotopesHome(), "extensions", "pi");
   if (!fs.existsSync(dir)) return [];

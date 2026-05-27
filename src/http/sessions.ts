@@ -2,7 +2,6 @@ import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { ApiDeps } from "./server.js";
 
-
 export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
   app.get("/api/sessions", async (c) => {
     const sessions = await deps.gateway.listSessions();

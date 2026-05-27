@@ -2,7 +2,6 @@ import type { SendableChannels } from "discord.js";
 import type { SessionEvent, SessionEventListener } from "../../gateway/index.js";
 import { parseReply } from "../reply.js";
 
-
 const SENTENCE_BOUNDARIES = [". ", "! ", "? ", "\n\n"];
 const DEFAULT_MAX_BUFFER_SIZE = 500;
 const DISCORD_MAX_MESSAGE_LENGTH = 2000;

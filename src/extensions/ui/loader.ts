@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { getIsotopesHome } from "../../utils/paths.js";
 
-
 export interface UIEntry {
   id: string;
   staticDir: string;

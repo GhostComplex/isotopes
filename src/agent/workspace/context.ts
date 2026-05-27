@@ -4,7 +4,6 @@ import { loadSkills, formatSkillsForPrompt } from "@mariozechner/pi-coding-agent
 import { getIsotopesHome, getAgentWorkspacePath, getBuiltinSkillsPath } from "../../utils/paths.js";
 import type { AgentConfig } from "../types.js";
 
-
 /** Standard workspace files that contribute to system prompt */
 export const WORKSPACE_FILES = [
   "SOUL.md",

@@ -6,7 +6,6 @@ import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-ai";
 
-
 export class ClaudeRunner {
   resolveSessionId(req: RunRequest): string {
     return req.sessionId ?? `claude:${randomUUID()}`;
@@ -35,7 +34,6 @@ export class ClaudeRunner {
       permissionMode: "bypassPermissions",
       settingSources: ["user"],
     };
-
 
     const toolNameById = new Map<string, string>();
     let assistantText = "";
@@ -74,7 +72,6 @@ export class ClaudeRunner {
     yield buildAgentEnd(assistantText, stopReason, errorMessage, costUsd);
   }
 }
-
 
 type Translated =
   | { kind: "text"; text: string }

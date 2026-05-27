@@ -9,7 +9,6 @@ import { registerStatusRoutes } from "./status.js";
 import { registerSessionRoutes } from "./sessions.js";
 import { matchUIEntry, discoverUIEntries, type UIEntry } from "../extensions/ui/loader.js";
 
-
 export interface ApiDeps {
   cronScheduler: CronScheduler;
   gateway: Gateway;

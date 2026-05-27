@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { ContainerManager, type ContainerInfo } from "./container.js";
 import { type DockerConfig, type Mount, type SandboxConfig, type WorkspaceAccess } from "./sandbox-config.js";
 
-
 /** Cap collected stdout/stderr per `execute()` call to prevent OOM from runaway commands. */
 export const EXEC_MAX_OUTPUT_BYTES = 100 * 1024;
 

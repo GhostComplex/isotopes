@@ -4,7 +4,6 @@ import type { CronAction } from "./types.js";
 
 export type { CronAction };
 
-
 /** A registered cron job with its parsed schedule and execution state. */
 export interface CronJob {
   id: string;

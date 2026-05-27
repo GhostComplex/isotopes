@@ -7,7 +7,6 @@ import type { RunRequest } from "../types.js";
 import { type A2ASink, getA2ASinkFactory } from "../a2a-sink.js";
 import { getAgentEndMeta } from "../pi/messages.js";
 
-
 export type A2ASurfaceInfo =
   | { status: "ok"; surfaceId: string }
   | { status: "error"; error: string }

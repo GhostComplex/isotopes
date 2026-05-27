@@ -15,7 +15,6 @@ import { getAgentEndMeta } from "../agent/pi/messages.js";
 import { getAgentWorkspacePath } from "../utils/paths.js";
 import { randomUUID } from "node:crypto";
 
-
 export interface GatewayDeps {
   agentRuntime: AgentRuntime;
   sessionStoreManager: SessionStoreManager;

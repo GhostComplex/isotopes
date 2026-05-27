@@ -13,7 +13,6 @@ import type {
 } from "../types.js";
 import { getIsotopesHome } from "../../utils/paths.js";
 
-
 interface PersistedSessionRecord {
   id: string;
   agentId: string;
@@ -256,7 +255,6 @@ function toSession(s: StoredSession): Session {
 // ---------------------------------------------------------------------------
 // SessionStoreManager — one DefaultSessionStore per agentId.
 // ---------------------------------------------------------------------------
-
 
 export class SessionStoreManager {
   private stores = new Map<string, DefaultSessionStore>();

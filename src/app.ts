@@ -51,7 +51,6 @@ export async function start(opts: AppOptions): Promise<App> {
   const channels = await startChannels({ gateway, config, logger: log, channelContexts });
   const apiServer = await startApiServer(cronScheduler, gateway);
 
-
   const shutdown = async () => {
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();

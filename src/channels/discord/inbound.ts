@@ -5,7 +5,6 @@ import type { DiscordAccountConfig, GuildConfig } from "./types.js";
 import { isDmAllowed, resolveGroupPolicy } from "./config.js";
 import { extractAttachmentImages } from "./attachment.js";
 
-
 /** True if msg is in a Discord thread (uses channel.isThread, not msg.thread). */
 function isThreadMessage(msg: DiscordMessage): boolean {
   return (msg.channel as { isThread?: () => boolean })?.isThread?.() === true;

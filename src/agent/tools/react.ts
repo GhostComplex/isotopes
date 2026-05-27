@@ -2,7 +2,6 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
 import type { ChannelContext } from "../../channels/types.js";
 
-
 function jsonResult(value: unknown): AgentToolResult<undefined> {
   return { content: [{ type: "text", text: JSON.stringify(value) }], details: undefined };
 }

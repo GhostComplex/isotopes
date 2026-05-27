@@ -37,7 +37,6 @@ import type { DefaultSessionStore } from "./pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
 import type { SandboxConfig } from "./middleware/sandbox-config.js";
 
-
 export const MAX_DEPTH = 5;
 export const MAX_CHILDREN_PER_PARENT = 5;
 /** Default per-run timeout when req.timeoutSeconds is absent. */
@@ -232,7 +231,6 @@ export class AgentRuntime {
     const runner = new PiRunner({ agent, piDeps: this.piDeps() });
     this.registerRunner(agent.id, runner, { spawnable: agentConfig.spawnable === true });
 
-
     return {
       agent,
       workspacePath,
@@ -312,7 +310,6 @@ export class AgentRuntime {
     const sec = req.timeoutSeconds ?? DEFAULT_TIMEOUT_SEC;
     const timeoutHandle = setTimeout(() => this.cancel(sessionId, { reason: "timeout" }), sec * 1000);
     timeoutHandle.unref();
-
 
     try {
       req.onRunStart?.(sessionId);

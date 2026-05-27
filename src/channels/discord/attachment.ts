@@ -1,7 +1,6 @@
 import type { Message as DiscordMessage } from "discord.js";
 import type { InboundImage } from "../../gateway/types.js";
 
-
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const MAX_BYTES = 10 * 1024 * 1024;
 

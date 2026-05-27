@@ -7,7 +7,6 @@ import type {
 } from "../../agent/a2a-sink.js";
 import { chunkDiscordMessage } from "./outbound.js";
 
-
 const HEADER_PREFIX = "🤖";
 const TOOL_PREFIX = "🔧";
 const OK_PREFIX = "✅";
