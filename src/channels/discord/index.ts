@@ -76,7 +76,6 @@ export function createDiscordChannel(
       const { gateway, logger } = deps;
       const accountIds = Object.keys(accounts);
       if (accountIds.length === 0) {
-        logger.warn("channels.discord present but no accounts configured — adapter is a no-op");
         return;
       }
 
@@ -145,11 +144,10 @@ interface StartAccountArgs {
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, logger, clientFactory, clients, dedupes, histories, a2aThreads } = args;
+  const { accountId, account, gateway, clientFactory, clients, dedupes, histories, a2aThreads } = args;
 
   const token = resolveToken(account);
   if (!token) {
-    logger.warn(`discord: account "${accountId}" has no token/tokenEnv — skipping`);
     return;
   }
 
@@ -161,13 +159,9 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
   const history = new ChannelHistoryBuffer();
   histories.set(accountId, history);
 
-  client.on("clientReady", () => {
-    logger.info(`discord: account "${accountId}" logged in as ${client.user?.tag ?? client.user?.id ?? "?"}`);
-  });
+  client.on("clientReady", () => {});
 
-  client.on("error", (err: unknown) => {
-    logger.error(`discord: client error (${accountId}): ${err instanceof Error ? err.message : String(err)}`);
-  });
+  client.on("error", (_err: unknown) => {});
 
   client.on("messageCreate", (...rawArgs: unknown[]) => {
     const msg = rawArgs[0] as DiscordMessage;
@@ -180,7 +174,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       history,
       a2aThreads,
     }).catch((err) => {
-      logger.error(`discord: receive failed: ${err instanceof Error ? err.message : String(err)}`);
+      void err;
     });
   });
 
@@ -218,10 +212,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
           a2aThreads,
         });
       } catch (err) {
-        logger.warn(
-          `discord: raw DM fetch failed for channel=${channelId} message=${messageId}: ` +
-            `${err instanceof Error ? err.message : String(err)}`,
-        );
+        void err;
       }
     })();
   });
