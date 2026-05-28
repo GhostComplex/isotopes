@@ -348,10 +348,6 @@ export class AgentRuntime {
     return this.runs.size;
   }
 
-  cancelAll(): void {
-    for (const sessionId of [...this.runs.keys()]) this.cancel(sessionId);
-  }
-
   async shutdown(): Promise<void> {
     if (this.sandboxExecutor) {
       try {
