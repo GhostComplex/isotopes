@@ -52,6 +52,7 @@ export async function start(opts: AppOptions): Promise<App> {
   const apiServer = await startApiServer(cronScheduler, gateway);
 
   const shutdown = async () => {
+    log.info("Shutting down");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
     try { await channels.stopAll(); } catch { /* ignore */ }
@@ -64,6 +65,7 @@ export async function start(opts: AppOptions): Promise<App> {
     } catch { /* ignore */ }
   };
 
+  log.info("App started");
   return { agentRuntime, agentWorkspaces, cronScheduler, apiServer, shutdown };
 }
 
@@ -108,6 +110,7 @@ async function registerAgents(
     });
 
     if (result.workspacePath !== null) agentWorkspaces.set(result.agent.id, result.workspacePath);
+    log.info("Agent registered", { agentId: agentFile.id, runner: agentFile.runner ?? "pi" });
   }
 
   return { agentWorkspaces, channelContexts };
@@ -141,6 +144,7 @@ function startHeartbeats(
     });
 
     hb.start();
+    log.info("Heartbeat enabled", { agentId: agentFile.id, intervalSeconds: agentFile.heartbeat.intervalSeconds ?? 300 });
     managers.push(hb);
   }
 
@@ -196,6 +200,7 @@ function startCron(
   }
 
   scheduler.start();
+  log.info("Cron scheduler started", { jobs: scheduler.listJobs().length });
   return scheduler;
 }
 
@@ -204,6 +209,7 @@ async function startApiServer(cronScheduler: CronScheduler, gateway: Gateway): P
   const api = createApi({ cronScheduler, gateway });
   return new Promise<ServerType>((resolve) => {
     const s = serve({ fetch: api.fetch, port, hostname: "127.0.0.1" }, () => {
+      log.info("API server listening", { url: `http://127.0.0.1:${port}` });
       resolve(s);
     });
   });
