@@ -132,12 +132,13 @@ export async function handleInbound(
   deps: InboundDeps,
   ctx: InboundContext,
 ): Promise<void> {
-  log.info("Message received", { author: msg.author.username, channelId: msg.channelId, guildId: msg.guild?.id });
-
   if (msg.author.id === ctx.botId) {
     log.debug("Filtered: own message", { authorId: msg.author.id });
     return;
   }
+
+  log.info("Message received", { author: msg.author.username, channelId: msg.channelId, guildId: msg.guild?.id });
+
   if (msg.author.bot && deps.allowBots === false) {
     log.debug("Filtered: bot message", { author: msg.author.username });
     return;

@@ -150,8 +150,9 @@ export function createGateway(deps: GatewayDeps): Gateway {
         if (active.get(sessionId) !== existing) continue;
         try {
           await deps.agentRuntime.steer(sessionId, msg.content);
-        } catch {
+        } catch (err) {
           if (!active.has(sessionId)) continue;
+          log.warn("Steer failed", { sessionId, error: err instanceof Error ? err.message : String(err) });
         }
         log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "steered" });
         return { sessionId, state: "steered" };
