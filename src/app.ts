@@ -29,7 +29,7 @@ export interface App {
   agentWorkspaces: Map<string, string>;
   cronScheduler: CronScheduler;
   apiServer: ServerType;
-  shutdown: () => Promise<void>;
+  stop: () => Promise<void>;
 }
 
 export async function start(opts: AppOptions): Promise<App> {
@@ -51,7 +51,7 @@ export async function start(opts: AppOptions): Promise<App> {
   const channels = await startChannels({ gateway, config, channelContexts });
   const apiServer = await startApiServer(cronScheduler, gateway);
 
-  const shutdown = async () => {
+  const stop = async () => {
     log.info("Shutting down");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
@@ -59,14 +59,14 @@ export async function start(opts: AppOptions): Promise<App> {
     await new Promise<void>((resolve, reject) => {
       apiServer.close((err) => (err ? reject(err) : resolve()));
     });
-    sessionStoreManager.destroyAll();
+    sessionStoreManager.stopAll();
     try {
-      await agentRuntime.shutdown();
+      await agentRuntime.stop();
     } catch { /* ignore */ }
   };
 
   log.info("App started");
-  return { agentRuntime, agentWorkspaces, cronScheduler, apiServer, shutdown };
+  return { agentRuntime, agentWorkspaces, cronScheduler, apiServer, stop };
 }
 
 function createAgentRuntime(config: IsotopesConfigFile): AgentRuntime {

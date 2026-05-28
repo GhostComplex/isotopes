@@ -21,7 +21,7 @@ describe("DefaultSessionStore", () => {
   });
 
   afterEach(async () => {
-    store.destroy();
+    store.stop();
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
@@ -422,7 +422,7 @@ describe("SessionStoreManager.getOrCreate", () => {
     const stat = await fs.stat(expected);
     expect(stat.isDirectory()).toBe(true);
     expect(store).toBeDefined();
-    mgr.destroyAll();
+    mgr.stopAll();
   });
 
   it("memoizes by id", async () => {
@@ -430,7 +430,7 @@ describe("SessionStoreManager.getOrCreate", () => {
     const a = await mgr.getOrCreate("alice");
     const b = await mgr.getOrCreate("alice");
     expect(a).toBe(b);
-    mgr.destroyAll();
+    mgr.stopAll();
   });
 
   it("coalesces concurrent inits for the same id", async () => {
@@ -440,7 +440,7 @@ describe("SessionStoreManager.getOrCreate", () => {
       mgr.getOrCreate("bob"),
     ]);
     expect(a).toBe(b);
-    mgr.destroyAll();
+    mgr.stopAll();
   });
 
   it("isolates stores per agent", async () => {
@@ -448,17 +448,17 @@ describe("SessionStoreManager.getOrCreate", () => {
     const alice = await mgr.getOrCreate("alice");
     const bob = await mgr.getOrCreate("bob");
     expect(alice).not.toBe(bob);
-    mgr.destroyAll();
+    mgr.stopAll();
   });
 });
 
-describe("SessionStoreManager.peek + all + destroyAll", () => {
+describe("SessionStoreManager.peek + all + stopAll", () => {
   it("peek returns undefined before getOrCreate", async () => {
     const mgr = new SessionStoreManager();
     expect(mgr.peek("alice")).toBeUndefined();
     await mgr.getOrCreate("alice");
     expect(mgr.peek("alice")).toBeDefined();
-    mgr.destroyAll();
+    mgr.stopAll();
   });
 
   it("all() snapshots initialized stores", async () => {
@@ -469,13 +469,13 @@ describe("SessionStoreManager.peek + all + destroyAll", () => {
     expect(snap.size).toBe(2);
     expect(snap.has("alice")).toBe(true);
     expect(snap.has("bob")).toBe(true);
-    mgr.destroyAll();
+    mgr.stopAll();
   });
 
-  it("destroyAll empties the registry", async () => {
+  it("stopAll empties the registry", async () => {
     const mgr = new SessionStoreManager();
     await mgr.getOrCreate("alice");
-    mgr.destroyAll();
+    mgr.stopAll();
     expect(mgr.all().size).toBe(0);
     expect(mgr.peek("alice")).toBeUndefined();
   });
