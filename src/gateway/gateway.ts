@@ -150,13 +150,11 @@ export function createGateway(deps: GatewayDeps): Gateway {
         if (active.get(sessionId) !== existing) continue;
         try {
           await deps.agentRuntime.steer(sessionId, msg.content);
-          log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "steered" });
-          return { sessionId, state: "steered" };
         } catch {
           if (!active.has(sessionId)) continue;
-          log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "steered" });
-          return { sessionId, state: "steered" };
         }
+        log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "steered" });
+        return { sessionId, state: "steered" };
       }
 
       let resolveReady!: () => void;
