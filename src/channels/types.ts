@@ -1,5 +1,4 @@
 import type { Gateway } from "../gateway/index.js";
-import type { Logger } from "../logging/logger.js";
 
 export interface Channel {
   start(deps: ChannelDeps): Promise<void>;
@@ -8,7 +7,6 @@ export interface Channel {
 
 export interface ChannelDeps {
   gateway: Gateway;
-  logger: Logger;
   /** Per-agent contexts the channel binds to so agent tools can call back. */
   channelContexts?: Map<string, LazyChannelContext>;
 }

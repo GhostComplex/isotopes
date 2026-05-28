@@ -14,6 +14,9 @@ import type {
 import { getAgentEndMeta } from "../agent/pi/messages.js";
 import { getAgentWorkspacePath } from "../utils/paths.js";
 import { randomUUID } from "node:crypto";
+import { createLogger } from "../logging/logger.js";
+
+const log = createLogger("gateway");
 
 export interface GatewayDeps {
   agentRuntime: AgentRuntime;
@@ -110,6 +113,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
       errorMessage = await ingestRunnerEvents(sessionId, msg, markReady);
     } catch (err) {
       errorMessage = err instanceof Error ? err.message : String(err);
+      log.error("Run error", { sessionId, error: errorMessage });
     } finally {
       active.delete(sessionId);
       if (!readyResolved) handle.resolveReady();
@@ -146,11 +150,12 @@ export function createGateway(deps: GatewayDeps): Gateway {
         if (active.get(sessionId) !== existing) continue;
         try {
           await deps.agentRuntime.steer(sessionId, msg.content);
-          return { sessionId, state: "steered" };
-        } catch {
+        } catch (err) {
           if (!active.has(sessionId)) continue;
-          return { sessionId, state: "steered" };
+          log.warn("Steer failed", { sessionId, error: err instanceof Error ? err.message : String(err) });
         }
+        log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "steered" });
+        return { sessionId, state: "steered" };
       }
 
       let resolveReady!: () => void;
@@ -159,6 +164,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
       active.set(sessionId, handle);
       void triggerRun(sessionId, msg, handle);
       await handle.ready;
+      log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "new_run" });
       return { sessionId, state: "new_run" };
     }
   }
@@ -246,6 +252,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
       if (existing) return { sessionId: existing.id, sessionKey: existing.metadata?.key ?? sessionKey, resumed: true };
     }
     const created = await store.create(agentId, { key });
+    log.info("Session created", { agentId, sessionKey: key, sessionId: created.id });
     return { sessionId: created.id, sessionKey: key, resumed: false };
   }
 

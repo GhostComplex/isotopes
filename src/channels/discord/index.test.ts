@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Message as DiscordMessage } from "discord.js";
 import { createDiscordChannel, type ClientLike } from "./index.js";
 import type { Gateway } from "../../gateway/index.js";
-import type { Logger } from "../../logging/logger.js";
 import { LazyChannelContext } from "../../channels/types.js";
 
 interface FakeClient extends ClientLike {
@@ -64,15 +63,6 @@ function makeGateway(): Gateway & {
   };
 }
 
-function silentLogger(): Logger {
-  return {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  } as unknown as Logger;
-}
-
 interface FakeMsgOpts {
   id?: string;
   channelId?: string;
@@ -114,8 +104,7 @@ describe("createDiscordChannel — lifecycle", () => {
 
   it("no-ops when no accounts configured", async () => {
     const adapter = createDiscordChannel({});
-    const logger = silentLogger();
-    await adapter.start({ gateway: makeGateway(), logger });
+    await adapter.start({ gateway: makeGateway() });
     await adapter.stop();
   });
 
@@ -132,7 +121,7 @@ describe("createDiscordChannel — lifecycle", () => {
       },
       { clientFactory: () => factories.shift()! },
     );
-    await adapter.start({ gateway: makeGateway(), logger: silentLogger() });
+    await adapter.start({ gateway: makeGateway() });
     expect(a.loginMock).toHaveBeenCalledWith("tok-a");
     expect(b.loginMock).toHaveBeenCalledWith("tok-b");
     await adapter.stop();
@@ -146,8 +135,7 @@ describe("createDiscordChannel — lifecycle", () => {
       { accounts: { x: { defaultAgentId: "agent-x" } } },
       { clientFactory: () => c },
     );
-    const logger = silentLogger();
-    await adapter.start({ gateway: makeGateway(), logger });
+    await adapter.start({ gateway: makeGateway() });
     expect(c.loginMock).not.toHaveBeenCalled();
   });
 
@@ -159,7 +147,7 @@ describe("createDiscordChannel — lifecycle", () => {
     );
     const ctx = new LazyChannelContext();
     const channelContexts = new Map([["main", ctx]]);
-    await adapter.start({ gateway: makeGateway(), logger: silentLogger(), channelContexts });
+    await adapter.start({ gateway: makeGateway(), channelContexts });
 
     const channel = ctx.getChannelActions();
     expect(channel).toBeDefined();
@@ -192,7 +180,7 @@ describe("createDiscordChannel — lifecycle", () => {
     const ctxB = new LazyChannelContext();
     await adapter.start({
       gateway: makeGateway(),
-      logger: silentLogger(),
+      
       channelContexts: new Map([["agentA", ctxA], ["agentB", ctxB]]),
     });
     await ctxA.getChannelActions()!.react!("msg-1", "👀", "ch-1");
@@ -213,7 +201,7 @@ describe("createDiscordChannel — lifecycle", () => {
       { accounts: { acct: { token: "t", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
       { clientFactory: () => client },
     );
-    await adapter.start({ gateway, logger: silentLogger() });
+    await adapter.start({ gateway });
     client.emit("messageCreate", fakeMsg({ mentionedIds: ["bot-A"] }));
     await new Promise((r) => setImmediate(r));
     expect(observed).toBeDefined();
@@ -241,7 +229,7 @@ describe("createDiscordChannel — inbound wiring", () => {
       },
       { clientFactory: () => client },
     );
-    await adapter.start({ gateway, logger: silentLogger() });
+    await adapter.start({ gateway });
 
     const msg = fakeMsg({ mentionedIds: ["bot-A"] });
     client.emit("messageCreate", msg);
@@ -264,7 +252,7 @@ describe("createDiscordChannel — inbound wiring", () => {
       },
       { clientFactory: () => client },
     );
-    await adapter.start({ gateway, logger: silentLogger() });
+    await adapter.start({ gateway });
 
     const msg = fakeMsg({ id: "dup-1", mentionedIds: ["bot-A"] });
     client.emit("messageCreate", msg);
@@ -289,7 +277,7 @@ describe("createDiscordChannel — inbound wiring", () => {
       },
       { clientFactory: () => client },
     );
-    await adapter.start({ gateway, logger: silentLogger() });
+    await adapter.start({ gateway });
     client.emit("messageCreate", fakeMsg({ mentionedIds: ["bot-A"] }));
     await new Promise((r) => setImmediate(r));
     expect(gateway.dispatch).not.toHaveBeenCalled();
@@ -309,7 +297,7 @@ describe("createDiscordChannel — inbound wiring", () => {
       },
       { clientFactory: () => factories.shift()! },
     );
-    await adapter.start({ gateway, logger: silentLogger() });
+    await adapter.start({ gateway });
 
     a.emit("messageCreate", fakeMsg({ id: "m-a", mentionedIds: ["bot-A"] }));
     b.emit("messageCreate", fakeMsg({ id: "m-b", mentionedIds: ["bot-B"] }));
@@ -338,7 +326,7 @@ describe("createDiscordChannel — inbound wiring", () => {
       },
       { clientFactory: () => client },
     );
-    await adapter.start({ gateway, logger: silentLogger() });
+    await adapter.start({ gateway });
 
     const msg = fakeMsg({ mentionedIds: ["bot-A"] });
     client.emit("messageCreate", msg);
@@ -375,7 +363,7 @@ describe("createDiscordChannel — message metadata enrichment", () => {
       },
       { clientFactory: () => client },
     );
-    await adapter.start({ gateway, logger: silentLogger() });
+    await adapter.start({ gateway });
 
     const msg = fakeMsg({
       mentionedIds: ["bot-A"],
@@ -413,7 +401,7 @@ describe("createDiscordChannel — /stop interception", () => {
       },
       { clientFactory: () => client },
     );
-    await adapter.start({ gateway, logger: silentLogger() });
+    await adapter.start({ gateway });
 
     const msg = fakeMsg({ content: "<@bot-A> /stop", mentionedIds: ["bot-A"] });
     client.emit("messageCreate", msg);
@@ -438,7 +426,7 @@ describe("createDiscordChannel — /stop interception", () => {
       },
       { clientFactory: () => client },
     );
-    await adapter.start({ gateway, logger: silentLogger() });
+    await adapter.start({ gateway });
 
     const msg = fakeMsg({ content: "/stop" }); // no mention
     client.emit("messageCreate", msg);

@@ -1,9 +1,12 @@
 import type { Message as DiscordMessage, SendableChannels } from "discord.js";
 import type { Gateway, Message, SessionEventListener } from "../../gateway/index.js";
+import { createLogger } from "../../logging/logger.js";
 import { REPLY_PROMPT } from "../reply.js";
 import type { DiscordAccountConfig, GuildConfig } from "./types.js";
 import { isDmAllowed, resolveGroupPolicy } from "./config.js";
 import { extractAttachmentImages } from "./attachment.js";
+
+const log = createLogger("discord:inbound");
 
 /** True if msg is in a Discord thread (uses channel.isThread, not msg.thread). */
 function isThreadMessage(msg: DiscordMessage): boolean {
@@ -72,20 +75,24 @@ export async function handleStopCommand(
 
   let didStop = false;
 
-  // Sub-run path: this bot spawned a child whose thread is msg.channel.
-  const subSessionId = a2aThreads?.get(msg.channelId);
-  if (subSessionId) {
+  // A2A path: this bot spawned a child whose thread is msg.channel.
+  const a2aSessionId = a2aThreads?.get(msg.channelId);
+  if (a2aSessionId) {
     try {
-      await gateway.abort(subSessionId, "user");
+      await gateway.abort(a2aSessionId, "user");
       didStop = true;
-    } catch { /* ignore */ }
+    } catch (err) {
+      log.warn("/stop a2a abort failed", { a2aSessionId, error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   try {
     if (await gateway.abortByKey(agentId, sessionKey, "user")) {
       didStop = true;
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    log.warn("/stop abort failed", { agentId, sessionKey, error: err instanceof Error ? err.message : String(err) });
+  }
 
   if ("send" in msg.channel) {
     try {
@@ -94,6 +101,7 @@ export async function handleStopCommand(
       /* ignore */
     }
   }
+  log.info("/stop processed", { sessionKey, didStop });
   return true;
 }
 
@@ -124,25 +132,37 @@ export async function handleInbound(
   deps: InboundDeps,
   ctx: InboundContext,
 ): Promise<void> {
-  if (msg.author.id === ctx.botId) return;
+  log.debug("Message received", { author: msg.author.username, channelId: msg.channelId, guildId: msg.guild?.id });
+
+  if (msg.author.id === ctx.botId) {
+    log.debug("Filtered: own message", { authorId: msg.author.id });
+    return;
+  }
+
   if (msg.author.bot && deps.allowBots === false) {
+    log.debug("Filtered: bot message", { author: msg.author.username });
     return;
   }
 
   if (msg.guild && isThreadMessage(msg) && deps.guilds?.[msg.guild.id]?.respondInThreads === false) {
+    log.debug("Filtered: thread message", { channelId: msg.channelId });
     return;
   }
 
   if (msg.guild) {
     const requireMention = deps.guilds?.[msg.guild.id]?.requireMention ?? true;
     if (requireMention && !msg.mentions?.has?.(ctx.botId)) {
+      log.debug("Filtered: not mentioned", { msgId: msg.id });
       return;
     }
   }
 
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
   const images = await extractAttachmentImages(msg);
-  if (!cleanedText && images.length === 0) return; // empty turn
+  if (!cleanedText && images.length === 0) {
+    log.debug("Filtered: empty message", { msgId: msg.id });
+    return;
+  }
   const content = deps.transformContent
     ? deps.transformContent(cleanedText, msg)
     : cleanedText;
@@ -166,6 +186,7 @@ export async function handleInbound(
     subscriber.onEvent,
   );
   if (!unsubscribe) {
+    log.warn("Subscribe failed", { agentId: routing.agentId, sessionKey: routing.sessionKey });
     return;
   }
 

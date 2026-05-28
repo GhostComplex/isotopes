@@ -30,9 +30,9 @@ export function createLogger(tag: string): Logger {
     if (LOG_LEVELS[level] < LOG_LEVELS[getLogLevel()]) return;
     const line = `[${new Date().toISOString()}] [${level.toUpperCase().padEnd(5)}] [${tag}] ${message}`;
     const fn = level === "warn" ? console.warn : level === "error" ? console.error : level === "debug" ? console.debug : console.log;
-    fn(line, ...args);
+    const suffix = args.length > 0 ? " " + args.map((a) => a instanceof Error ? (a.stack ?? a.message) : typeof a === "string" ? a : JSON.stringify(a)).join(" ") : "";
+    fn(line + suffix);
     if (fileStream) {
-      const suffix = args.length > 0 ? " " + args.map((a) => a instanceof Error ? (a.stack ?? a.message) : typeof a === "string" ? a : JSON.stringify(a)).join(" ") : "";
       fileStream.write(line + suffix + "\n");
     }
   };

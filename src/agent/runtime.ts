@@ -1,6 +1,7 @@
 import { existsSync, statSync, realpathSync } from "node:fs";
 import { resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createLogger } from "../logging/logger.js";
 import type {
   RegisteredAgent,
   RunRequest,
@@ -35,6 +36,8 @@ import { LazyChannelContext } from "../channels/types.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
 import type { SandboxConfig } from "./middleware/sandbox-config.js";
+
+const log = createLogger("runtime");
 
 export const MAX_DEPTH = 5;
 export const MAX_CHILDREN_PER_PARENT = 5;
@@ -303,6 +306,7 @@ export class AgentRuntime {
       ...(req.parentSessionId ? { parentSessionId: req.parentSessionId } : {}),
     };
     this.runs.set(sessionId, handle);
+    log.info("Run started", { runId, agentId: req.to, sessionId, depth });
 
     const sec = req.timeoutSeconds ?? DEFAULT_TIMEOUT_SEC;
     const timeoutHandle = setTimeout(() => this.cancel(sessionId, { reason: "timeout" }), sec * 1000);
@@ -319,6 +323,11 @@ export class AgentRuntime {
         abort: abort.signal,
         onSession: (session) => { handle.session = session; },
       })) {
+        if (event.type === "tool_execution_start") {
+          log.debug("Tool call", { runId, agentId: req.to, toolName: event.toolName, toolCallId: event.toolCallId });
+        } else if (event.type === "tool_execution_end") {
+          log.debug("Tool result", { runId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError });
+        }
         yield event;
       }
     } finally {
@@ -329,6 +338,7 @@ export class AgentRuntime {
         try { req.onCancel(handle.cancelReason); } catch { /* ignore */ }
       }
       this.runs.delete(sessionId);
+      log.info("Run ended", { runId, agentId: req.to, durationMs: Date.now() - handle.startedAt });
     }
   }
 
@@ -337,6 +347,7 @@ export class AgentRuntime {
     if (!handle) return false;
     if (opts?.reason) handle.cancelReason = opts.reason;
     handle.abort.abort();
+    log.info("Run cancelled", { sessionId, reason: opts?.reason });
     return true;
   }
 
@@ -346,10 +357,6 @@ export class AgentRuntime {
 
   get activeCount(): number {
     return this.runs.size;
-  }
-
-  cancelAll(): void {
-    for (const sessionId of [...this.runs.keys()]) this.cancel(sessionId);
   }
 
   async shutdown(): Promise<void> {

@@ -33,11 +33,11 @@ describe("Logger", () => {
       expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("[WARN ]"));
     });
 
-    it("passes extra args to console", () => {
+    it("serializes extra args inline as JSON", () => {
       const log = createLogger("test");
       const obj = { foo: "bar" };
       log.info("Message", obj);
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Message"), obj);
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Message {"foo":"bar"}'));
     });
   });
 
