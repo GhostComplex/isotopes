@@ -323,6 +323,11 @@ export class AgentRuntime {
         abort: abort.signal,
         onSession: (session) => { handle.session = session; },
       })) {
+        if (event.type === "tool_execution_start") {
+          log.debug("Tool call", { runId, agentId: req.to, toolName: event.toolName, toolCallId: event.toolCallId });
+        } else if (event.type === "tool_execution_end") {
+          log.debug("Tool result", { runId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError });
+        }
         yield event;
       }
     } finally {
