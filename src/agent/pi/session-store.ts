@@ -279,7 +279,7 @@ export class SessionStoreManager {
     return new Map(this.stores);
   }
 
-  stopAll(): void {
+  stop(): void {
     for (const store of this.stores.values()) {
       store.stop();
     }

@@ -55,11 +55,11 @@ export async function start(opts: AppOptions): Promise<App> {
     log.info("Shutting down");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
-    try { await channels.stopAll(); } catch { /* ignore */ }
+    try { await channels.stop(); } catch { /* ignore */ }
     await new Promise<void>((resolve, reject) => {
       apiServer.close((err) => (err ? reject(err) : resolve()));
     });
-    sessionStoreManager.stopAll();
+    sessionStoreManager.stop();
     try {
       await agentRuntime.stop();
     } catch { /* ignore */ }

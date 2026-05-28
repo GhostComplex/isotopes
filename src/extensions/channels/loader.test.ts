@@ -20,7 +20,7 @@ describe("startChannels", () => {
       gateway: fakeGateway,
       config: {},
     });
-    await expect(result.stopAll()).resolves.toBeUndefined();
+    await expect(result.stop()).resolves.toBeUndefined();
   });
 
   it("loads the discord adapter when channels.discord is configured (no-accounts no-op)", async () => {
@@ -28,7 +28,7 @@ describe("startChannels", () => {
       gateway: fakeGateway,
       config: { channels: { discord: { token: "x" } } },
     });
-    await expect(result.stopAll()).resolves.toBeUndefined();
+    await expect(result.stop()).resolves.toBeUndefined();
   });
 
   it("starts the discord adapter when the import succeeds", async () => {
@@ -51,7 +51,7 @@ describe("startChannels", () => {
     expect(start).toHaveBeenCalledTimes(1);
     expect(start.mock.calls[0]![0]).toMatchObject({ gateway: fakeGateway });
 
-    await result.stopAll();
+    await result.stop();
     expect(stop).toHaveBeenCalledTimes(1);
   });
 });
