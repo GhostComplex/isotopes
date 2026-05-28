@@ -189,8 +189,6 @@ export async function handleInbound(
     return;
   }
 
-  log.info("Dispatching", { agentId: routing.agentId, sessionKey: routing.sessionKey, author: msg.author.username });
-
   try {
     const result = await deps.gateway.dispatch(message);
     if (result.state === "steered") {
