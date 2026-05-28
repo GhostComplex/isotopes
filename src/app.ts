@@ -144,7 +144,7 @@ function startHeartbeats(
     });
 
     hb.start();
-    log.info("Heartbeat enabled", { agentId: agentFile.id, intervalSeconds: agentFile.heartbeat.intervalSeconds ?? 300 });
+    log.info("Heartbeat started", { agentId: agentFile.id, intervalSeconds: agentFile.heartbeat.intervalSeconds ?? 300 });
     managers.push(hb);
   }
 
