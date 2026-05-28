@@ -191,10 +191,7 @@ export async function handleInbound(
   }
 
   try {
-    const result = await deps.gateway.dispatch(message);
-    if (result.state === "steered") {
-      return;
-    }
+    await deps.gateway.dispatch(message);
     await subscriber.done;
   } finally {
     unsubscribe();

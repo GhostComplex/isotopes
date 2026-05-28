@@ -218,15 +218,19 @@ describe("handleInbound", () => {
     expect(settled).toBe(true);
   });
 
-  it("does not await subscriber.done when dispatch returns steered", async () => {
+  it("awaits subscriber.done even when dispatch returns steered", async () => {
     gateway.dispatch.mockResolvedValueOnce({ sessionId: "s", state: "steered" });
     let resolveDone!: () => void;
     const done = new Promise<void>((r) => { resolveDone = r; });
     buildSubscriber = vi.fn().mockReturnValue({ onEvent: vi.fn(), done });
     const msg = fakeMsg({ mentionedIds: [BOT_ID], content: `<@${BOT_ID}> hi` });
-    // Should resolve without resolveDone() being called.
-    await handleInbound(msg, route(msg), { gateway }, ctx());
-    resolveDone(); // cleanup
+    let resolved = false;
+    const p = handleInbound(msg, route(msg), { gateway }, ctx()).then(() => { resolved = true; });
+    await vi.waitFor(() => expect(gateway.dispatch).toHaveBeenCalled());
+    expect(resolved).toBe(false);
+    resolveDone();
+    await p;
+    expect(resolved).toBe(true);
   });
 });
 
