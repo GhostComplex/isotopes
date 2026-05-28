@@ -359,7 +359,7 @@ export class AgentRuntime {
     return this.runs.size;
   }
 
-  async shutdown(): Promise<void> {
+  async stop(): Promise<void> {
     if (this.sandboxExecutor) {
       try {
         await this.sandboxExecutor.cleanup();

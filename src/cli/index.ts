@@ -86,7 +86,7 @@ async function main() {
   console.log("Running... Press Ctrl+C to stop");
 
   const onSignal = async () => {
-    await app.shutdown();
+    await app.stop();
     process.exit(0);
   };
   process.on("SIGINT", onSignal);
