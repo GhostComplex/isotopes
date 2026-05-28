@@ -133,7 +133,7 @@ export class DefaultSessionStore implements SessionStore {
     await this.persistIndex();
   }
 
-  destroy(): void {
+  stop(): void {
     if (this.indexDebounceTimer) {
       clearTimeout(this.indexDebounceTimer);
       this.indexDebounceTimer = null;
@@ -279,9 +279,9 @@ export class SessionStoreManager {
     return new Map(this.stores);
   }
 
-  destroyAll(): void {
+  stop(): void {
     for (const store of this.stores.values()) {
-      store.destroy();
+      store.stop();
     }
     this.stores.clear();
     this.inits.clear();

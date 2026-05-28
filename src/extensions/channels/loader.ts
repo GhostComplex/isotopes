@@ -2,7 +2,7 @@ import type { Channel, ChannelDeps } from "../../channels/types.js";
 import { createDiscordChannel } from "../../channels/discord/index.js";
 
 export interface StartChannelsResult {
-  stopAll(): Promise<void>;
+  stop(): Promise<void>;
 }
 
 export interface StartChannelsDeps extends ChannelDeps {
@@ -19,7 +19,7 @@ export async function startChannels(deps: StartChannelsDeps): Promise<StartChann
   await Promise.all(channels.map((c) => c.start(deps)));
 
   return {
-    async stopAll() {
+    async stop() {
       await Promise.all(channels.map((c) => c.stop()));
     },
   };
