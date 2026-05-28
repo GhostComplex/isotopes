@@ -75,14 +75,14 @@ export async function handleStopCommand(
 
   let didStop = false;
 
-  // Sub-run path: this bot spawned a child whose thread is msg.channel.
-  const subSessionId = a2aThreads?.get(msg.channelId);
-  if (subSessionId) {
+  // A2A path: this bot spawned a child whose thread is msg.channel.
+  const a2aSessionId = a2aThreads?.get(msg.channelId);
+  if (a2aSessionId) {
     try {
-      await gateway.abort(subSessionId, "user");
+      await gateway.abort(a2aSessionId, "user");
       didStop = true;
     } catch (err) {
-      log.warn("/stop sub-run abort failed", { subSessionId, error: err instanceof Error ? err.message : String(err) });
+      log.warn("/stop a2a abort failed", { a2aSessionId, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
