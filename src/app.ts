@@ -48,7 +48,7 @@ export async function start(opts: AppOptions): Promise<App> {
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
   const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway);
   const cronScheduler = startCron(config, agentRuntime, gateway);
-  const channels = await startChannels({ gateway, config, logger: log, channelContexts });
+  const channels = await startChannels({ gateway, config, channelContexts });
   const apiServer = await startApiServer(cronScheduler, gateway);
 
   const shutdown = async () => {
