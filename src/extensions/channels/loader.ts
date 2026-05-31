@@ -1,26 +1,23 @@
 import type { Channel, ChannelDeps } from "../../channels/types.js";
 import { createDiscordChannel } from "../../channels/discord/index.js";
 
-export interface StartChannelsResult {
-  stop(): Promise<void>;
-}
+export class ChannelManager {
+  private channels: Channel[] = [];
+  private readonly config: { channels?: Record<string, unknown> };
 
-export interface StartChannelsDeps extends ChannelDeps {
-  config: { channels?: Record<string, unknown> };
-}
-
-export async function startChannels(deps: StartChannelsDeps): Promise<StartChannelsResult> {
-  const channels: Channel[] = [];
-
-  if (deps.config.channels?.discord) {
-    channels.push(createDiscordChannel(deps.config.channels.discord));
+  constructor(config: { channels?: Record<string, unknown> }) {
+    this.config = config;
   }
 
-  await Promise.all(channels.map((c) => c.start(deps)));
+  async start(deps: ChannelDeps): Promise<void> {
+    if (this.config.channels?.discord) {
+      this.channels.push(createDiscordChannel(this.config.channels.discord));
+    }
 
-  return {
-    async stop() {
-      await Promise.all(channels.map((c) => c.stop()));
-    },
-  };
+    await Promise.all(this.channels.map((c) => c.start(deps)));
+  }
+
+  async stop(): Promise<void> {
+    await Promise.all(this.channels.map((c) => c.stop()));
+  }
 }
