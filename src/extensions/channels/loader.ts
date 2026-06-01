@@ -27,7 +27,7 @@ export class ChannelManager {
   async stop(): Promise<void> {
     if (!this.running) return;
 
-    await Promise.allSettled(this.channels.map(async (c) => {
+    await Promise.all(this.channels.map(async (c) => {
       try {
         await c.stop();
       } catch (err) {
