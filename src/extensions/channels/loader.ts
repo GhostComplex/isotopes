@@ -3,6 +3,7 @@ import { createDiscordChannel } from "../../channels/discord/index.js";
 
 export interface StartChannelsResult {
   stop(): Promise<void>;
+  notify(target: { type: "discord"; accountId?: string; channelId: string; threadId?: string }, content: string): Promise<void>;
 }
 
 export interface StartChannelsDeps extends ChannelDeps {
@@ -21,6 +22,9 @@ export async function startChannels(deps: StartChannelsDeps): Promise<StartChann
   return {
     async stop() {
       await Promise.all(channels.map((c) => c.stop()));
+    },
+    async notify(target, content) {
+      await Promise.all(channels.map((c) => c.notify?.(target, content)));
     },
   };
 }

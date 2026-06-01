@@ -1,8 +1,16 @@
 import type { Gateway } from "../gateway/index.js";
 
+export interface NotificationTarget {
+  type: "discord";
+  accountId?: string;
+  channelId: string;
+  threadId?: string;
+}
+
 export interface Channel {
   start(deps: ChannelDeps): Promise<void>;
   stop(): Promise<void>;
+  notify?(target: NotificationTarget, content: string): Promise<void>;
 }
 
 export interface ChannelDeps {

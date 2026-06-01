@@ -17,6 +17,8 @@ import { AgentRuntime } from "./agent/runtime.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
 import { startChannels } from "./extensions/channels/loader.js";
 import { createGateway, type Gateway } from "./gateway/index.js";
+import type { NotificationTargetConfig } from "./automation/types.js";
+import type { NotificationTarget } from "./channels/types.js";
 
 const log = createLogger("app");
 
@@ -46,9 +48,9 @@ export async function start(opts: AppOptions): Promise<App> {
   const agentRuntime = createAgentRuntime(config);
   const { agentWorkspaces, channelContexts } = await registerAgents(config, agentRuntime, sessionStoreManager);
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
-  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway);
-  const cronScheduler = startCron(config, agentRuntime, gateway);
   const channels = await startChannels({ gateway, config, channelContexts });
+  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway, channels);
+  const cronScheduler = startCron(config, agentRuntime, gateway, channels);
   const apiServer = await startApiServer(cronScheduler, gateway);
 
   const stop = async () => {
@@ -120,6 +122,7 @@ function startHeartbeats(
   config: IsotopesConfigFile,
   agentWorkspaces: Map<string, string>,
   gateway: Gateway,
+  channels: { notify?: (target: NotificationTarget, content: string) => Promise<void> },
 ): HeartbeatManager[] {
   const managers: HeartbeatManager[] = [];
 
@@ -139,6 +142,7 @@ function startHeartbeats(
           content: prompt,
           source: "heartbeat",
         });
+        await sendScheduledResult(result, resolveNotificationTarget(agentFile.heartbeat?.notify), channels);
         return result.responseText;
       },
     });
@@ -155,6 +159,7 @@ function startCron(
   config: IsotopesConfigFile,
   agentRuntime: AgentRuntime,
   gateway: Gateway,
+  channels: { notify?: (target: NotificationTarget, content: string) => Promise<void> },
 ): CronScheduler {
   const scheduler = new CronScheduler(async (job) => {
     if (!agentRuntime.getAgent(job.agentId)) {
@@ -165,12 +170,13 @@ function startCron(
     const sessionKey = `cron:${job.agentId}:${job.name}`;
 
     try {
-      await gateway.dispatchAndWait({
+      const result = await gateway.dispatchAndWait({
         agentId: job.agentId,
         sessionKey,
         content: prompt,
         source: "cron",
       });
+      await sendScheduledResult(result, resolveNotificationTarget(job.notify), channels);
     } catch { /* ignore */ }
   });
 
@@ -183,6 +189,7 @@ function startCron(
         agentId: agentFile.id,
         action: { type: "prompt", prompt: task.prompt },
         enabled: task.enabled ?? true,
+        notify: task.notify,
       });
     }
   }
@@ -195,6 +202,7 @@ function startCron(
         agentId: task.agentId,
         action: task.action,
         enabled: task.enabled ?? true,
+        notify: task.notify,
       });
     }
   }
@@ -204,7 +212,32 @@ function startCron(
   return scheduler;
 }
 
-async function startApiServer(cronScheduler: CronScheduler, gateway: Gateway): Promise<ServerType> {
+export async function sendScheduledResult(
+  result: { responseText: string; errorMessage: string | null },
+  target: NotificationTarget | undefined,
+  sink: { notify?: (target: NotificationTarget, content: string) => Promise<void> },
+): Promise<void> {
+  if (!target || !sink.notify) return;
+
+  const content = result.errorMessage?.trim() ? `⚠️ ${result.errorMessage.trim()}` : result.responseText.trim();
+  if (!content) return;
+
+  await sink.notify(target, content);
+}
+
+function resolveNotificationTarget(config?: NotificationTargetConfig): NotificationTarget | undefined {
+  if (!config || config.enabled === false) return undefined;
+  if (!config.channelId) return undefined;
+
+  return {
+    type: config.type ?? "discord",
+    accountId: config.accountId,
+    channelId: config.channelId,
+    threadId: config.threadId,
+  };
+}
+
+function startApiServer(cronScheduler: CronScheduler, gateway: Gateway): Promise<ServerType> {
   const port = getApiPort();
   const api = createApi({ cronScheduler, gateway });
   return new Promise<ServerType>((resolve) => {

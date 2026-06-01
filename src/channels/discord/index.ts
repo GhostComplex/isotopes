@@ -5,13 +5,13 @@ import {
   type Message as DiscordMessage,
   type SendableChannels,
 } from "discord.js";
-import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
+import type { Channel, ChannelActions, ChannelDeps, NotificationTarget } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
-import { createDiscordSubscriber } from "./outbound.js";
+import { chunkDiscordMessage, createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -66,6 +66,24 @@ export function createDiscordChannel(
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
 
+  async function notify(target: NotificationTarget, content: string): Promise<void> {
+    if (target.type !== "discord") throw new Error(`Unsupported notification target: ${target.type}`);
+
+    const client = target.accountId ? clients.get(target.accountId) : clients.values().next().value;
+    if (!client) throw new Error("No Discord client is available for outbound notifications");
+
+    const channel = await client.channels.fetch(target.channelId);
+    const sendable = channel as { send?: (message: string) => Promise<unknown> } | null | undefined;
+    if (!sendable || typeof sendable.send !== "function") {
+      throw new Error(`Discord channel ${target.channelId} is not sendable`);
+    }
+
+    const chunks = chunkDiscordMessage(content);
+    for (const chunk of chunks) {
+      await sendable.send(chunk);
+    }
+  }
+
   return {
     async start(deps: ChannelDeps) {
       const { gateway } = deps;
@@ -117,6 +135,7 @@ export function createDiscordChannel(
       for (const h of histories.values()) h.clear();
       histories.clear();
     },
+    notify,
   };
 }
 
