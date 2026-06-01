@@ -3,7 +3,7 @@ import path from "node:path";
 import YAML from "yaml";
 import type { ProviderType, AgentConfig } from "./agent/types.js";
 import type { AgentToolSettings } from "./agent/tools/types.js";
-import type { ChannelsConfig } from "./channels/types.js";
+import type { ChannelsConfig, ChannelTarget } from "./channels/types.js";
 import type { CronAction } from "./automation/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "./agent/middleware/sandbox-config.js";
 
@@ -18,6 +18,8 @@ export interface ProviderConfigFile {
 export interface HeartbeatConfigFile {
   enabled?: boolean;
   intervalSeconds?: number;
+  /** Send the agent's response to this channel when the heartbeat completes. */
+  delivery?: ChannelTarget;
 }
 
 export interface CronTaskConfigFile {
@@ -25,6 +27,8 @@ export interface CronTaskConfigFile {
   schedule: string;
   prompt: string;
   enabled?: boolean;
+  /** Send the agent's response to this channel when the cron completes. */
+  delivery?: ChannelTarget;
 }
 
 export interface AgentConfigFile {
@@ -47,6 +51,8 @@ export interface AgentToolsConfigFile {
   allow?: string[];
   /** Always blocked. Wins over allow. */
   deny?: string[];
+  /** Per-tool config; currently only the `message` tool. */
+  message?: { allowedChannels?: string[] };
 }
 
 export interface SandboxDockerConfigFile {
@@ -78,6 +84,7 @@ export interface CronJobConfigFile {
   agentId: string;
   action: CronAction;
   enabled?: boolean;
+  delivery?: ChannelTarget;
 }
 
 export interface IsotopesConfigFile {
@@ -93,10 +100,11 @@ export function resolveToolSettings(
   agentTools?: AgentToolsConfigFile,
   defaultTools?: AgentToolsConfigFile,
 ): AgentToolSettings {
-  // Agent overrides defaults entirely (not merged) per allow/deny block.
+  // Agent overrides defaults entirely (not merged) per allow/deny/message block.
   return {
     allow: agentTools?.allow ?? defaultTools?.allow,
     deny: agentTools?.deny ?? defaultTools?.deny,
+    message: agentTools?.message ?? defaultTools?.message,
   };
 }
 

@@ -1,8 +1,41 @@
 import type { Gateway } from "../gateway/index.js";
 
+/** Stable address for a destination on any channel type. */
+export interface ChannelTarget {
+  /** Channel kind, e.g. "discord". Matched against Channel.kind. */
+  type: string;
+  /** Optional account id for multi-account setups. */
+  accountId?: string;
+  channelId: string;
+  /** Thread / topic id when the platform supports it. */
+  threadId?: string;
+}
+
+/** One inbound message as returned by MessagingChannel.fetchHistory. */
+export interface ChannelHistoryEntry {
+  messageId: string;
+  sender: string;
+  body: string;
+  /** Epoch ms. */
+  timestamp: number;
+}
+
 export interface Channel {
+  /** Channel kind; used by ChannelRouter to dispatch ChannelTarget. */
+  kind: string;
   start(deps: ChannelDeps): Promise<void>;
   stop(): Promise<void>;
+}
+
+/** Optional capability — channels that can be addressed by ChannelTarget implement this. */
+export interface MessagingChannel extends Channel {
+  send(target: ChannelTarget, content: string): Promise<{ id: string }>;
+  fetchHistory(target: ChannelTarget, opts: { limit: number }): Promise<ChannelHistoryEntry[]>;
+}
+
+export function isMessagingChannel(c: Channel): c is MessagingChannel {
+  const m = c as Partial<MessagingChannel>;
+  return typeof m.send === "function" && typeof m.fetchHistory === "function";
 }
 
 export interface ChannelDeps {
@@ -11,9 +44,13 @@ export interface ChannelDeps {
   channelContexts?: Map<string, LazyChannelContext>;
 }
 
-/** Actions an agent tool can perform on the channel (via LazyChannelContext). */
+/** Actions an agent tool can perform via the channel runtime (via LazyChannelContext). */
 export interface ChannelActions {
   react?(messageId: string, emoji: string, channelId: string): Promise<void>;
+  /** Send a message to any addressable channel. Dispatched by ChannelRouter. */
+  send?(target: ChannelTarget, content: string): Promise<{ id: string }>;
+  /** Fetch recent history from any addressable channel. Dispatched by ChannelRouter. */
+  fetchHistory?(target: ChannelTarget, opts: { limit: number }): Promise<ChannelHistoryEntry[]>;
 }
 
 export type ChannelsConfig = Record<string, unknown>;

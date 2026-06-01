@@ -1,6 +1,6 @@
 import { Cron } from "croner";
 import { randomUUID } from "node:crypto";
-import type { CronAction } from "./types.js";
+import type { CronAction, DeliveryTarget } from "./types.js";
 
 export type { CronAction };
 
@@ -13,6 +13,7 @@ export interface CronJob {
   agentId: string;
   action: CronAction;
   enabled: boolean;
+  delivery?: DeliveryTarget;
   lastRun?: Date;
   nextRun?: Date;
   createdAt: Date;

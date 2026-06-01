@@ -135,6 +135,9 @@ export async function createPiSession(
     runtime: deps.runtime,
     ...(agent.spawnableAgentIds ? { spawnableAgentIds: agent.spawnableAgentIds } : {}),
     ...(agent.channelContext ? { channelContext: agent.channelContext } : {}),
+    ...(agent.config.toolSettings?.message?.allowedChannels
+      ? { allowedMessageChannels: agent.config.toolSettings.message.allowedChannels }
+      : {}),
     ...(agent.config.sandbox ? { agentSandboxConfig: agent.config.sandbox } : {}),
     ...(deps.sandboxExecutor ? { sandboxExecutor: deps.sandboxExecutor } : {}),
   });

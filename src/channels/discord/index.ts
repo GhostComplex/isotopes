@@ -5,7 +5,13 @@ import {
   type Message as DiscordMessage,
   type SendableChannels,
 } from "discord.js";
-import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
+import type {
+  ChannelActions,
+  ChannelDeps,
+  ChannelHistoryEntry,
+  ChannelTarget,
+  MessagingChannel,
+} from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 
 import { DedupeCache } from "./dedupe.js";
@@ -54,7 +60,7 @@ interface CreateDiscordChannelOptions {
 export function createDiscordChannel(
   rawConfig: unknown,
   options: CreateDiscordChannelOptions = {},
-): Channel {
+): MessagingChannel {
   const config = (rawConfig ?? {}) as DiscordChannelsConfig;
   const accounts = config.accounts ?? {};
   const clientFactory = options.clientFactory ?? defaultClientFactory;
@@ -66,7 +72,27 @@ export function createDiscordChannel(
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
 
-  return {
+  const resolveClient = (target: ChannelTarget): ClientLike => {
+    if (target.type !== "discord") {
+      throw new Error(`Discord channel cannot handle target type "${target.type}"`);
+    }
+    let client: ClientLike | undefined;
+    if (target.accountId) {
+      client = clients.get(target.accountId);
+      if (!client) throw new Error(`Unknown Discord accountId "${target.accountId}"`);
+    } else {
+      if (clients.size === 0) throw new Error("No Discord clients are running");
+      if (clients.size > 1) {
+        throw new Error("Multiple Discord accounts configured; ChannelTarget.accountId is required");
+      }
+      client = clients.values().next().value as ClientLike;
+    }
+    return client;
+  };
+
+  const channel: MessagingChannel = {
+    kind: "discord",
+
     async start(deps: ChannelDeps) {
       const { gateway } = deps;
       const accountIds = Object.keys(accounts);
@@ -117,7 +143,46 @@ export function createDiscordChannel(
       for (const h of histories.values()) h.clear();
       histories.clear();
     },
+
+    async send(target, content) {
+      const client = resolveClient(target);
+      const destId = target.threadId ?? target.channelId;
+      const ch = (await client.channels.fetch(destId)) as
+        | { send?: (c: string) => Promise<{ id: string }> }
+        | null;
+      if (!ch?.send) throw new Error(`Discord channel ${destId} is not sendable`);
+      const sent = await ch.send(content);
+      return { id: sent.id };
+    },
+
+    async fetchHistory(target, { limit }) {
+      const client = resolveClient(target);
+      const sourceId = target.threadId ?? target.channelId;
+      const ch = (await client.channels.fetch(sourceId)) as
+        | {
+            messages?: {
+              fetch: (opts: { limit: number }) => Promise<Map<string, DiscordMessage> | Iterable<[string, DiscordMessage]>>;
+            };
+          }
+        | null;
+      if (!ch?.messages?.fetch) throw new Error(`Discord channel ${sourceId} does not expose message history`);
+      const fetched = await ch.messages.fetch({ limit: Math.min(Math.max(limit, 1), 100) });
+      const entries: ChannelHistoryEntry[] = [];
+      for (const [, m] of fetched as Iterable<[string, DiscordMessage]>) {
+        entries.push({
+          messageId: m.id,
+          sender: m.author?.username ?? "unknown",
+          body: m.content ?? "",
+          timestamp: m.createdTimestamp ?? 0,
+        });
+      }
+      // Discord returns newest-first; reverse to oldest-first for natural reading order.
+      entries.reverse();
+      return entries;
+    },
   };
+
+  return channel;
 }
 
 interface StartAccountArgs {

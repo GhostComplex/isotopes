@@ -29,7 +29,7 @@ describe("ChannelManager", () => {
   it("starts the discord adapter when the import succeeds", async () => {
     const start = vi.fn<Channel["start"]>(async () => {});
     const stop = vi.fn<Channel["stop"]>(async () => {});
-    const adapter: Channel = { start, stop };
+    const adapter: Channel = { kind: "discord", start, stop };
     const createDiscordChannel = vi.fn(() => adapter);
 
     vi.doMock("../../channels/discord/index.js", () => ({ createDiscordChannel }));

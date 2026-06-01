@@ -5,7 +5,9 @@ import {
 } from "./config.js";
 import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
-import { LazyChannelContext } from "./channels/types.js";
+import { LazyChannelContext, type ChannelTarget } from "./channels/types.js";
+import { ChannelRouter } from "./channels/router.js";
+import { matchesAllowedChannel } from "./channels/allowlist.js";
 import { getIsotopesHome, getLogsPath } from "./utils/paths.js";
 
 import { CronScheduler } from "./automation/cron-job.js";
@@ -40,14 +42,16 @@ export async function start(opts: AppOptions): Promise<App> {
     throw new Error("config.provider is required (top-level provider config in isotopes.yaml)");
   }
 
+  validateDeliveryAgainstAllowlists(config);
+
   const sessionStoreManager = new SessionStoreManager();
   const agentRuntime = createAgentRuntime(config);
   const { agentWorkspaces, channelContexts } = await registerAgents(config, agentRuntime, sessionStoreManager);
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
-  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway);
-  const cronScheduler = startCron(config, agentRuntime, gateway);
   const channelManager = new ChannelManager(config);
   await channelManager.start({ gateway, channelContexts });
+  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway, channelManager.router);
+  const cronScheduler = startCron(config, agentRuntime, gateway, channelManager.router);
   const apiServer = new ApiServer({ cronScheduler, gateway });
   await apiServer.start();
 
@@ -118,6 +122,7 @@ function startHeartbeats(
   config: IsotopesConfigFile,
   agentWorkspaces: Map<string, string>,
   gateway: Gateway,
+  router: ChannelRouter,
 ): HeartbeatManager[] {
   const managers: HeartbeatManager[] = [];
 
@@ -125,6 +130,8 @@ function startHeartbeats(
     if (!agentFile.heartbeat?.enabled) continue;
     const workspacePath = agentWorkspaces.get(agentFile.id);
     if (!workspacePath) continue;
+
+    const delivery = agentFile.heartbeat.delivery;
 
     const hb = new HeartbeatManager({
       agentId: agentFile.id,
@@ -137,6 +144,7 @@ function startHeartbeats(
           content: prompt,
           source: "heartbeat",
         });
+        await deliverResult(result, delivery, router, { source: "heartbeat", agentId });
         return result.responseText;
       },
     });
@@ -153,6 +161,7 @@ function startCron(
   config: IsotopesConfigFile,
   agentRuntime: AgentRuntime,
   gateway: Gateway,
+  router: ChannelRouter,
 ): CronScheduler {
   const scheduler = new CronScheduler(async (job) => {
     if (!agentRuntime.getAgent(job.agentId)) {
@@ -163,13 +172,16 @@ function startCron(
     const sessionKey = `cron:${job.agentId}:${job.name}`;
 
     try {
-      await gateway.dispatchAndWait({
+      const result = await gateway.dispatchAndWait({
         agentId: job.agentId,
         sessionKey,
         content: prompt,
         source: "cron",
       });
-    } catch { /* ignore */ }
+      await deliverResult(result, job.delivery, router, { source: "cron", agentId: job.agentId, job: job.name });
+    } catch (err) {
+      log.warn("Cron run failed", { agentId: job.agentId, jobName: job.name, error: err });
+    }
   });
 
   for (const agentFile of config.agents) {
@@ -181,6 +193,7 @@ function startCron(
         agentId: agentFile.id,
         action: { type: "prompt", prompt: task.prompt },
         enabled: task.enabled ?? true,
+        ...(task.delivery ? { delivery: task.delivery } : {}),
       });
     }
   }
@@ -193,6 +206,7 @@ function startCron(
         agentId: task.agentId,
         action: task.action,
         enabled: task.enabled ?? true,
+        ...(task.delivery ? { delivery: task.delivery } : {}),
       });
     }
   }
@@ -201,3 +215,57 @@ function startCron(
   log.info("Cron scheduler started", { jobs: scheduler.listJobs().length });
   return scheduler;
 }
+
+async function deliverResult(
+  result: { responseText: string; errorMessage?: string | null },
+  target: ChannelTarget | undefined,
+  router: ChannelRouter,
+  ctx: Record<string, unknown>,
+): Promise<void> {
+  if (!target) return;
+  const errText = result.errorMessage?.trim();
+  const body = errText ? `⚠️ ${errText}` : result.responseText.trim();
+  if (!body) return;
+  try {
+    await router.send(target, body);
+  } catch (err) {
+    log.warn("Scheduled delivery failed", { ...ctx, target, error: err });
+  }
+}
+
+/**
+ * Refuse to start if any cron/heartbeat delivery channel is not in the agent's
+ * `tools.message.allowedChannels`. Catches misconfigurations early instead of
+ * surfacing them at first fire.
+ */
+function validateDeliveryAgainstAllowlists(config: IsotopesConfigFile): void {
+  const allowByAgent = new Map<string, string[]>();
+  for (const a of config.agents) {
+    const allow = a.tools?.message?.allowedChannels ?? config.tools?.message?.allowedChannels;
+    if (allow && allow.length > 0) allowByAgent.set(a.id, allow);
+  }
+
+  const violations: string[] = [];
+  const check = (agentId: string, label: string, target: ChannelTarget | undefined) => {
+    if (!target) return;
+    const allow = allowByAgent.get(agentId);
+    if (!allow) return; // no allowlist → unrestricted
+    if (!matchesAllowedChannel(target, allow)) {
+      violations.push(`${label}: agent "${agentId}" cannot deliver to ${target.type}:${target.channelId}`);
+    }
+  };
+
+  for (const a of config.agents) {
+    check(a.id, `heartbeat for "${a.id}"`, a.heartbeat?.delivery);
+    for (const t of a.cron?.tasks ?? []) check(a.id, `cron "${t.name}"`, t.delivery);
+  }
+  for (const t of config.cron ?? []) check(t.agentId, `cron "${t.name}"`, t.delivery);
+
+  if (violations.length > 0) {
+    throw new Error(
+      `Delivery target not in agent's tools.message.allowedChannels:\n  - ${violations.join("\n  - ")}`,
+    );
+  }
+}
+
+// (no extra exports)

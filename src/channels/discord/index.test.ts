@@ -435,3 +435,77 @@ describe("createDiscordChannel — /stop interception", () => {
     expect(gateway.dispatch).not.toHaveBeenCalled();
   });
 });
+
+describe("createDiscordChannel — MessagingChannel", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("send: posts to channelId, returns message id", async () => {
+    const client = makeFakeClient("bot-A");
+    const sendMock = vi.fn().mockResolvedValue({ id: "out-42" });
+    client.channels.fetch = vi.fn().mockResolvedValue({ send: sendMock });
+    const adapter = createDiscordChannel(
+      { accounts: { acct1: { token: "t", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway: makeGateway() });
+    const out = await adapter.send({ type: "discord", channelId: "c-1" }, "hello");
+    expect(client.channels.fetch).toHaveBeenCalledWith("c-1");
+    expect(sendMock).toHaveBeenCalledWith("hello");
+    expect(out).toEqual({ id: "out-42" });
+    await adapter.stop();
+  });
+
+  it("send: prefers threadId over channelId for the destination", async () => {
+    const client = makeFakeClient("bot-A");
+    const sendMock = vi.fn().mockResolvedValue({ id: "out-7" });
+    client.channels.fetch = vi.fn().mockResolvedValue({ send: sendMock });
+    const adapter = createDiscordChannel(
+      { accounts: { acct1: { token: "t", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway: makeGateway() });
+    await adapter.send({ type: "discord", channelId: "c-1", threadId: "t-9" }, "hi");
+    expect(client.channels.fetch).toHaveBeenCalledWith("t-9");
+    await adapter.stop();
+  });
+
+  it("fetchHistory: returns oldest-first entries clamped to [1,100]", async () => {
+    const client = makeFakeClient("bot-A");
+    const messages = new Map<string, unknown>([
+      ["m2", { id: "m2", author: { username: "bob" }, content: "world", createdTimestamp: 200 }],
+      ["m1", { id: "m1", author: { username: "alice" }, content: "hello", createdTimestamp: 100 }],
+    ]);
+    client.channels.fetch = vi.fn().mockResolvedValue({
+      messages: { fetch: vi.fn().mockResolvedValue(messages) },
+    });
+    const adapter = createDiscordChannel(
+      { accounts: { acct1: { token: "t", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway: makeGateway() });
+    const entries = await adapter.fetchHistory({ type: "discord", channelId: "c-1" }, { limit: 999 });
+    expect(entries.map((e) => e.messageId)).toEqual(["m1", "m2"]);
+    expect(entries[0]).toMatchObject({ sender: "alice", body: "hello", timestamp: 100 });
+    await adapter.stop();
+  });
+
+  it("requires accountId when multiple accounts are configured", async () => {
+    const a = makeFakeClient("bot-A");
+    const b = makeFakeClient("bot-B");
+    const factories = [a, b];
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          one: { token: "t1", defaultAgentId: "x", groupAccess: { policy: "open" } },
+          two: { token: "t2", defaultAgentId: "y", groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => factories.shift()! },
+    );
+    await adapter.start({ gateway: makeGateway() });
+    await expect(adapter.send({ type: "discord", channelId: "c-1" }, "hi")).rejects.toThrow(/accountId is required/);
+    await adapter.stop();
+  });
+});
