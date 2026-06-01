@@ -38,6 +38,11 @@ export class ChannelManager {
   }
 
   async notify(target: NotificationTarget, content: string): Promise<void> {
-    await Promise.all(this.channels.map((c) => c.notify?.(target, content)));
+    const candidates = this.channels.filter((c) => (c.kind ?? "") === target.type);
+    if (candidates.length === 0) {
+      throw new Error(`No channel adapter is registered for target type "${target.type}"`);
+    }
+
+    await Promise.all(candidates.map((c) => c.notify?.(target, content)));
   }
 }

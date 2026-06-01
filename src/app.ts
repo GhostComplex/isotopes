@@ -175,7 +175,9 @@ function startCron(
         source: "cron",
       });
       await sendScheduledResult(result, resolveNotificationTarget(job.notify), channels);
-    } catch { /* ignore */ }
+    } catch (err) {
+      log.warn("Cron run failed", { agentId: job.agentId, jobName: job.name, error: err });
+    }
   });
 
   for (const agentFile of config.agents) {
@@ -209,6 +211,7 @@ function startCron(
   log.info("Cron scheduler started", { jobs: scheduler.listJobs().length });
   return scheduler;
 }
+
 export async function sendScheduledResult(
   result: { responseText: string; errorMessage: string | null },
   target: NotificationTarget | undefined,
@@ -219,7 +222,11 @@ export async function sendScheduledResult(
   const content = result.errorMessage?.trim() ? `⚠️ ${result.errorMessage.trim()}` : result.responseText.trim();
   if (!content) return;
 
-  await sink.notify(target, content);
+  try {
+    await sink.notify(target, content);
+  } catch (err) {
+    log.warn("Scheduled notification failed", { target, error: err });
+  }
 }
 
 function resolveNotificationTarget(config?: NotificationTargetConfig): NotificationTarget | undefined {

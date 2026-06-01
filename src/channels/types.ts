@@ -8,6 +8,7 @@ export interface NotificationTarget {
 }
 
 export interface Channel {
+  kind?: string;
   start(deps: ChannelDeps): Promise<void>;
   stop(): Promise<void>;
   notify?(target: NotificationTarget, content: string): Promise<void>;

@@ -12,6 +12,7 @@ import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
 import { chunkDiscordMessage, createDiscordSubscriber } from "./outbound.js";
+import { fetchSendableChannel } from "./sendable.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
@@ -69,14 +70,15 @@ export function createDiscordChannel(
   async function notify(target: NotificationTarget, content: string): Promise<void> {
     if (target.type !== "discord") throw new Error(`Unsupported notification target: ${target.type}`);
 
-    const client = target.accountId ? clients.get(target.accountId) : clients.values().next().value;
-    if (!client) throw new Error("No Discord client is available for outbound notifications");
-
-    const channel = await client.channels.fetch(target.channelId);
-    const sendable = channel as { send?: (message: string) => Promise<unknown> } | null | undefined;
-    if (!sendable || typeof sendable.send !== "function") {
-      throw new Error(`Discord channel ${target.channelId} is not sendable`);
+    const client = target.accountId
+      ? clients.get(target.accountId)
+      : undefined;
+    if (!client) {
+      throw new Error("No Discord client matches the requested accountId for outbound notifications");
     }
+
+    const targetChannelId = target.threadId ?? target.channelId;
+    const sendable = await fetchSendableChannel(client, targetChannelId);
 
     const chunks = chunkDiscordMessage(content);
     for (const chunk of chunks) {
@@ -85,6 +87,7 @@ export function createDiscordChannel(
   }
 
   return {
+    kind: "discord",
     async start(deps: ChannelDeps) {
       const { gateway } = deps;
       const accountIds = Object.keys(accounts);

@@ -108,6 +108,23 @@ describe("createDiscordChannel — lifecycle", () => {
     await adapter.stop();
   });
 
+  it("uses the configured threadId when sending scheduled notifications", async () => {
+    const client = makeFakeClient("bot-A");
+    const sendMock = vi.fn().mockResolvedValue({ id: "out-1" });
+    client.channels.fetch = vi.fn().mockResolvedValue({ send: sendMock });
+
+    const adapter = createDiscordChannel(
+      { accounts: { acct1: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
+      { clientFactory: () => client },
+    );
+
+    await adapter.start({ gateway: makeGateway() });
+    await adapter.notify!({ type: "discord", accountId: "acct1", channelId: "main-channel", threadId: "thread-1" }, "hello world");
+
+    expect(client.channels.fetch).toHaveBeenCalledWith("thread-1");
+    expect(sendMock).toHaveBeenCalledWith("hello world");
+  });
+
   it("constructs and logs in one client per account", async () => {
     const a = makeFakeClient("bot-A");
     const b = makeFakeClient("bot-B");
@@ -180,7 +197,7 @@ describe("createDiscordChannel — lifecycle", () => {
     const ctxB = new LazyChannelContext();
     await adapter.start({
       gateway: makeGateway(),
-      
+
       channelContexts: new Map([["agentA", ctxA], ["agentB", ctxB]]),
     });
     await ctxA.getChannelActions()!.react!("msg-1", "👀", "ch-1");

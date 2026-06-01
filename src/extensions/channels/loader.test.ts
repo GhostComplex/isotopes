@@ -26,6 +26,21 @@ describe("ChannelManager", () => {
     await expect(manager.stop()).resolves.toBeUndefined();
   });
 
+  it("routes notify only to matching channel kinds", async () => {
+    const discordNotify = vi.fn().mockResolvedValue(undefined);
+    const feishuNotify = vi.fn().mockResolvedValue(undefined);
+    const manager = new ChannelManager({});
+    (manager as unknown as { channels: Array<{ kind?: string; notify?: typeof discordNotify }> }).channels = [
+      { kind: "discord", notify: discordNotify },
+      { kind: "feishu", notify: feishuNotify },
+    ];
+
+    await manager.notify({ type: "discord", channelId: "chan-1" }, "hello");
+
+    expect(discordNotify).toHaveBeenCalledWith({ type: "discord", channelId: "chan-1" }, "hello");
+    expect(feishuNotify).not.toHaveBeenCalled();
+  });
+
   it("starts the discord adapter when the import succeeds", async () => {
     const start = vi.fn<Channel["start"]>(async () => {});
     const stop = vi.fn<Channel["stop"]>(async () => {});
