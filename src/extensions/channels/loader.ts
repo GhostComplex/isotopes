@@ -1,30 +1,43 @@
-import type { Channel, ChannelDeps } from "../../channels/types.js";
+import type { Channel, ChannelDeps, NotificationTarget } from "../../channels/types.js";
 import { createDiscordChannel } from "../../channels/discord/index.js";
+import { createLogger } from "../../logging/logger.js";
 
-export interface StartChannelsResult {
-  stop(): Promise<void>;
-  notify(target: { type: "discord"; accountId?: string; channelId: string; threadId?: string }, content: string): Promise<void>;
-}
+const log = createLogger("channel-manager");
 
-export interface StartChannelsDeps extends ChannelDeps {
-  config: { channels?: Record<string, unknown> };
-}
+export class ChannelManager {
+  private channels: Channel[] = [];
+  private running = false;
+  private readonly config: { channels?: Record<string, unknown> };
 
-export async function startChannels(deps: StartChannelsDeps): Promise<StartChannelsResult> {
-  const channels: Channel[] = [];
-
-  if (deps.config.channels?.discord) {
-    channels.push(createDiscordChannel(deps.config.channels.discord));
+  constructor(config: { channels?: Record<string, unknown> }) {
+    this.config = config;
   }
 
-  await Promise.all(channels.map((c) => c.start(deps)));
+  async start(deps: ChannelDeps): Promise<void> {
+    if (this.running) return;
 
-  return {
-    async stop() {
-      await Promise.all(channels.map((c) => c.stop()));
-    },
-    async notify(target, content) {
-      await Promise.all(channels.map((c) => c.notify?.(target, content)));
-    },
-  };
+    if (this.config.channels?.discord) {
+      this.channels.push(createDiscordChannel(this.config.channels.discord));
+    }
+
+    await Promise.all(this.channels.map((c) => c.start(deps)));
+    this.running = true;
+  }
+
+  async stop(): Promise<void> {
+    if (!this.running) return;
+
+    await Promise.all(this.channels.map(async (c) => {
+      try {
+        await c.stop();
+      } catch (err) {
+        log.warn("Channel stop failed", { error: err });
+      }
+    }));
+    this.running = false;
+  }
+
+  async notify(target: NotificationTarget, content: string): Promise<void> {
+    await Promise.all(this.channels.map((c) => c.notify?.(target, content)));
+  }
 }

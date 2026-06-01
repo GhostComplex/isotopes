@@ -1,12 +1,11 @@
-// src/extensions/channels/loader.test.ts
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Gateway } from "../../gateway/index.js";
 import type { Channel } from "../../channels/types.js";
-import { startChannels } from "./loader.js";
+import { ChannelManager } from "./loader.js";
 
 const fakeGateway = {} as Gateway;
 
-describe("startChannels", () => {
+describe("ChannelManager", () => {
   beforeEach(() => {
     vi.resetModules();
   });
@@ -16,19 +15,15 @@ describe("startChannels", () => {
   });
 
   it("loads no adapters when channels.discord config is absent", async () => {
-    const result = await startChannels({
-      gateway: fakeGateway,
-      config: {},
-    });
-    await expect(result.stop()).resolves.toBeUndefined();
+    const manager = new ChannelManager({});
+    await manager.start({ gateway: fakeGateway });
+    await expect(manager.stop()).resolves.toBeUndefined();
   });
 
   it("loads the discord adapter when channels.discord is configured (no-accounts no-op)", async () => {
-    const result = await startChannels({
-      gateway: fakeGateway,
-      config: { channels: { discord: { token: "x" } } },
-    });
-    await expect(result.stop()).resolves.toBeUndefined();
+    const manager = new ChannelManager({ channels: { discord: { token: "x" } } });
+    await manager.start({ gateway: fakeGateway });
+    await expect(manager.stop()).resolves.toBeUndefined();
   });
 
   it("starts the discord adapter when the import succeeds", async () => {
@@ -39,19 +34,17 @@ describe("startChannels", () => {
 
     vi.doMock("../../channels/discord/index.js", () => ({ createDiscordChannel }));
 
-    const { startChannels: load } = await import("./loader.js");
+    const { ChannelManager: CM } = await import("./loader.js");
 
     const discordCfg = { token: "abc" };
-    const result = await load({
-      gateway: fakeGateway,
-      config: { channels: { discord: discordCfg } },
-    });
+    const manager = new CM({ channels: { discord: discordCfg } });
+    await manager.start({ gateway: fakeGateway });
 
     expect(createDiscordChannel).toHaveBeenCalledWith(discordCfg);
     expect(start).toHaveBeenCalledTimes(1);
     expect(start.mock.calls[0]![0]).toMatchObject({ gateway: fakeGateway });
 
-    await result.stop();
+    await manager.stop();
     expect(stop).toHaveBeenCalledTimes(1);
   });
 });

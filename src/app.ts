@@ -4,18 +4,16 @@ import {
   type IsotopesConfigFile,
 } from "./config.js";
 import { SessionStoreManager } from "./agent/pi/session-store.js";
-import { getApiPort } from "./utils/api-client.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyChannelContext } from "./channels/types.js";
 import { getIsotopesHome, getLogsPath } from "./utils/paths.js";
 
-import { serve, type ServerType } from "@hono/node-server";
-import { createApi } from "./http/server.js";
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
-import { startChannels } from "./extensions/channels/loader.js";
+import { ChannelManager } from "./extensions/channels/loader.js";
+import { ApiServer } from "./http/api-server.js";
 import { createGateway, type Gateway } from "./gateway/index.js";
 import type { NotificationTargetConfig } from "./automation/types.js";
 import type { NotificationTarget } from "./channels/types.js";
@@ -30,7 +28,7 @@ export interface App {
   agentRuntime: AgentRuntime;
   agentWorkspaces: Map<string, string>;
   cronScheduler: CronScheduler;
-  apiServer: ServerType;
+  apiServer: ApiServer;
   stop: () => Promise<void>;
 }
 
@@ -48,19 +46,19 @@ export async function start(opts: AppOptions): Promise<App> {
   const agentRuntime = createAgentRuntime(config);
   const { agentWorkspaces, channelContexts } = await registerAgents(config, agentRuntime, sessionStoreManager);
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
-  const channels = await startChannels({ gateway, config, channelContexts });
-  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway, channels);
-  const cronScheduler = startCron(config, agentRuntime, gateway, channels);
-  const apiServer = await startApiServer(cronScheduler, gateway);
+  const channelManager = new ChannelManager(config);
+  await channelManager.start({ gateway, channelContexts });
+  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway, channelManager);
+  const cronScheduler = startCron(config, agentRuntime, gateway, channelManager);
+  const apiServer = new ApiServer({ cronScheduler, gateway });
+  await apiServer.start();
 
   const stop = async () => {
     log.info("Shutting down");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
-    try { await channels.stop(); } catch { /* ignore */ }
-    await new Promise<void>((resolve, reject) => {
-      apiServer.close((err) => (err ? reject(err) : resolve()));
-    });
+    await channelManager.stop();
+    await apiServer.stop();
     sessionStoreManager.stop();
     try {
       await agentRuntime.stop();
@@ -211,7 +209,6 @@ function startCron(
   log.info("Cron scheduler started", { jobs: scheduler.listJobs().length });
   return scheduler;
 }
-
 export async function sendScheduledResult(
   result: { responseText: string; errorMessage: string | null },
   target: NotificationTarget | undefined,
@@ -235,15 +232,4 @@ function resolveNotificationTarget(config?: NotificationTargetConfig): Notificat
     channelId: config.channelId,
     threadId: config.threadId,
   };
-}
-
-function startApiServer(cronScheduler: CronScheduler, gateway: Gateway): Promise<ServerType> {
-  const port = getApiPort();
-  const api = createApi({ cronScheduler, gateway });
-  return new Promise<ServerType>((resolve) => {
-    const s = serve({ fetch: api.fetch, port, hostname: "127.0.0.1" }, () => {
-      log.info("API server listening", { url: `http://127.0.0.1:${port}` });
-      resolve(s);
-    });
-  });
 }
