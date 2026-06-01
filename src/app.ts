@@ -55,7 +55,7 @@ export async function start(opts: AppOptions): Promise<App> {
     log.info("Shutting down");
     cronScheduler.stop();
     for (const hb of heartbeatManagers) hb.stop();
-    try { await channelManager.stop(); } catch { /* ignore */ }
+    await channelManager.stop();
     await apiServer.stop();
     sessionStoreManager.stop();
     try {

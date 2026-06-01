@@ -14,6 +14,7 @@ export interface ApiServerDeps {
 
 export class ApiServer {
   private server: ServerType | undefined;
+  private running = false;
   private readonly deps: ApiServerDeps;
   private readonly port: number;
 
@@ -23,22 +24,28 @@ export class ApiServer {
   }
 
   async start(): Promise<void> {
+    if (this.running) return;
+
     const api = createApi(this.deps);
     return new Promise<void>((resolve) => {
       this.server = serve({ fetch: api.fetch, port: this.port, hostname: "127.0.0.1" }, () => {
         log.info("API server listening", { url: `http://127.0.0.1:${this.port}` });
+        this.running = true;
         resolve();
       });
     });
   }
 
   async stop(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      if (!this.server) {
+    if (!this.running) return;
+
+    return new Promise<void>((resolve) => {
+      this.server!.close((err) => {
+        if (err) log.warn("API server close error", { error: err });
+        this.server = undefined;
+        this.running = false;
         resolve();
-        return;
-      }
-      this.server.close((err) => (err ? reject(err) : resolve()));
+      });
     });
   }
 }
