@@ -97,6 +97,15 @@ export function createDiscordChannel(
               if (!client) throw new Error(`No bot serves agent "${agentId}" in channel ${channelId}`);
               return react(client, messageId, emoji, channelId);
             },
+            sendMessage: async (channelId, content) => {
+              const client = clientForAgentInChannel(agentId, channelId, accounts, clients);
+              if (!client) throw new Error(`No bot serves agent "${agentId}" in channel ${channelId}`);
+              const ch = (await client.channels.fetch(channelId)) as
+                | { send?: (c: string) => Promise<{ id: string }> }
+                | null;
+              if (!ch?.send) throw new Error(`Channel ${channelId} is not sendable`);
+              return ch.send(content);
+            },
           };
           ctx.setChannelActions(actions);
         }

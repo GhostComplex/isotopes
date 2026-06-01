@@ -47,6 +47,7 @@ export interface AgentToolsConfigFile {
   allow?: string[];
   /** Always blocked. Wins over allow. */
   deny?: string[];
+  message?: { allowedChannels?: string[] };
 }
 
 export interface SandboxDockerConfigFile {
@@ -97,6 +98,7 @@ export function resolveToolSettings(
   return {
     allow: agentTools?.allow ?? defaultTools?.allow,
     deny: agentTools?.deny ?? defaultTools?.deny,
+    message: agentTools?.message ?? defaultTools?.message,
   };
 }
 

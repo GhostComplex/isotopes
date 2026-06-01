@@ -3,4 +3,5 @@
 export interface AgentToolSettings {
   allow?: string[];
   deny?: string[];
+  message?: { allowedChannels?: string[] };
 }

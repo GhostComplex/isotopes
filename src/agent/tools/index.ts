@@ -4,6 +4,7 @@ import { HostExecutor, type Executor, type SandboxExecutor } from "../middleware
 import { type SandboxConfig } from "../middleware/sandbox-config.js";
 import { createWebFetchTool } from "./web.js";
 import { createReactTools } from "./react.js";
+import { createMessageTools } from "./message.js";
 import type { LazyChannelContext } from "../../channels/types.js";
 import { createExecTools } from "./exec.js";
 import type { AgentRuntime } from "../runtime.js";
@@ -20,6 +21,7 @@ export interface CreateAgentToolsOptions {
   runtime: AgentRuntime;
   spawnableAgentIds?: readonly string[];
   channelContext?: LazyChannelContext;
+  allowedChannels?: string[];
   agentSandboxConfig?: SandboxConfig;
   /** Required when agentSandboxConfig.enabled — provided by AgentRuntime. */
   sandboxExecutor?: SandboxExecutor;
@@ -58,6 +60,7 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   ];
   if (opts.channelContext) {
     tools.push(...createReactTools(opts.channelContext));
+    tools.push(...createMessageTools(opts.channelContext, opts.allowedChannels));
   }
   return tools;
 }
