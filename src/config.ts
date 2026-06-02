@@ -187,10 +187,8 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
   return processEnvVars(raw);
 }
 
-/** When `channel.readLast` is omitted, prepend this many recent messages. */
 const DEFAULT_READ_LAST = 25;
 
-/** Fill in `readLast` defaults so downstream code can rely on the field. */
 function normalizeScheduledChannels(raw: IsotopesConfigFile): void {
   const fill = (c?: CronChannelConfig) => {
     if (c && c.readLast === undefined) c.readLast = DEFAULT_READ_LAST;
