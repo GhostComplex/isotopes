@@ -10,7 +10,6 @@ export interface ChannelHistoryEntry {
   messageId: string;
   sender: string;
   body: string;
-  /** Epoch ms. */
   timestamp: number;
 }
 
