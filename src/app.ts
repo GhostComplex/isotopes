@@ -21,9 +21,6 @@ import { createGateway, type Gateway } from "./gateway/index.js";
 
 const log = createLogger("app");
 
-/** When `channel.readLast` is omitted, prepend this many recent messages. */
-const DEFAULT_READ_LAST = 25;
-
 export interface AppOptions {
   config: IsotopesConfigFile;
 }
@@ -250,7 +247,9 @@ export async function runScheduledJob(
   let { prompt } = opts;
 
   if (channel) {
-    const readLast = channel.readLast ?? DEFAULT_READ_LAST;
+    // readLast is defaulted by loadConfig; missing here only when callers
+    // (e.g. tests) bypass loadConfig — treat undefined as 0 (no read).
+    const readLast = channel.readLast ?? 0;
     if (readLast > 0) {
       if (!discord) {
         throw new Error(`${source} "${agentId}": channel set but Discord is not configured`);
