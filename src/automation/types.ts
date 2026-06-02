@@ -5,17 +5,11 @@ export type CronAction =
   | { type: "message"; content: string }
   | { type: "prompt"; prompt: string };
 
-/**
- * Channel binding for a scheduled job (cron / heartbeat).
- *
- * - `accountId` + `channelId` are required: identifies which bot posts and where.
- * - `threadId` posts (and reads) inside a thread; otherwise the channel itself.
- * - `readLast > 0` injects that many recent messages into the prompt before
- *   dispatch; 0 / omitted leaves the prompt untouched.
- */
+/** Channel binding for a scheduled job (cron / heartbeat). */
 export interface CronChannelConfig {
   accountId: string;
   channelId: string;
   threadId?: string;
+  /** Number of recent messages to prepend as context. 0 / omitted = no read. */
   readLast?: number;
 }
