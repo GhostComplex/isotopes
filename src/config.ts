@@ -18,7 +18,6 @@ export interface ProviderConfigFile {
 export interface HeartbeatConfigFile {
   enabled?: boolean;
   intervalSeconds?: number;
-  channel?: CronChannelConfig;
 }
 
 export interface AgentConfigFile {
@@ -181,13 +180,11 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
 const DEFAULT_READ_LAST = 25;
 
 function normalizeScheduledChannels(raw: IsotopesConfigFile): void {
-  const fill = (c?: CronChannelConfig) => {
-    if (c && c.readLast === undefined) c.readLast = DEFAULT_READ_LAST;
-  };
-  for (const a of raw.agents) {
-    fill(a.heartbeat?.channel);
+  for (const t of raw.cron ?? []) {
+    if (t.channel && t.channel.readLast === undefined) {
+      t.channel.readLast = DEFAULT_READ_LAST;
+    }
   }
-  for (const t of raw.cron ?? []) fill(t.channel);
 }
 
 export function toAgentConfig(

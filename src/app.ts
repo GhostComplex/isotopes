@@ -49,7 +49,7 @@ export async function start(opts: AppOptions): Promise<App> {
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
   const channelManager = new ChannelManager(config);
   await channelManager.start({ gateway, channelContexts });
-  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway, channelManager);
+  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway);
   const cronScheduler = startCron(config, agentRuntime, gateway, channelManager);
   const apiServer = new ApiServer({ cronScheduler, gateway });
   await apiServer.start();
@@ -121,7 +121,6 @@ function startHeartbeats(
   config: IsotopesConfigFile,
   agentWorkspaces: Map<string, string>,
   gateway: Gateway,
-  channelManager: ChannelManager,
 ): HeartbeatManager[] {
   const managers: HeartbeatManager[] = [];
 
@@ -130,21 +129,16 @@ function startHeartbeats(
     const workspacePath = agentWorkspaces.get(agentFile.id);
     if (!workspacePath) continue;
 
-    const channel = agentFile.heartbeat.channel;
-
     const hb = new HeartbeatManager({
       agentId: agentFile.id,
       workspacePath,
       config: { ...agentFile.heartbeat, enabled: true },
       runAgentLoop: async (agentId, prompt, sessionKey) => {
-        const result = await runScheduledJob({
-          source: "heartbeat",
+        const result = await gateway.dispatchAndWait({
           agentId,
           sessionKey,
-          prompt,
-          channel,
-          gateway,
-          discord: channelManager.discord,
+          content: prompt,
+          source: "heartbeat",
         });
         return result.responseText;
       },
@@ -173,8 +167,7 @@ function startCron(
     const sessionKey = `cron:${job.agentId}:${job.name}`;
 
     try {
-      await runScheduledJob({
-        source: "cron",
+      await runCronJob({
         agentId: job.agentId,
         sessionKey,
         prompt,
@@ -205,8 +198,7 @@ function startCron(
   return scheduler;
 }
 
-export interface RunScheduledJobOpts {
-  source: "cron" | "heartbeat";
+export interface RunCronJobOpts {
   agentId: string;
   sessionKey: string;
   prompt: string;
@@ -216,20 +208,17 @@ export interface RunScheduledJobOpts {
 }
 
 /**
- * Scheduled-job pipeline used by both cron and heartbeat.
- *
- * 1. If `channel.readLast > 0`, fetch that many recent messages from Discord
- *    and prepend `<channel_history>` block to the prompt. Failure aborts the
- *    whole run (no agent dispatch, no post) and throws so the caller marks the
- *    run failed.
- * 2. Dispatch agent.
- * 3. If `channel` is configured, post the response. Errors get a "⚠️ " prefix.
- *    Post failures log but don't throw — the agent's work isn't lost.
+ * Cron pipeline:
+ *   1. If `channel.readLast > 0`, fetch recent messages and prepend
+ *      `<channel_history>` to the prompt. Failure aborts before dispatch.
+ *   2. Dispatch the agent.
+ *   3. If `channel` is configured, post the response. Errors get a "⚠️ " prefix.
+ *      Post failures are logged, not thrown.
  */
-export async function runScheduledJob(
-  opts: RunScheduledJobOpts,
+export async function runCronJob(
+  opts: RunCronJobOpts,
 ): Promise<{ responseText: string; errorMessage: string | null }> {
-  const { source, agentId, sessionKey, channel, gateway, discord } = opts;
+  const { agentId, sessionKey, channel, gateway, discord } = opts;
   let { prompt } = opts;
 
   const target = channel
@@ -246,7 +235,7 @@ export async function runScheduledJob(
     const readLast = channel.readLast ?? 0;
     if (readLast > 0) {
       if (!discord) {
-        throw new Error(`${source} "${agentId}": channel set but Discord is not configured`);
+        throw new Error(`cron "${agentId}": channel set but Discord is not configured`);
       }
       const entries = await discord.fetchHistory(target, { limit: readLast });
       const block = formatHistory(entries);
@@ -258,7 +247,7 @@ export async function runScheduledJob(
     agentId,
     sessionKey,
     content: prompt,
-    source,
+    source: "cron",
   });
 
   if (target && discord) {
@@ -268,7 +257,7 @@ export async function runScheduledJob(
       try {
         await discord.send(target, body);
       } catch (err) {
-        log.warn("Scheduled post failed", { source, agentId, channel, error: err });
+        log.warn("Cron post failed", { agentId, channel, error: err });
       }
     }
   }

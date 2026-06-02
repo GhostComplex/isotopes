@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { runScheduledJob } from "./app.js";
+import { runCronJob } from "./app.js";
 
 function makeGateway(result?: { responseText?: string; errorMessage?: string | null }) {
   return {
@@ -23,13 +23,12 @@ function makeDiscord(opts?: {
   };
 }
 
-describe("runScheduledJob", () => {
+describe("runCronJob", () => {
   it("no channel: dispatches the prompt as-is and posts nothing", async () => {
     const gateway = makeGateway({ responseText: "answer" });
     const discord = makeDiscord();
 
-    const out = await runScheduledJob({
-      source: "cron",
+    const out = await runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "do the thing",
@@ -57,8 +56,7 @@ describe("runScheduledJob", () => {
       ],
     });
 
-    await runScheduledJob({
-      source: "cron",
+    await runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "summarize",
@@ -81,8 +79,7 @@ describe("runScheduledJob", () => {
   it("readLast omitted: treated as no-read (loadConfig is the layer that fills the default)", async () => {
     const gateway = makeGateway();
     const discord = makeDiscord();
-    await runScheduledJob({
-      source: "cron",
+    await runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "p",
@@ -96,8 +93,7 @@ describe("runScheduledJob", () => {
   it("readLast = 0: explicitly skips fetchHistory", async () => {
     const gateway = makeGateway();
     const discord = makeDiscord();
-    await runScheduledJob({
-      source: "cron",
+    await runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "p",
@@ -112,8 +108,7 @@ describe("runScheduledJob", () => {
     const gateway = makeGateway();
     const discord = makeDiscord({ fetchThrows: new Error("read boom") });
 
-    await expect(runScheduledJob({
-      source: "cron",
+    await expect(runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "p",
@@ -129,8 +124,7 @@ describe("runScheduledJob", () => {
   it("posts the response to the configured channel/thread", async () => {
     const gateway = makeGateway({ responseText: "agent says hi" });
     const discord = makeDiscord();
-    await runScheduledJob({
-      source: "cron",
+    await runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "p",
@@ -147,8 +141,7 @@ describe("runScheduledJob", () => {
   it("prefixes ⚠️ when the agent returned an errorMessage", async () => {
     const gateway = makeGateway({ responseText: "", errorMessage: "model timed out" });
     const discord = makeDiscord();
-    await runScheduledJob({
-      source: "cron",
+    await runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "p",
@@ -165,8 +158,7 @@ describe("runScheduledJob", () => {
   it("skips post when the response is empty and there is no error", async () => {
     const gateway = makeGateway({ responseText: "   " });
     const discord = makeDiscord();
-    await runScheduledJob({
-      source: "cron",
+    await runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "p",
@@ -180,8 +172,7 @@ describe("runScheduledJob", () => {
   it("send failure is swallowed (logged) — does not propagate", async () => {
     const gateway = makeGateway({ responseText: "hi" });
     const discord = makeDiscord({ sendThrows: new Error("post boom") });
-    await expect(runScheduledJob({
-      source: "cron",
+    await expect(runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "p",
@@ -194,8 +185,7 @@ describe("runScheduledJob", () => {
 
   it("readLast > 0 but Discord adapter missing → throws (mismatch)", async () => {
     const gateway = makeGateway();
-    await expect(runScheduledJob({
-      source: "heartbeat",
+    await expect(runCronJob({
       agentId: "a",
       sessionKey: "k",
       prompt: "p",
