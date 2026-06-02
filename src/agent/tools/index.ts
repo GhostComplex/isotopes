@@ -6,6 +6,7 @@ import { createWebFetchTool } from "./web.js";
 import { createReactTools } from "./react.js";
 import { createMessageTools } from "./message.js";
 import type { LazyChannelContext } from "../../channels/types.js";
+import type { ChannelRouter } from "../../channels/router.js";
 import { createExecTools } from "./exec.js";
 import type { AgentRuntime } from "../runtime.js";
 import { createTimeTool } from "./time.js";
@@ -20,7 +21,10 @@ export interface CreateAgentToolsOptions {
   parentSessionId: string;
   runtime: AgentRuntime;
   spawnableAgentIds?: readonly string[];
+  /** Per-agent binding for channel-scoped actions (e.g. react). */
   channelContext?: LazyChannelContext;
+  /** Shared outbound router for the `message` tool. Independent of channelContext. */
+  channelRouter?: ChannelRouter;
   /** Per-(type:)?channelId allowlist for the `message` tool. */
   allowedMessageChannels?: readonly string[];
   agentSandboxConfig?: SandboxConfig;
@@ -61,7 +65,9 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   ];
   if (opts.channelContext) {
     tools.push(...createReactTools(opts.channelContext));
-    tools.push(...createMessageTools(opts.channelContext, opts.allowedMessageChannels));
+  }
+  if (opts.channelRouter) {
+    tools.push(...createMessageTools(opts.channelRouter, opts.allowedMessageChannels));
   }
   return tools;
 }

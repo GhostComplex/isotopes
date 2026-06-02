@@ -1,6 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type, type Static } from "typebox";
-import type { ChannelContext, ChannelTarget } from "../../channels/types.js";
+import type { ChannelTarget } from "../../channels/types.js";
+import type { ChannelRouter } from "../../channels/router.js";
 import { matchesAllowedChannel } from "../../channels/allowlist.js";
 
 function jsonResult(value: unknown): AgentToolResult<undefined> {
@@ -28,7 +29,7 @@ const DEFAULT_READ_LIMIT = 30;
 const MAX_READ_LIMIT = 100;
 
 export function createMessageTool(
-  ctx: ChannelContext,
+  router: ChannelRouter,
   allowedChannels?: readonly string[],
 ): AgentTool<typeof schema> {
   return {
@@ -52,20 +53,15 @@ export function createMessageTool(
         return jsonResult({ error: `Channel ${target.type}:${target.channelId} is not in the allowed channels list` });
       }
 
-      const actions = ctx.getChannelActions();
-      if (!actions) return jsonResult({ error: "Channel runtime not available" });
-
       try {
         if (args.action === "send") {
           if (!args.content?.trim()) return jsonResult({ error: "content must not be empty for action=send" });
-          if (!actions.send) return jsonResult({ error: "Channel does not support sending messages" });
-          const { id } = await actions.send(target, args.content);
+          const { id } = await router.send(target, args.content);
           return jsonResult({ ok: true, messageId: id });
         }
         // action === "read"
-        if (!actions.fetchHistory) return jsonResult({ error: "Channel does not support reading history" });
         const limit = Math.min(Math.max(args.limit ?? DEFAULT_READ_LIMIT, 1), MAX_READ_LIMIT);
-        const messages = await actions.fetchHistory(target, { limit });
+        const messages = await router.fetchHistory(target, { limit });
         return jsonResult({ ok: true, messages });
       } catch (err) {
         return jsonResult({ error: err instanceof Error ? err.message : String(err) });
@@ -75,8 +71,8 @@ export function createMessageTool(
 }
 
 export function createMessageTools(
-  ctx: ChannelContext,
+  router: ChannelRouter,
   allowedChannels?: readonly string[],
 ): AgentTool[] {
-  return [createMessageTool(ctx, allowedChannels)];
+  return [createMessageTool(router, allowedChannels)];
 }

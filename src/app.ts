@@ -45,13 +45,14 @@ export async function start(opts: AppOptions): Promise<App> {
   validateDeliveryAgainstAllowlists(config);
 
   const sessionStoreManager = new SessionStoreManager();
-  const agentRuntime = createAgentRuntime(config);
+  const channelRouter = new ChannelRouter();
+  const agentRuntime = createAgentRuntime(config, channelRouter);
   const { agentWorkspaces, channelContexts } = await registerAgents(config, agentRuntime, sessionStoreManager);
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
-  const channelManager = new ChannelManager(config);
+  const channelManager = new ChannelManager(config, channelRouter);
   await channelManager.start({ gateway, channelContexts });
-  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway, channelManager.router);
-  const cronScheduler = startCron(config, agentRuntime, gateway, channelManager.router);
+  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway, channelRouter);
+  const cronScheduler = startCron(config, agentRuntime, gateway, channelRouter);
   const apiServer = new ApiServer({ cronScheduler, gateway });
   await apiServer.start();
 
@@ -71,7 +72,7 @@ export async function start(opts: AppOptions): Promise<App> {
   return { agentRuntime, agentWorkspaces, cronScheduler, apiServer, stop };
 }
 
-function createAgentRuntime(config: IsotopesConfigFile): AgentRuntime {
+function createAgentRuntime(config: IsotopesConfigFile, channelRouter: ChannelRouter): AgentRuntime {
   const sandboxBaseConfig = config.sandbox
     ? resolveSandboxConfigFromFile("<global>", undefined, config.sandbox)
     : undefined;
@@ -79,6 +80,7 @@ function createAgentRuntime(config: IsotopesConfigFile): AgentRuntime {
 
   return new AgentRuntime({
     globalProvider: config.provider,
+    channelRouter,
     ...(sandboxBaseConfig ? { sandboxBaseConfig } : {}),
     ...(extensionPaths.length > 0 ? { extensionPaths } : {}),
   });

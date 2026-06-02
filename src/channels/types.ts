@@ -44,13 +44,9 @@ export interface ChannelDeps {
   channelContexts?: Map<string, LazyChannelContext>;
 }
 
-/** Actions an agent tool can perform via the channel runtime (via LazyChannelContext). */
+/** Per-agent actions a tool can perform via its bound channel adapter. */
 export interface ChannelActions {
   react?(messageId: string, emoji: string, channelId: string): Promise<void>;
-  /** Send a message to any addressable channel. Dispatched by ChannelRouter. */
-  send?(target: ChannelTarget, content: string): Promise<{ id: string }>;
-  /** Fetch recent history from any addressable channel. Dispatched by ChannelRouter. */
-  fetchHistory?(target: ChannelTarget, opts: { limit: number }): Promise<ChannelHistoryEntry[]>;
 }
 
 export type ChannelsConfig = Record<string, unknown>;

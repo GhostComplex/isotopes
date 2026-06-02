@@ -1,10 +1,22 @@
 import { describe, it, expect, vi } from "vitest";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { createMessageTool } from "./message.js";
-import type { ChannelActions, ChannelContext } from "../../channels/types.js";
+import { ChannelRouter } from "../../channels/router.js";
+import type { MessagingChannel } from "../../channels/types.js";
 
-function mockCtx(actions?: ChannelActions): ChannelContext {
-  return { getChannelActions: () => actions };
+function mockRouter(channel?: Partial<MessagingChannel>): ChannelRouter {
+  const router = new ChannelRouter();
+  if (channel) {
+    const full: MessagingChannel = {
+      kind: "discord",
+      start: async () => {},
+      stop: async () => {},
+      send: channel.send ?? (async () => ({ id: "stub" })),
+      fetchHistory: channel.fetchHistory ?? (async () => []),
+    };
+    router.register([full]);
+  }
+  return router;
 }
 
 async function callTool(tool: AgentTool, args: unknown): Promise<Record<string, unknown>> {
@@ -14,9 +26,9 @@ async function callTool(tool: AgentTool, args: unknown): Promise<Record<string, 
 }
 
 describe("message tool", () => {
-  it("send: forwards to actions.send and returns messageId", async () => {
+  it("send: forwards to router.send and returns messageId", async () => {
     const send = vi.fn().mockResolvedValue({ id: "m-1" });
-    const tool = createMessageTool(mockCtx({ send }));
+    const tool = createMessageTool(mockRouter({ send }));
     const out = await callTool(tool, {
       action: "send",
       target: { type: "discord", channelId: "c1" },
@@ -28,7 +40,7 @@ describe("message tool", () => {
 
   it("send: defaults target.type to discord when omitted", async () => {
     const send = vi.fn().mockResolvedValue({ id: "m-1" });
-    const tool = createMessageTool(mockCtx({ send }));
+    const tool = createMessageTool(mockRouter({ send }));
     await callTool(tool, {
       action: "send",
       target: { channelId: "c1" },
@@ -41,7 +53,7 @@ describe("message tool", () => {
     const fetchHistory = vi.fn().mockResolvedValue([
       { messageId: "m1", sender: "a", body: "hi", timestamp: 1 },
     ]);
-    const tool = createMessageTool(mockCtx({ fetchHistory }));
+    const tool = createMessageTool(mockRouter({ fetchHistory }));
     const out = await callTool(tool, {
       action: "read",
       target: { type: "discord", channelId: "c1" },
@@ -53,7 +65,7 @@ describe("message tool", () => {
 
   it("read: defaults limit to 30 when omitted", async () => {
     const fetchHistory = vi.fn().mockResolvedValue([]);
-    const tool = createMessageTool(mockCtx({ fetchHistory }));
+    const tool = createMessageTool(mockRouter({ fetchHistory }));
     await callTool(tool, {
       action: "read",
       target: { type: "discord", channelId: "c1" },
@@ -63,7 +75,7 @@ describe("message tool", () => {
 
   it("rejects channel not in allowlist (type:channelId form)", async () => {
     const send = vi.fn();
-    const tool = createMessageTool(mockCtx({ send }), ["discord:allowed"]);
+    const tool = createMessageTool(mockRouter({ send }), ["discord:allowed"]);
     const out = await callTool(tool, {
       action: "send",
       target: { type: "discord", channelId: "other" },
@@ -75,7 +87,7 @@ describe("message tool", () => {
 
   it("accepts bare channelId allowlist entry across types", async () => {
     const send = vi.fn().mockResolvedValue({ id: "m-1" });
-    const tool = createMessageTool(mockCtx({ send }), ["123"]);
+    const tool = createMessageTool(mockRouter({ send }), ["123"]);
     const out = await callTool(tool, {
       action: "send",
       target: { type: "discord", channelId: "123" },
@@ -85,7 +97,7 @@ describe("message tool", () => {
   });
 
   it("send: errors on empty content", async () => {
-    const tool = createMessageTool(mockCtx({ send: vi.fn() }));
+    const tool = createMessageTool(mockRouter({ send: vi.fn() }));
     const out = await callTool(tool, {
       action: "send",
       target: { type: "discord", channelId: "c1" },
@@ -94,22 +106,13 @@ describe("message tool", () => {
     expect(out).toEqual({ error: "content must not be empty for action=send" });
   });
 
-  it("errors when channel runtime is unavailable", async () => {
-    const tool = createMessageTool(mockCtx(undefined));
+  it("errors when no channel matches the target type", async () => {
+    const tool = createMessageTool(mockRouter()); // empty router
     const out = await callTool(tool, {
       action: "send",
       target: { type: "discord", channelId: "c1" },
       content: "hi",
     });
-    expect(out).toEqual({ error: "Channel runtime not available" });
-  });
-
-  it("read: errors when the channel does not support history", async () => {
-    const tool = createMessageTool(mockCtx({ send: vi.fn() })); // no fetchHistory
-    const out = await callTool(tool, {
-      action: "read",
-      target: { type: "discord", channelId: "c1" },
-    });
-    expect(out).toEqual({ error: "Channel does not support reading history" });
+    expect(out.error).toMatch(/no channel registered/i);
   });
 });

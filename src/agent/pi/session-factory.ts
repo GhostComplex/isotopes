@@ -15,6 +15,7 @@ import type { ProviderConfig, RegisteredAgent } from "../types.js";
 import type { AgentToolSettings } from "../tools/types.js";
 import type { AgentRuntime } from "../runtime.js";
 import type { SandboxExecutor } from "../middleware/executor.js";
+import type { ChannelRouter } from "../../channels/router.js";
 import { createAgentTools } from "../tools/index.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../workspace/context.js";
@@ -30,6 +31,7 @@ export interface PiSessionDeps {
   runtime: AgentRuntime;
   sandboxExecutor?: SandboxExecutor;
   extensionPaths?: string[];
+  channelRouter?: ChannelRouter;
 }
 
 const loaderCache = new Map<string, Promise<DefaultResourceLoader>>();
@@ -135,6 +137,7 @@ export async function createPiSession(
     runtime: deps.runtime,
     ...(agent.spawnableAgentIds ? { spawnableAgentIds: agent.spawnableAgentIds } : {}),
     ...(agent.channelContext ? { channelContext: agent.channelContext } : {}),
+    ...(deps.channelRouter ? { channelRouter: deps.channelRouter } : {}),
     ...(agent.config.toolSettings?.message?.allowedChannels
       ? { allowedMessageChannels: agent.config.toolSettings.message.allowedChannels }
       : {}),

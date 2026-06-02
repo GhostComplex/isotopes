@@ -33,6 +33,7 @@ import {
 import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { LazyChannelContext } from "../channels/types.js";
+import type { ChannelRouter } from "../channels/router.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
 import { SandboxExecutor } from "./middleware/executor.js";
 import type { SandboxConfig } from "./middleware/sandbox-config.js";
@@ -63,6 +64,8 @@ export interface AgentRuntimeOptions {
   sandboxBaseConfig?: SandboxConfig;
   /** pi extension file paths discovered from ~/.isotopes/extensions/pi/. */
   extensionPaths?: string[];
+  /** Outbound channel facade for the `message` agent tool. */
+  channelRouter?: ChannelRouter;
 }
 
 export interface AddAgentOptions {
@@ -109,10 +112,12 @@ export class AgentRuntime {
   private piModelRegistry?: ModelRegistry;
   private sandboxExecutor?: SandboxExecutor;
   private extensionPaths: string[] = [];
+  private channelRouter?: ChannelRouter;
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
     if (opts.extensionPaths) this.extensionPaths = opts.extensionPaths;
+    if (opts.channelRouter) this.channelRouter = opts.channelRouter;
     if (opts.sandboxBaseConfig) {
       this.sandboxExecutor = SandboxExecutor.fromConfig(opts.sandboxBaseConfig);
     }
@@ -144,6 +149,7 @@ export class AgentRuntime {
       runtime: this,
       ...(this.sandboxExecutor ? { sandboxExecutor: this.sandboxExecutor } : {}),
       ...(this.extensionPaths.length > 0 ? { extensionPaths: this.extensionPaths } : {}),
+      ...(this.channelRouter ? { channelRouter: this.channelRouter } : {}),
     };
   }
 
