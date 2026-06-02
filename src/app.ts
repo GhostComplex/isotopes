@@ -246,7 +246,15 @@ export async function runScheduledJob(
   const { source, agentId, sessionKey, channel, gateway, discord } = opts;
   let { prompt } = opts;
 
-  if (channel) {
+  const target = channel
+    ? {
+        accountId: channel.accountId,
+        channelId: channel.channelId,
+        ...(channel.threadId ? { threadId: channel.threadId } : {}),
+      }
+    : undefined;
+
+  if (channel && target) {
     // readLast is defaulted by loadConfig; missing here only when callers
     // (e.g. tests) bypass loadConfig — treat undefined as 0 (no read).
     const readLast = channel.readLast ?? 0;
@@ -254,10 +262,7 @@ export async function runScheduledJob(
       if (!discord) {
         throw new Error(`${source} "${agentId}": channel set but Discord is not configured`);
       }
-      const entries = await discord.fetchHistory(
-        { accountId: channel.accountId, channelId: channel.channelId, ...(channel.threadId ? { threadId: channel.threadId } : {}) },
-        { limit: readLast },
-      );
+      const entries = await discord.fetchHistory(target, { limit: readLast });
       const block = formatHistory(entries);
       if (block) prompt = `${block}\n\n${prompt}`;
     }
@@ -270,15 +275,12 @@ export async function runScheduledJob(
     source,
   });
 
-  if (channel && discord) {
+  if (target && discord) {
     const errText = result.errorMessage?.trim();
     const body = errText ? `⚠️ ${errText}` : result.responseText.trim();
     if (body) {
       try {
-        await discord.send(
-          { accountId: channel.accountId, channelId: channel.channelId, ...(channel.threadId ? { threadId: channel.threadId } : {}) },
-          body,
-        );
+        await discord.send(target, body);
       } catch (err) {
         log.warn("Scheduled post failed", { source, agentId, channel, error: err });
       }
