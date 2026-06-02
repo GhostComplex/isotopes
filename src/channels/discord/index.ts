@@ -9,7 +9,7 @@ import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 
 import { DedupeCache } from "./dedupe.js";
-import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
+import { ChannelHistoryBuffer, formatHistory, type HistoryEntry } from "./channel-history.js";
 import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
 import { createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
@@ -51,10 +51,23 @@ interface CreateDiscordChannelOptions {
   clientFactory?: ClientFactory;
 }
 
+/** Address for outbound send / history fetch. */
+export interface DiscordTarget {
+  accountId: string;
+  channelId: string;
+  threadId?: string;
+}
+
+/** Discord channel exposes the standard Channel lifecycle plus direct outbound. */
+export interface DiscordChannel extends Channel {
+  send(target: DiscordTarget, content: string): Promise<{ id: string }>;
+  fetchHistory(target: DiscordTarget, opts: { limit: number }): Promise<HistoryEntry[]>;
+}
+
 export function createDiscordChannel(
   rawConfig: unknown,
   options: CreateDiscordChannelOptions = {},
-): Channel {
+): DiscordChannel {
   const config = (rawConfig ?? {}) as DiscordChannelsConfig;
   const accounts = config.accounts ?? {};
   const clientFactory = options.clientFactory ?? defaultClientFactory;
@@ -65,6 +78,12 @@ export function createDiscordChannel(
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
+
+  function resolveClient(accountId: string): ClientLike {
+    const client = clients.get(accountId);
+    if (!client) throw new Error(`Unknown Discord accountId "${accountId}"`);
+    return client;
+  }
 
   return {
     async start(deps: ChannelDeps) {
@@ -116,6 +135,44 @@ export function createDiscordChannel(
       dedupes.clear();
       for (const h of histories.values()) h.clear();
       histories.clear();
+    },
+
+    async send(target, content) {
+      const client = resolveClient(target.accountId);
+      const destId = target.threadId ?? target.channelId;
+      const ch = (await client.channels.fetch(destId)) as
+        | { send?: (c: string) => Promise<{ id: string }> }
+        | null;
+      if (!ch?.send) throw new Error(`Discord channel ${destId} is not sendable`);
+      const sent = await ch.send(content);
+      return { id: sent.id };
+    },
+
+    async fetchHistory(target, { limit }) {
+      const client = resolveClient(target.accountId);
+      const sourceId = target.threadId ?? target.channelId;
+      const ch = (await client.channels.fetch(sourceId)) as
+        | {
+            messages?: {
+              fetch: (opts: { limit: number }) => Promise<Map<string, DiscordMessage> | Iterable<[string, DiscordMessage]>>;
+            };
+          }
+        | null;
+      if (!ch?.messages?.fetch) throw new Error(`Discord channel ${sourceId} does not expose history`);
+      const clamped = Math.min(Math.max(Math.floor(limit), 1), 100);
+      const fetched = await ch.messages.fetch({ limit: clamped });
+      const entries: HistoryEntry[] = [];
+      for (const [, m] of fetched as Iterable<[string, DiscordMessage]>) {
+        entries.push({
+          messageId: m.id,
+          sender: m.author?.username ?? "unknown",
+          body: m.content ?? "",
+          timestamp: m.createdTimestamp ?? 0,
+        });
+      }
+      // Discord returns newest-first; reverse for natural reading order.
+      entries.reverse();
+      return entries;
     },
   };
 }
