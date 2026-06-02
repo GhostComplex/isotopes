@@ -208,12 +208,8 @@ export interface RunCronJobOpts {
 }
 
 /**
- * Cron pipeline:
- *   1. If `channel.readLast > 0`, fetch recent messages and prepend
- *      `<channel_history>` to the prompt. Failure aborts before dispatch.
- *   2. Dispatch the agent.
- *   3. If `channel` is configured, post the response. Errors get a "⚠️ " prefix.
- *      Post failures are logged, not thrown.
+ * Cron pipeline. Read failures abort before dispatch (throw);
+ * post failures are logged (the agent's work isn't lost).
  */
 export async function runCronJob(
   opts: RunCronJobOpts,
@@ -230,8 +226,7 @@ export async function runCronJob(
     : undefined;
 
   if (channel && target) {
-    // readLast is defaulted by loadConfig; missing here only when callers
-    // (e.g. tests) bypass loadConfig — treat undefined as 0 (no read).
+    // readLast is filled by loadConfig; ?? 0 only covers test callers that bypass it.
     const readLast = channel.readLast ?? 0;
     if (readLast > 0) {
       if (!discord) {
