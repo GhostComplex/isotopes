@@ -187,20 +187,6 @@ function startCron(
     }
   });
 
-  for (const agentFile of config.agents) {
-    if (!agentFile.cron?.tasks?.length) continue;
-    for (const task of agentFile.cron.tasks) {
-      scheduler.register({
-        name: task.name,
-        expression: task.schedule,
-        agentId: agentFile.id,
-        action: { type: "prompt", prompt: task.prompt },
-        enabled: task.enabled ?? true,
-        ...(task.channel ? { channel: task.channel } : {}),
-      });
-    }
-  }
-
   if (config.cron?.length) {
     for (const task of config.cron) {
       scheduler.register({

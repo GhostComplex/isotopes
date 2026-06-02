@@ -21,14 +21,6 @@ export interface HeartbeatConfigFile {
   channel?: CronChannelConfig;
 }
 
-export interface CronTaskConfigFile {
-  name: string;
-  schedule: string;
-  prompt: string;
-  enabled?: boolean;
-  channel?: CronChannelConfig;
-}
-
 export interface AgentConfigFile {
   id: string;
   runner?: "pi" | "claude";
@@ -39,7 +31,6 @@ export interface AgentConfigFile {
   model?: string;
   sandbox?: SandboxConfigFile;
   heartbeat?: HeartbeatConfigFile;
-  cron?: { tasks: CronTaskConfigFile[] };
   spawnable?: boolean;
   sessionPolicy?: "always-new" | "parent-reuse";
 }
@@ -195,7 +186,6 @@ function normalizeScheduledChannels(raw: IsotopesConfigFile): void {
   };
   for (const a of raw.agents) {
     fill(a.heartbeat?.channel);
-    for (const t of a.cron?.tasks ?? []) fill(t.channel);
   }
   for (const t of raw.cron ?? []) fill(t.channel);
 }

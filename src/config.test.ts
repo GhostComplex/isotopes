@@ -452,12 +452,6 @@ agents:
     heartbeat:
       enabled: true
       channel: { accountId: acct, channelId: ch }
-    cron:
-      tasks:
-        - name: per-agent
-          schedule: "0 9 * * *"
-          prompt: hi
-          channel: { accountId: acct, channelId: ch }
 cron:
   - name: top-level
     expression: "0 9 * * *"
@@ -468,7 +462,6 @@ cron:
       );
       const cfg = await loadConfig(configPath);
       expect(cfg.agents[0].heartbeat?.channel?.readLast).toBe(25);
-      expect(cfg.agents[0].cron?.tasks[0].channel?.readLast).toBe(25);
       expect(cfg.cron?.[0].channel?.readLast).toBe(25);
     });
 
