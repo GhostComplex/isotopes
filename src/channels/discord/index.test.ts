@@ -517,7 +517,7 @@ describe("createDiscordChannel — outbound (send + fetchHistory)", () => {
     await adapter.stop();
   });
 
-  it("fetchHistory: returns oldest-first entries, clamps limit to [1,100]", async () => {
+  it("fetchHistory: returns oldest-first entries, passes limit through verbatim", async () => {
     const { client, adapter } = singleAccountAdapter();
     const fetched = new Map([
       ["m2", { id: "m2", author: { username: "bob" }, content: "world", createdTimestamp: 200 }],
@@ -529,7 +529,8 @@ describe("createDiscordChannel — outbound (send + fetchHistory)", () => {
     await adapter.start({ gateway: makeGateway() });
     const entries = await adapter.fetchHistory({ accountId: "acct1", channelId: "ch-1" }, { limit: 999 });
 
-    expect(fetchMessages).toHaveBeenCalledWith({ limit: 100 });
+    // limit is passed straight to Discord — out-of-range values are the API's problem.
+    expect(fetchMessages).toHaveBeenCalledWith({ limit: 999 });
     expect(entries.map((e) => e.messageId)).toEqual(["m1", "m2"]);
     expect(entries[0]).toMatchObject({ sender: "alice", body: "hello", timestamp: 100 });
 

@@ -176,8 +176,7 @@ export function createDiscordChannel(
           }
         | null;
       if (!ch?.messages?.fetch) throw new Error(`Discord channel ${sourceId} does not expose history`);
-      const clamped = Math.min(Math.max(Math.floor(limit), 1), 100);
-      const fetched = await ch.messages.fetch({ limit: clamped });
+      const fetched = await ch.messages.fetch({ limit });
       const entries: HistoryEntry[] = [];
       for (const [, m] of fetched as Iterable<[string, DiscordMessage]>) {
         entries.push({

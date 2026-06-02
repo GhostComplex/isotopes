@@ -21,6 +21,9 @@ import { createGateway, type Gateway } from "./gateway/index.js";
 
 const log = createLogger("app");
 
+/** When `channel.readLast` is omitted, prepend this many recent messages. */
+const DEFAULT_READ_LAST = 25;
+
 export interface AppOptions {
   config: IsotopesConfigFile;
 }
@@ -246,16 +249,19 @@ export async function runScheduledJob(
   const { source, agentId, sessionKey, channel, gateway, discord } = opts;
   let { prompt } = opts;
 
-  if (channel && channel.readLast && channel.readLast > 0) {
-    if (!discord) {
-      throw new Error(`${source} "${agentId}": channel.readLast set but Discord is not configured`);
+  if (channel) {
+    const readLast = channel.readLast ?? DEFAULT_READ_LAST;
+    if (readLast > 0) {
+      if (!discord) {
+        throw new Error(`${source} "${agentId}": channel set but Discord is not configured`);
+      }
+      const entries = await discord.fetchHistory(
+        { accountId: channel.accountId, channelId: channel.channelId, ...(channel.threadId ? { threadId: channel.threadId } : {}) },
+        { limit: readLast },
+      );
+      const block = formatHistory(entries);
+      if (block) prompt = `${block}\n\n${prompt}`;
     }
-    const entries = await discord.fetchHistory(
-      { accountId: channel.accountId, channelId: channel.channelId, ...(channel.threadId ? { threadId: channel.threadId } : {}) },
-      { limit: channel.readLast },
-    );
-    const block = formatHistory(entries);
-    if (block) prompt = `${block}\n\n${prompt}`;
   }
 
   const result = await gateway.dispatchAndWait({

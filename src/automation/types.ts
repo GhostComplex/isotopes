@@ -10,6 +10,6 @@ export interface CronChannelConfig {
   accountId: string;
   channelId: string;
   threadId?: string;
-  /** Number of recent messages to prepend as context. 0 / omitted = no read. */
+  /** Number of recent messages to prepend as context. Omitted = 25 (default). 0 = no read. */
   readLast?: number;
 }

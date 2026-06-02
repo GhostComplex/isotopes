@@ -78,7 +78,7 @@ describe("runScheduledJob", () => {
     expect(sentPrompt.indexOf("<channel_history>")).toBeLessThan(sentPrompt.indexOf("summarize"));
   });
 
-  it("readLast unset / 0: skips fetchHistory", async () => {
+  it("readLast omitted: defaults to 25", async () => {
     const gateway = makeGateway();
     const discord = makeDiscord();
     await runScheduledJob({
@@ -87,6 +87,24 @@ describe("runScheduledJob", () => {
       sessionKey: "k",
       prompt: "p",
       channel: { accountId: "acct1", channelId: "ch1" },
+      gateway,
+      discord,
+    });
+    expect(discord.fetchHistory).toHaveBeenCalledWith(
+      { accountId: "acct1", channelId: "ch1" },
+      { limit: 25 },
+    );
+  });
+
+  it("readLast = 0: explicitly skips fetchHistory", async () => {
+    const gateway = makeGateway();
+    const discord = makeDiscord();
+    await runScheduledJob({
+      source: "cron",
+      agentId: "a",
+      sessionKey: "k",
+      prompt: "p",
+      channel: { accountId: "acct1", channelId: "ch1", readLast: 0 },
       gateway,
       discord,
     });
