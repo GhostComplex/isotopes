@@ -1,5 +1,5 @@
 import type { Channel, ChannelDeps } from "../../channels/types.js";
-import { createDiscordChannel, type DiscordChannel } from "../../channels/discord/index.js";
+import { createDiscordChannel } from "../../channels/discord/index.js";
 import { createLogger } from "../../logging/logger.js";
 
 const log = createLogger("channel-manager");
@@ -9,7 +9,7 @@ export class ChannelManager {
   private running = false;
   private readonly config: { channels?: Record<string, unknown> };
   /** Direct handle to the Discord adapter; used by the scheduled-job pipeline. */
-  discord?: DiscordChannel;
+  discord?: Channel;
 
   constructor(config: { channels?: Record<string, unknown> }) {
     this.config = config;

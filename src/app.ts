@@ -7,7 +7,7 @@ import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyChannelContext } from "./channels/types.js";
 import { formatHistory } from "./channels/discord/channel-history.js";
-import type { DiscordChannel } from "./channels/discord/index.js";
+import type { Channel } from "./channels/types.js";
 import { getIsotopesHome, getLogsPath } from "./utils/paths.js";
 
 import { CronScheduler } from "./automation/cron-job.js";
@@ -226,7 +226,7 @@ export interface RunScheduledJobOpts {
   prompt: string;
   channel?: CronChannelConfig;
   gateway: Pick<Gateway, "dispatchAndWait">;
-  discord?: Pick<DiscordChannel, "send" | "fetchHistory">;
+  discord?: Pick<Channel, "send" | "fetchHistory">;
 }
 
 /**

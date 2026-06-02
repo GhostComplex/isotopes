@@ -5,11 +5,11 @@ import {
   type Message as DiscordMessage,
   type SendableChannels,
 } from "discord.js";
-import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
+import type { Channel, ChannelActions, ChannelDeps, ChannelHistoryEntry } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 
 import { DedupeCache } from "./dedupe.js";
-import { ChannelHistoryBuffer, formatHistory, type HistoryEntry } from "./channel-history.js";
+import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
 import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
 import { createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
@@ -18,18 +18,16 @@ import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js
 import { createLogger } from "../../logging/logger.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
 import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
-
-const log = createLogger("discord");
-
-/** Discord rejects a single message over 2000 chars; we truncate to stay within. */
-const DISCORD_MAX_MESSAGE_LENGTH = 2000;
-const TRUNCATION_SUFFIX = "\n…(truncated)";
 import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
 } from "./types.js";
 
-/** Minimum surface the adapter touches — testable without discord.js. */
+const log = createLogger("discord");
+
+const DISCORD_MAX_MESSAGE_LENGTH = 2000;
+const TRUNCATION_SUFFIX = "\n…(truncated)";
+
 export interface ClientLike {
   user: { id: string; tag?: string } | null;
   channels: { fetch: (id: string) => Promise<unknown>; cache: Map<string, unknown> };
@@ -39,7 +37,6 @@ export interface ClientLike {
   destroy(): unknown;
 }
 
-/** Test seam: inject a mock Client without depending on discord.js. */
 type ClientFactory = () => ClientLike;
 
 const defaultClientFactory: ClientFactory = () =>
@@ -54,27 +51,13 @@ const defaultClientFactory: ClientFactory = () =>
   }) as unknown as ClientLike;
 
 interface CreateDiscordChannelOptions {
-  /** Test seam: override Discord.js Client construction. */
   clientFactory?: ClientFactory;
-}
-
-/** Address for outbound send / history fetch. */
-export interface DiscordTarget {
-  accountId: string;
-  channelId: string;
-  threadId?: string;
-}
-
-/** Discord channel exposes the standard Channel lifecycle plus direct outbound. */
-export interface DiscordChannel extends Channel {
-  send(target: DiscordTarget, content: string): Promise<{ id: string }>;
-  fetchHistory(target: DiscordTarget, opts: { limit: number }): Promise<HistoryEntry[]>;
 }
 
 export function createDiscordChannel(
   rawConfig: unknown,
   options: CreateDiscordChannelOptions = {},
-): DiscordChannel {
+): Channel {
   const config = (rawConfig ?? {}) as DiscordChannelsConfig;
   const accounts = config.accounts ?? {};
   const clientFactory = options.clientFactory ?? defaultClientFactory;
@@ -93,6 +76,7 @@ export function createDiscordChannel(
   }
 
   return {
+    kind: "discord",
     async start(deps: ChannelDeps) {
       const { gateway } = deps;
       const accountIds = Object.keys(accounts);
@@ -177,7 +161,7 @@ export function createDiscordChannel(
         | null;
       if (!ch?.messages?.fetch) throw new Error(`Discord channel ${sourceId} does not expose history`);
       const fetched = await ch.messages.fetch({ limit });
-      const entries: HistoryEntry[] = [];
+      const entries: ChannelHistoryEntry[] = [];
       for (const [, m] of fetched as Iterable<[string, DiscordMessage]>) {
         entries.push({
           messageId: m.id,
