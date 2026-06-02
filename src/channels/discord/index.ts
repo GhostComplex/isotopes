@@ -15,8 +15,15 @@ import { createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
+import { createLogger } from "../../logging/logger.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
 import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
+
+const log = createLogger("discord");
+
+/** Discord rejects a single message over 2000 chars; we truncate to stay within. */
+const DISCORD_MAX_MESSAGE_LENGTH = 2000;
+const TRUNCATION_SUFFIX = "\n…(truncated)";
 import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
@@ -144,7 +151,17 @@ export function createDiscordChannel(
         | { send?: (c: string) => Promise<{ id: string }> }
         | null;
       if (!ch?.send) throw new Error(`Discord channel ${destId} is not sendable`);
-      const sent = await ch.send(content);
+      let payload = content;
+      if (payload.length > DISCORD_MAX_MESSAGE_LENGTH) {
+        const head = payload.slice(0, DISCORD_MAX_MESSAGE_LENGTH - TRUNCATION_SUFFIX.length);
+        payload = head + TRUNCATION_SUFFIX;
+        log.warn("Discord send truncated", {
+          destId,
+          originalLength: content.length,
+          truncatedLength: payload.length,
+        });
+      }
+      const sent = await ch.send(payload);
       return { id: sent.id };
     },
 

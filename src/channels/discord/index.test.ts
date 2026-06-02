@@ -492,6 +492,31 @@ describe("createDiscordChannel — outbound (send + fetchHistory)", () => {
     await adapter.stop();
   });
 
+  it("send: truncates payloads over 2000 chars with a trailing marker", async () => {
+    const { client, adapter } = singleAccountAdapter();
+    const sendMock = vi.fn().mockResolvedValue({ id: "out-trunc" });
+    client.channels.fetch = vi.fn().mockResolvedValue({ send: sendMock });
+    await adapter.start({ gateway: makeGateway() });
+
+    const huge = "x".repeat(5000);
+    await adapter.send({ accountId: "acct1", channelId: "ch-1" }, huge);
+
+    const payload = sendMock.mock.calls[0]![0] as string;
+    expect(payload.length).toBeLessThanOrEqual(2000);
+    expect(payload.endsWith("…(truncated)")).toBe(true);
+    await adapter.stop();
+  });
+
+  it("send: leaves short payloads untouched", async () => {
+    const { client, adapter } = singleAccountAdapter();
+    const sendMock = vi.fn().mockResolvedValue({ id: "out-short" });
+    client.channels.fetch = vi.fn().mockResolvedValue({ send: sendMock });
+    await adapter.start({ gateway: makeGateway() });
+    await adapter.send({ accountId: "acct1", channelId: "ch-1" }, "small");
+    expect(sendMock).toHaveBeenCalledWith("small");
+    await adapter.stop();
+  });
+
   it("fetchHistory: returns oldest-first entries, clamps limit to [1,100]", async () => {
     const { client, adapter } = singleAccountAdapter();
     const fetched = new Map([
