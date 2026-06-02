@@ -1,13 +1,11 @@
 import type { Gateway } from "../gateway/index.js";
 
-/** Addresses a destination on any channel adapter. */
 export interface ChannelTarget {
   accountId: string;
   channelId: string;
   threadId?: string;
 }
 
-/** One message returned by `Channel.fetchHistory`. */
 export interface ChannelHistoryEntry {
   messageId: string;
   sender: string;
@@ -17,7 +15,6 @@ export interface ChannelHistoryEntry {
 }
 
 export interface Channel {
-  /** Channel kind, e.g. "discord". */
   kind: string;
   start(deps: ChannelDeps): Promise<void>;
   stop(): Promise<void>;
