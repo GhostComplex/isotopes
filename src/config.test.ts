@@ -441,5 +441,49 @@ channels:
       expect(accounts.tachikoma.defaultAgentId).toBe("tachikoma");
       expect(accounts.major.context?.historyTurns).toBe(10);
     });
+
+    it("fills channel.readLast with default 25 when omitted", async () => {
+      const configPath = path.join(tempDir, "isotopes.yaml");
+      await fs.writeFile(
+        configPath,
+        `
+agents:
+  - id: main
+cron:
+  - name: top-level
+    expression: "0 9 * * *"
+    agentId: main
+    action: { type: prompt, prompt: hi }
+    channel: { accountId: acct, channelId: ch }
+`,
+      );
+      const cfg = await loadConfig(configPath);
+      expect(cfg.cron?.[0].channel?.readLast).toBe(25);
+    });
+
+    it("preserves an explicit channel.readLast (including 0)", async () => {
+      const configPath = path.join(tempDir, "isotopes.yaml");
+      await fs.writeFile(
+        configPath,
+        `
+agents:
+  - id: main
+cron:
+  - name: zero
+    expression: "0 9 * * *"
+    agentId: main
+    action: { type: prompt, prompt: hi }
+    channel: { accountId: acct, channelId: ch, readLast: 0 }
+  - name: fifty
+    expression: "0 9 * * *"
+    agentId: main
+    action: { type: prompt, prompt: hi }
+    channel: { accountId: acct, channelId: ch, readLast: 50 }
+`,
+      );
+      const cfg = await loadConfig(configPath);
+      expect(cfg.cron?.[0].channel?.readLast).toBe(0);
+      expect(cfg.cron?.[1].channel?.readLast).toBe(50);
+    });
   });
 });

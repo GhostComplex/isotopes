@@ -1,8 +1,24 @@
 import type { Gateway } from "../gateway/index.js";
 
+export interface ChannelTarget {
+  accountId: string;
+  channelId: string;
+  threadId?: string;
+}
+
+export interface ChannelHistoryEntry {
+  messageId: string;
+  sender: string;
+  body: string;
+  timestamp: number;
+}
+
 export interface Channel {
+  kind: string;
   start(deps: ChannelDeps): Promise<void>;
   stop(): Promise<void>;
+  send(target: ChannelTarget, content: string): Promise<{ id: string }>;
+  fetchHistory(target: ChannelTarget, opts: { limit: number }): Promise<ChannelHistoryEntry[]>;
 }
 
 export interface ChannelDeps {

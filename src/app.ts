@@ -6,10 +6,13 @@ import {
 import { SessionStoreManager } from "./agent/pi/session-store.js";
 import { createLogger } from "./logging/logger.js";
 import { LazyChannelContext } from "./channels/types.js";
+import { formatHistory } from "./channels/discord/channel-history.js";
+import type { Channel } from "./channels/types.js";
 import { getIsotopesHome, getLogsPath } from "./utils/paths.js";
 
 import { CronScheduler } from "./automation/cron-job.js";
 import { HeartbeatManager } from "./automation/heartbeat.js";
+import type { CronChannelConfig } from "./automation/types.js";
 import { AgentRuntime } from "./agent/runtime.js";
 import { discoverExtensionPaths } from "./extensions/pi/loader.js";
 import { ChannelManager } from "./extensions/channels/loader.js";
@@ -44,10 +47,10 @@ export async function start(opts: AppOptions): Promise<App> {
   const agentRuntime = createAgentRuntime(config);
   const { agentWorkspaces, channelContexts } = await registerAgents(config, agentRuntime, sessionStoreManager);
   const gateway = createGateway({ agentRuntime, sessionStoreManager });
-  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway);
-  const cronScheduler = startCron(config, agentRuntime, gateway);
   const channelManager = new ChannelManager(config);
   await channelManager.start({ gateway, channelContexts });
+  const heartbeatManagers = startHeartbeats(config, agentWorkspaces, gateway);
+  const cronScheduler = startCron(config, agentRuntime, gateway, channelManager);
   const apiServer = new ApiServer({ cronScheduler, gateway });
   await apiServer.start();
 
@@ -153,6 +156,7 @@ function startCron(
   config: IsotopesConfigFile,
   agentRuntime: AgentRuntime,
   gateway: Gateway,
+  channelManager: ChannelManager,
 ): CronScheduler {
   const scheduler = new CronScheduler(async (job) => {
     if (!agentRuntime.getAgent(job.agentId)) {
@@ -163,27 +167,18 @@ function startCron(
     const sessionKey = `cron:${job.agentId}:${job.name}`;
 
     try {
-      await gateway.dispatchAndWait({
+      await runCronJob({
         agentId: job.agentId,
         sessionKey,
-        content: prompt,
-        source: "cron",
+        prompt,
+        channel: job.channel,
+        gateway,
+        discord: channelManager.discord,
       });
-    } catch { /* ignore */ }
-  });
-
-  for (const agentFile of config.agents) {
-    if (!agentFile.cron?.tasks?.length) continue;
-    for (const task of agentFile.cron.tasks) {
-      scheduler.register({
-        name: task.name,
-        expression: task.schedule,
-        agentId: agentFile.id,
-        action: { type: "prompt", prompt: task.prompt },
-        enabled: task.enabled ?? true,
-      });
+    } catch (err) {
+      log.warn("Cron run failed", { agentId: job.agentId, jobName: job.name, error: err });
     }
-  }
+  });
 
   if (config.cron?.length) {
     for (const task of config.cron) {
@@ -193,6 +188,7 @@ function startCron(
         agentId: task.agentId,
         action: task.action,
         enabled: task.enabled ?? true,
+        ...(task.channel ? { channel: task.channel } : {}),
       });
     }
   }
@@ -200,4 +196,66 @@ function startCron(
   scheduler.start();
   log.info("Cron scheduler started", { jobs: scheduler.listJobs().length });
   return scheduler;
+}
+
+export interface RunCronJobOpts {
+  agentId: string;
+  sessionKey: string;
+  prompt: string;
+  channel?: CronChannelConfig;
+  gateway: Pick<Gateway, "dispatchAndWait">;
+  discord?: Pick<Channel, "send" | "fetchHistory">;
+}
+
+/**
+ * Cron pipeline. Read failures abort before dispatch (throw);
+ * post failures are logged (the agent's work isn't lost).
+ */
+export async function runCronJob(
+  opts: RunCronJobOpts,
+): Promise<{ responseText: string; errorMessage: string | null }> {
+  const { agentId, sessionKey, channel, gateway, discord } = opts;
+  let { prompt } = opts;
+
+  const target = channel
+    ? {
+        accountId: channel.accountId,
+        channelId: channel.channelId,
+        ...(channel.threadId ? { threadId: channel.threadId } : {}),
+      }
+    : undefined;
+
+  if (channel && target) {
+    // readLast is filled by loadConfig; ?? 0 only covers test callers that bypass it.
+    const readLast = channel.readLast ?? 0;
+    if (readLast > 0) {
+      if (!discord) {
+        throw new Error(`cron "${agentId}": channel set but Discord is not configured`);
+      }
+      const entries = await discord.fetchHistory(target, { limit: readLast });
+      const block = formatHistory(entries);
+      if (block) prompt = `${block}\n\n${prompt}`;
+    }
+  }
+
+  const result = await gateway.dispatchAndWait({
+    agentId,
+    sessionKey,
+    content: prompt,
+    source: "cron",
+  });
+
+  if (target && discord) {
+    const errText = result.errorMessage?.trim();
+    const body = errText ? `⚠️ ${errText}` : result.responseText.trim();
+    if (body) {
+      try {
+        await discord.send(target, body);
+      } catch (err) {
+        log.warn("Cron post failed", { agentId, channel, error: err });
+      }
+    }
+  }
+
+  return result;
 }

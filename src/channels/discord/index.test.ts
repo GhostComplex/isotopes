@@ -435,3 +435,122 @@ describe("createDiscordChannel — /stop interception", () => {
     expect(gateway.dispatch).not.toHaveBeenCalled();
   });
 });
+
+describe("createDiscordChannel — outbound (send + fetchHistory)", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  function singleAccountAdapter() {
+    const client = makeFakeClient("bot-A");
+    const adapter = createDiscordChannel(
+      { accounts: { acct1: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
+      { clientFactory: () => client },
+    );
+    return { client, adapter };
+  }
+
+  it("send: posts to channelId and returns the message id", async () => {
+    const { client, adapter } = singleAccountAdapter();
+    const sendMock = vi.fn().mockResolvedValue({ id: "out-1" });
+    client.channels.fetch = vi.fn().mockResolvedValue({ send: sendMock });
+
+    await adapter.start({ gateway: makeGateway() });
+    const out = await adapter.send({ accountId: "acct1", channelId: "ch-1" }, "hi");
+
+    expect(client.channels.fetch).toHaveBeenCalledWith("ch-1");
+    expect(sendMock).toHaveBeenCalledWith("hi");
+    expect(out).toEqual({ id: "out-1" });
+
+    await adapter.stop();
+  });
+
+  it("send: posts to threadId when provided", async () => {
+    const { client, adapter } = singleAccountAdapter();
+    const sendMock = vi.fn().mockResolvedValue({ id: "out-2" });
+    client.channels.fetch = vi.fn().mockResolvedValue({ send: sendMock });
+
+    await adapter.start({ gateway: makeGateway() });
+    await adapter.send({ accountId: "acct1", channelId: "ch-1", threadId: "thr-9" }, "hi");
+
+    expect(client.channels.fetch).toHaveBeenCalledWith("thr-9");
+    await adapter.stop();
+  });
+
+  it("send: throws on unknown accountId", async () => {
+    const { adapter } = singleAccountAdapter();
+    await adapter.start({ gateway: makeGateway() });
+    await expect(adapter.send({ accountId: "nope", channelId: "ch-1" }, "hi"))
+      .rejects.toThrow(/unknown discord accountid/i);
+    await adapter.stop();
+  });
+
+  it("send: throws when the channel isn't sendable", async () => {
+    const { client, adapter } = singleAccountAdapter();
+    client.channels.fetch = vi.fn().mockResolvedValue({ /* no send */ });
+    await adapter.start({ gateway: makeGateway() });
+    await expect(adapter.send({ accountId: "acct1", channelId: "ch-1" }, "hi"))
+      .rejects.toThrow(/not sendable/);
+    await adapter.stop();
+  });
+
+  it("send: truncates payloads over 2000 chars with a trailing marker", async () => {
+    const { client, adapter } = singleAccountAdapter();
+    const sendMock = vi.fn().mockResolvedValue({ id: "out-trunc" });
+    client.channels.fetch = vi.fn().mockResolvedValue({ send: sendMock });
+    await adapter.start({ gateway: makeGateway() });
+
+    const huge = "x".repeat(5000);
+    await adapter.send({ accountId: "acct1", channelId: "ch-1" }, huge);
+
+    const payload = sendMock.mock.calls[0]![0] as string;
+    expect(payload.length).toBeLessThanOrEqual(2000);
+    expect(payload.endsWith("…(truncated)")).toBe(true);
+    await adapter.stop();
+  });
+
+  it("send: leaves short payloads untouched", async () => {
+    const { client, adapter } = singleAccountAdapter();
+    const sendMock = vi.fn().mockResolvedValue({ id: "out-short" });
+    client.channels.fetch = vi.fn().mockResolvedValue({ send: sendMock });
+    await adapter.start({ gateway: makeGateway() });
+    await adapter.send({ accountId: "acct1", channelId: "ch-1" }, "small");
+    expect(sendMock).toHaveBeenCalledWith("small");
+    await adapter.stop();
+  });
+
+  it("fetchHistory: returns oldest-first entries, passes limit through verbatim", async () => {
+    const { client, adapter } = singleAccountAdapter();
+    const fetched = new Map([
+      ["m2", { id: "m2", author: { username: "bob" }, content: "world", createdTimestamp: 200 }],
+      ["m1", { id: "m1", author: { username: "alice" }, content: "hello", createdTimestamp: 100 }],
+    ]);
+    const fetchMessages = vi.fn().mockResolvedValue(fetched);
+    client.channels.fetch = vi.fn().mockResolvedValue({ messages: { fetch: fetchMessages } });
+
+    await adapter.start({ gateway: makeGateway() });
+    const entries = await adapter.fetchHistory({ accountId: "acct1", channelId: "ch-1" }, { limit: 999 });
+
+    // limit is passed straight to Discord — out-of-range values are the API's problem.
+    expect(fetchMessages).toHaveBeenCalledWith({ limit: 999 });
+    expect(entries.map((e) => e.messageId)).toEqual(["m1", "m2"]);
+    expect(entries[0]).toMatchObject({ sender: "alice", body: "hello", timestamp: 100 });
+
+    await adapter.stop();
+  });
+
+  it("fetchHistory: throws on unknown accountId", async () => {
+    const { adapter } = singleAccountAdapter();
+    await adapter.start({ gateway: makeGateway() });
+    await expect(adapter.fetchHistory({ accountId: "nope", channelId: "ch-1" }, { limit: 10 }))
+      .rejects.toThrow(/unknown discord accountid/i);
+    await adapter.stop();
+  });
+
+  it("fetchHistory: throws when channel has no messages API", async () => {
+    const { client, adapter } = singleAccountAdapter();
+    client.channels.fetch = vi.fn().mockResolvedValue({ /* no messages */ });
+    await adapter.start({ gateway: makeGateway() });
+    await expect(adapter.fetchHistory({ accountId: "acct1", channelId: "ch-1" }, { limit: 10 }))
+      .rejects.toThrow(/does not expose history/);
+    await adapter.stop();
+  });
+});

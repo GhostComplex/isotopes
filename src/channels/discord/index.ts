@@ -5,7 +5,7 @@ import {
   type Message as DiscordMessage,
   type SendableChannels,
 } from "discord.js";
-import type { Channel, ChannelActions, ChannelDeps } from "../types.js";
+import type { Channel, ChannelActions, ChannelDeps, ChannelHistoryEntry } from "../types.js";
 import type { Gateway } from "../../gateway/index.js";
 
 import { DedupeCache } from "./dedupe.js";
@@ -15,6 +15,7 @@ import { createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
 import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js";
+import { createLogger } from "../../logging/logger.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
 import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
 import type {
@@ -22,7 +23,11 @@ import type {
   DiscordChannelsConfig,
 } from "./types.js";
 
-/** Minimum surface the adapter touches — testable without discord.js. */
+const log = createLogger("discord");
+
+const DISCORD_MAX_MESSAGE_LENGTH = 2000;
+const TRUNCATION_SUFFIX = "\n…(truncated)";
+
 export interface ClientLike {
   user: { id: string; tag?: string } | null;
   channels: { fetch: (id: string) => Promise<unknown>; cache: Map<string, unknown> };
@@ -32,7 +37,6 @@ export interface ClientLike {
   destroy(): unknown;
 }
 
-/** Test seam: inject a mock Client without depending on discord.js. */
 type ClientFactory = () => ClientLike;
 
 const defaultClientFactory: ClientFactory = () =>
@@ -47,7 +51,6 @@ const defaultClientFactory: ClientFactory = () =>
   }) as unknown as ClientLike;
 
 interface CreateDiscordChannelOptions {
-  /** Test seam: override Discord.js Client construction. */
   clientFactory?: ClientFactory;
 }
 
@@ -66,7 +69,14 @@ export function createDiscordChannel(
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
 
+  function resolveClient(accountId: string): ClientLike {
+    const client = clients.get(accountId);
+    if (!client) throw new Error(`Unknown Discord accountId "${accountId}"`);
+    return client;
+  }
+
   return {
+    kind: "discord",
     async start(deps: ChannelDeps) {
       const { gateway } = deps;
       const accountIds = Object.keys(accounts);
@@ -116,6 +126,53 @@ export function createDiscordChannel(
       dedupes.clear();
       for (const h of histories.values()) h.clear();
       histories.clear();
+    },
+
+    async send(target, content) {
+      const client = resolveClient(target.accountId);
+      const destId = target.threadId ?? target.channelId;
+      const ch = (await client.channels.fetch(destId)) as
+        | { send?: (c: string) => Promise<{ id: string }> }
+        | null;
+      if (!ch?.send) throw new Error(`Discord channel ${destId} is not sendable`);
+      let payload = content;
+      if (payload.length > DISCORD_MAX_MESSAGE_LENGTH) {
+        const head = payload.slice(0, DISCORD_MAX_MESSAGE_LENGTH - TRUNCATION_SUFFIX.length);
+        payload = head + TRUNCATION_SUFFIX;
+        log.warn("Discord send truncated", {
+          destId,
+          originalLength: content.length,
+          truncatedLength: payload.length,
+        });
+      }
+      const sent = await ch.send(payload);
+      return { id: sent.id };
+    },
+
+    async fetchHistory(target, { limit }) {
+      const client = resolveClient(target.accountId);
+      const sourceId = target.threadId ?? target.channelId;
+      const ch = (await client.channels.fetch(sourceId)) as
+        | {
+            messages?: {
+              fetch: (opts: { limit: number }) => Promise<Map<string, DiscordMessage> | Iterable<[string, DiscordMessage]>>;
+            };
+          }
+        | null;
+      if (!ch?.messages?.fetch) throw new Error(`Discord channel ${sourceId} does not expose history`);
+      const fetched = await ch.messages.fetch({ limit });
+      const entries: ChannelHistoryEntry[] = [];
+      for (const [, m] of fetched as Iterable<[string, DiscordMessage]>) {
+        entries.push({
+          messageId: m.id,
+          sender: m.author?.username ?? "unknown",
+          body: m.content ?? "",
+          timestamp: m.createdTimestamp ?? 0,
+        });
+      }
+      // Discord returns newest-first; reverse for natural reading order.
+      entries.reverse();
+      return entries;
     },
   };
 }

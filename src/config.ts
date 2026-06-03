@@ -4,7 +4,7 @@ import YAML from "yaml";
 import type { ProviderType, AgentConfig } from "./agent/types.js";
 import type { AgentToolSettings } from "./agent/tools/types.js";
 import type { ChannelsConfig } from "./channels/types.js";
-import type { CronAction } from "./automation/types.js";
+import type { CronAction, CronChannelConfig } from "./automation/types.js";
 import { resolveSandboxConfig, type SandboxConfig } from "./agent/middleware/sandbox-config.js";
 
 export interface ProviderConfigFile {
@@ -20,13 +20,6 @@ export interface HeartbeatConfigFile {
   intervalSeconds?: number;
 }
 
-export interface CronTaskConfigFile {
-  name: string;
-  schedule: string;
-  prompt: string;
-  enabled?: boolean;
-}
-
 export interface AgentConfigFile {
   id: string;
   runner?: "pi" | "claude";
@@ -37,7 +30,6 @@ export interface AgentConfigFile {
   model?: string;
   sandbox?: SandboxConfigFile;
   heartbeat?: HeartbeatConfigFile;
-  cron?: { tasks: CronTaskConfigFile[] };
   spawnable?: boolean;
   sessionPolicy?: "always-new" | "parent-reuse";
 }
@@ -78,6 +70,7 @@ export interface CronJobConfigFile {
   agentId: string;
   action: CronAction;
   enabled?: boolean;
+  channel?: CronChannelConfig;
 }
 
 export interface IsotopesConfigFile {
@@ -179,7 +172,19 @@ export async function loadConfig(filePath: string): Promise<IsotopesConfigFile> 
     }
   }
 
+  normalizeScheduledChannels(raw);
+
   return processEnvVars(raw);
+}
+
+const DEFAULT_READ_LAST = 25;
+
+function normalizeScheduledChannels(raw: IsotopesConfigFile): void {
+  for (const t of raw.cron ?? []) {
+    if (t.channel && t.channel.readLast === undefined) {
+      t.channel.readLast = DEFAULT_READ_LAST;
+    }
+  }
 }
 
 export function toAgentConfig(

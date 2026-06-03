@@ -8,6 +8,8 @@ export class ChannelManager {
   private channels: Channel[] = [];
   private running = false;
   private readonly config: { channels?: Record<string, unknown> };
+  /** Direct handle to the Discord adapter; used by the scheduled-job pipeline. */
+  discord?: Channel;
 
   constructor(config: { channels?: Record<string, unknown> }) {
     this.config = config;
@@ -17,7 +19,9 @@ export class ChannelManager {
     if (this.running) return;
 
     if (this.config.channels?.discord) {
-      this.channels.push(createDiscordChannel(this.config.channels.discord));
+      const discord = createDiscordChannel(this.config.channels.discord);
+      this.discord = discord;
+      this.channels.push(discord);
     }
 
     await Promise.all(this.channels.map((c) => c.start(deps)));

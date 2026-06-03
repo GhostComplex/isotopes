@@ -4,3 +4,11 @@
 export type CronAction =
   | { type: "message"; content: string }
   | { type: "prompt"; prompt: string };
+
+export interface CronChannelConfig {
+  accountId: string;
+  channelId: string;
+  threadId?: string;
+  /** Recent messages to prepend. 0 = no read. */
+  readLast?: number;
+}
