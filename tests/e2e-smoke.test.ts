@@ -71,18 +71,18 @@ describe("edit tool (SDK)", () => {
   });
 });
 
-describe("exec tool", () => {
+describe("bash tool", () => {
   it("runs a shell command and returns stdout", async () => {
     const tools = createExecTools({ cwd: tmpDir, executor: new HostExecutor() });
-    const result = JSON.parse(await callTool(findTool(tools, "exec"), { command: "echo hello" }));
-    expect(result.exit_code).toBe(0);
-    expect(result.stdout.trim()).toBe("hello");
+    const result = await callTool(findTool(tools, "bash"), { command: "echo hello" });
+    expect(result).toMatch(/hello/);
   });
 
   it("reports non-zero exit codes", async () => {
     const tools = createExecTools({ cwd: tmpDir, executor: new HostExecutor() });
-    const result = JSON.parse(await callTool(findTool(tools, "exec"), { command: "exit 42" }));
-    expect(result.exit_code).not.toBe(0);
+    await expect(
+      (async () => callTool(findTool(tools, "bash"), { command: "exit 42" }))(),
+    ).rejects.toThrow(/exited with code 42/);
   });
 });
 
@@ -115,7 +115,7 @@ describe("full tool wiring", () => {
     expect(names.has("write")).toBe(true);
     expect(names.has("edit")).toBe(true);
     expect(names.has("ls")).toBe(true);
-    expect(names.has("exec")).toBe(true);
+    expect(names.has("bash")).toBe(true);
     expect(names.has("web_fetch")).toBe(true);
     expect(names.has("get_current_time")).toBe(true);
 
@@ -123,7 +123,7 @@ describe("full tool wiring", () => {
     const readResult = await callTool(findTool(all, "read"), { path: "SOUL.md" });
     expect(readResult).toContain("# Test Agent");
 
-    const execResult = JSON.parse(await callTool(findTool(all, "exec"), { command: "echo smoke" }));
-    expect(execResult.stdout.trim()).toBe("smoke");
+    const execResult = await callTool(findTool(all, "bash"), { command: "echo smoke" });
+    expect(execResult).toMatch(/smoke/);
   });
 });

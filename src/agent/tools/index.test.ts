@@ -42,7 +42,7 @@ describe("createAgentTools", () => {
     runtime: new AgentRuntime(),
   });
 
-  it("registers fs tools + time + exec + spawn_agent by default", () => {
+  it("registers fs tools + time + bash + spawn_agent by default", () => {
     const tools = createAgentTools(baseOpts());
     const names = tools.map((t) => t.name);
     expect(names).toContain("read");
@@ -50,7 +50,7 @@ describe("createAgentTools", () => {
     expect(names).toContain("edit");
     expect(names).toContain("ls");
     expect(names).toContain("get_current_time");
-    expect(names).toContain("exec");
+    expect(names).toContain("bash");
     expect(names).toContain("spawn_agent");
   });
 
