@@ -439,16 +439,3 @@ describe("AgentRuntime no longer exposes a per-session event bus", () => {
     expect((rt as unknown as { sessionListenerCount?: unknown }).sessionListenerCount).toBeUndefined();
   });
 });
-
-describe("AgentRuntime.stop", () => {
-  it("is a no-op for a fresh runtime", async () => {
-    const rt = new AgentRuntime();
-    await expect(rt.stop()).resolves.toBeUndefined();
-  });
-
-  it("is idempotent — calling twice does not throw", async () => {
-    const rt = new AgentRuntime();
-    await rt.stop();
-    await expect(rt.stop()).resolves.toBeUndefined();
-  });
-});

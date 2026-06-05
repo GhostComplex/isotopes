@@ -348,10 +348,6 @@ export class AgentRuntime {
     return this.runs.size;
   }
 
-  async stop(): Promise<void> {
-    // Nothing global to clean up since sandbox infra was removed.
-  }
-
   /** Push-model steer — inject a user message into an in-flight run mid-turn. */
   async steer(sessionId: string, message: string): Promise<void> {
     const handle = this.runs.get(sessionId);

@@ -60,9 +60,6 @@ export async function start(opts: AppOptions): Promise<App> {
     await channelManager.stop();
     await apiServer.stop();
     sessionStoreManager.stop();
-    try {
-      await agentRuntime.stop();
-    } catch { /* ignore */ }
   };
 
   log.info("App started");
