@@ -1,11 +1,16 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { createBashTool, createLocalBashOperations } from "@mariozechner/pi-coding-agent";
+import {
+  createBashTool,
+  createReadTool,
+  createWriteTool,
+  createEditTool,
+  createLsTool,
+} from "@mariozechner/pi-coding-agent";
 import { createWebFetchTool } from "./web.js";
 import { createReactTools } from "./react.js";
 import type { LazyChannelContext } from "../../channels/types.js";
 import type { AgentRuntime } from "../runtime.js";
 import { createTimeTool } from "./time.js";
-import { createFsTools } from "./fs-tools.js";
 import { createSpawnAgentTool } from "./spawn-agent.js";
 
 export interface CreateAgentToolsOptions {
@@ -20,16 +25,20 @@ export interface CreateAgentToolsOptions {
 }
 
 export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
+  const ws = opts.workspacePath;
   const tools: AgentTool[] = [
-    ...createFsTools(opts.workspacePath),
+    createReadTool(ws) as AgentTool,
+    createWriteTool(ws) as AgentTool,
+    createEditTool(ws) as AgentTool,
+    createLsTool(ws) as AgentTool,
     createTimeTool(),
-    createBashTool(opts.workspacePath, { operations: createLocalBashOperations() }) as AgentTool,
+    createBashTool(ws) as AgentTool,
     createWebFetchTool(),
     createSpawnAgentTool({
       runtime: opts.runtime,
       parentAgentId: opts.parentAgentId,
       parentSessionId: opts.parentSessionId,
-      workspacePath: opts.workspacePath,
+      workspacePath: ws,
       ...(opts.spawnableAgentIds ? { spawnableAgentIds: opts.spawnableAgentIds } : {}),
     }),
   ];

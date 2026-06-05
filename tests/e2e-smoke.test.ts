@@ -8,7 +8,7 @@ import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
-import { createBashTool, createLocalBashOperations } from "@mariozechner/pi-coding-agent";
+import { createBashTool } from "@mariozechner/pi-coding-agent";
 import { AgentRuntime } from "../src/agent/runtime.js";
 import { createAgentTools } from "../src/agent/tools/index.js";
 import { createWebFetchTool } from "../src/agent/tools/web.js";
@@ -72,13 +72,13 @@ describe("edit tool (SDK)", () => {
 
 describe("bash tool (pi)", () => {
   it("runs a shell command and returns stdout", async () => {
-    const tool = createBashTool(tmpDir, { operations: createLocalBashOperations() }) as AgentTool;
+    const tool = createBashTool(tmpDir) as AgentTool;
     const result = await callTool(tool, { command: "echo hello" });
     expect(result).toMatch(/hello/);
   });
 
   it("rejects on non-zero exit (pi convention)", async () => {
-    const tool = createBashTool(tmpDir, { operations: createLocalBashOperations() }) as AgentTool;
+    const tool = createBashTool(tmpDir) as AgentTool;
     await expect(tool.execute("test-call", { command: "exit 42" } as never))
       .rejects.toThrow(/exited with code 42/);
   });
