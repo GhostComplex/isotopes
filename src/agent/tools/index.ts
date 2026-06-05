@@ -46,11 +46,7 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
   const tools: AgentTool[] = [
     ...createFsTools(opts.workspacePath, fs),
     createTimeTool(),
-    ...createExecTools({
-      cwd: opts.workspacePath,
-      executor,
-      ...(isSandboxed ? { sandboxExecutor: opts.sandboxExecutor!, agentId: opts.agentId } : {}),
-    }),
+    ...createExecTools({ cwd: opts.workspacePath, executor, isSandboxed }),
     createWebFetchTool(executor),
     createSpawnAgentTool({
       runtime: opts.runtime,

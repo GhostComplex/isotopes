@@ -1,21 +1,23 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createBashTool, createLocalBashOperations, type BashOperations } from "@mariozechner/pi-coding-agent";
 import { spawn } from "node:child_process";
-import type { Executor, SandboxExecutor } from "../middleware/executor.js";
+import type { Executor } from "../middleware/executor.js";
 
 export interface ExecToolOptions {
   cwd?: string;
-  /** Used to detect sandboxed agents (and to build `docker exec` argv). */
   executor: Executor;
-  /** Required for sandbox agents — undefined means host mode. */
-  sandboxExecutor?: SandboxExecutor;
-  agentId?: string;
+  /**
+   * Sandbox mode: route pi's bash tool through `executor.buildExecArgv` + self-spawn
+   * so the command runs inside the agent's docker container.
+   * Host mode: use pi's `createLocalBashOperations` for cross-platform shell resolution.
+   */
+  isSandboxed?: boolean;
 }
 
 export function createExecTool(options: ExecToolOptions): AgentTool {
   const cwd = options.cwd ?? process.cwd();
-  const operations = options.sandboxExecutor && options.agentId
-    ? createSandboxBashOperations(options.sandboxExecutor, options.agentId)
+  const operations = options.isSandboxed
+    ? createSandboxBashOperations(options.executor)
     : createLocalBashOperations();
   return createBashTool(cwd, { operations });
 }
@@ -25,11 +27,11 @@ export function createExecTools(options: ExecToolOptions): AgentTool[] {
 }
 
 /**
- * Routes pi's bash tool through SandboxExecutor — the command runs inside the
- * agent's docker container instead of the host. We rebuild `docker exec -i <ctr> sh -c <cmd>`
- * via `buildExecArgv` so we still get a real ChildProcess for stream + abort + timeout.
+ * Adapt pi's BashOperations to any Executor — we ask the executor for the
+ * argv it would spawn (e.g. `docker exec -i <ctr> sh -c <cmd>`) and spawn it
+ * ourselves so we control stream / abort / timeout.
  */
-function createSandboxBashOperations(executor: SandboxExecutor, agentId: string): BashOperations {
+function createSandboxBashOperations(executor: Executor): BashOperations {
   return {
     exec(command, cwd, { onData, signal, timeout, env }) {
       return new Promise((resolve) => {
@@ -42,7 +44,7 @@ function createSandboxBashOperations(executor: SandboxExecutor, agentId: string)
         };
 
         executor
-          .buildExecArgv(agentId, ["sh", "-c", command], { workspacePath: cwd })
+          .buildExecArgv(["sh", "-c", command], { workspacePath: cwd })
           .then((argv) => {
             const child = spawn(argv[0], argv.slice(1), {
               stdio: ["ignore", "pipe", "pipe"],
