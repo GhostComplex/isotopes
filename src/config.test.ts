@@ -216,7 +216,7 @@ agents:
         tools: { allow: ["read"] },
       };
       const config = toAgentConfig(agentFile, undefined, {
-        deny: ["exec"],
+        deny: ["bash"],
       });
 
       expect(config.toolSettings?.allow).toEqual(["read"]);
