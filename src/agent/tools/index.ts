@@ -31,8 +31,8 @@ export function createAgentTools(opts: CreateAgentToolsOptions): AgentTool[] {
     createWriteTool(ws) as AgentTool,
     createEditTool(ws) as AgentTool,
     createLsTool(ws) as AgentTool,
-    createTimeTool(),
     createBashTool(ws) as AgentTool,
+    createTimeTool(),
     createWebFetchTool(),
     createSpawnAgentTool({
       runtime: opts.runtime,
