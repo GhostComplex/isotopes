@@ -152,7 +152,6 @@ BuiltinRunner.run(taskId, opts, signals):
     systemPrompt: opts.systemPrompt ?? DEFAULT_BUILTIN_PROMPT,
     tools: filterTools(parentToolset, opts.allowedTools),  // 复用主 agent 的 tool registry
     provider: parentProviderConfig,                        // 继承 provider，无需新 key
-    sandbox: opts.sandbox,
     compaction: { mode: "off" }                            // subagent 默认短任务
   })
   for await (ev of agent.prompt(opts.prompt)) {
@@ -441,7 +440,7 @@ dispatcher 负责所有"通用机制"（并发、超时、cancel、validate、st
 
 ## 6. builtin backend 实现关键点
 
-1. **Tool 子集**：默认 read-only fs + shell。从主 agent 的 `ToolRegistry` 借用工具实例（保留 sandbox guard），再用 `allowedTools` 过滤。
+1. **Tool 子集**：默认 read-only fs + shell。从主 agent 的 `ToolRegistry` 借用工具实例，再用 `allowedTools` 过滤。
 2. **Provider 继承**：`spawnSubagent` 当前接收 `model?: string`；builtin 还需要 `parentProvider: ProviderConfig`。在 `createSubagentTool` 把父 agent 的 `AgentConfig.provider` 抓出来作为 spawn options 传下去。
 3. **System prompt**：subagent 需要自己的 prompt（不要继承父 agent 的 SOUL.md），默认走一个内置的"你是子任务执行者"模板，可被 `options.systemPrompt` 覆盖。
 4. **Compaction**：默认关。子任务通常一两轮，用 `compaction.mode = "off"` 避免 context overflow 触发额外 LLM 调用。
@@ -450,7 +449,6 @@ dispatcher 负责所有"通用机制"（并发、超时、cancel、validate、st
 
 ## 7. 不在 #399 范围内
 
-- 跨 backend 的"统一 sandbox 配置层"——claude SDK 自己有 permissions 模型，builtin 走我们的 `SandboxConfig`，目前各管各的。
 - builtin backend 的子任务 trace 反向链回父 transcript（今天父端只看到 `tool_result` 文本）。
 - 嵌套 subagent（builtin runner 里再 spawn subagent）。可以工作，但深度限制留到后面。
 

@@ -45,7 +45,6 @@ This file captures the simplified ASCII diagrams discussed in chat.
 +---------------------------+
 | Execution-time guards     |
 | workspaceOnly             |
-| sandbox                   |
 | approval / elevated exec  |
 +---------------------------+
 ```

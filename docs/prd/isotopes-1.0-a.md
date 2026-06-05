@@ -157,7 +157,6 @@ bindings:
 agents.defaults:
   model.primary: copilot-proxy/claude-opus-4.6
   subagents.model: copilot-proxy/claude-opus-4.6
-  sandbox.mode: non-main
 ```
 
 ### 5.2 Isotopes 当前配置状态
@@ -403,8 +402,6 @@ agents:
       primary: copilot-proxy/claude-opus-4.6
     subagents:
       model: copilot-proxy/claude-opus-4.6
-    sandbox:
-      mode: non-main
 
   list:
     - id: major

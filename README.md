@@ -92,8 +92,6 @@ agents:
     #   cli: true
     # compaction:
     #   mode: safeguard              # off | safeguard | aggressive
-    # sandbox:
-    #   enabled: true               # route exec/file tools through Docker
 
 channels:
   discord:
@@ -116,7 +114,6 @@ channels:
 # - Agent bindings (channel + account + peer routing)
 # - Feishu transport
 # - Cron jobs
-# - Sandbox/Docker config
 ```
 
 See [isotopes.example.yaml](isotopes.example.yaml) for all options.

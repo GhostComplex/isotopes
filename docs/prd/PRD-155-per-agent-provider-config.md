@@ -49,7 +49,6 @@ export interface AgentDefaultsConfigFile {
   provider?: ProviderConfigFile;
   tools?: AgentToolsConfigFile;
   compaction?: CompactionConfigFile;
-  sandbox?: SandboxConfigFile;
 }
 
 /** Updated root config */
@@ -100,13 +99,11 @@ export function toAgentConfig(
   globalProvider?: ProviderConfigFile,
   globalTools?: AgentToolsConfigFile,
   globalCompaction?: CompactionConfigFile,
-  defaultSandbox?: SandboxConfig,           // EXISTING - also include in merge
 ): AgentConfig {
   // Merge chain: agent > defaults > global
   const provider = agent.provider ?? agentDefaults?.provider ?? globalProvider;
   const tools = agent.tools ?? agentDefaults?.tools ?? globalTools;
   const compaction = agent.compaction ?? agentDefaults?.compaction ?? globalCompaction;
-  const sandbox = agent.sandbox ?? agentDefaults?.sandbox ?? defaultSandbox;
   // ...
 }
 ```
@@ -117,11 +114,6 @@ Need to grep and update:
 - `src/cli.ts` — main entry
 - `src/core/agent-manager.ts` — if calling directly
 - Any other consumers
-
-### 5. Sandbox Integration
-
-`defaultSandbox` already flows through `toAgentConfig()`. With this change:
-- `agent.sandbox` > `agentDefaults.sandbox` > `defaultSandbox` (global)
 
 ## Merge Strategy
 
@@ -160,6 +152,5 @@ Why not deep merge: Too complex, hard to predict. If you need to override `model
 - [ ] `agents.defaults.provider` config option works
 - [ ] Agent-level provider overrides defaults
 - [ ] Agents without explicit config inherit from defaults
-- [ ] Sandbox also respects defaults chain
 - [ ] Backward compatible with existing configs
 - [ ] Tests pass

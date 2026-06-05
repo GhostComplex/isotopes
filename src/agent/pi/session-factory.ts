@@ -14,7 +14,6 @@ import * as path from "node:path";
 import type { ProviderConfig, RegisteredAgent } from "../types.js";
 import type { AgentToolSettings } from "../tools/types.js";
 import type { AgentRuntime } from "../runtime.js";
-import type { SandboxExecutor } from "../middleware/executor.js";
 import { createAgentTools } from "../tools/index.js";
 import { overrideSessionSystemPrompt } from "./system-prompt-override.js";
 import { buildAgentSystemPrompt } from "../workspace/context.js";
@@ -28,7 +27,6 @@ export interface PiSessionDeps {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   runtime: AgentRuntime;
-  sandboxExecutor?: SandboxExecutor;
   extensionPaths?: string[];
 }
 
@@ -94,9 +92,8 @@ function buildToolAllowlist(
   policy: AgentToolSettings | undefined,
   customTools: ToolDefinition[],
   resourceLoader: DefaultResourceLoader | undefined,
-  sandboxed: boolean,
 ): string[] | undefined {
-  if (!policy?.allow && !policy?.deny && !sandboxed) return undefined;
+  if (!policy?.allow && !policy?.deny) return undefined;
   const extensionToolNames: string[] = [];
   if (resourceLoader) {
     for (const ext of resourceLoader.getExtensions().extensions) {
@@ -105,7 +102,6 @@ function buildToolAllowlist(
   }
   const allNames = [...customTools.map((t) => t.name), ...extensionToolNames];
   const denySet = new Set(policy?.deny ?? []);
-  if (sandboxed) denySet.add("spawn_agent");
   const allowSet = policy?.allow ? new Set(policy.allow) : undefined;
   return allNames.filter((n) => {
     if (denySet.has(n)) return false;
@@ -135,8 +131,6 @@ export async function createPiSession(
     runtime: deps.runtime,
     ...(agent.spawnableAgentIds ? { spawnableAgentIds: agent.spawnableAgentIds } : {}),
     ...(agent.channelContext ? { channelContext: agent.channelContext } : {}),
-    ...(agent.config.sandbox ? { agentSandboxConfig: agent.config.sandbox } : {}),
-    ...(deps.sandboxExecutor ? { sandboxExecutor: deps.sandboxExecutor } : {}),
   });
   const customTools = tools.map(toToolDefinition);
 
@@ -155,7 +149,6 @@ export async function createPiSession(
     agent.config.toolSettings,
     customTools,
     resourceLoader,
-    agent.config.sandbox?.enabled ?? false,
   );
 
   const { session } = await createAgentSession({

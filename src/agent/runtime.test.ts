@@ -441,7 +441,7 @@ describe("AgentRuntime no longer exposes a per-session event bus", () => {
 });
 
 describe("AgentRuntime.stop", () => {
-  it("is a no-op when no sandboxBaseConfig was passed", async () => {
+  it("is a no-op for a fresh runtime", async () => {
     const rt = new AgentRuntime();
     await expect(rt.stop()).resolves.toBeUndefined();
   });
@@ -450,14 +450,5 @@ describe("AgentRuntime.stop", () => {
     const rt = new AgentRuntime();
     await rt.stop();
     await expect(rt.stop()).resolves.toBeUndefined();
-  });
-
-  it("calls cleanup on the SandboxExecutor exactly once across repeated shutdowns", async () => {
-    const cleanup = vi.fn().mockResolvedValue(undefined);
-    const rt = new AgentRuntime();
-    (rt as unknown as { sandboxExecutor: { cleanup: () => Promise<void> } }).sandboxExecutor = { cleanup };
-    await rt.stop();
-    await rt.stop();
-    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 });

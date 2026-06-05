@@ -5,9 +5,9 @@ import {
   createEditTool,
   createLsTool,
 } from "@mariozechner/pi-coding-agent";
-import type { FsBridge } from "../middleware/fs.js";
+import fs from "node:fs/promises";
 
-export function createFsTools(workspacePath: string, fs: FsBridge): AgentTool[] {
+export function createFsTools(workspacePath: string): AgentTool[] {
   return [
     createReadTool(workspacePath, {
       operations: {
@@ -17,20 +17,20 @@ export function createFsTools(workspacePath: string, fs: FsBridge): AgentTool[] 
     }) as AgentTool,
     createWriteTool(workspacePath, {
       operations: {
-        writeFile: (p, c) => fs.writeFile(p, c),
-        mkdir: (d) => fs.mkdir(d),
+        writeFile: (p, c) => fs.writeFile(p, c, "utf-8"),
+        mkdir: (d) => fs.mkdir(d, { recursive: true }).then(() => undefined),
       },
     }) as AgentTool,
     createEditTool(workspacePath, {
       operations: {
         readFile: (p) => fs.readFile(p),
-        writeFile: (p, c) => fs.writeFile(p, c),
+        writeFile: (p, c) => fs.writeFile(p, c, "utf-8"),
         access: (p) => fs.access(p),
       },
     }) as AgentTool,
     createLsTool(workspacePath, {
       operations: {
-        exists: (p) => fs.exists(p),
+        exists: (p) => fs.stat(p).then(() => true, () => false),
         stat: (p) => fs.stat(p),
         readdir: (p) => fs.readdir(p),
       },

@@ -22,7 +22,6 @@ import {
 import {
   toAgentConfig,
   type AgentConfigFile,
-  type SandboxConfigFile,
   type AgentToolsConfigFile,
   type ProviderConfigFile,
 } from "../config.js";
@@ -34,8 +33,6 @@ import { ensureWorkspaceStructure } from "./workspace/context.js";
 import { seedWorkspaceTemplates } from "./workspace/templates.js";
 import { LazyChannelContext } from "../channels/types.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
-import { SandboxExecutor } from "./middleware/executor.js";
-import type { SandboxConfig } from "./middleware/sandbox-config.js";
 
 const log = createLogger("runtime");
 
@@ -59,8 +56,6 @@ interface RunHandle {
 export interface AgentRuntimeOptions {
   /** Default LLM provider. */
   globalProvider?: ProviderConfig;
-  /** Resolved global sandbox config — if present, AgentRuntime owns a SandboxExecutor. */
-  sandboxBaseConfig?: SandboxConfig;
   /** pi extension file paths discovered from ~/.isotopes/extensions/pi/. */
   extensionPaths?: string[];
 }
@@ -69,7 +64,6 @@ export interface AddAgentOptions {
   agentFile: AgentConfigFile;
   provider?: ProviderConfigFile;
   globalTools?: AgentToolsConfigFile;
-  sandbox?: SandboxConfigFile;
   channelContext?: LazyChannelContext;
   spawnableAgentIds?: string[];
   sessionStore: DefaultSessionStore;
@@ -107,15 +101,11 @@ export class AgentRuntime {
   private piGlobalProvider?: ProviderConfig;
   private piAuthStorage?: AuthStorage;
   private piModelRegistry?: ModelRegistry;
-  private sandboxExecutor?: SandboxExecutor;
   private extensionPaths: string[] = [];
 
   constructor(options?: AgentRuntimeOptions) {
     const opts = options ?? {};
     if (opts.extensionPaths) this.extensionPaths = opts.extensionPaths;
-    if (opts.sandboxBaseConfig) {
-      this.sandboxExecutor = SandboxExecutor.fromConfig(opts.sandboxBaseConfig);
-    }
 
     if (opts.globalProvider) {
       const creds: Record<string, { type: "api_key"; key: string }> = {};
@@ -142,7 +132,6 @@ export class AgentRuntime {
       authStorage: this.piAuthStorage,
       modelRegistry: this.piModelRegistry,
       runtime: this,
-      ...(this.sandboxExecutor ? { sandboxExecutor: this.sandboxExecutor } : {}),
       ...(this.extensionPaths.length > 0 ? { extensionPaths: this.extensionPaths } : {}),
     };
   }
@@ -190,8 +179,8 @@ export class AgentRuntime {
 
   /** Single registration entry point. Branches on agent.runner. */
   async register(opts: AddAgentOptions): Promise<AddAgentResult> {
-    const { agentFile, provider, globalTools, sandbox } = opts;
-    const agentConfig = toAgentConfig(agentFile, provider, globalTools, sandbox);
+    const { agentFile, provider, globalTools } = opts;
+    const agentConfig = toAgentConfig(agentFile, provider, globalTools);
     return agentConfig.runner === "claude"
       ? this.registerClaude(agentConfig)
       : this.registerPi(agentConfig, opts);
@@ -360,13 +349,7 @@ export class AgentRuntime {
   }
 
   async stop(): Promise<void> {
-    if (this.sandboxExecutor) {
-      try {
-        await this.sandboxExecutor.cleanup();
-      } finally {
-        this.sandboxExecutor = undefined;
-      }
-    }
+    // Nothing global to clean up since sandbox infra was removed.
   }
 
   /** Push-model steer — inject a user message into an in-flight run mid-turn. */

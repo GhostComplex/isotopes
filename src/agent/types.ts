@@ -1,4 +1,3 @@
-import type { SandboxConfig } from "./middleware/sandbox-config.js";
 import type { AgentToolSettings } from "./tools/types.js";
 import type { DefaultSessionStore } from "./pi/session-store.js";
 import type { LazyChannelContext } from "../channels/types.js";
@@ -20,7 +19,6 @@ export interface AgentConfig {
   workspace?: string;
   toolSettings?: AgentToolSettings;
   model?: string;
-  sandbox?: SandboxConfig;
   spawnable?: boolean;
   sessionPolicy?: "always-new" | "parent-reuse";
 }

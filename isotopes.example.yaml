@@ -31,9 +31,6 @@ agents:
     #   allow: ["read", "write"]            # if non-empty, ONLY these tools are exposed
     #   deny: ["shell"]                     # always-blocked tools (wins over allow)
     #
-    # sandbox:                              # per-agent override (see global "sandbox" below)
-    #   enabled: true
-    #
     # heartbeat:                            # periodic wake-up
     #   enabled: false
     #   intervalSeconds: 300                # 5 min default
@@ -51,25 +48,6 @@ agents:
 # tools:
 #   allow: []                       # if non-empty, ONLY these tools are exposed
 #   deny: []                        # always-blocked tools (wins over allow)
-
-# =============================================================================
-# SANDBOX — Docker-isolated tool execution (default for all agents)
-# =============================================================================
-# sandbox:
-#   enabled: false                    # true to route exec/file tools through Docker
-#   workspaceAccess: rw               # rw | ro
-#   mounts:                           # extra host paths to expose inside container
-#     - host: /Users/me/data
-#       container: /data
-#       readOnly: true                # default false
-#   docker:
-#     image: isotopes-sandbox:latest
-#     network: bridge                 # bridge | host | none
-#     extraHosts: []
-#     cpuLimit: 1.0
-#     memoryLimit: 512m
-#     pidsLimit: 256
-#     noNewPrivileges: true           # default true; only set false if a tool legitimately needs setuid
 
 # =============================================================================
 # CHANNELS — Discord transport + per-guild settings
