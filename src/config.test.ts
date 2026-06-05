@@ -8,7 +8,6 @@ import {
   loadConfig,
   toAgentConfig,
   resolveToolSettings,
-  resolveSandboxConfigFromFile,
 } from "./config.js";
 
 describe("Config", () => {
@@ -217,7 +216,7 @@ agents:
         tools: { allow: ["read"] },
       };
       const config = toAgentConfig(agentFile, undefined, {
-        deny: ["exec"],
+        deny: ["bash"],
       });
 
       expect(config.toolSettings?.allow).toEqual(["read"]);
@@ -284,82 +283,6 @@ agents:
         { deny: ["shell"] },
       );
       expect(result.deny).toEqual(["shell"]);
-    });
-  });
-
-  describe("resolveSandboxConfigFromFile", () => {
-    it("returns undefined when neither agent nor default config provided", () => {
-      expect(resolveSandboxConfigFromFile("test-agent")).toBeUndefined();
-    });
-
-    it("resolves an agents-level sandbox config (no per-agent override)", () => {
-      const config = resolveSandboxConfigFromFile("test-agent", undefined, {
-        enabled: true,
-        docker: { image: "custom:latest" },
-      });
-
-      expect(config).toBeDefined();
-      expect(config!.enabled).toBe(true);
-      expect(config!.docker?.image).toBe("custom:latest");
-    });
-
-    it("resolves default sandbox config when agent has none", () => {
-      const config = resolveSandboxConfigFromFile(
-        "test-agent",
-        undefined,
-        { enabled: true },
-      );
-
-      expect(config).toBeDefined();
-      expect(config!.enabled).toBe(true);
-    });
-
-    it("per-agent { enabled: false } turns off sandbox while inheriting docker from defaults", () => {
-      const config = resolveSandboxConfigFromFile(
-        "test-agent",
-        { enabled: false },
-        { enabled: true, docker: { image: "team:latest" } },
-      );
-
-      expect(config!.enabled).toBe(false);
-      expect(config!.docker?.image).toBe("team:latest");
-    });
-
-    it("per-agent docker fields override base docker fields (per-field merge)", () => {
-      const config = resolveSandboxConfigFromFile(
-        "test-agent",
-        { enabled: true, docker: { image: "agent-specific:latest" } },
-        { enabled: true, docker: { image: "team:latest", network: "host", cpuLimit: 2 } },
-      );
-      // override `image` from agent, inherit `network` and `cpuLimit` from base
-      expect(config!.docker?.image).toBe("agent-specific:latest");
-      expect(config!.docker?.network).toBe("host");
-      expect(config!.docker?.cpuLimit).toBe(2);
-    });
-
-    it("per-agent mounts concat onto base mounts", () => {
-      const config = resolveSandboxConfigFromFile(
-        "test-agent",
-        { enabled: true, mounts: [{ host: "/agent-foo", container: "/foo" }] },
-        { enabled: true, mounts: [{ host: "/base-bar", container: "/bar" }] },
-      );
-      expect(config!.mounts).toEqual([
-        { host: "/base-bar", container: "/bar" },
-        { host: "/agent-foo", container: "/foo" },
-      ]);
-    });
-    it("propagates pidsLimit / noNewPrivileges from file", () => {
-      const config = resolveSandboxConfigFromFile("test-agent", undefined, {
-        enabled: true,
-        docker: {
-          image: "x:latest",
-          pidsLimit: 512,
-          noNewPrivileges: false,
-        },
-      });
-
-      expect(config!.docker?.pidsLimit).toBe(512);
-      expect(config!.docker?.noNewPrivileges).toBe(false);
     });
   });
 

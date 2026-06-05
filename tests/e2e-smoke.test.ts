@@ -8,11 +8,10 @@ import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+import { createBashTool } from "@mariozechner/pi-coding-agent";
 import { AgentRuntime } from "../src/agent/runtime.js";
 import { createAgentTools } from "../src/agent/tools/index.js";
-import { createExecTools } from "../src/agent/tools/exec.js";
 import { createWebFetchTool } from "../src/agent/tools/web.js";
-import { HostExecutor } from "../src/agent/middleware/executor.js";
 
 async function callTool(tool: AgentTool, args: unknown): Promise<string> {
   const result: AgentToolResult<unknown> = await tool.execute("test-call", args as never);
@@ -71,30 +70,29 @@ describe("edit tool (SDK)", () => {
   });
 });
 
-describe("exec tool", () => {
+describe("bash tool (pi)", () => {
   it("runs a shell command and returns stdout", async () => {
-    const tools = createExecTools({ cwd: tmpDir, executor: new HostExecutor() });
-    const result = JSON.parse(await callTool(findTool(tools, "exec"), { command: "echo hello" }));
-    expect(result.exit_code).toBe(0);
-    expect(result.stdout.trim()).toBe("hello");
+    const tool = createBashTool(tmpDir) as AgentTool;
+    const result = await callTool(tool, { command: "echo hello" });
+    expect(result).toMatch(/hello/);
   });
 
-  it("reports non-zero exit codes", async () => {
-    const tools = createExecTools({ cwd: tmpDir, executor: new HostExecutor() });
-    const result = JSON.parse(await callTool(findTool(tools, "exec"), { command: "exit 42" }));
-    expect(result.exit_code).not.toBe(0);
+  it("rejects on non-zero exit (pi convention)", async () => {
+    const tool = createBashTool(tmpDir) as AgentTool;
+    await expect(tool.execute("test-call", { command: "exit 42" } as never))
+      .rejects.toThrow(/exited with code 42/);
   });
 });
 
 describe("web_fetch tool", () => {
   it("fetches a URL and returns content", async () => {
-    const tool = createWebFetchTool(new HostExecutor());
+    const tool = createWebFetchTool();
     const result = await callTool(tool, { url: "https://httpbin.org/get" });
     expect(result).toContain("httpbin.org");
   }, 30_000);
 
   it("returns error for invalid URL", async () => {
-    const tool = createWebFetchTool(new HostExecutor());
+    const tool = createWebFetchTool();
     const result = await callTool(tool, { url: "not-a-url" });
     expect(result).toContain("[error]");
   });
@@ -115,7 +113,7 @@ describe("full tool wiring", () => {
     expect(names.has("write")).toBe(true);
     expect(names.has("edit")).toBe(true);
     expect(names.has("ls")).toBe(true);
-    expect(names.has("exec")).toBe(true);
+    expect(names.has("bash")).toBe(true);
     expect(names.has("web_fetch")).toBe(true);
     expect(names.has("get_current_time")).toBe(true);
 
@@ -123,7 +121,7 @@ describe("full tool wiring", () => {
     const readResult = await callTool(findTool(all, "read"), { path: "SOUL.md" });
     expect(readResult).toContain("# Test Agent");
 
-    const execResult = JSON.parse(await callTool(findTool(all, "exec"), { command: "echo smoke" }));
-    expect(execResult.stdout.trim()).toBe("smoke");
+    const bashResult = await callTool(findTool(all, "bash"), { command: "echo smoke" });
+    expect(bashResult).toMatch(/smoke/);
   });
 });

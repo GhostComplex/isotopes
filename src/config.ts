@@ -5,7 +5,6 @@ import type { ProviderType, AgentConfig } from "./agent/types.js";
 import type { AgentToolSettings } from "./agent/tools/types.js";
 import type { ChannelsConfig } from "./channels/types.js";
 import type { CronAction, CronChannelConfig } from "./automation/types.js";
-import { resolveSandboxConfig, type SandboxConfig } from "./agent/middleware/sandbox-config.js";
 
 export interface ProviderConfigFile {
   type: ProviderType;
@@ -28,7 +27,6 @@ export interface AgentConfigFile {
   workspace?: string;
   tools?: AgentToolsConfigFile;
   model?: string;
-  sandbox?: SandboxConfigFile;
   heartbeat?: HeartbeatConfigFile;
   spawnable?: boolean;
   sessionPolicy?: "always-new" | "parent-reuse";
@@ -39,29 +37,6 @@ export interface AgentToolsConfigFile {
   allow?: string[];
   /** Always blocked. Wins over allow. */
   deny?: string[];
-}
-
-export interface SandboxDockerConfigFile {
-  image?: string;
-  network?: string;
-  extraHosts?: string[];
-  cpuLimit?: number;
-  memoryLimit?: string;
-  pidsLimit?: number;
-  noNewPrivileges?: boolean;
-}
-
-export interface SandboxMountConfigFile {
-  host: string;
-  container: string;
-  readOnly?: boolean;
-}
-
-export interface SandboxConfigFile {
-  enabled?: boolean;
-  workspaceAccess?: string;
-  mounts?: SandboxMountConfigFile[];
-  docker?: SandboxDockerConfigFile;
 }
 
 export interface CronJobConfigFile {
@@ -76,7 +51,6 @@ export interface CronJobConfigFile {
 export interface IsotopesConfigFile {
   provider?: ProviderConfigFile;
   tools?: AgentToolsConfigFile;
-  sandbox?: SandboxConfigFile;
   agents: AgentConfigFile[];
   channels?: ChannelsConfig;
   cron?: CronJobConfigFile[];
@@ -90,51 +64,6 @@ export function resolveToolSettings(
   return {
     allow: agentTools?.allow ?? defaultTools?.allow,
     deny: agentTools?.deny ?? defaultTools?.deny,
-  };
-}
-
-// Per-agent sandbox is a partial overlay (e.g. just `enabled: false`); docker
-// settings only come from the top-level config because the runtime maintains a
-// single global ContainerManager.
-export function resolveSandboxConfigFromFile(
-  agentId: string,
-  agentSandbox?: SandboxConfigFile,
-  defaultSandbox?: SandboxConfigFile,
-): SandboxConfig | undefined {
-  if (!agentSandbox && !defaultSandbox) return undefined;
-
-  const defaults = defaultSandbox ? toSandboxConfig(defaultSandbox) : undefined;
-  const override = agentSandbox ? toSandboxConfig(agentSandbox) : undefined;
-
-  return resolveSandboxConfig(agentId, defaults, override);
-}
-
-function toSandboxConfig(file: SandboxConfigFile): SandboxConfig {
-  return {
-    enabled: file.enabled ?? false,
-    ...(file.workspaceAccess !== undefined && {
-      workspaceAccess: file.workspaceAccess as SandboxConfig["workspaceAccess"],
-    }),
-    ...(file.mounts && {
-      mounts: file.mounts.map((m) => ({
-        host: m.host,
-        container: m.container,
-        ...(m.readOnly !== undefined && { readOnly: m.readOnly }),
-      })),
-    }),
-    ...(file.docker && {
-      docker: {
-        image: file.docker.image ?? "isotopes-sandbox:latest",
-        ...(file.docker.network !== undefined && {
-          network: file.docker.network as "bridge" | "host" | "none",
-        }),
-        ...(file.docker.extraHosts && { extraHosts: file.docker.extraHosts }),
-        ...(file.docker.cpuLimit !== undefined && { cpuLimit: file.docker.cpuLimit }),
-        ...(file.docker.memoryLimit !== undefined && { memoryLimit: file.docker.memoryLimit }),
-        ...(file.docker.pidsLimit !== undefined && { pidsLimit: file.docker.pidsLimit }),
-        ...(file.docker.noNewPrivileges !== undefined && { noNewPrivileges: file.docker.noNewPrivileges }),
-      },
-    }),
   };
 }
 
@@ -191,14 +120,9 @@ export function toAgentConfig(
   agent: AgentConfigFile,
   globalProvider?: ProviderConfigFile,
   globalTools?: AgentToolsConfigFile,
-  globalSandbox?: SandboxConfigFile,
 ): AgentConfig {
   const resolvedToolSettings = resolveToolSettings(agent.tools ?? globalTools);
   const model = agent.model ?? globalProvider?.defaultModel;
-  const sandbox =
-    agent.sandbox || globalSandbox
-      ? resolveSandboxConfigFromFile(agent.id, agent.sandbox, globalSandbox)
-      : undefined;
 
   return {
     id: agent.id,
@@ -206,7 +130,6 @@ export function toAgentConfig(
     ...(agent.workspace ? { workspace: agent.workspace } : {}),
     toolSettings: resolvedToolSettings,
     ...(model ? { model } : {}),
-    sandbox,
     spawnable: agent.spawnable,
     sessionPolicy: agent.sessionPolicy,
   };

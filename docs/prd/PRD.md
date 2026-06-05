@@ -49,13 +49,6 @@ agents:
     workspace: ~/.isotopes/workspaces/default
     compaction:
       mode: safeguard  # off | safeguard | aggressive
-    sandbox:
-      mode: non-main   # off | non-main | all
-      workspaceAccess: rw
-      docker:
-        image: isotopes-sandbox:latest
-        network: bridge
-      mode: safeguard  # off | safeguard | aggressive
   list:
     - id: major
       name: Major
@@ -286,7 +279,6 @@ Agents modify their own configuration using generic file tools (`read_file`, `wr
 | **M3** | ACP Protocol | 🗑️ Removed (PR #374) |
 | **M4** | Automation & Git | ✅ Done |
 | **M5** | Daemon Mode + Web API | ✅ Done |
-| **M6** | Sandbox Execution | ✅ Done |
 | **M7** | Sub-agent Backend | ✅ Done |
 | **M8** | Subagent Security & Config | 📋 Backlog |
 | **M9** | Skills System | ✅ Done |

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Isotopes is a self-hostable AI agent framework for multi-agent collaboration across chat platforms (Discord today, Feishu future). Agents have self-evolving prompts (SOUL.md, MEMORY.md), per-account routing, cron automation, sandbox execution, and daemon mode.
+Isotopes is a self-hostable AI agent framework for multi-agent collaboration across chat platforms (Discord today, Feishu future). Agents have self-evolving prompts (SOUL.md, MEMORY.md), per-account routing, cron automation, and daemon mode.
 
 ## Commands
 
@@ -35,7 +35,7 @@ pnpm test:integration
 
 ### Top-level src/ layout
 
-- `agent/` — Agent runtime, runners, tools, workspace loading, and per-agent host/sandbox middleware (executor, fs bridge, docker container manager, sandbox config). The new home for everything that defines what an agent *is* and how it runs.
+- `agent/` — Agent runtime, runners, tools, and workspace loading. The home for everything that defines what an agent *is* and how it runs.
 - `gateway/` — Typed Gateway abstraction: canonical entrypoint for all inbound messages. Owns dispatch (fire-and-forget), subscribe (session event fan-out), session CRUD, abort, and cwd resolution. Channel adapters, HTTP, cron, and heartbeat all go through Gateway.
 - `channels/` — Channel adapters. Today: `channels/discord/` (full Discord adapter — inbound pipeline, outbound streaming, dedupe, channel history, image attachments, /stop interception, A2A sink for spawn_agent threads, react, allowlists).
 - `http/` — REST API server built on Hono + `@hono/node-server`. Routes for sessions, dispatch, cron, status. `POST /dispatch` is fire-and-forget; `GET /stream` is the SSE event source. Depends only on `{ cronScheduler, gateway }`.
@@ -60,7 +60,7 @@ pnpm test:integration
 
 ### Key patterns
 
-- **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` alternative). Swap runners without touching gateway, sandbox, or transport code.
+- **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` alternative). Swap runners without touching gateway or transport code.
 - **Tool registry**: Tools are `(schema, handler)` pairs assembled per-agent in `agent/tools/index.ts`; tool guards (CLI, FS) are enforced at registration and injected into system prompts.
 - **Extensions (pi-native)**: User-authored extensions in `~/.isotopes/extensions/pi/*.ts` are loaded via pi-coding-agent's `DefaultResourceLoader` and shared across all agents (loader is cached per-agentId in `session-factory.ts`). Per-agent capability scoping is via `tools.allow` / `tools.deny`, not separate extension sets.
 - **Event streaming**: `AgentRuntime.run()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error. Gateway's `ingestRunnerEvents` translates these into `SessionEvent` for consumers.

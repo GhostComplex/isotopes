@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import {
-  resolveSandboxConfigFromFile,
   type IsotopesConfigFile,
 } from "./config.js";
 import { SessionStoreManager } from "./agent/pi/session-store.js";
@@ -61,9 +60,6 @@ export async function start(opts: AppOptions): Promise<App> {
     await channelManager.stop();
     await apiServer.stop();
     sessionStoreManager.stop();
-    try {
-      await agentRuntime.stop();
-    } catch { /* ignore */ }
   };
 
   log.info("App started");
@@ -71,14 +67,10 @@ export async function start(opts: AppOptions): Promise<App> {
 }
 
 function createAgentRuntime(config: IsotopesConfigFile): AgentRuntime {
-  const sandboxBaseConfig = config.sandbox
-    ? resolveSandboxConfigFromFile("<global>", undefined, config.sandbox)
-    : undefined;
   const extensionPaths = discoverExtensionPaths();
 
   return new AgentRuntime({
     globalProvider: config.provider,
-    ...(sandboxBaseConfig ? { sandboxBaseConfig } : {}),
     ...(extensionPaths.length > 0 ? { extensionPaths } : {}),
   });
 }
@@ -104,7 +96,6 @@ async function registerAgents(
       agentFile,
       provider: config.provider,
       globalTools: config.tools,
-      sandbox: config.sandbox,
       channelContext: channelCtx,
       spawnableAgentIds,
       sessionStore,

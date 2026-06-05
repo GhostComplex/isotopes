@@ -21,8 +21,7 @@
                            │
 ┌──────────────────────────┴──────────────────────────────────┐
 │          Agent Core (Pluggable: @mariozechner/pi-*)         │
-│       Tool System  +  Sandbox Executor (Docker)             │
-│       Git/GitHub Tools  +  File/Shell Tools                 │
+│       Tool System  +  File/Shell Tools                      │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────┴──────────────────────────────────┐
@@ -94,10 +93,6 @@ src/
 │   ├── process.ts          # PID-based daemon lifecycle
 │   ├── service.ts          # launchd/systemd integration
 │   └── log-rotation.ts     # Log file rotation
-├── sandbox/            # Sandboxed execution
-│   ├── config.ts           # Sandbox configuration
-│   ├── container.ts        # Docker container management
-│   └── executor.ts         # Sandboxed tool execution
 ├── version.ts          # VERSION constant
 └── cli.ts              # CLI entry point
 ```
