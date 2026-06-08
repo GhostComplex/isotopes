@@ -14,7 +14,7 @@ export interface ProviderConfig {
 
 export interface AgentConfig {
   id: string;
-  runner?: "pi" | "claude";
+  runner?: "pi" | "claude" | "copilot";
   /** Defaults to ${ISOTOPES_HOME}/workspace-${id}. */
   workspace?: string;
   toolSettings?: AgentToolSettings;

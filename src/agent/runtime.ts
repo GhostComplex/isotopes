@@ -13,6 +13,7 @@ import { RunValidationError } from "./types.js";
 import type { PiSessionDeps } from "./pi/session-factory.js";
 import { PiRunner } from "./pi/runner.js";
 import { ClaudeRunner } from "./adapters/claude/runner.js";
+import { CopilotRunner } from "./adapters/copilot/runner.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import {
   type AgentSession,
@@ -181,9 +182,9 @@ export class AgentRuntime {
   async register(opts: AddAgentOptions): Promise<AddAgentResult> {
     const { agentFile, provider, globalTools } = opts;
     const agentConfig = toAgentConfig(agentFile, provider, globalTools);
-    return agentConfig.runner === "claude"
-      ? this.registerClaude(agentConfig)
-      : this.registerPi(agentConfig, opts);
+    if (agentConfig.runner === "claude") return this.registerClaude(agentConfig);
+    if (agentConfig.runner === "copilot") return this.registerCopilot(agentConfig);
+    return this.registerPi(agentConfig, opts);
   }
 
   private registerClaude(agentConfig: AgentConfig): AddAgentResult {
@@ -193,6 +194,16 @@ export class AgentRuntime {
       ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
     };
     this.registerRunner(agentConfig.id, new ClaudeRunner(), { spawnable: agentConfig.spawnable === true });
+    return { agent, workspacePath: null };
+  }
+
+  private registerCopilot(agentConfig: AgentConfig): AddAgentResult {
+    const agent: RegisteredAgent = {
+      id: agentConfig.id,
+      config: agentConfig,
+      ...(agentConfig.sessionPolicy ? { sessionPolicy: agentConfig.sessionPolicy } : {}),
+    };
+    this.registerRunner(agentConfig.id, new CopilotRunner(), { spawnable: agentConfig.spawnable === true });
     return { agent, workspacePath: null };
   }
 
