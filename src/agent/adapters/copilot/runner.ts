@@ -55,8 +55,8 @@ export class CopilotRunner {
         return;
       }
 
-      session.on("assistant.message_delta", (event) => {
-        queue.push({ kind: "text", text: event.data.deltaContent });
+      session.on("assistant.message", (event) => {
+        queue.push({ kind: "text", text: event.data.content });
       });
 
       session.on("tool.execution_start", (event) => {
