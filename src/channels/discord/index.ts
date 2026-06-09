@@ -66,10 +66,7 @@ export function createDiscordChannel(
   const clients = new Map<string, ClientLike>();
   const dedupes = new Map<string, DedupeCache>();
   const histories = new Map<string, ChannelHistoryBuffer>();
-  // Per-account queue keyed by sessionKey. Serializes inbound runs on the same
-  // session so a single Discord channel never has two concurrent agent runs —
-  // the source of #865's duplicated replies. Different sessions still run in
-  // parallel.
+  // FIFO per sessionKey — prevents concurrent runs on the same session (#865).
   const inboundQueues = new Map<string, KeyedAsyncQueue>();
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
@@ -316,10 +313,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   }
 
   const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
-  // Per-session serialization: at most one inbound run per sessionKey at a
-  // time. The next inbound on the same session waits for the previous run's
-  // agent_end + outbound flush before starting — so a single channel never
-  // has two concurrent subscribers fanning out the same text_delta (#865).
   await inboundQueue.enqueue(`${agentId}::${sessionKey}`, () =>
     runWithA2A(sinkFactory, () => handleInbound(
       msg,

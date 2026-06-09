@@ -1,10 +1,4 @@
-/**
- * Serialize async work per key while unrelated keys run concurrently.
- *
- * Used by channels to make "at most one inbound run per session" a structural
- * invariant rather than a coordinated protocol — concurrent enqueues for the
- * same key chain into a FIFO; different keys are independent.
- */
+/** FIFO per key; different keys run concurrently. */
 export class KeyedAsyncQueue {
   private readonly tails = new Map<string, Promise<void>>();
 
@@ -23,12 +17,11 @@ export class KeyedAsyncQueue {
     return current;
   }
 
-  /** True if any task for `key` is queued or running. Test/debug helper. */
   has(key: string): boolean {
     return this.tails.has(key);
   }
 
-  /** Clear the tail map. In-flight tasks keep running; only releases bookkeeping. */
+  /** Drop bookkeeping; in-flight tasks keep running. */
   clear(): void {
     this.tails.clear();
   }
