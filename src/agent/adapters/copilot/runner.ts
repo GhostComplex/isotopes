@@ -33,6 +33,7 @@ export class CopilotRunner {
     });
 
     const queue = new EventQueue<Translated>();
+    const toolNameById = new Map<string, string>();
     let assistantText = "";
     let costUsd: number | undefined;
     let errorMessage: string | undefined;
@@ -60,6 +61,7 @@ export class CopilotRunner {
       });
 
       session.on("tool.execution_start", (event) => {
+        toolNameById.set(event.data.toolCallId, event.data.toolName);
         queue.push({
           kind: "tool_call",
           id: event.data.toolCallId,
@@ -72,7 +74,7 @@ export class CopilotRunner {
         queue.push({
           kind: "tool_result",
           id: event.data.toolCallId,
-          name: toolNameFromComplete(event),
+          name: toolNameById.get(event.data.toolCallId) ?? event.data.toolCallId,
           result: event.data.result,
           isError: !event.data.success,
         });
@@ -85,6 +87,12 @@ export class CopilotRunner {
       });
 
       session.on("session.idle", () => {
+        queue.end();
+      });
+
+      session.on("session.error", (event) => {
+        stopReason = "error";
+        errorMessage = `[${event.data.errorType}] ${event.data.message}`;
         queue.end();
       });
 
@@ -113,10 +121,6 @@ export class CopilotRunner {
 
     yield buildAgentEnd(assistantText, stopReason, errorMessage, costUsd);
   }
-}
-
-function toolNameFromComplete(event: { data: { toolCallId: string }; type: string }): string {
-  return (event as unknown as { data: { toolName?: string } }).data.toolName ?? event.data.toolCallId;
 }
 
 type Translated =
