@@ -21,7 +21,7 @@ export interface HeartbeatConfigFile {
 
 export interface AgentConfigFile {
   id: string;
-  runner?: "pi" | "claude";
+  runner?: "pi" | "claude" | "copilot";
   enabled?: boolean;
   /** Absolute or ISOTOPES_HOME-relative. */
   workspace?: string;
