@@ -90,6 +90,12 @@ export class CopilotRunner {
         queue.end();
       });
 
+      session.on("session.error", (event) => {
+        stopReason = "error";
+        errorMessage = `[${event.data.errorType}] ${event.data.message}`;
+        queue.end();
+      });
+
       await session.send({ prompt: request.content });
 
       for await (const ev of queue) {
