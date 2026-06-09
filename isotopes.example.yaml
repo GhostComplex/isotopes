@@ -21,7 +21,7 @@ provider:
 agents:
   - id: main
     # runner: pi                            # pi (default) | claude | copilot
-    #                                       # claude: uses Claude Agent SDK (requires `claude login`)
+    #                                       # claude: uses Claude Agent SDK (requires `claude login` or ~/.claude/settings.json)
     #                                       # copilot: uses GitHub Copilot CLI (requires `gh auth login` + Copilot access)
     # enabled: true                         # set false to skip loading this agent
     # spawnable: false                      # set true to let other agents spawn this one
