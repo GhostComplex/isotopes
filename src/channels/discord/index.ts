@@ -65,9 +65,7 @@ export function createDiscordChannel(
   const clients = new Map<string, ClientLike>();
   const dedupes = new Map<string, DedupeCache>();
   const histories = new Map<string, ChannelHistoryBuffer>();
-  // accountId → "{agentId}::{sessionKey}" → in-flight subscriber.
-  // Coalesces concurrent inbound messages on the same session onto one
-  // outbound subscriber to prevent duplicated assistant replies (#865).
+  // accountId → inflight key → subscriber. See inbound.ts (#865).
   const inflightSubscribers = new Map<string, Map<string, InboundSubscriber>>();
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
