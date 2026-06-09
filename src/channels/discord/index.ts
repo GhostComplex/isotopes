@@ -10,7 +10,7 @@ import type { Gateway } from "../../gateway/index.js";
 
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
-import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
+import { handleInbound, passesAllowlist, handleStopCommand, type InboundSubscriber } from "./inbound.js";
 import { createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
@@ -65,6 +65,10 @@ export function createDiscordChannel(
   const clients = new Map<string, ClientLike>();
   const dedupes = new Map<string, DedupeCache>();
   const histories = new Map<string, ChannelHistoryBuffer>();
+  // accountId → "{agentId}::{sessionKey}" → in-flight subscriber.
+  // Coalesces concurrent inbound messages on the same session onto one
+  // outbound subscriber to prevent duplicated assistant replies (#865).
+  const inflightSubscribers = new Map<string, Map<string, InboundSubscriber>>();
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
@@ -94,6 +98,7 @@ export function createDiscordChannel(
             clients,
             dedupes,
             histories,
+            inflightSubscribers,
             a2aThreads,
           }),
         ),
@@ -126,6 +131,7 @@ export function createDiscordChannel(
       dedupes.clear();
       for (const h of histories.values()) h.clear();
       histories.clear();
+      inflightSubscribers.clear();
     },
 
     async send(target, content) {
@@ -185,11 +191,12 @@ interface StartAccountArgs {
   clients: Map<string, ClientLike>;
   dedupes: Map<string, DedupeCache>;
   histories: Map<string, ChannelHistoryBuffer>;
+  inflightSubscribers: Map<string, Map<string, InboundSubscriber>>;
   a2aThreads: Map<string, string>;
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, clientFactory, clients, dedupes, histories, a2aThreads } = args;
+  const { accountId, account, gateway, clientFactory, clients, dedupes, histories, inflightSubscribers, a2aThreads } = args;
 
   const token = resolveToken(account);
   if (!token) {
@@ -203,6 +210,8 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
   dedupes.set(accountId, dedupe);
   const history = new ChannelHistoryBuffer();
   histories.set(accountId, history);
+  const inflight = new Map<string, InboundSubscriber>();
+  inflightSubscribers.set(accountId, inflight);
 
   client.on("error", () => {});
 
@@ -215,6 +224,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       gateway,
       dedupe,
       history,
+      inflight,
       a2aThreads,
     });
   });
@@ -250,6 +260,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
           gateway,
           dedupe,
           history,
+          inflight,
           a2aThreads,
         });
       } catch { /* ignore */ }
@@ -266,11 +277,12 @@ interface InboundArgs {
   gateway: Gateway;
   dedupe: DedupeCache;
   history: ChannelHistoryBuffer;
+  inflight: Map<string, InboundSubscriber>;
   a2aThreads: Map<string, string>;
 }
 
 async function dispatchInbound(args: InboundArgs): Promise<void> {
-  const { msg, account, client, gateway, dedupe, history, a2aThreads } = args;
+  const { msg, account, client, gateway, dedupe, history, inflight, a2aThreads } = args;
   const botId = client.user?.id;
   if (!botId) return;
 
@@ -325,6 +337,7 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
           channel: triggerMsg.channel as SendableChannels,
           triggerMessageId: triggerMsg.id,
         }),
+      inflight,
     },
   ));
 }

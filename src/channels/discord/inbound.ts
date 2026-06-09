@@ -124,6 +124,11 @@ export interface InboundSubscriber {
 interface InboundContext {
   botId: string;
   buildSubscriber: (msg: DiscordMessage) => InboundSubscriber;
+  /** Per-session subscriber registry shared across inbound calls.
+   * First message for a session builds & subscribes; concurrent messages
+   * that hit the same in-flight session reuse the existing subscriber so
+   * the outbound stream is emitted exactly once. See #865. */
+  inflight: Map<string, InboundSubscriber>;
 }
 
 export async function handleInbound(
@@ -179,6 +184,22 @@ export async function handleInbound(
 
   await deps.gateway.createOrResumeSession(routing.agentId, routing.sessionKey);
 
+  // Coalesce concurrent inbound messages on the same session onto one
+  // subscriber. Without this, every message subscribes its own outbound
+  // buffer to the same sessionId; gateway emits each text_delta to all
+  // listeners, so the assistant reply is duplicated N× (#865).
+  const inflightKey = `${routing.agentId}::${routing.sessionKey}`;
+  const existing = ctx.inflight.get(inflightKey);
+  if (existing) {
+    try {
+      await deps.gateway.dispatch(message);
+      await existing.done;
+    } catch (err) {
+      log.warn("Dispatch (steered) failed", { agentId: routing.agentId, sessionKey: routing.sessionKey, error: err instanceof Error ? err.message : String(err) });
+    }
+    return;
+  }
+
   const subscriber = ctx.buildSubscriber(msg);
   const unsubscribe = await deps.gateway.subscribe(
     routing.agentId,
@@ -190,10 +211,12 @@ export async function handleInbound(
     return;
   }
 
+  ctx.inflight.set(inflightKey, subscriber);
   try {
     await deps.gateway.dispatch(message);
     await subscriber.done;
   } finally {
+    ctx.inflight.delete(inflightKey);
     unsubscribe();
   }
 }

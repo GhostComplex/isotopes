@@ -70,6 +70,7 @@ function makeGateway(): Gateway & { dispatch: ReturnType<typeof vi.fn> } {
 describe("handleInbound", () => {
   let gateway: ReturnType<typeof makeGateway>;
   let buildSubscriber: ReturnType<typeof vi.fn>;
+  let inflight: Map<string, { onEvent: ReturnType<typeof vi.fn>; done: Promise<void> }>;
 
   beforeEach(() => {
     gateway = makeGateway();
@@ -79,9 +80,10 @@ describe("handleInbound", () => {
       onEvent: vi.fn(),
       done: Promise.resolve(),
     });
+    inflight = new Map();
   });
 
-  const ctx = () => ({ botId: BOT_ID, buildSubscriber });
+  const ctx = () => ({ botId: BOT_ID, buildSubscriber, inflight });
   const sessionKeyFor = (msg: DiscordMessage, botId = BOT_ID): string => {
     const ch = msg.channel as { isThread?: () => boolean };
     if (ch?.isThread?.()) return `discord:${botId}:thread:${msg.channelId}`;
@@ -231,6 +233,68 @@ describe("handleInbound", () => {
     resolveDone();
     await p;
     expect(resolved).toBe(true);
+  });
+
+  // Regression #865: concurrent messages on the same session must share one
+  // outbound subscriber; otherwise gateway's fan-out emits each text_delta
+  // N times and assistant text appears duplicated N× on Discord.
+  it("coalesces concurrent inbound messages on same session to one subscriber", async () => {
+    let resolveDone!: () => void;
+    const done = new Promise<void>((r) => { resolveDone = r; });
+    const onEvent = vi.fn();
+    buildSubscriber = vi.fn().mockReturnValue({ onEvent, done });
+
+    const msg1 = fakeMsg({ id: "m-1", mentionedIds: [BOT_ID], content: `<@${BOT_ID}> first` });
+    const msg2 = fakeMsg({ id: "m-2", mentionedIds: [BOT_ID], content: `<@${BOT_ID}> second` });
+    const msg3 = fakeMsg({ id: "m-3", mentionedIds: [BOT_ID], content: `<@${BOT_ID}> third` });
+
+    const sharedCtx = ctx();
+    const p1 = handleInbound(msg1, route(msg1), { gateway }, sharedCtx);
+    // Let msg1 register the subscriber before msg2/msg3 arrive.
+    await vi.waitFor(() => expect(buildSubscriber).toHaveBeenCalledTimes(1));
+    const p2 = handleInbound(msg2, route(msg2), { gateway }, sharedCtx);
+    const p3 = handleInbound(msg3, route(msg3), { gateway }, sharedCtx);
+
+    await vi.waitFor(() => expect(gateway.dispatch).toHaveBeenCalledTimes(3));
+
+    // Only ONE subscriber was built and subscribed despite 3 inbound messages.
+    expect(buildSubscriber).toHaveBeenCalledTimes(1);
+    expect(gateway.subscribe).toHaveBeenCalledTimes(1);
+
+    // All three inbound messages were dispatched (so the model sees all of them).
+    expect(gateway.dispatch.mock.calls[0][0].content).toContain("first");
+    expect(gateway.dispatch.mock.calls[1][0].content).toContain("second");
+    expect(gateway.dispatch.mock.calls[2][0].content).toContain("third");
+
+    resolveDone();
+    await Promise.all([p1, p2, p3]);
+    // Inflight cleared after the shared subscriber resolves.
+    expect(sharedCtx.inflight.size).toBe(0);
+  });
+
+  it("rebuilds subscriber for the next inbound after the first run completes", async () => {
+    // First batch: one message, resolves to done.
+    let resolveDone1!: () => void;
+    const done1 = new Promise<void>((r) => { resolveDone1 = r; });
+    buildSubscriber = vi
+      .fn()
+      .mockReturnValueOnce({ onEvent: vi.fn(), done: done1 })
+      .mockReturnValueOnce({ onEvent: vi.fn(), done: Promise.resolve() });
+
+    const sharedCtx = ctx();
+    const msg1 = fakeMsg({ id: "m-1", mentionedIds: [BOT_ID], content: `<@${BOT_ID}> first` });
+    const p1 = handleInbound(msg1, route(msg1), { gateway }, sharedCtx);
+    await vi.waitFor(() => expect(buildSubscriber).toHaveBeenCalledTimes(1));
+    resolveDone1();
+    await p1;
+    expect(sharedCtx.inflight.size).toBe(0);
+
+    // Second batch: a new message after the first run finished should build
+    // a fresh subscriber, not reuse the disposed one.
+    const msg2 = fakeMsg({ id: "m-2", mentionedIds: [BOT_ID], content: `<@${BOT_ID}> second` });
+    await handleInbound(msg2, route(msg2), { gateway }, sharedCtx);
+    expect(buildSubscriber).toHaveBeenCalledTimes(2);
+    expect(gateway.subscribe).toHaveBeenCalledTimes(2);
   });
 });
 
