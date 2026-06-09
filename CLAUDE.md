@@ -55,12 +55,13 @@ pnpm test:integration
 - `types.ts` — `RegisteredAgent`, `RunRequest`, `RunInfo`, `AgentConfig`, `ProviderConfig`, `RunValidationError`, plus session types (`Session`, `SessionStore`, `SessionMetadata`, `TranscriptUpdate`).
 - `pi/` — Pi backbone (default agent runtime, not a swappable adapter). Wraps `@mariozechner/pi-agent-core` + `@mariozechner/pi-coding-agent`: `runner.ts`, `session-factory.ts`, `session-store.ts`, `messages.ts`, `system-prompt-override.ts`, `tool-result-truncation.ts`. Other isotopes modules (transports, HTTP, gateway) are allowed to depend on these directly — pi is the host, not a guest.
 - `adapters/claude/` — Third-party adapter for the Claude Agent SDK. Implements the same `Runner` interface but lives under `adapters/` to signal "alternative entry point, not the backbone".
+- `adapters/copilot/` — Third-party adapter for the GitHub Copilot CLI SDK. Same shape as `adapters/claude/`. Requires `gh auth login` + Copilot access.
 - `tools/` — Built-in agent tools (`web` for `web_fetch`, `react` for channel reactions) and the registry (`index.ts`) that assembles per-agent tool sets.
 - `workspace/` — Loads `SOUL.md` / `TOOLS.md` / `MEMORY.md` / `BOOTSTRAP.md` into system prompts; manages workspace state and template files.
 
 ### Key patterns
 
-- **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` alternative). Swap runners without touching gateway or transport code.
+- **Pluggable runner**: `AgentRuntime` dispatches to a runner per agent (`pi` default, `claude` and `copilot` alternatives). Swap runners without touching gateway or transport code.
 - **Tool registry**: Tools are `(schema, handler)` pairs assembled per-agent in `agent/tools/index.ts`; tool guards (CLI, FS) are enforced at registration and injected into system prompts.
 - **Extensions (pi-native)**: User-authored extensions in `~/.isotopes/extensions/pi/*.ts` are loaded via pi-coding-agent's `DefaultResourceLoader` and shared across all agents (loader is cached per-agentId in `session-factory.ts`). Per-agent capability scoping is via `tools.allow` / `tools.deny`, not separate extension sets.
 - **Event streaming**: `AgentRuntime.run()` returns `AsyncIterable<AgentEvent>` — discriminated union of turn_start, text_delta, tool_call, tool_result, turn_end, agent_end, error. Gateway's `ingestRunnerEvents` translates these into `SessionEvent` for consumers.

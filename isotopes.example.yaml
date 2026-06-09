@@ -20,7 +20,9 @@ provider:
 # =============================================================================
 agents:
   - id: main
-    # runner: pi                            # pi (default) | claude
+    # runner: pi                            # pi (default) | claude | copilot
+    #                                       # claude: uses Claude Agent SDK (requires `claude login`)
+    #                                       # copilot: uses GitHub Copilot CLI (requires `gh auth login` + Copilot access)
     # enabled: true                         # set false to skip loading this agent
     # spawnable: false                      # set true to let other agents spawn this one
     # sessionPolicy: parent-reuse           # parent-reuse (default) | always-new
