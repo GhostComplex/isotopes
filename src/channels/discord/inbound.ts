@@ -124,6 +124,8 @@ export interface InboundSubscriber {
 interface InboundContext {
   botId: string;
   buildSubscriber: (msg: DiscordMessage) => InboundSubscriber;
+  /** In-flight subscribers keyed `${agentId}::${sessionKey}` (#865). */
+  inflight: Map<string, InboundSubscriber>;
 }
 
 export async function handleInbound(
@@ -179,6 +181,21 @@ export async function handleInbound(
 
   await deps.gateway.createOrResumeSession(routing.agentId, routing.sessionKey);
 
+  // If another inbound on this session is already subscribed, reuse it —
+  // otherwise gateway fans out each text_delta to N listeners and the reply
+  // dupes N× (#865).
+  const inflightKey = `${routing.agentId}::${routing.sessionKey}`;
+  const existing = ctx.inflight.get(inflightKey);
+  if (existing) {
+    try {
+      await deps.gateway.dispatch(message);
+      await existing.done;
+    } catch (err) {
+      log.warn("Dispatch (steered) failed", { agentId: routing.agentId, sessionKey: routing.sessionKey, error: err instanceof Error ? err.message : String(err) });
+    }
+    return;
+  }
+
   const subscriber = ctx.buildSubscriber(msg);
   const unsubscribe = await deps.gateway.subscribe(
     routing.agentId,
@@ -190,10 +207,12 @@ export async function handleInbound(
     return;
   }
 
+  ctx.inflight.set(inflightKey, subscriber);
   try {
     await deps.gateway.dispatch(message);
     await subscriber.done;
   } finally {
+    ctx.inflight.delete(inflightKey);
     unsubscribe();
   }
 }
