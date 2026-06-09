@@ -5,25 +5,77 @@ import { SegmentedStreamBuffer, chunkDiscordMessage, createDiscordSubscriber } f
 import type { SessionEvent } from "../../gateway/index.js";
 
 describe("SegmentedStreamBuffer", () => {
-  it("does not flush below maxBufferSize threshold", async () => {
+  it("does not flush below minChars threshold", async () => {
     const onFlush = vi.fn().mockResolvedValue(undefined);
-    const buf = new SegmentedStreamBuffer(onFlush, 50);
-    await buf.append("Short text. With a boundary.");
+    const buf = new SegmentedStreamBuffer(onFlush, { minChars: 50, maxChars: 200, timeoutMs: 10_000 });
+    await buf.append("Short. Reply.");
     expect(onFlush).not.toHaveBeenCalled();
   });
 
-  it("flushes at sentence boundary once buffer >= threshold", async () => {
+  it("flushes at half-width sentence boundary once cut point >= minChars", async () => {
     const onFlush = vi.fn().mockResolvedValue(undefined);
-    const buf = new SegmentedStreamBuffer(onFlush, 20);
+    const buf = new SegmentedStreamBuffer(onFlush, { minChars: 10, maxChars: 500, timeoutMs: 10_000 });
     await buf.append("Hello world. This is more text without boundary");
     expect(onFlush).toHaveBeenCalledTimes(1);
     expect(onFlush.mock.calls[0][0]).toBe("Hello world. ");
     expect(buf.getBuffer()).toBe("This is more text without boundary");
   });
 
-  it("flushRemaining drains the buffer", async () => {
+  it("flushes at fullwidth Chinese sentence boundary (。)", async () => {
     const onFlush = vi.fn().mockResolvedValue(undefined);
-    const buf = new SegmentedStreamBuffer(onFlush, 1000);
+    const buf = new SegmentedStreamBuffer(onFlush, { minChars: 10, maxChars: 500, timeoutMs: 10_000 });
+    await buf.append("你好，欢迎使用 Isotopes。然后我们继续讨论后续步骤");
+    expect(onFlush).toHaveBeenCalledTimes(1);
+    expect(onFlush.mock.calls[0][0]).toBe("你好，欢迎使用 Isotopes。");
+    expect(buf.getBuffer()).toBe("然后我们继续讨论后续步骤");
+  });
+
+  it("flushes at single \\n (newline tier)", async () => {
+    const onFlush = vi.fn().mockResolvedValue(undefined);
+    const buf = new SegmentedStreamBuffer(onFlush, { minChars: 10, maxChars: 500, timeoutMs: 10_000 });
+    await buf.append("Step one done\nStep two starting in a moment");
+    expect(onFlush).toHaveBeenCalledTimes(1);
+    expect(onFlush.mock.calls[0][0]).toBe("Step one done\n");
+    expect(buf.getBuffer()).toBe("Step two starting in a moment");
+  });
+
+  it("prefers paragraph (\\n\\n) over newline over sentence", async () => {
+    const onFlush = vi.fn().mockResolvedValue(undefined);
+    const buf = new SegmentedStreamBuffer(onFlush, { minChars: 10, maxChars: 500, timeoutMs: 10_000 });
+    await buf.append("first sentence. mid line\n\nafter paragraph");
+    expect(onFlush).toHaveBeenCalledTimes(1);
+    expect(onFlush.mock.calls[0][0]).toBe("first sentence. mid line\n\n");
+    expect(buf.getBuffer()).toBe("after paragraph");
+  });
+
+  it("force-flushes at maxChars when no boundary is present", async () => {
+    const onFlush = vi.fn().mockResolvedValue(undefined);
+    const buf = new SegmentedStreamBuffer(onFlush, { minChars: 10, maxChars: 30, timeoutMs: 10_000 });
+    await buf.append("a".repeat(40));
+    expect(onFlush).toHaveBeenCalledTimes(1);
+    expect(onFlush.mock.calls[0][0]).toBe("a".repeat(30));
+    expect(buf.getBuffer()).toBe("a".repeat(10));
+  });
+
+  it("flushes after timeoutMs of idle when no boundary appears", async () => {
+    vi.useFakeTimers();
+    try {
+      const onFlush = vi.fn().mockResolvedValue(undefined);
+      const buf = new SegmentedStreamBuffer(onFlush, { minChars: 10, maxChars: 5000, timeoutMs: 1500 });
+      await buf.append("a short reply with no boundary");
+      expect(onFlush).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(onFlush).toHaveBeenCalledTimes(1);
+      expect(onFlush.mock.calls[0][0]).toBe("a short reply with no boundary");
+      expect(buf.getBuffer()).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("flushRemaining drains the buffer and cancels the timer", async () => {
+    const onFlush = vi.fn().mockResolvedValue(undefined);
+    const buf = new SegmentedStreamBuffer(onFlush, { minChars: 1000, maxChars: 2000, timeoutMs: 10_000 });
     await buf.append("leftover");
     expect(onFlush).not.toHaveBeenCalled();
     await buf.flushRemaining();
