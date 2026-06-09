@@ -347,6 +347,117 @@ describe("createDiscordChannel — inbound wiring", () => {
   });
 });
 
+// #865 regression: two concurrent messages on the same Discord session must
+// NOT subscribe two listeners to the same gateway sessionId — that fan-out is
+// what causes assistant replies to be sent to Discord N×. The per-sessionKey
+// KeyedAsyncQueue guarantees msg2 only enters handleInbound after msg1's run
+// has emitted agent_end and the leader has unsubscribed.
+describe("createDiscordChannel — per-session inbound serialization (#865)", () => {
+  it("serializes concurrent inbound on the same session — only one subscribe is live at a time", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+
+    // dispatch resolves immediately as new_run; the leader then waits on
+    // subscriber.done — which resolves only when we emit agent_end via the
+    // captured listener below. We track every subscribe/unsubscribe so we can
+    // assert no two listeners are live at the same time.
+    const listeners: Array<(event: unknown) => void> = [];
+    let live = 0;
+    let peak = 0;
+    gateway.subscribe.mockImplementation(async (_a, _k, listener) => {
+      listeners.push(listener as (event: unknown) => void);
+      live += 1;
+      if (live > peak) peak = live;
+      return () => { live -= 1; };
+    });
+
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway });
+
+    // Three messages arrive on the same channel (→ same sessionKey).
+    const msg1 = fakeMsg({ id: "m1", mentionedIds: ["bot-A"], content: "<@bot-A> first" });
+    const msg2 = fakeMsg({ id: "m2", mentionedIds: ["bot-A"], content: "<@bot-A> second" });
+    const msg3 = fakeMsg({ id: "m3", mentionedIds: ["bot-A"], content: "<@bot-A> third" });
+    client.emit("messageCreate", msg1);
+    client.emit("messageCreate", msg2);
+    client.emit("messageCreate", msg3);
+
+    // Let msg1 reach subscribe.
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(live).toBe(1);
+    expect(listeners.length).toBe(1);
+
+    // Finish msg1's run.
+    listeners[0]({ type: "agent_end", stopReason: "end" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    // msg2 should now be the live one — listener count back to 1, not 2.
+    expect(live).toBe(1);
+    expect(listeners.length).toBe(2);
+
+    // Finish msg2's run.
+    listeners[1]({ type: "agent_end", stopReason: "end" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(live).toBe(1);
+    expect(listeners.length).toBe(3);
+
+    // Finish msg3.
+    listeners[2]({ type: "agent_end", stopReason: "end" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(live).toBe(0);
+
+    // Critical invariant: never more than one listener subscribed at any time.
+    expect(peak).toBe(1);
+    // And all three messages did get dispatched (model still sees every one).
+    expect(gateway.dispatch).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not serialize across different sessions — two channels run in parallel", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+    let live = 0;
+    let peak = 0;
+    const listeners: Array<(event: unknown) => void> = [];
+    gateway.subscribe.mockImplementation(async (_a, _k, listener) => {
+      listeners.push(listener as (event: unknown) => void);
+      live += 1;
+      if (live > peak) peak = live;
+      return () => { live -= 1; };
+    });
+
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway });
+
+    // Two different channels → two different sessionKeys → must run concurrently.
+    client.emit("messageCreate", fakeMsg({ id: "m1", channelId: "c-1", mentionedIds: ["bot-A"] }));
+    client.emit("messageCreate", fakeMsg({ id: "m2", channelId: "c-2", mentionedIds: ["bot-A"] }));
+
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+
+    // Both should be live concurrently.
+    expect(peak).toBe(2);
+    expect(listeners.length).toBe(2);
+
+    listeners[0]({ type: "agent_end", stopReason: "end" });
+    listeners[1]({ type: "agent_end", stopReason: "end" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(live).toBe(0);
+  });
+});
+
 describe("createDiscordChannel — message metadata enrichment", () => {
   it("prepends inbound_meta block to dispatched content", async () => {
     const client = makeFakeClient("bot-A");

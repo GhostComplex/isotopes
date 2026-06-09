@@ -18,6 +18,7 @@ import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js
 import { createLogger } from "../../logging/logger.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
 import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
+import { KeyedAsyncQueue } from "../../utils/keyed-async-queue.js";
 import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
@@ -65,6 +66,11 @@ export function createDiscordChannel(
   const clients = new Map<string, ClientLike>();
   const dedupes = new Map<string, DedupeCache>();
   const histories = new Map<string, ChannelHistoryBuffer>();
+  // Per-account queue keyed by sessionKey. Serializes inbound runs on the same
+  // session so a single Discord channel never has two concurrent agent runs —
+  // the source of #865's duplicated replies. Different sessions still run in
+  // parallel.
+  const inboundQueues = new Map<string, KeyedAsyncQueue>();
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
@@ -94,6 +100,7 @@ export function createDiscordChannel(
             clients,
             dedupes,
             histories,
+            inboundQueues,
             a2aThreads,
           }),
         ),
@@ -126,6 +133,8 @@ export function createDiscordChannel(
       dedupes.clear();
       for (const h of histories.values()) h.clear();
       histories.clear();
+      for (const q of inboundQueues.values()) q.clear();
+      inboundQueues.clear();
     },
 
     async send(target, content) {
@@ -185,11 +194,12 @@ interface StartAccountArgs {
   clients: Map<string, ClientLike>;
   dedupes: Map<string, DedupeCache>;
   histories: Map<string, ChannelHistoryBuffer>;
+  inboundQueues: Map<string, KeyedAsyncQueue>;
   a2aThreads: Map<string, string>;
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, clientFactory, clients, dedupes, histories, a2aThreads } = args;
+  const { accountId, account, gateway, clientFactory, clients, dedupes, histories, inboundQueues, a2aThreads } = args;
 
   const token = resolveToken(account);
   if (!token) {
@@ -203,6 +213,8 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
   dedupes.set(accountId, dedupe);
   const history = new ChannelHistoryBuffer();
   histories.set(accountId, history);
+  const inboundQueue = new KeyedAsyncQueue();
+  inboundQueues.set(accountId, inboundQueue);
 
   client.on("error", () => {});
 
@@ -215,6 +227,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       gateway,
       dedupe,
       history,
+      inboundQueue,
       a2aThreads,
     });
   });
@@ -250,6 +263,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
           gateway,
           dedupe,
           history,
+          inboundQueue,
           a2aThreads,
         });
       } catch { /* ignore */ }
@@ -266,11 +280,12 @@ interface InboundArgs {
   gateway: Gateway;
   dedupe: DedupeCache;
   history: ChannelHistoryBuffer;
+  inboundQueue: KeyedAsyncQueue;
   a2aThreads: Map<string, string>;
 }
 
 async function dispatchInbound(args: InboundArgs): Promise<void> {
-  const { msg, account, client, gateway, dedupe, history, a2aThreads } = args;
+  const { msg, account, client, gateway, dedupe, history, inboundQueue, a2aThreads } = args;
   const botId = client.user?.id;
   if (!botId) return;
 
@@ -301,32 +316,38 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   }
 
   const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
-  await runWithA2A(sinkFactory, () => handleInbound(
-    msg,
-    { agentId, sessionKey },
-    {
-      gateway,
-      ...(account.guilds ? { guilds: account.guilds } : {}),
-      ...(account.allowBots !== undefined ? { allowBots: account.allowBots } : {}),
-      transformContent: (content, triggerMsg) => {
-        const meta = extractDiscordMetadata(triggerMsg);
-        const chatType = triggerMsg.guild ? "group" : "direct";
-        const historyBlock = triggerMsg.guild
-          ? formatHistory(history.consumeExcluding(triggerMsg.channelId, triggerMsg.id))
-          : "";
-        const prefix = historyBlock ? `${historyBlock}\n\n${formatInboundMeta(meta, chatType)}` : formatInboundMeta(meta, chatType);
-        return `${prefix}\n\n${content}`;
+  // Per-session serialization: at most one inbound run per sessionKey at a
+  // time. The next inbound on the same session waits for the previous run's
+  // agent_end + outbound flush before starting — so a single channel never
+  // has two concurrent subscribers fanning out the same text_delta (#865).
+  await inboundQueue.enqueue(`${agentId}::${sessionKey}`, () =>
+    runWithA2A(sinkFactory, () => handleInbound(
+      msg,
+      { agentId, sessionKey },
+      {
+        gateway,
+        ...(account.guilds ? { guilds: account.guilds } : {}),
+        ...(account.allowBots !== undefined ? { allowBots: account.allowBots } : {}),
+        transformContent: (content, triggerMsg) => {
+          const meta = extractDiscordMetadata(triggerMsg);
+          const chatType = triggerMsg.guild ? "group" : "direct";
+          const historyBlock = triggerMsg.guild
+            ? formatHistory(history.consumeExcluding(triggerMsg.channelId, triggerMsg.id))
+            : "";
+          const prefix = historyBlock ? `${historyBlock}\n\n${formatInboundMeta(meta, chatType)}` : formatInboundMeta(meta, chatType);
+          return `${prefix}\n\n${content}`;
+        },
       },
-    },
-    {
-      botId,
-      buildSubscriber: (triggerMsg) =>
-        createDiscordSubscriber({
-          channel: triggerMsg.channel as SendableChannels,
-          triggerMessageId: triggerMsg.id,
-        }),
-    },
-  ));
+      {
+        botId,
+        buildSubscriber: (triggerMsg) =>
+          createDiscordSubscriber({
+            channel: triggerMsg.channel as SendableChannels,
+            triggerMessageId: triggerMsg.id,
+          }),
+      },
+    )),
+  );
 }
 
 /** Find the unique account whose effective agent for this channel matches. */
