@@ -298,8 +298,9 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   const sessionKey = resolveSessionKey(msg, botId);
 
   // /stop runs before history.append so the command never leaks into channel
-  // history (or any LLM session). Every bot consumes /stop; only the
-  // addressed bot actually aborts.
+  // history (or any LLM session). It also runs before inboundQueue.enqueue —
+  // queueing /stop would make it wait for the run it's meant to abort. Every
+  // bot consumes /stop; only the addressed bot actually aborts.
   const isStopCommand = await handleStopCommand(msg, botId, gateway, agentId, sessionKey, a2aThreads);
   if (isStopCommand) return;
 

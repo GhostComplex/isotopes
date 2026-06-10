@@ -4,7 +4,7 @@ export class KeyedAsyncQueue {
 
   enqueue<T>(key: string, task: () => Promise<T>): Promise<T> {
     const previous = this.tails.get(key) ?? Promise.resolve();
-    const current = previous.catch(() => undefined).then(task);
+    const current = previous.then(task);
     const tail = current.then(
       () => undefined,
       () => undefined,
