@@ -52,7 +52,8 @@ function fakeMsg(opts: FakeMsgOpts = {}): DiscordMessage {
 
 function makeGateway(): Gateway & { dispatch: ReturnType<typeof vi.fn> } {
   return {
-    dispatch: vi.fn().mockResolvedValue({ sessionId: "s", state: "new_run" }),
+    dispatch: vi.fn().mockResolvedValue({ sessionId: "s" }),
+    trySteer: vi.fn().mockReturnValue(false),
     dispatchAndWait: vi.fn().mockResolvedValue({ responseText: "", errorMessage: null }),
     abort: vi.fn().mockResolvedValue(undefined),
     abortByKey: vi.fn().mockResolvedValue(false),
@@ -216,21 +217,6 @@ describe("handleInbound", () => {
     resolveDone();
     await promise;
     expect(settled).toBe(true);
-  });
-
-  it("awaits subscriber.done even when dispatch returns steered", async () => {
-    gateway.dispatch.mockResolvedValueOnce({ sessionId: "s", state: "steered" });
-    let resolveDone!: () => void;
-    const done = new Promise<void>((r) => { resolveDone = r; });
-    buildSubscriber = vi.fn().mockReturnValue({ onEvent: vi.fn(), done });
-    const msg = fakeMsg({ mentionedIds: [BOT_ID], content: `<@${BOT_ID}> hi` });
-    let resolved = false;
-    const p = handleInbound(msg, route(msg), { gateway }, ctx()).then(() => { resolved = true; });
-    await vi.waitFor(() => expect(gateway.dispatch).toHaveBeenCalled());
-    expect(resolved).toBe(false);
-    resolveDone();
-    await p;
-    expect(resolved).toBe(true);
   });
 });
 

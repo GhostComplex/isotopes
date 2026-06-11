@@ -38,12 +38,14 @@ function makeFakeClient(botId: string): FakeClient {
 
 function makeGateway(): Gateway & {
   dispatch: ReturnType<typeof vi.fn>;
+  trySteer: ReturnType<typeof vi.fn>;
   abort: ReturnType<typeof vi.fn>;
   abortByKey: ReturnType<typeof vi.fn>;
   subscribe: ReturnType<typeof vi.fn>;
 } {
   return {
-    dispatch: vi.fn().mockResolvedValue({ sessionId: "s", state: "new_run" }),
+    dispatch: vi.fn().mockResolvedValue({ sessionId: "s" }),
+    trySteer: vi.fn().mockReturnValue(false),
     dispatchAndWait: vi.fn().mockResolvedValue({ responseText: "", errorMessage: null }),
     abort: vi.fn().mockResolvedValue(undefined),
     abortByKey: vi.fn().mockResolvedValue(false),
@@ -57,6 +59,7 @@ function makeGateway(): Gateway & {
     deleteSession: vi.fn().mockResolvedValue(false),
   } as unknown as Gateway & {
     dispatch: ReturnType<typeof vi.fn>;
+    trySteer: ReturnType<typeof vi.fn>;
     abort: ReturnType<typeof vi.fn>;
     abortByKey: ReturnType<typeof vi.fn>;
     subscribe: ReturnType<typeof vi.fn>;
@@ -344,6 +347,151 @@ describe("createDiscordChannel — inbound wiring", () => {
     const channelSend = (msg.channel as unknown as { send: ReturnType<typeof vi.fn> }).send;
     expect(channelSend).toHaveBeenCalled();
     expect(channelSend.mock.calls[0][0]).toContain("hello world.");
+  });
+});
+
+// #865 regression: concurrent inbound on the same session must not stack up
+// subscribers on the same gateway sessionId — that's what fans out text_delta
+// N× to Discord.
+describe("createDiscordChannel — per-session inbound serialization (#865)", () => {
+  it("serializes concurrent inbound on the same session — only one subscribe is live at a time", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+
+    const listeners: Array<(event: unknown) => void> = [];
+    let live = 0;
+    let peak = 0;
+    gateway.subscribe.mockImplementation(async (_a, _k, listener) => {
+      listeners.push(listener as (event: unknown) => void);
+      live += 1;
+      if (live > peak) peak = live;
+      return () => { live -= 1; };
+    });
+
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway });
+
+    const msg1 = fakeMsg({ id: "m1", mentionedIds: ["bot-A"], content: "<@bot-A> first" });
+    const msg2 = fakeMsg({ id: "m2", mentionedIds: ["bot-A"], content: "<@bot-A> second" });
+    const msg3 = fakeMsg({ id: "m3", mentionedIds: ["bot-A"], content: "<@bot-A> third" });
+    client.emit("messageCreate", msg1);
+    client.emit("messageCreate", msg2);
+    client.emit("messageCreate", msg3);
+
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(live).toBe(1);
+    expect(listeners.length).toBe(1);
+
+    listeners[0]({ type: "agent_end", stopReason: "end" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(live).toBe(1);
+    expect(listeners.length).toBe(2);
+
+    listeners[1]({ type: "agent_end", stopReason: "end" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(live).toBe(1);
+    expect(listeners.length).toBe(3);
+
+    listeners[2]({ type: "agent_end", stopReason: "end" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(live).toBe(0);
+
+    expect(peak).toBe(1);
+    expect(gateway.dispatch).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not serialize across different sessions — two channels run in parallel", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+    let live = 0;
+    let peak = 0;
+    const listeners: Array<(event: unknown) => void> = [];
+    gateway.subscribe.mockImplementation(async (_a, _k, listener) => {
+      listeners.push(listener as (event: unknown) => void);
+      live += 1;
+      if (live > peak) peak = live;
+      return () => { live -= 1; };
+    });
+
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway });
+
+    client.emit("messageCreate", fakeMsg({ id: "m1", channelId: "c-1", mentionedIds: ["bot-A"] }));
+    client.emit("messageCreate", fakeMsg({ id: "m2", channelId: "c-2", mentionedIds: ["bot-A"] }));
+
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+
+    expect(peak).toBe(2);
+    expect(listeners.length).toBe(2);
+
+    listeners[0]({ type: "agent_end", stopReason: "end" });
+    listeners[1]({ type: "agent_end", stopReason: "end" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(live).toBe(0);
+  });
+});
+
+describe("createDiscordChannel — in-turn steer (fast-path)", () => {
+  it("calls gateway.trySteer first; when it succeeds, does NOT subscribe/dispatch", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+    // trySteer returns true → fast-path success, slow path must not run.
+    gateway.trySteer.mockReturnValue(true);
+
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway });
+
+    client.emit("messageCreate", fakeMsg({ mentionedIds: ["bot-A"], content: "<@bot-A> hi" }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+
+    expect(gateway.trySteer).toHaveBeenCalledTimes(1);
+    // Slow path skipped:
+    expect(gateway.subscribe).not.toHaveBeenCalled();
+    expect(gateway.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("falls back to dispatch+subscribe when trySteer returns false", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+    gateway.trySteer.mockReturnValue(false);
+
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway });
+
+    client.emit("messageCreate", fakeMsg({ mentionedIds: ["bot-A"], content: "<@bot-A> hi" }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+
+    expect(gateway.trySteer).toHaveBeenCalledTimes(1);
+    expect(gateway.subscribe).toHaveBeenCalledTimes(1);
+    expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });
 });
 

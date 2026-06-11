@@ -1,8 +1,12 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { randomUUID } from "node:crypto";
+import { createLogger } from "../../logging/logger.js";
+import type { SyncSteer } from "../runtime.js";
 import type { RegisteredAgent, RunRequest } from "../types.js";
 import { createPiSession, type PiSessionDeps } from "./session-factory.js";
+
+const log = createLogger("pi-runner");
 
 export interface PiRunnerOptions {
   agent: RegisteredAgent;
@@ -41,8 +45,9 @@ export class PiRunner {
     sessionId: string;
     abort: AbortSignal;
     onSession?: (session: AgentSession) => void;
+    registerSteer?: (steer: SyncSteer) => void;
   }): AsyncGenerator<AgentEvent> {
-    const { request, sessionId, abort, onSession } = opts;
+    const { request, sessionId, abort, onSession, registerSteer } = opts;
     const session = await createPiSession(this.opts.piDeps, {
       agent: this.opts.agent,
       sessionId,
@@ -50,6 +55,7 @@ export class PiRunner {
       ...(request.extraSystemPrompt ? { extraSystemPrompt: request.extraSystemPrompt } : {}),
     });
     onSession?.(session);
+    registerSteer?.(buildSyncSteer(session));
     const content = request.cwd && request.from
       ? `[Caller working directory: ${request.cwd}]\n\n${request.content}`
       : request.content;
@@ -59,6 +65,36 @@ export class PiRunner {
       session.dispose();
     }
   }
+}
+
+/** Build a sync in-turn steer fn around an AgentSession.
+ *  Returns true iff the agent is currently streaming (so the steeringQueue
+ *  will be drained at the next turn boundary). When false, the caller falls
+ *  back to enqueueing a new run.
+ *
+ *  The check + enqueue are synchronous and therefore atomic relative to the
+ *  JS event loop: the agent-loop cannot interleave between the isStreaming
+ *  read and the agent.steer call. This is what closes the race window where
+ *  a message could be enqueued just as the agent decides to stop and is
+ *  never drained. See openclaw's queueEmbeddedPiMessage for the same pattern. */
+function buildSyncSteer(session: AgentSession): SyncSteer {
+  return (content: string): boolean => {
+    if (!session.agent.state.isStreaming) return false;
+    try {
+      // Bypass AgentSession.steer's async expansion path — for inbound channel
+      // messages we don't want skill/template expansion. Go straight to the
+      // underlying pi-agent steering queue.
+      session.agent.steer({
+        role: "user",
+        content: [{ type: "text", text: content }],
+        timestamp: Date.now(),
+      });
+      return true;
+    } catch (err) {
+      log.warn("Sync steer failed", { error: err instanceof Error ? err.message : String(err) });
+      return false;
+    }
+  };
 }
 
 async function* streamPiSession(

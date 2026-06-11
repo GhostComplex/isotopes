@@ -18,6 +18,7 @@ import { extractDiscordMetadata, formatInboundMeta } from "./message-metadata.js
 import { createLogger } from "../../logging/logger.js";
 import { DiscordA2ASink, type DiscordA2ASinkDeps } from "./a2a-sink.js";
 import { type A2ASinkFactory, runWithA2A } from "../../agent/a2a-sink.js";
+import { KeyedAsyncQueue } from "../../utils/keyed-async-queue.js";
 import type {
   DiscordAccountConfig,
   DiscordChannelsConfig,
@@ -65,6 +66,10 @@ export function createDiscordChannel(
   const clients = new Map<string, ClientLike>();
   const dedupes = new Map<string, DedupeCache>();
   const histories = new Map<string, ChannelHistoryBuffer>();
+  // FIFO per sessionKey within an account. Inbound messages that miss the
+  // trySteer fast-path fall back to this queue, so a single channel never
+  // has two concurrent runs racing the same gateway sessionId (#865).
+  const inboundQueues = new Map<string, KeyedAsyncQueue>();
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
   const a2aThreads = new Map<string, string>();
@@ -94,6 +99,7 @@ export function createDiscordChannel(
             clients,
             dedupes,
             histories,
+            inboundQueues,
             a2aThreads,
           }),
         ),
@@ -126,6 +132,8 @@ export function createDiscordChannel(
       dedupes.clear();
       for (const h of histories.values()) h.clear();
       histories.clear();
+      for (const q of inboundQueues.values()) q.clear();
+      inboundQueues.clear();
     },
 
     async send(target, content) {
@@ -185,11 +193,12 @@ interface StartAccountArgs {
   clients: Map<string, ClientLike>;
   dedupes: Map<string, DedupeCache>;
   histories: Map<string, ChannelHistoryBuffer>;
+  inboundQueues: Map<string, KeyedAsyncQueue>;
   a2aThreads: Map<string, string>;
 }
 
 async function startAccount(args: StartAccountArgs): Promise<void> {
-  const { accountId, account, gateway, clientFactory, clients, dedupes, histories, a2aThreads } = args;
+  const { accountId, account, gateway, clientFactory, clients, dedupes, histories, inboundQueues, a2aThreads } = args;
 
   const token = resolveToken(account);
   if (!token) {
@@ -203,6 +212,8 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
   dedupes.set(accountId, dedupe);
   const history = new ChannelHistoryBuffer();
   histories.set(accountId, history);
+  const inboundQueue = new KeyedAsyncQueue();
+  inboundQueues.set(accountId, inboundQueue);
 
   client.on("error", () => {});
 
@@ -215,6 +226,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
       gateway,
       dedupe,
       history,
+      inboundQueue,
       a2aThreads,
     });
   });
@@ -250,6 +262,7 @@ async function startAccount(args: StartAccountArgs): Promise<void> {
           gateway,
           dedupe,
           history,
+          inboundQueue,
           a2aThreads,
         });
       } catch { /* ignore */ }
@@ -266,11 +279,12 @@ interface InboundArgs {
   gateway: Gateway;
   dedupe: DedupeCache;
   history: ChannelHistoryBuffer;
+  inboundQueue: KeyedAsyncQueue;
   a2aThreads: Map<string, string>;
 }
 
 async function dispatchInbound(args: InboundArgs): Promise<void> {
-  const { msg, account, client, gateway, dedupe, history, a2aThreads } = args;
+  const { msg, account, client, gateway, dedupe, history, inboundQueue, a2aThreads } = args;
   const botId = client.user?.id;
   if (!botId) return;
 
@@ -286,8 +300,9 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   const sessionKey = resolveSessionKey(msg, botId);
 
   // /stop runs before history.append so the command never leaks into channel
-  // history (or any LLM session). Every bot consumes /stop; only the
-  // addressed bot actually aborts.
+  // history (or any LLM session). It also runs before any queue/steer path —
+  // queueing /stop would make it wait for the run it's meant to abort. Every
+  // bot consumes /stop; only the addressed bot actually aborts.
   const isStopCommand = await handleStopCommand(msg, botId, gateway, agentId, sessionKey, a2aThreads);
   if (isStopCommand) return;
 
@@ -300,33 +315,54 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     });
   }
 
+  // Fast-path: if an agent run is currently streaming for this session, try
+  // to queue this message into its in-turn steering queue (atomic sync op).
+  // Skipped when the message has attachments — image extraction is async and
+  // would force us past the atomic window. Also skipped when the trimmed
+  // text is empty; the slow path filters those out.
+  const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
+  const hasAttachments = msg.attachments && msg.attachments.size > 0;
+  if (cleanedText && !hasAttachments) {
+    const meta = extractDiscordMetadata(msg);
+    const chatType = msg.guild ? "group" : "direct";
+    const framedContent = `${formatInboundMeta(meta, chatType)}\n\n${cleanedText}`;
+    if (gateway.trySteer(agentId, sessionKey, framedContent)) {
+      log.debug("Steered into active run", { agentId, sessionKey });
+      return;
+    }
+  }
+
+  // Slow path: serialize per session so a single channel never has two
+  // concurrent agent runs racing the same gateway sessionId (#865).
   const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
-  await runWithA2A(sinkFactory, () => handleInbound(
-    msg,
-    { agentId, sessionKey },
-    {
-      gateway,
-      ...(account.guilds ? { guilds: account.guilds } : {}),
-      ...(account.allowBots !== undefined ? { allowBots: account.allowBots } : {}),
-      transformContent: (content, triggerMsg) => {
-        const meta = extractDiscordMetadata(triggerMsg);
-        const chatType = triggerMsg.guild ? "group" : "direct";
-        const historyBlock = triggerMsg.guild
-          ? formatHistory(history.consumeExcluding(triggerMsg.channelId, triggerMsg.id))
-          : "";
-        const prefix = historyBlock ? `${historyBlock}\n\n${formatInboundMeta(meta, chatType)}` : formatInboundMeta(meta, chatType);
-        return `${prefix}\n\n${content}`;
+  await inboundQueue.enqueue(`${agentId}::${sessionKey}`, () =>
+    runWithA2A(sinkFactory, () => handleInbound(
+      msg,
+      { agentId, sessionKey },
+      {
+        gateway,
+        ...(account.guilds ? { guilds: account.guilds } : {}),
+        ...(account.allowBots !== undefined ? { allowBots: account.allowBots } : {}),
+        transformContent: (content, triggerMsg) => {
+          const meta = extractDiscordMetadata(triggerMsg);
+          const chatType = triggerMsg.guild ? "group" : "direct";
+          const historyBlock = triggerMsg.guild
+            ? formatHistory(history.consumeExcluding(triggerMsg.channelId, triggerMsg.id))
+            : "";
+          const prefix = historyBlock ? `${historyBlock}\n\n${formatInboundMeta(meta, chatType)}` : formatInboundMeta(meta, chatType);
+          return `${prefix}\n\n${content}`;
+        },
       },
-    },
-    {
-      botId,
-      buildSubscriber: (triggerMsg) =>
-        createDiscordSubscriber({
-          channel: triggerMsg.channel as SendableChannels,
-          triggerMessageId: triggerMsg.id,
-        }),
-    },
-  ));
+      {
+        botId,
+        buildSubscriber: (triggerMsg) =>
+          createDiscordSubscriber({
+            channel: triggerMsg.channel as SendableChannels,
+            triggerMessageId: triggerMsg.id,
+          }),
+      },
+    )),
+  );
 }
 
 /** Find the unique account whose effective agent for this channel matches. */

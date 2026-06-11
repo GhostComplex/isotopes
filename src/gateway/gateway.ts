@@ -23,15 +23,22 @@ export interface GatewayDeps {
   sessionStoreManager: SessionStoreManager;
 }
 
-// `ready` resolves once the underlying runner has registered the run
-// (i.e. the first event has arrived) so steer can safely target it.
+// `ready` resolves once the runner has emitted its first event, so dispatch's
+// caller is guaranteed any post-return subscribe() call still sees the run.
 interface ActiveHandle {
   ready: Promise<void>;
   resolveReady: () => void;
+  /** Composite key `${agentId}::${sessionKey}` — used to clean the secondary
+   *  index in triggerRun's finally without re-deriving from msg. */
+  keyIndex: string;
 }
 
 export function createGateway(deps: GatewayDeps): Gateway {
   const active = new Map<string, ActiveHandle>();
+  // Secondary index: `${agentId}::${sessionKey}` → sessionId. Lets trySteer()
+  // be fully synchronous (no async store lookup). Kept in lock-step with
+  // `active`: written in dispatch, deleted in triggerRun's finally.
+  const activeByKey = new Map<string, string>();
   // sessionId -> external subscribers (fan-out targets for emit()).
   const listeners = new Map<string, Set<SessionEventListener>>();
 
@@ -116,6 +123,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
       log.error("Run error", { sessionId, error: errorMessage });
     } finally {
       active.delete(sessionId);
+      activeByKey.delete(handle.keyIndex);
       if (!readyResolved) handle.resolveReady();
       emit(sessionId, errorMessage
         ? { type: "agent_end", stopReason: "error", errorMessage }
@@ -140,33 +148,31 @@ export function createGateway(deps: GatewayDeps): Gateway {
 
   async function dispatch(msg: Message): Promise<DispatchResult> {
     const sessionId = await resolveSessionId(msg);
-
-    while (true) {
-      const existing = active.get(sessionId);
-      if (existing) {
-        await existing.ready;
-        // The run may have ended while we awaited ready (finally also resolves
-        // ready). If `active` no longer holds our handle, retry as a fresh run.
-        if (active.get(sessionId) !== existing) continue;
-        try {
-          await deps.agentRuntime.steer(sessionId, msg.content);
-        } catch (err) {
-          if (!active.has(sessionId)) continue;
-          log.warn("Steer failed", { sessionId, error: err instanceof Error ? err.message : String(err) });
-        }
-        log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "steered" });
-        return { sessionId, state: "steered" };
-      }
-
-      let resolveReady!: () => void;
-      const ready = new Promise<void>((r) => { resolveReady = r; });
-      const handle: ActiveHandle = { ready, resolveReady };
-      active.set(sessionId, handle);
-      void triggerRun(sessionId, msg, handle);
-      await handle.ready;
-      log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "new_run" });
-      return { sessionId, state: "new_run" };
+    if (active.has(sessionId)) {
+      throw new Error(`Session ${sessionId} already has an in-flight run; use trySteer or serialize via a queue`);
     }
+    const keyIndex = `${msg.agentId}::${msg.sessionKey}`;
+    let resolveReady!: () => void;
+    const ready = new Promise<void>((r) => { resolveReady = r; });
+    const handle: ActiveHandle = { ready, resolveReady, keyIndex };
+    active.set(sessionId, handle);
+    activeByKey.set(keyIndex, sessionId);
+    void triggerRun(sessionId, msg, handle);
+    await handle.ready;
+    log.info("Dispatched", { agentId: msg.agentId, sessionId });
+    return { sessionId };
+  }
+
+  /** Synchronous in-turn steer. Returns true iff the message was queued into
+   *  an active run's current turn; false if no active run, the runner doesn't
+   *  support steer, or the run isn't currently streaming.
+   *
+   *  Synchronous by design: callers must be able to atomically decide
+   *  "leader-vs-steer" without an await window where the run could end. */
+  function trySteer(agentId: string, sessionKey: string, content: string): boolean {
+    const sessionId = activeByKey.get(`${agentId}::${sessionKey}`);
+    if (!sessionId) return false;
+    return deps.agentRuntime.trySteer(sessionId, content);
   }
 
   async function dispatchAndWait(msg: Message): Promise<AwaitResult> {
@@ -268,6 +274,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
 
   return {
     dispatch,
+    trySteer,
     dispatchAndWait,
     abort,
     abortByKey,
