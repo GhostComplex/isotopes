@@ -315,24 +315,12 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     });
   }
 
-  // Fast-path: if an agent run is currently streaming for this session, try
-  // to queue this message into its in-turn steering queue (atomic sync op).
-  // Skipped when the message has attachments — image extraction is async and
-  // would force us past the atomic window. Also skipped when the trimmed
-  // text is empty; the slow path filters those out.
-  //
-  // Must apply the same inbound filters as the slow path before steering —
-  // otherwise unmentioned chatter in a group, the bot's own message echoed
-  // back, or messages from disallowed bots would be injected as user input
-  // into the active turn instead of being dropped.
-  //
-  // The framed content here is meta + cleanedText only — no channel history
-  // block and no REPLY_PROMPT extraSystemPrompt. The history block exists to
-  // bootstrap context at the start of a new turn; when we're steering an
-  // in-flight turn the agent is already inside the session's streaming
-  // context (the prior reply tag instructions are already in the message
-  // history), so re-prepending them is noise. The buffered group history
-  // stays in the buffer and will be consumed by the next slow-path message.
+  // Fast-path: sync-inject into an in-flight turn if the agent is streaming.
+  // Skipped on attachments (extraction is async, breaks the sync atomicity)
+  // and on filtered messages (own echoes, unmentioned chatter, etc.).
+  // Framing omits the channel-history block and REPLY_PROMPT — the active
+  // turn already has them in scope; the buffered history is left for the
+  // next slow-path message to consume.
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
   const hasAttachments = msg.attachments && msg.attachments.size > 0;
   if (

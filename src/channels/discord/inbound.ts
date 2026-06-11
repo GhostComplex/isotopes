@@ -126,11 +126,8 @@ interface InboundContext {
   buildSubscriber: (msg: DiscordMessage) => InboundSubscriber;
 }
 
-/** Inbound filter shared by the fast-path (trySteer) and slow-path
- *  (handleInbound). Returns true iff the message should be delivered to the
- *  agent at all. Lives here so both paths can't drift — fast-path must apply
- *  the same gating or it would steer messages that the slow path would
- *  silently drop (own bot echoes, unmentioned chatter in groups, etc.). */
+/** Shared by fast-path (trySteer) and slow-path (handleInbound) so both
+ *  apply identical gating. */
 export function shouldDispatchInbound(
   msg: DiscordMessage,
   params: { botId: string; guilds?: Record<string, GuildConfig>; allowBots?: boolean },
