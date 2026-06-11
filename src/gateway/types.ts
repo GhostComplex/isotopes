@@ -23,7 +23,6 @@ export interface Message {
 
 export interface DispatchResult {
   sessionId: string;
-  state: "new_run" | "steered";
 }
 
 export interface CreateSessionResult {
@@ -50,7 +49,7 @@ export interface AwaitResult {
 }
 
 export interface Gateway {
-  /** Fire-and-forget. Resolves once Gateway knows new_run vs steered.
+  /** Fire-and-forget. Resolves once the run is registered and emitting events.
    *  Events flow exclusively through subscribe(). */
   dispatch(msg: Message): Promise<DispatchResult>;
 

@@ -85,7 +85,8 @@ export class HeartbeatManager {
 
     try {
       // Cap at 2× interval so a hung run doesn't pin isRunning forever.
-      // The run itself isn't canceled — gateway's steer absorbs the next tick.
+      // The run itself isn't canceled — the next tick will be dropped while
+      // the prior run is still in flight (isRunning gate above).
       const timeoutMs = this.intervalMs * 2;
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
       try {

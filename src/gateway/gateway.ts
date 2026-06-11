@@ -23,8 +23,8 @@ export interface GatewayDeps {
   sessionStoreManager: SessionStoreManager;
 }
 
-// `ready` resolves once the underlying runner has registered the run
-// (i.e. the first event has arrived) so steer can safely target it.
+// `ready` resolves once the runner has emitted its first event, so dispatch's
+// caller is guaranteed any post-return subscribe() call still sees the run.
 interface ActiveHandle {
   ready: Promise<void>;
   resolveReady: () => void;
@@ -140,33 +140,17 @@ export function createGateway(deps: GatewayDeps): Gateway {
 
   async function dispatch(msg: Message): Promise<DispatchResult> {
     const sessionId = await resolveSessionId(msg);
-
-    while (true) {
-      const existing = active.get(sessionId);
-      if (existing) {
-        await existing.ready;
-        // The run may have ended while we awaited ready (finally also resolves
-        // ready). If `active` no longer holds our handle, retry as a fresh run.
-        if (active.get(sessionId) !== existing) continue;
-        try {
-          await deps.agentRuntime.steer(sessionId, msg.content);
-        } catch (err) {
-          if (!active.has(sessionId)) continue;
-          log.warn("Steer failed", { sessionId, error: err instanceof Error ? err.message : String(err) });
-        }
-        log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "steered" });
-        return { sessionId, state: "steered" };
-      }
-
-      let resolveReady!: () => void;
-      const ready = new Promise<void>((r) => { resolveReady = r; });
-      const handle: ActiveHandle = { ready, resolveReady };
-      active.set(sessionId, handle);
-      void triggerRun(sessionId, msg, handle);
-      await handle.ready;
-      log.info("Dispatched", { agentId: msg.agentId, sessionId, state: "new_run" });
-      return { sessionId, state: "new_run" };
+    if (active.has(sessionId)) {
+      throw new Error(`Session ${sessionId} already has an in-flight run`);
     }
+    let resolveReady!: () => void;
+    const ready = new Promise<void>((r) => { resolveReady = r; });
+    const handle: ActiveHandle = { ready, resolveReady };
+    active.set(sessionId, handle);
+    void triggerRun(sessionId, msg, handle);
+    await handle.ready;
+    log.info("Dispatched", { agentId: msg.agentId, sessionId });
+    return { sessionId };
   }
 
   async function dispatchAndWait(msg: Message): Promise<AwaitResult> {

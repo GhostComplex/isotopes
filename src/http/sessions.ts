@@ -89,7 +89,7 @@ export function registerSessionRoutes(app: Hono, deps: ApiDeps): void {
       content: body.message,
       source: "tui",
     });
-    return c.json({ sessionId: result.sessionId, state: result.state });
+    return c.json({ sessionId: result.sessionId });
   });
 
   app.post("/api/sessions/:agentId/:key/abort", async (c) => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createGateway } from "./gateway.js";
 import { AgentRuntime, type Runner } from "../agent/runtime.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
@@ -103,7 +103,7 @@ const baseMsg: Message = { agentId: "main", content: "hi", source: "tui" };
 async function dispatchAndCollect(
   gateway: ReturnType<typeof createGateway>,
   msg: Message,
-): Promise<{ sessionId: string; state: string; events: SessionEvent[] }> {
+): Promise<{ sessionId: string; events: SessionEvent[] }> {
   const events: SessionEvent[] = [];
   const { sessionKey } = await gateway.createOrResumeSession(msg.agentId, msg.sessionKey);
   const ready = new Promise<void>((resolve) => {
@@ -115,7 +115,7 @@ async function dispatchAndCollect(
   await gateway.dispatch({ ...msg, sessionKey });
   await ready;
   const session = await gateway.getSession(msg.agentId, sessionKey);
-  return { sessionId: session?.id ?? "", state: "new_run", events };
+  return { sessionId: session?.id ?? "", events };
 }
 
 describe("gateway.dispatchAndWait", () => {
@@ -137,13 +137,12 @@ describe("gateway.dispatchAndWait", () => {
   });
 });
 
-describe("gateway.dispatch (new_run)", () => {
-  it("returns new_run state and surfaces text_delta + agent_end on subscribers", async () => {
+describe("gateway.dispatch (new run)", () => {
+  it("surfaces text_delta + agent_end on subscribers", async () => {
     const runtime = buildRuntime(fastRunner(["a", "b"]));
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
-    const { events, state } = await dispatchAndCollect(gateway, { ...baseMsg, sessionKey: "k1" });
-    expect(state).toBe("new_run");
+    const { events } = await dispatchAndCollect(gateway, { ...baseMsg, sessionKey: "k1" });
     const textDeltas = events.filter((e): e is Extract<SessionEvent, { type: "text_delta" }> => e.type === "text_delta");
     expect(textDeltas.map((e) => e.delta)).toEqual(["a", "b"]);
     expect(events.at(-1)?.type).toBe("agent_end");
@@ -163,8 +162,8 @@ describe("gateway.dispatch (new_run)", () => {
   });
 });
 
-describe("gateway.dispatch (steered)", () => {
-  it("forwards to runtime.steer when session is busy", async () => {
+describe("gateway.dispatch (in-flight collision)", () => {
+  it("throws when a run for the session is already in flight", async () => {
     const longRunner: Runner = {
       resolveSessionId: (req) => req.sessionId ?? "stub",
       async *run({ abort }) {
@@ -174,22 +173,19 @@ describe("gateway.dispatch (steered)", () => {
       },
     };
     const runtime = buildRuntime(longRunner);
-    const steerSpy = vi.spyOn(runtime, "steer").mockResolvedValue();
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     await gateway.createOrResumeSession("main", "shared");
-    const first = gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "first" });
-    await first; // dispatch resolves early on handle.ready
-    const second = await gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "second" });
-    expect(second.state).toBe("steered");
-    expect(steerSpy).toHaveBeenCalledWith(second.sessionId, "second");
+    const first = await gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "first" });
+    await expect(
+      gateway.dispatch({ ...baseMsg, sessionKey: "shared", content: "second" }),
+    ).rejects.toThrow(/already has an in-flight run/);
 
-    await gateway.abort(second.sessionId);
+    await gateway.abort(first.sessionId);
   });
 
-  it("falls through to a fresh run if the prior run ended between observe and steer", async () => {
+  it("starts a fresh run if the prior run has already ended", async () => {
     const runtime = buildRuntime(fastRunner(["one"]));
-    const steerSpy = vi.spyOn(runtime, "steer");
     const gateway = createGateway({ agentRuntime: runtime, sessionStoreManager: makeStores() });
 
     const first = await gateway.dispatchAndWait({ ...baseMsg, sessionKey: "ended", content: "first" });
@@ -197,7 +193,6 @@ describe("gateway.dispatch (steered)", () => {
 
     const second = await gateway.dispatchAndWait({ ...baseMsg, sessionKey: "ended", content: "second" });
     expect(second.responseText).toBe("one");
-    expect(steerSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -40,16 +40,14 @@ export class PiRunner {
     request: RunRequest;
     sessionId: string;
     abort: AbortSignal;
-    onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent> {
-    const { request, sessionId, abort, onSession } = opts;
+    const { request, sessionId, abort } = opts;
     const session = await createPiSession(this.opts.piDeps, {
       agent: this.opts.agent,
       sessionId,
       ...(request.cwd ? { cwd: request.cwd } : {}),
       ...(request.extraSystemPrompt ? { extraSystemPrompt: request.extraSystemPrompt } : {}),
     });
-    onSession?.(session);
     const content = request.cwd && request.from
       ? `[Caller working directory: ${request.cwd}]\n\n${request.content}`
       : request.content;

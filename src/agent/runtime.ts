@@ -16,7 +16,6 @@ import { ClaudeRunner } from "./adapters/claude/runner.js";
 import { CopilotRunner } from "./adapters/copilot/runner.js";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import {
-  type AgentSession,
   AuthStorage,
   ModelRegistry,
 } from "@mariozechner/pi-coding-agent";
@@ -50,7 +49,6 @@ interface RunHandle {
   startedAt: number;
   abort: AbortController;
   parentSessionId?: string;
-  session?: AgentSession;
   cancelReason?: string;
 }
 
@@ -86,8 +84,6 @@ export interface Runner {
     request: RunRequest;
     sessionId: string;
     abort: AbortSignal;
-    /** Steerable session hook; ClaudeRunner doesn't call it. */
-    onSession?: (session: AgentSession) => void;
   }): AsyncGenerator<AgentEvent>;
 }
 
@@ -321,7 +317,6 @@ export class AgentRuntime {
         request: req,
         sessionId,
         abort: abort.signal,
-        onSession: (session) => { handle.session = session; },
       })) {
         if (event.type === "tool_execution_start") {
           log.debug("Tool call", { runId, agentId: req.to, toolName: event.toolName, toolCallId: event.toolCallId });
@@ -357,13 +352,6 @@ export class AgentRuntime {
 
   get activeCount(): number {
     return this.runs.size;
-  }
-
-  /** Push-model steer — inject a user message into an in-flight run mid-turn. */
-  async steer(sessionId: string, message: string): Promise<void> {
-    const handle = this.runs.get(sessionId);
-    if (!handle?.session) throw new Error(`No active session for "${sessionId}"`);
-    await handle.session.steer(message);
   }
 
   getRunBySession(sessionId: string): RunInfo | undefined {
