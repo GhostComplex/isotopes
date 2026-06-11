@@ -9,6 +9,7 @@ export function createStubGateway(overrides: Partial<Gateway> = {}): Gateway {
   };
   return {
     dispatch: notImpl("dispatch") as Gateway["dispatch"],
+    trySteer: () => false,
     dispatchAndWait: notImpl("dispatchAndWait") as Gateway["dispatchAndWait"],
     abort: async () => {},
     abortByKey: async () => false,

@@ -51,8 +51,15 @@ interface RunHandle {
   abort: AbortController;
   parentSessionId?: string;
   session?: AgentSession;
+  /** Set by runners that support in-turn steer (currently pi only). */
+  steer?: SyncSteer;
   cancelReason?: string;
 }
+
+/** Sync in-turn steer. Must be sync so callers can decide leader-vs-steer
+ *  atomically without an await window where the run could end. Returns true
+ *  iff the message was queued into the active turn. */
+export type SyncSteer = (content: string) => boolean;
 
 export interface AgentRuntimeOptions {
   /** Default LLM provider. */
@@ -88,6 +95,8 @@ export interface Runner {
     abort: AbortSignal;
     /** Steerable session hook; ClaudeRunner doesn't call it. */
     onSession?: (session: AgentSession) => void;
+    /** Runners that support in-turn steer call this once at startup. */
+    registerSteer?: (steer: SyncSteer) => void;
   }): AsyncGenerator<AgentEvent>;
 }
 
@@ -322,6 +331,7 @@ export class AgentRuntime {
         sessionId,
         abort: abort.signal,
         onSession: (session) => { handle.session = session; },
+        registerSteer: (steerFn) => { handle.steer = steerFn; },
       })) {
         if (event.type === "tool_execution_start") {
           log.debug("Tool call", { runId, agentId: req.to, toolName: event.toolName, toolCallId: event.toolCallId });
@@ -359,11 +369,9 @@ export class AgentRuntime {
     return this.runs.size;
   }
 
-  /** Push-model steer — inject a user message into an in-flight run mid-turn. */
-  async steer(sessionId: string, message: string): Promise<void> {
-    const handle = this.runs.get(sessionId);
-    if (!handle?.session) throw new Error(`No active session for "${sessionId}"`);
-    await handle.session.steer(message);
+  /** Sync in-turn steer; see SyncSteer. */
+  trySteer(sessionId: string, content: string): boolean {
+    return this.runs.get(sessionId)?.steer?.(content) ?? false;
   }
 
   getRunBySession(sessionId: string): RunInfo | undefined {

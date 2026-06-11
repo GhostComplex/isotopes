@@ -30,7 +30,6 @@ export interface SessionInfo {
 
 export interface DispatchResult {
   sessionId: string;
-  state: "new_run" | "steered";
 }
 
 export type Screen = "chat" | "status" | "sessions";

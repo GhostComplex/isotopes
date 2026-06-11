@@ -363,10 +363,10 @@ describe("runtime.run — abort on consumer early-return", () => {
   });
 });
 
-describe("runtime.steer — wires onSession into RunHandle", () => {
-  it("steer reaches the runner's session via onSession callback", async () => {
+describe("runtime.trySteer — wires registerSteer into RunHandle", () => {
+  it("trySteer forwards to the runner's registered sync steer fn", async () => {
     const rt = new AgentRuntime();
-    const steerSpy = vi.fn();
+    const steerSpy = vi.fn().mockReturnValue(true);
     let pendingResolve: () => void = () => {};
     const pending = new Promise<void>((r) => { pendingResolve = r; });
     let runStarted: () => void = () => {};
@@ -374,7 +374,7 @@ describe("runtime.steer — wires onSession into RunHandle", () => {
 
     rt.registerRunner("main", stubRunner({
       async *run(opts) {
-        opts.onSession?.({ steer: steerSpy } as never);
+        opts.registerSteer?.(steerSpy);
         runStarted();
         opts.abort.addEventListener("abort", pendingResolve, { once: true });
         await pending;
@@ -391,14 +391,19 @@ describe("runtime.steer — wires onSession into RunHandle", () => {
     const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
 
     await started;
-    await rt.steer("steer-1", "interject");
+    expect(rt.trySteer("steer-1", "interject")).toBe(true);
     expect(steerSpy).toHaveBeenCalledWith("interject");
 
     rt.cancel("steer-1");
     await drain;
   });
 
-  it("steer throws when runner did not call onSession", async () => {
+  it("trySteer returns false when no run is active for the sessionId", () => {
+    const rt = new AgentRuntime();
+    expect(rt.trySteer("nonexistent", "x")).toBe(false);
+  });
+
+  it("trySteer returns false when the runner did not register a steer fn", async () => {
     const rt = new AgentRuntime();
     let pendingResolve: () => void = () => {};
     const pending = new Promise<void>((r) => { pendingResolve = r; });
@@ -423,9 +428,44 @@ describe("runtime.steer — wires onSession into RunHandle", () => {
     const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
 
     await started;
-    await expect(rt.steer("steer-2", "x")).rejects.toThrow(/No active session/);
+    expect(rt.trySteer("steer-2", "x")).toBe(false);
 
     rt.cancel("steer-2");
+    await drain;
+  });
+
+  it("trySteer reflects the runner's runtime decision (returns false when not streamable)", async () => {
+    const rt = new AgentRuntime();
+    let allowSteer = true;
+    let pendingResolve: () => void = () => {};
+    const pending = new Promise<void>((r) => { pendingResolve = r; });
+    let runStarted: () => void = () => {};
+    const started = new Promise<void>((r) => { runStarted = r; });
+
+    rt.registerRunner("conditional", stubRunner({
+      async *run(opts) {
+        opts.registerSteer?.(() => allowSteer);
+        runStarted();
+        opts.abort.addEventListener("abort", pendingResolve, { once: true });
+        await pending;
+        yield buildAgentEnd("done");
+      },
+      agent: fakeAgent("conditional"),
+    }));
+
+    const stream = rt.run({
+      to: "conditional",
+      sessionId: "cond-1",
+      content: "hi",
+    });
+    const drain = (async () => { for await (const _ev of stream) { void _ev; } })();
+    await started;
+
+    expect(rt.trySteer("cond-1", "x")).toBe(true);
+    allowSteer = false;
+    expect(rt.trySteer("cond-1", "y")).toBe(false);
+
+    rt.cancel("cond-1");
     await drain;
   });
 });

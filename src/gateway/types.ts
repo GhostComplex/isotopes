@@ -23,7 +23,6 @@ export interface Message {
 
 export interface DispatchResult {
   sessionId: string;
-  state: "new_run" | "steered";
 }
 
 export interface CreateSessionResult {
@@ -50,9 +49,15 @@ export interface AwaitResult {
 }
 
 export interface Gateway {
-  /** Fire-and-forget. Resolves once Gateway knows new_run vs steered.
-   *  Events flow exclusively through subscribe(). */
+  /** Fire-and-forget. Resolves once the run is registered and emitting.
+   *  Throws if the same session already has a run in flight — callers must
+   *  serialize (e.g. KeyedAsyncQueue) or steer via trySteer first. */
   dispatch(msg: Message): Promise<DispatchResult>;
+
+  /** Sync in-turn steer. Returns true iff the content was queued into the
+   *  active turn; false if no active run or it's not currently streaming.
+   *  On false, fall back to dispatch. */
+  trySteer(agentId: string, sessionKey: string, content: string): boolean;
 
   /** Convenience: dispatch + subscribe + wait for agent_end, returns final text. */
   dispatchAndWait(msg: Message): Promise<AwaitResult>;
