@@ -51,16 +51,14 @@ interface RunHandle {
   abort: AbortController;
   parentSessionId?: string;
   session?: AgentSession;
-  /** Sync in-turn steer registered by the runner. Returns false if the run
-   *  is no longer accepting steer. Discord channel calls runtime.trySteer
-   *  via this on every inbound — see gateway.trySteer. */
+  /** Set by runners that support in-turn steer (currently pi only). */
   steer?: SyncSteer;
   cancelReason?: string;
 }
 
-/** Synchronous in-turn steer fn. Returns true iff the message was queued into
- *  the active turn; false otherwise (run already ended, disposed, etc.).
- *  Must be synchronous so the caller can decide leader-vs-steer atomically. */
+/** Sync in-turn steer. Must be sync so callers can decide leader-vs-steer
+ *  atomically without an await window where the run could end. Returns true
+ *  iff the message was queued into the active turn. */
 export type SyncSteer = (content: string) => boolean;
 
 export interface AgentRuntimeOptions {
@@ -97,10 +95,7 @@ export interface Runner {
     abort: AbortSignal;
     /** Steerable session hook; ClaudeRunner doesn't call it. */
     onSession?: (session: AgentSession) => void;
-    /** Register a synchronous in-turn steer function. Called once per run by
-     *  runners that support steering (pi). The function returns true if the
-     *  message was queued into the in-flight turn, false if the run is no
-     *  longer accepting steer (already stopped, disposed, etc.). */
+    /** Runners that support in-turn steer call this once at startup. */
     registerSteer?: (steer: SyncSteer) => void;
   }): AsyncGenerator<AgentEvent>;
 }
@@ -374,9 +369,7 @@ export class AgentRuntime {
     return this.runs.size;
   }
 
-  /** Synchronous in-turn steer. Returns true if the message was queued into
-   *  the active run's current turn, false if no such run exists, the runner
-   *  doesn't support steer, or the run is no longer accepting steer. */
+  /** Sync in-turn steer; see SyncSteer. */
   trySteer(sessionId: string, content: string): boolean {
     return this.runs.get(sessionId)?.steer?.(content) ?? false;
   }

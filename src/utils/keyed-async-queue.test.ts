@@ -29,7 +29,6 @@ describe("KeyedAsyncQueue", () => {
       order.push("t2:end");
     });
 
-    // t2 must not start until t1 finishes.
     await new Promise((r) => setTimeout(r, 5));
     expect(order).toEqual(["t1:start"]);
 
@@ -62,7 +61,6 @@ describe("KeyedAsyncQueue", () => {
     });
 
     await new Promise((r) => setTimeout(r, 5));
-    // Both started without waiting on each other.
     expect(order).toEqual(["a:start", "b:start"]);
 
     dB.resolve();
@@ -85,7 +83,6 @@ describe("KeyedAsyncQueue", () => {
     });
     await expect(p1).rejects.toThrow("boom");
 
-    // Next task on the same key still runs.
     const p2 = q.enqueue("k", async () => "ok");
     expect(await p2).toBe("ok");
   });

@@ -350,9 +350,8 @@ describe("createDiscordChannel — inbound wiring", () => {
   });
 });
 
-// #865 regression: concurrent inbound on the same session must not stack up
-// subscribers on the same gateway sessionId — that's what fans out text_delta
-// N× to Discord.
+// #865 regression: concurrent inbound on the same session must not stack
+// subscribers on the same gateway sessionId (causes N× fan-out of text_delta).
 describe("createDiscordChannel — per-session inbound serialization (#865)", () => {
   it("serializes concurrent inbound on the same session — only one subscribe is live at a time", async () => {
     const client = makeFakeClient("bot-A");
@@ -449,7 +448,6 @@ describe("createDiscordChannel — in-turn steer (fast-path)", () => {
   it("calls gateway.trySteer first; when it succeeds, does NOT subscribe/dispatch", async () => {
     const client = makeFakeClient("bot-A");
     const gateway = makeGateway();
-    // trySteer returns true → fast-path success, slow path must not run.
     gateway.trySteer.mockReturnValue(true);
 
     const adapter = createDiscordChannel(
@@ -466,7 +464,6 @@ describe("createDiscordChannel — in-turn steer (fast-path)", () => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
 
     expect(gateway.trySteer).toHaveBeenCalledTimes(1);
-    // Slow path skipped:
     expect(gateway.subscribe).not.toHaveBeenCalled();
     expect(gateway.dispatch).not.toHaveBeenCalled();
   });
@@ -494,9 +491,7 @@ describe("createDiscordChannel — in-turn steer (fast-path)", () => {
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });
 
-  // Fast-path must apply the same inbound filters as the slow path; otherwise
-  // it would inject unfiltered messages directly into the active turn — bot
-  // echo loops, unmentioned chatter in groups treated as user input, etc.
+  // Fast-path must apply the same inbound filters as the slow path.
   it("does NOT trySteer when guild message lacks @mention (requireMention default true)", async () => {
     const client = makeFakeClient("bot-A");
     const gateway = makeGateway();
@@ -507,7 +502,6 @@ describe("createDiscordChannel — in-turn steer (fast-path)", () => {
     );
     await adapter.start({ gateway });
 
-    // Guild message, no mention of bot-A.
     client.emit("messageCreate", fakeMsg({ content: "casual chatter" }));
     for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
 
@@ -525,7 +519,6 @@ describe("createDiscordChannel — in-turn steer (fast-path)", () => {
     );
     await adapter.start({ gateway });
 
-    // Bot's own message echoed back via messageCreate.
     client.emit("messageCreate", fakeMsg({ authorId: "bot-A", mentionedIds: ["bot-A"], content: "<@bot-A> hi" }));
     for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
 
@@ -547,8 +540,7 @@ describe("createDiscordChannel — in-turn steer (fast-path)", () => {
     );
     await adapter.start({ gateway });
 
-    // Another bot mentions us — would normally be allowed (we are mentioned),
-    // but allowBots=false must drop it before any dispatch/steer.
+    // Bot author + mention would normally be allowed; allowBots=false blocks it.
     client.emit("messageCreate", fakeMsg({ authorBot: true, mentionedIds: ["bot-A"], content: "<@bot-A> hello fellow bot" }));
     for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
 

@@ -66,9 +66,7 @@ export function createDiscordChannel(
   const clients = new Map<string, ClientLike>();
   const dedupes = new Map<string, DedupeCache>();
   const histories = new Map<string, ChannelHistoryBuffer>();
-  // FIFO per sessionKey within an account. Inbound messages that miss the
-  // trySteer fast-path fall back to this queue, so a single channel never
-  // has two concurrent runs racing the same gateway sessionId (#865).
+  // FIFO per sessionKey — fallback when trySteer misses; serializes runs (#865).
   const inboundQueues = new Map<string, KeyedAsyncQueue>();
   // threadId → sub-run sessionId — populated by spawn_agent's A2A sink, used
   // to route /stop posted in a sub-run thread to the right cancel target.
@@ -341,8 +339,6 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
     }
   }
 
-  // Slow path: serialize per session so a single channel never has two
-  // concurrent agent runs racing the same gateway sessionId (#865).
   const sinkFactory = buildSinkFactory(client, msg.channelId, a2aThreads);
   await inboundQueue.enqueue(`${agentId}::${sessionKey}`, () =>
     runWithA2A(sinkFactory, () => handleInbound(

@@ -23,21 +23,18 @@ export interface GatewayDeps {
   sessionStoreManager: SessionStoreManager;
 }
 
-// `ready` resolves once the runner has emitted its first event, so dispatch's
-// caller is guaranteed any post-return subscribe() call still sees the run.
+// `ready` resolves on the run's first event so dispatch's caller can safely
+// subscribe() after return without missing the early stream.
 interface ActiveHandle {
   ready: Promise<void>;
   resolveReady: () => void;
-  /** Composite key `${agentId}::${sessionKey}` — used to clean the secondary
-   *  index in triggerRun's finally without re-deriving from msg. */
+  /** `${agentId}::${sessionKey}` — for cleaning activeByKey in finally. */
   keyIndex: string;
 }
 
 export function createGateway(deps: GatewayDeps): Gateway {
   const active = new Map<string, ActiveHandle>();
-  // Secondary index: `${agentId}::${sessionKey}` → sessionId. Lets trySteer()
-  // be fully synchronous (no async store lookup). Kept in lock-step with
-  // `active`: written in dispatch, deleted in triggerRun's finally.
+  // `${agentId}::${sessionKey}` → sessionId. Lets trySteer be fully sync.
   const activeByKey = new Map<string, string>();
   // sessionId -> external subscribers (fan-out targets for emit()).
   const listeners = new Map<string, Set<SessionEventListener>>();
@@ -163,12 +160,7 @@ export function createGateway(deps: GatewayDeps): Gateway {
     return { sessionId };
   }
 
-  /** Synchronous in-turn steer. Returns true iff the message was queued into
-   *  an active run's current turn; false if no active run, the runner doesn't
-   *  support steer, or the run isn't currently streaming.
-   *
-   *  Synchronous by design: callers must be able to atomically decide
-   *  "leader-vs-steer" without an await window where the run could end. */
+  /** Sync in-turn steer; see Gateway.trySteer. */
   function trySteer(agentId: string, sessionKey: string, content: string): boolean {
     const sessionId = activeByKey.get(`${agentId}::${sessionKey}`);
     if (!sessionId) return false;

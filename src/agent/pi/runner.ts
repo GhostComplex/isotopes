@@ -67,23 +67,17 @@ export class PiRunner {
   }
 }
 
-/** Build a sync in-turn steer fn around an AgentSession.
- *  Returns true iff the agent is currently streaming (so the steeringQueue
- *  will be drained at the next turn boundary). When false, the caller falls
- *  back to enqueueing a new run.
- *
- *  The check + enqueue are synchronous and therefore atomic relative to the
- *  JS event loop: the agent-loop cannot interleave between the isStreaming
- *  read and the agent.steer call. This is what closes the race window where
- *  a message could be enqueued just as the agent decides to stop and is
- *  never drained. See openclaw's queueEmbeddedPiMessage for the same pattern. */
+/** Sync in-turn steer for an AgentSession.
+ *  Returns false when the agent isn't streaming — caller falls back to a new
+ *  run. The isStreaming check + agent.steer enqueue are one synchronous
+ *  expression, so the agent-loop can't end between them (closes the race
+ *  where a message could be enqueued just as the agent decides to stop). */
 function buildSyncSteer(session: AgentSession): SyncSteer {
   return (content: string): boolean => {
     if (!session.agent.state.isStreaming) return false;
     try {
-      // Bypass AgentSession.steer's async expansion path — for inbound channel
-      // messages we don't want skill/template expansion. Go straight to the
-      // underlying pi-agent steering queue.
+      // Bypass AgentSession.steer's async expansion — inbound channel
+      // messages don't need skill/template processing.
       session.agent.steer({
         role: "user",
         content: [{ type: "text", text: content }],
