@@ -126,6 +126,29 @@ interface InboundContext {
   buildSubscriber: (msg: DiscordMessage) => InboundSubscriber;
 }
 
+/** Inbound filter shared by the fast-path (trySteer) and slow-path
+ *  (handleInbound). Returns true iff the message should be delivered to the
+ *  agent at all. Lives here so both paths can't drift — fast-path must apply
+ *  the same gating or it would steer messages that the slow path would
+ *  silently drop (own bot echoes, unmentioned chatter in groups, etc.). */
+export function shouldDispatchInbound(
+  msg: DiscordMessage,
+  params: { botId: string; guilds?: Record<string, GuildConfig>; allowBots?: boolean },
+): boolean {
+  if (msg.author.id === params.botId) return false;
+  if (msg.author.bot && params.allowBots === false) return false;
+  if (
+    msg.guild
+    && isThreadMessage(msg)
+    && params.guilds?.[msg.guild.id]?.respondInThreads === false
+  ) return false;
+  if (msg.guild) {
+    const requireMention = params.guilds?.[msg.guild.id]?.requireMention ?? true;
+    if (requireMention && !msg.mentions?.has?.(params.botId)) return false;
+  }
+  return true;
+}
+
 export async function handleInbound(
   msg: DiscordMessage,
   routing: { agentId: string; sessionKey: string },
@@ -134,27 +157,9 @@ export async function handleInbound(
 ): Promise<void> {
   log.debug("Message received", { author: msg.author.username, channelId: msg.channelId, guildId: msg.guild?.id });
 
-  if (msg.author.id === ctx.botId) {
-    log.debug("Filtered: own message", { authorId: msg.author.id });
+  if (!shouldDispatchInbound(msg, { botId: ctx.botId, guilds: deps.guilds, allowBots: deps.allowBots })) {
+    log.debug("Filtered (handleInbound)", { msgId: msg.id, author: msg.author.username });
     return;
-  }
-
-  if (msg.author.bot && deps.allowBots === false) {
-    log.debug("Filtered: bot message", { author: msg.author.username });
-    return;
-  }
-
-  if (msg.guild && isThreadMessage(msg) && deps.guilds?.[msg.guild.id]?.respondInThreads === false) {
-    log.debug("Filtered: thread message", { channelId: msg.channelId });
-    return;
-  }
-
-  if (msg.guild) {
-    const requireMention = deps.guilds?.[msg.guild.id]?.requireMention ?? true;
-    if (requireMention && !msg.mentions?.has?.(ctx.botId)) {
-      log.debug("Filtered: not mentioned", { msgId: msg.id });
-      return;
-    }
   }
 
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();

@@ -493,6 +493,68 @@ describe("createDiscordChannel — in-turn steer (fast-path)", () => {
     expect(gateway.subscribe).toHaveBeenCalledTimes(1);
     expect(gateway.dispatch).toHaveBeenCalledTimes(1);
   });
+
+  // Fast-path must apply the same inbound filters as the slow path; otherwise
+  // it would inject unfiltered messages directly into the active turn — bot
+  // echo loops, unmentioned chatter in groups treated as user input, etc.
+  it("does NOT trySteer when guild message lacks @mention (requireMention default true)", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+    gateway.trySteer.mockReturnValue(true); // would succeed if called — must not be called
+    const adapter = createDiscordChannel(
+      { accounts: { alpha: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway });
+
+    // Guild message, no mention of bot-A.
+    client.emit("messageCreate", fakeMsg({ content: "casual chatter" }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+
+    expect(gateway.trySteer).not.toHaveBeenCalled();
+    expect(gateway.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("does NOT trySteer when message author is the bot itself", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+    gateway.trySteer.mockReturnValue(true);
+    const adapter = createDiscordChannel(
+      { accounts: { alpha: { token: "tok", defaultAgentId: "main", groupAccess: { policy: "open" } } } },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway });
+
+    // Bot's own message echoed back via messageCreate.
+    client.emit("messageCreate", fakeMsg({ authorId: "bot-A", mentionedIds: ["bot-A"], content: "<@bot-A> hi" }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+
+    expect(gateway.trySteer).not.toHaveBeenCalled();
+    expect(gateway.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("does NOT trySteer for other bots when account.allowBots = false", async () => {
+    const client = makeFakeClient("bot-A");
+    const gateway = makeGateway();
+    gateway.trySteer.mockReturnValue(true);
+    const adapter = createDiscordChannel(
+      {
+        accounts: {
+          alpha: { token: "tok", defaultAgentId: "main", allowBots: false, groupAccess: { policy: "open" } },
+        },
+      },
+      { clientFactory: () => client },
+    );
+    await adapter.start({ gateway });
+
+    // Another bot mentions us — would normally be allowed (we are mentioned),
+    // but allowBots=false must drop it before any dispatch/steer.
+    client.emit("messageCreate", fakeMsg({ authorBot: true, mentionedIds: ["bot-A"], content: "<@bot-A> hello fellow bot" }));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+
+    expect(gateway.trySteer).not.toHaveBeenCalled();
+    expect(gateway.dispatch).not.toHaveBeenCalled();
+  });
 });
 
 describe("createDiscordChannel — message metadata enrichment", () => {

@@ -10,7 +10,7 @@ import type { Gateway } from "../../gateway/index.js";
 
 import { DedupeCache } from "./dedupe.js";
 import { ChannelHistoryBuffer, formatHistory } from "./channel-history.js";
-import { handleInbound, passesAllowlist, handleStopCommand } from "./inbound.js";
+import { handleInbound, passesAllowlist, handleStopCommand, shouldDispatchInbound } from "./inbound.js";
 import { createDiscordSubscriber } from "./outbound.js";
 import { react } from "./react.js";
 import { resolveToken } from "./config.js";
@@ -320,9 +320,30 @@ async function dispatchInbound(args: InboundArgs): Promise<void> {
   // Skipped when the message has attachments — image extraction is async and
   // would force us past the atomic window. Also skipped when the trimmed
   // text is empty; the slow path filters those out.
+  //
+  // Must apply the same inbound filters as the slow path before steering —
+  // otherwise unmentioned chatter in a group, the bot's own message echoed
+  // back, or messages from disallowed bots would be injected as user input
+  // into the active turn instead of being dropped.
+  //
+  // The framed content here is meta + cleanedText only — no channel history
+  // block and no REPLY_PROMPT extraSystemPrompt. The history block exists to
+  // bootstrap context at the start of a new turn; when we're steering an
+  // in-flight turn the agent is already inside the session's streaming
+  // context (the prior reply tag instructions are already in the message
+  // history), so re-prepending them is noise. The buffered group history
+  // stays in the buffer and will be consumed by the next slow-path message.
   const cleanedText = msg.content.replace(/<@!?\d+>/g, "").trim();
   const hasAttachments = msg.attachments && msg.attachments.size > 0;
-  if (cleanedText && !hasAttachments) {
+  if (
+    cleanedText
+    && !hasAttachments
+    && shouldDispatchInbound(msg, {
+      botId,
+      ...(account.guilds ? { guilds: account.guilds } : {}),
+      ...(account.allowBots !== undefined ? { allowBots: account.allowBots } : {}),
+    })
+  ) {
     const meta = extractDiscordMetadata(msg);
     const chatType = msg.guild ? "group" : "direct";
     const framedContent = `${formatInboundMeta(meta, chatType)}\n\n${cleanedText}`;
